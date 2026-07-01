@@ -32,3 +32,84 @@ input {
 #root {
   min-height: 100vh;
 }
+
+.fc {
+  --fc-border-color: #e2e8f0;
+  --fc-page-bg-color: #ffffff;
+  --fc-neutral-bg-color: #f8fafc;
+  --fc-today-bg-color: #fff1f8;
+  --fc-event-border-color: transparent;
+  --fc-button-bg-color: #fc0c97;
+  --fc-button-border-color: #fc0c97;
+  --fc-button-hover-bg-color: #de0a84;
+  --fc-button-hover-border-color: #de0a84;
+  --fc-button-active-bg-color: #de0a84;
+  --fc-button-active-border-color: #de0a84;
+}
+
+.fc .fc-toolbar {
+  gap: 0.75rem;
+}
+
+.fc .fc-toolbar-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.fc .fc-button {
+  border-radius: 0.75rem;
+  box-shadow: none;
+  text-transform: none;
+  font-weight: 600;
+}
+
+.fc .fc-button:focus {
+  box-shadow: 0 0 0 4px #ffe4f2;
+}
+
+.fc .fc-daygrid-day-number,
+.fc .fc-col-header-cell-cushion,
+.fc .fc-list-day-text,
+.fc .fc-list-day-side-text {
+  color: #475569;
+  text-decoration: none;
+}
+
+.fc .fc-scrollgrid,
+.fc .fc-theme-standard td,
+.fc .fc-theme-standard th {
+  border-color: #e2e8f0;
+}
+
+.fc .fc-daygrid-event,
+.fc .fc-timegrid-event {
+  background: transparent;
+  border: none;
+}
+
+.fc .fc-timegrid-axis-cushion,
+.fc .fc-timegrid-slot-label-cushion {
+  color: #64748b;
+}
+
+.fc .fc-list-event:hover td {
+  background: #fff8fc;
+}
+
+@media (max-width: 767px) {
+  .fc .fc-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .fc .fc-toolbar-chunk {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .fc .fc-toolbar-title {
+    font-size: 1rem;
+  }
+}

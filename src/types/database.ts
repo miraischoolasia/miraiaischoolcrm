@@ -93,6 +93,78 @@ export type Database = {
           },
         ]
       }
+      schedules: {
+        Row: {
+          id: number
+          teacher_id: number
+          student_id: number | null
+          title: string
+          event_type: 'regular' | 'replacement'
+          recurrence_type: 'weekly' | 'none'
+          day_of_week: number | null
+          scheduled_date: string | null
+          start_time: string
+          end_time: string
+          start_recur: string | null
+          end_recur: string | null
+          status: 'active' | 'cancelled'
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          teacher_id: number
+          student_id?: number | null
+          title: string
+          event_type: 'regular' | 'replacement'
+          recurrence_type?: 'weekly' | 'none'
+          day_of_week?: number | null
+          scheduled_date?: string | null
+          start_time: string
+          end_time: string
+          start_recur?: string | null
+          end_recur?: string | null
+          status?: 'active' | 'cancelled'
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          teacher_id?: number
+          student_id?: number | null
+          title?: string
+          event_type?: 'regular' | 'replacement'
+          recurrence_type?: 'weekly' | 'none'
+          day_of_week?: number | null
+          scheduled_date?: string | null
+          start_time?: string
+          end_time?: string
+          start_recur?: string | null
+          end_recur?: string | null
+          status?: 'active' | 'cancelled'
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'schedules_student_id_fkey'
+            columns: ['student_id']
+            isOneToOne: false
+            referencedRelation: 'students'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'schedules_teacher_id_fkey'
+            columns: ['teacher_id']
+            isOneToOne: false
+            referencedRelation: 'teachers'
+            referencedColumns: ['id']
+          },
+        ]
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>
