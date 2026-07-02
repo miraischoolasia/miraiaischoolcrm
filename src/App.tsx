@@ -1129,89 +1129,85 @@ function ClassListingSection({
             No active classroom found yet. Create the first classroom, then add weekly schedules inside it.
           </div>
         ) : (
-          <div className="grid gap-6 p-6 xl:grid-cols-[220px_240px_minmax(0,1fr)]">
-            <div className="space-y-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Age Group
-              </div>
-              {ageGroupOptions.map((ageGroup) => {
-                const selected = selectedAgeGroup === ageGroup
-                const count = activeClassrooms.filter(
-                  (classroom) => classroom.ageGroup === ageGroup,
-                ).length
+          <div className="space-y-6 p-6">
+            <div className="space-y-5 border-b border-slate-200 pb-5">
+              <div className="space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Age Group
+                </div>
+                <div className="flex flex-wrap gap-x-5 gap-y-3">
+                  {ageGroupOptions.map((ageGroup) => {
+                    const selected = selectedAgeGroup === ageGroup
+                    const count = activeClassrooms.filter(
+                      (classroom) => classroom.ageGroup === ageGroup,
+                    ).length
 
-                return (
-                  <button
-                    key={ageGroup}
-                    type="button"
-                    onClick={() => onSelectAgeGroup(ageGroup)}
-                    className={cn(
-                      'w-full rounded-2xl border p-4 text-left transition',
-                      selected
-                        ? 'border-[#fc0c97] bg-[#fff8fc] shadow-sm'
-                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-base font-semibold text-slate-900">
-                          {ageGroup}
-                        </div>
-                      </div>
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                        {count}
-                      </span>
-                    </div>
-                  </button>
-                )
-              })}
+                    return (
+                      <button
+                        key={ageGroup}
+                        type="button"
+                        onClick={() => onSelectAgeGroup(ageGroup)}
+                        className={cn(
+                          'inline-flex items-center gap-2 border-b-2 pb-2 text-left text-sm font-semibold transition',
+                          selected
+                            ? 'border-[#fc0c97] text-[#fc0c97]'
+                            : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700',
+                        )}
+                      >
+                        <span>{ageGroup}</span>
+                        <span className="text-xs font-medium text-slate-400">
+                          {count}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Level
+                </div>
+                <div className="flex flex-wrap gap-x-5 gap-y-3">
+                  {programLevelOptions.map((programLevel) => {
+                    const selected = selectedProgramLevel === programLevel
+                    const count = activeClassrooms.filter(
+                      (classroom) =>
+                        classroom.ageGroup === selectedAgeGroup &&
+                        classroom.programLevel === programLevel,
+                    ).length
+
+                    return (
+                      <button
+                        key={programLevel}
+                        type="button"
+                        onClick={() => onSelectProgramLevel(programLevel)}
+                        className={cn(
+                          'inline-flex items-center gap-2 border-b-2 pb-2 text-left text-sm font-semibold transition',
+                          selected
+                            ? 'border-[#fc0c97] text-[#fc0c97]'
+                            : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700',
+                        )}
+                      >
+                        <span>{programLevel}</span>
+                        <span className="text-xs font-medium text-slate-400">
+                          {count}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Level
-              </div>
-              {programLevelOptions.map((programLevel) => {
-                const selected = selectedProgramLevel === programLevel
-                const count = activeClassrooms.filter(
-                  (classroom) =>
-                    classroom.ageGroup === selectedAgeGroup &&
-                    classroom.programLevel === programLevel,
-                ).length
-
-                return (
-                  <button
-                    key={programLevel}
-                    type="button"
-                    onClick={() => onSelectProgramLevel(programLevel)}
-                    className={cn(
-                      'w-full rounded-2xl border p-4 text-left transition',
-                      selected
-                        ? 'border-[#fc0c97] bg-[#fff8fc] shadow-sm'
-                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-base font-semibold text-slate-900">
-                        {programLevel}
-                      </div>
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                        {count}
-                      </span>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-
-            <div className="space-y-5">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                <div className="flex items-center justify-between gap-4">
+            <div className="grid gap-8 xl:grid-cols-[340px_minmax(0,1fr)]">
+              <div className="space-y-4">
+                <div className="flex items-end justify-between gap-4">
                   <div>
                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#fc0c97]">
                       Classroom List
                     </div>
-                    <h3 className="mt-1 text-xl font-semibold text-slate-900">
+                    <h3 className="mt-1 text-lg font-semibold text-slate-900">
                       {selectedAgeGroup} / {selectedProgramLevel}
                     </h3>
                   </div>
@@ -1222,11 +1218,11 @@ function ClassListingSection({
                 </div>
 
                 {filteredClassrooms.length === 0 ? (
-                  <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
                     No classroom in this category yet.
                   </div>
                 ) : (
-                  <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                  <div className="divide-y divide-slate-200 border-t border-slate-200">
                     {filteredClassrooms.map((classroom) => {
                       const summary = getClassSummary(classroom.id)
                       const roster = classroomStudentMap.get(classroom.id) ?? []
@@ -1237,25 +1233,28 @@ function ClassListingSection({
                           type="button"
                           onClick={() => setSelectedClassroomId(classroom.id)}
                           className={cn(
-                            'rounded-2xl border p-4 text-left transition',
-                            selected
-                              ? 'border-[#fc0c97] bg-[#fff8fc] shadow-sm'
-                              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
+                            'relative w-full px-0 py-4 text-left transition',
+                            selected ? 'text-slate-900' : 'text-slate-700 hover:text-slate-900',
                           )}
                         >
-                          <div className="text-base font-semibold text-slate-900">
-                            {classroom.name}
-                          </div>
-                          <div className="mt-1 text-sm text-slate-500">
-                            {teacherMap.get(classroom.teacherId ?? -1)?.fullName ??
-                              'Unassigned teacher'}
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium text-slate-500">
-                            <span>
-                              {roster.length} student{roster.length === 1 ? '' : 's'}
-                            </span>
-                            <span>{summary.healthy} healthy</span>
-                            <span>{summary.attention} need attention</span>
+                          {selected && (
+                            <span className="absolute left-0 top-4 h-5 w-1 rounded-full bg-[#fc0c97]" />
+                          )}
+                          <div className={cn('space-y-1', selected ? 'pl-4' : '')}>
+                            <div className="text-base font-semibold">
+                              {classroom.name}
+                            </div>
+                            <div className="text-sm text-slate-500">
+                              {teacherMap.get(classroom.teacherId ?? -1)?.fullName ??
+                                'Unassigned teacher'}
+                            </div>
+                            <div className="flex flex-wrap gap-3 text-xs font-medium text-slate-400">
+                              <span>
+                                {roster.length} student{roster.length === 1 ? '' : 's'}
+                              </span>
+                              <span>{summary.healthy} healthy</span>
+                              <span>{summary.attention} need attention</span>
+                            </div>
                           </div>
                         </button>
                       )
