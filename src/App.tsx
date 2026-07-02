@@ -12,6 +12,18 @@ import type { Database } from './types/database'
 type AppSection = 'calendar' | 'classrooms' | 'students' | 'teachers'
 type FilterKey = 'all' | 'hours' | 'accountFee' | 'mirai' | 'normal'
 type AttendanceStatus = 'present' | 'absent' | 'leave'
+type AgeGroup =
+  | '6-8 Years Old'
+  | '9-11 Years Old'
+  | '12-14 Years Old'
+  | '15-17 Years Old'
+type ProgramLevel =
+  | 'Coder Foundation'
+  | 'Coder Pro'
+  | 'VibeTech Innovator'
+  | 'VibeTech Pro'
+  | 'VibeTech Future'
+  | 'Software Engineer'
 type PerformanceMetricKey =
   | 'logicalThinking'
   | 'codingCreativity'
@@ -34,12 +46,23 @@ type ReviewRemarkField =
 type Student = {
   id: number
   teacherId: number | null
+  classroomId: number | null
   name: string
   remainingHours: number
   lessonExpiryDate: string
   accountFeeExpiryDate: string
   miraiClubExpiryDate: string
   isActive: boolean
+}
+
+type Classroom = {
+  id: number
+  name: string
+  ageGroup: AgeGroup
+  programLevel: ProgramLevel
+  teacherId: number | null
+  status: 'active' | 'archived'
+  notes: string | null
 }
 
 type Teacher = {
@@ -54,6 +77,7 @@ type Teacher = {
 type Schedule = {
   id: number
   teacherId: number
+  classroomId: number | null
   title: string
   eventType: 'regular' | 'replacement'
   recurrenceType: 'weekly' | 'none'
@@ -137,12 +161,12 @@ type RenewalFormState = {
 type CreateStudentFormState = {
   fullName: string
   teacherId: string
+  classroomId: string
   initialHours: string
   lessonExpiryDate: string
   accountFeeExpiryDate: string
   miraiClubExpiryDate: string
   notes: string
-  classIds: string[]
 }
 
 type CreateTeacherFormState = {
@@ -156,6 +180,7 @@ type CreateTeacherFormState = {
 type ScheduleFormState = {
   title: string
   teacherId: string
+  classroomId: string
   eventType: 'regular' | 'replacement'
   dayOfWeek: string
   scheduledDate: string
@@ -165,6 +190,14 @@ type ScheduleFormState = {
   endRecur: string
   notes: string
   participantIds: string[]
+}
+
+type ClassroomFormState = {
+  name: string
+  ageGroup: AgeGroup
+  programLevel: ProgramLevel
+  teacherId: string
+  notes: string
 }
 
 type AttendanceModalState = {
@@ -189,12 +222,24 @@ type StudentRow = Pick<
   Database['public']['Tables']['students']['Row'],
   | 'id'
   | 'teacher_id'
+  | 'classroom_id'
   | 'full_name'
   | 'remaining_hours'
   | 'lesson_expiry_date'
   | 'account_fee_expiry_date'
   | 'mirai_club_expiry_date'
   | 'is_active'
+>
+
+type ClassroomRow = Pick<
+  Database['public']['Tables']['classrooms']['Row'],
+  | 'id'
+  | 'name'
+  | 'age_group'
+  | 'program_level'
+  | 'teacher_id'
+  | 'status'
+  | 'notes'
 >
 
 type TeacherRow = Pick<
@@ -206,6 +251,7 @@ type ScheduleRow = Pick<
   Database['public']['Tables']['schedules']['Row'],
   | 'id'
   | 'teacher_id'
+  | 'classroom_id'
   | 'title'
   | 'event_type'
   | 'recurrence_type'
@@ -320,6 +366,22 @@ const studentFilterOptions: Array<{ key: FilterKey; label: string }> = [
   { key: 'normal', label: 'All Normal' },
 ]
 
+const ageGroupOptions: AgeGroup[] = [
+  '6-8 Years Old',
+  '9-11 Years Old',
+  '12-14 Years Old',
+  '15-17 Years Old',
+]
+
+const programLevelOptions: ProgramLevel[] = [
+  'Coder Foundation',
+  'Coder Pro',
+  'VibeTech Innovator',
+  'VibeTech Pro',
+  'VibeTech Future',
+  'Software Engineer',
+]
+
 function getTodayString() {
   const now = new Date()
   const year = now.getFullYear()
@@ -414,12 +476,25 @@ function mapStudentRow(row: StudentRow): Student {
   return {
     id: row.id,
     teacherId: row.teacher_id,
+    classroomId: row.classroom_id,
     name: row.full_name,
     remainingHours: row.remaining_hours,
     lessonExpiryDate: row.lesson_expiry_date,
     accountFeeExpiryDate: row.account_fee_expiry_date,
     miraiClubExpiryDate: row.mirai_club_expiry_date,
     isActive: row.is_active,
+  }
+}
+
+function mapClassroomRow(row: ClassroomRow): Classroom {
+  return {
+    id: row.id,
+    name: row.name,
+    ageGroup: row.age_group,
+    programLevel: row.program_level,
+    teacherId: row.teacher_id,
+    status: row.status,
+    notes: row.notes,
   }
 }
 
@@ -442,6 +517,7 @@ function mapScheduleRow(row: ScheduleRow): Schedule {
   return {
     id: row.id,
     teacherId: row.teacher_id,
+    classroomId: row.classroom_id,
     title: row.title,
     eventType: row.event_type,
     recurrenceType: row.recurrence_type,
@@ -551,7 +627,7 @@ async function fetchStudentsFromSupabase() {
   const { data, error } = await supabase
     .from('students')
     .select(
-      'id, teacher_id, full_name, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date, is_active',
+      'id, teacher_id, classroom_id, full_name, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date, is_active',
     )
     .order('full_name')
 
@@ -560,6 +636,25 @@ async function fetchStudentsFromSupabase() {
   }
 
   return data.map(mapStudentRow)
+}
+
+async function fetchClassroomsFromSupabase() {
+  if (!supabase) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('classrooms')
+    .select('id, name, age_group, program_level, teacher_id, status, notes')
+    .order('age_group')
+    .order('program_level')
+    .order('name')
+
+  if (error) {
+    throw error
+  }
+
+  return data.map(mapClassroomRow)
 }
 
 async function fetchTeachersFromSupabase() {
@@ -589,7 +684,7 @@ async function fetchSchedulesFromSupabase() {
   const { data, error } = await supabase
     .from('schedules')
     .select(
-      'id, teacher_id, title, event_type, recurrence_type, day_of_week, scheduled_date, start_time, end_time, start_recur, end_recur, status, notes',
+      'id, teacher_id, classroom_id, title, event_type, recurrence_type, day_of_week, scheduled_date, start_time, end_time, start_recur, end_recur, status, notes',
     )
     .order('title')
 
@@ -725,6 +820,7 @@ function buildScheduleFormState(
     return {
       title: '',
       teacherId: defaultTeacherId ? String(defaultTeacherId) : '',
+      classroomId: '',
       eventType: 'regular',
       dayOfWeek: String(parseLocalDate(todayString).getDay()),
       scheduledDate: todayString,
@@ -740,6 +836,7 @@ function buildScheduleFormState(
   return {
     title: schedule.title,
     teacherId: String(schedule.teacherId),
+    classroomId: schedule.classroomId ? String(schedule.classroomId) : '',
     eventType: schedule.eventType,
     dayOfWeek:
       schedule.dayOfWeek !== null ? String(schedule.dayOfWeek) : String(parseLocalDate(todayString).getDay()),
@@ -764,6 +861,8 @@ function calculateDuration(startTime: string, endTime: string) {
 
 function buildScheduleEvents(
   schedules: Schedule[],
+  classroomMap: Map<number, Classroom>,
+  classroomStudentMap: Map<number, Student[]>,
   teacherMap: Map<number, Teacher>,
   scheduleParticipantMap: Map<number, number[]>,
   studentMap: Map<number, Student>,
@@ -772,17 +871,27 @@ function buildScheduleEvents(
     .filter((schedule) => schedule.status === 'active')
     .map((schedule) => {
       const teacher = teacherMap.get(schedule.teacherId)
-      const participantNames = (scheduleParticipantMap.get(schedule.id) ?? [])
-        .map((studentId) => studentMap.get(studentId)?.name)
-        .filter(Boolean)
-        .join(', ')
+      const classroom = schedule.classroomId ? classroomMap.get(schedule.classroomId) : null
+      const participantNames =
+        schedule.eventType === 'regular'
+          ? (classroom && classroomStudentMap.get(classroom.id)
+              ? classroomStudentMap.get(classroom.id)!
+              : []
+            )
+              .map((student) => student.name)
+              .join(', ')
+          : (scheduleParticipantMap.get(schedule.id) ?? [])
+              .map((studentId) => studentMap.get(studentId)?.name)
+              .filter(Boolean)
+              .join(', ')
 
       const shared = {
         id: `schedule-${schedule.id}`,
-        title: schedule.title,
+        title: classroom?.name ?? schedule.title,
         duration: calculateDuration(schedule.startTime, schedule.endTime),
         extendedProps: {
           scheduleId: schedule.id,
+          classroomId: schedule.classroomId,
           teacherName: teacher?.fullName ?? 'Unknown Teacher',
           participantNames: participantNames || 'No students assigned',
           eventType: schedule.eventType,
@@ -914,53 +1023,65 @@ function ExpiryCell({
 }
 
 type ClassListingSectionProps = {
-  onEditClass: (scheduleId: number) => void
-  onOpenCreateClass?: () => void
+  classrooms: Classroom[]
+  classroomStudentMap: Map<number, Student[]>
+  isAdminView: boolean
+  onEditClassroom: (classroomId: number) => void
+  onEditSchedule: (scheduleId: number) => void
+  onOpenCreateClassroom?: () => void
+  onOpenCreateRegularSchedule?: (classroomId: number) => void
   onOpenStudentDetail: (studentId: number) => void
+  onSelectAgeGroup: (ageGroup: AgeGroup) => void
+  onSelectProgramLevel: (programLevel: ProgramLevel) => void
   onViewCalendar: () => void
   schedules: Schedule[]
-  scheduleParticipantMap: Map<number, number[]>
-  selectedClassId: number | null
-  setSelectedClassId: (scheduleId: number) => void
-  studentMap: Map<number, Student>
+  selectedAgeGroup: AgeGroup
+  selectedClassroomId: number | null
+  selectedProgramLevel: ProgramLevel
+  setSelectedClassroomId: (classroomId: number) => void
   teacherMap: Map<number, Teacher>
   todayString: string
-  isAdminView: boolean
 }
 
 function ClassListingSection({
-  onEditClass,
-  onOpenCreateClass,
+  classrooms,
+  classroomStudentMap,
+  isAdminView,
+  onEditClassroom,
+  onEditSchedule,
+  onOpenCreateClassroom,
+  onOpenCreateRegularSchedule,
   onOpenStudentDetail,
+  onSelectAgeGroup,
+  onSelectProgramLevel,
   onViewCalendar,
   schedules,
-  scheduleParticipantMap,
-  selectedClassId,
-  setSelectedClassId,
-  studentMap,
+  selectedAgeGroup,
+  selectedClassroomId,
+  selectedProgramLevel,
+  setSelectedClassroomId,
   teacherMap,
   todayString,
-  isAdminView,
 }: ClassListingSectionProps) {
-  const activeClasses = schedules.filter(
-    (schedule) =>
-      schedule.status === 'active' && schedule.eventType === 'regular',
+  const activeClassrooms = classrooms.filter(
+    (classroom) => classroom.status === 'active',
   )
-  const selectedClass =
-    activeClasses.find((schedule) => schedule.id === selectedClassId) ??
-    activeClasses[0] ??
+  const filteredClassrooms = activeClassrooms.filter(
+    (classroom) =>
+      classroom.ageGroup === selectedAgeGroup &&
+      classroom.programLevel === selectedProgramLevel,
+  )
+  const selectedClassroom =
+    filteredClassrooms.find((classroom) => classroom.id === selectedClassroomId) ??
+    filteredClassrooms[0] ??
     null
 
-  const getClassSummary = (scheduleId: number): ClassStatusSummary => {
-    const studentIds = scheduleParticipantMap.get(scheduleId) ?? []
-    return studentIds.reduce<ClassStatusSummary>(
-      (summary, studentId) => {
-        const student = studentMap.get(studentId)
-        if (!student) {
-          return summary
-        }
-
+  const getClassSummary = (classroomId: number): ClassStatusSummary => {
+    const roster = classroomStudentMap.get(classroomId) ?? []
+    return roster.reduce<ClassStatusSummary>(
+      (summary, student) => {
         const status = getStudentStatus(student, todayString)
+
         if (status.isDeactivated || status.hoursLow || status.lessonExpired) {
           summary.attention += 1
         } else {
@@ -981,44 +1102,49 @@ function ClassListingSection({
               <h2 className="text-lg font-semibold text-slate-900">My Classroom</h2>
               <p className="mt-1 text-sm text-slate-500">
                 {isAdminView
-                  ? 'View every regular class, assigned teacher, and all students inside each classroom.'
-                  : 'View each regular class assigned to this teacher and open the roster quickly.'}
+                  ? 'Browse classrooms by age group and level, then open each class roster and timetable.'
+                  : 'Browse assigned classrooms by age group and level, then open the class roster quickly.'}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <div className="text-sm text-slate-500">
-                {activeClasses.length} classroom
-                {activeClasses.length === 1 ? '' : 's'}
+                {activeClassrooms.length} classroom
+                {activeClassrooms.length === 1 ? '' : 's'}
               </div>
-              {isAdminView && onOpenCreateClass && (
+              {isAdminView && onOpenCreateClassroom && (
                 <button
                   type="button"
-                  onClick={onOpenCreateClass}
+                  onClick={onOpenCreateClassroom}
                   className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
                 >
-                  Add Class
+                  Add Classroom
                 </button>
               )}
             </div>
           </div>
         </div>
 
-        {activeClasses.length === 0 ? (
+        {activeClassrooms.length === 0 ? (
           <div className="px-6 py-16 text-center text-sm text-slate-500">
-            No active classroom found yet.
+            No active classroom found yet. Create the first classroom, then add weekly schedules inside it.
           </div>
         ) : (
-          <div className="grid gap-6 p-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+          <div className="grid gap-6 p-6 xl:grid-cols-[220px_240px_minmax(0,1fr)]">
             <div className="space-y-3">
-              {activeClasses.map((schedule) => {
-                const participantIds = scheduleParticipantMap.get(schedule.id) ?? []
-                const summary = getClassSummary(schedule.id)
-                const selected = selectedClass?.id === schedule.id
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Age Group
+              </div>
+              {ageGroupOptions.map((ageGroup) => {
+                const selected = selectedAgeGroup === ageGroup
+                const count = activeClassrooms.filter(
+                  (classroom) => classroom.ageGroup === ageGroup,
+                ).length
+
                 return (
                   <button
-                    key={schedule.id}
+                    key={ageGroup}
                     type="button"
-                    onClick={() => setSelectedClassId(schedule.id)}
+                    onClick={() => onSelectAgeGroup(ageGroup)}
                     className={cn(
                       'w-full rounded-2xl border p-4 text-left transition',
                       selected
@@ -1026,133 +1152,307 @@ function ClassListingSection({
                         : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
                     )}
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="text-base font-semibold text-slate-900">
-                          {schedule.title}
-                        </div>
-                        <div className="mt-1 text-sm text-slate-500">
-                          {teacherMap.get(schedule.teacherId)?.fullName ?? 'Unassigned teacher'}
+                          {ageGroup}
                         </div>
                       </div>
-                      <span
-                        className={cn(
-                          'rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]',
-                          schedule.eventType === 'regular'
-                            ? 'bg-sky-100 text-sky-700'
-                            : 'bg-orange-100 text-orange-700',
-                        )}
-                      >
-                        {schedule.eventType}
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                        {count}
                       </span>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium text-slate-500">
-                      <span>
-                        {participantIds.length} student
-                        {participantIds.length === 1 ? '' : 's'}
-                      </span>
-                      <span>{summary.healthy} healthy</span>
-                      <span>{summary.attention} need attention</span>
                     </div>
                   </button>
                 )
               })}
             </div>
 
-            {selectedClass && (
+            <div className="space-y-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Level
+              </div>
+              {programLevelOptions.map((programLevel) => {
+                const selected = selectedProgramLevel === programLevel
+                const count = activeClassrooms.filter(
+                  (classroom) =>
+                    classroom.ageGroup === selectedAgeGroup &&
+                    classroom.programLevel === programLevel,
+                ).length
+
+                return (
+                  <button
+                    key={programLevel}
+                    type="button"
+                    onClick={() => onSelectProgramLevel(programLevel)}
+                    className={cn(
+                      'w-full rounded-2xl border p-4 text-left transition',
+                      selected
+                        ? 'border-[#fc0c97] bg-[#fff8fc] shadow-sm'
+                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-base font-semibold text-slate-900">
+                        {programLevel}
+                      </div>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                        {count}
+                      </span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="space-y-5">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <div>
                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#fc0c97]">
-                      Classroom Detail
+                      Classroom List
                     </div>
-                    <h3 className="mt-1 text-2xl font-semibold text-slate-900">
-                      {selectedClass.title}
+                    <h3 className="mt-1 text-xl font-semibold text-slate-900">
+                      {selectedAgeGroup} / {selectedProgramLevel}
                     </h3>
-                    <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-500">
-                      <span>
-                        Teacher: {teacherMap.get(selectedClass.teacherId)?.fullName ?? 'Unassigned'}
-                      </span>
-                      <span>
-                        Recurring: {weekdayLabels[selectedClass.dayOfWeek ?? 0]}
-                      </span>
-                      <span>
-                        Time: {selectedClass.startTime} - {selectedClass.endTime}
-                      </span>
-                    </div>
                   </div>
-
-                  <div className="flex flex-wrap gap-3">
-                    {isAdminView && (
-                      <button
-                        type="button"
-                        onClick={() => onEditClass(selectedClass.id)}
-                        className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                      >
-                        Edit Class
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={onViewCalendar}
-                      className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
-                    >
-                      View in Calendar
-                    </button>
+                  <div className="text-sm text-slate-500">
+                    {filteredClassrooms.length} result
+                    {filteredClassrooms.length === 1 ? '' : 's'}
                   </div>
                 </div>
 
-                <div className="mt-5 space-y-3">
-                  {(scheduleParticipantMap.get(selectedClass.id) ?? []).map((studentId) => {
-                    const student = studentMap.get(studentId)
-                    if (!student) {
-                      return null
-                    }
-                    const status = getStudentStatus(student, todayString)
-                    return (
-                      <div
-                        key={student.id}
-                        className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-                      >
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                          <div>
+                {filteredClassrooms.length === 0 ? (
+                  <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">
+                    No classroom in this category yet.
+                  </div>
+                ) : (
+                  <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                    {filteredClassrooms.map((classroom) => {
+                      const summary = getClassSummary(classroom.id)
+                      const roster = classroomStudentMap.get(classroom.id) ?? []
+                      const selected = selectedClassroom?.id === classroom.id
+                      return (
+                        <button
+                          key={classroom.id}
+                          type="button"
+                          onClick={() => setSelectedClassroomId(classroom.id)}
+                          className={cn(
+                            'rounded-2xl border p-4 text-left transition',
+                            selected
+                              ? 'border-[#fc0c97] bg-[#fff8fc] shadow-sm'
+                              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
+                          )}
+                        >
+                          <div className="text-base font-semibold text-slate-900">
+                            {classroom.name}
+                          </div>
+                          <div className="mt-1 text-sm text-slate-500">
+                            {teacherMap.get(classroom.teacherId ?? -1)?.fullName ??
+                              'Unassigned teacher'}
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium text-slate-500">
+                            <span>
+                              {roster.length} student{roster.length === 1 ? '' : 's'}
+                            </span>
+                            <span>{summary.healthy} healthy</span>
+                            <span>{summary.attention} need attention</span>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {selectedClassroom && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#fc0c97]">
+                        Classroom Detail
+                      </div>
+                      <h3 className="mt-1 text-2xl font-semibold text-slate-900">
+                        {selectedClassroom.name}
+                      </h3>
+                      <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-500">
+                        <span>
+                          Teacher:{' '}
+                          {teacherMap.get(selectedClassroom.teacherId ?? -1)?.fullName ??
+                            'Unassigned'}
+                        </span>
+                        <span>{selectedClassroom.ageGroup}</span>
+                        <span>{selectedClassroom.programLevel}</span>
+                      </div>
+                      {selectedClassroom.notes && (
+                        <p className="mt-3 max-w-3xl text-sm text-slate-500">
+                          {selectedClassroom.notes}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-3">
+                      {isAdminView && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => onEditClassroom(selectedClassroom.id)}
+                            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                          >
+                            Edit Classroom
+                          </button>
+                          {onOpenCreateRegularSchedule && (
                             <button
                               type="button"
-                              onClick={() => onOpenStudentDetail(student.id)}
-                              className="text-left text-base font-semibold text-slate-900 transition hover:text-[#fc0c97]"
+                              onClick={() =>
+                                onOpenCreateRegularSchedule(selectedClassroom.id)
+                              }
+                              className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
                             >
-                              {student.name}
+                              Add Weekly Timetable
                             </button>
-                            <div className="mt-1 text-sm text-slate-500">
-                              Classes: {student.remainingHours} - Lesson Expiry:{' '}
-                              {formatDate(student.lessonExpiryDate)}
-                            </div>
-                            <div className="mt-1 text-sm text-slate-500">
-                              Account Fee: {formatDate(student.accountFeeExpiryDate)} - Mirai Club:{' '}
-                              {formatDate(student.miraiClubExpiryDate)}
-                            </div>
-                            {!student.isActive && (
-                              <div className="mt-2 text-sm font-semibold text-red-600">
-                                Deactivated student
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex max-w-[320px] flex-wrap gap-2">
-                            {status.tags.map((tag) => (
-                              <StatusChip
-                                key={`${selectedClass.id}-${student.id}-${tag.label}`}
-                                label={tag.label}
-                                tone={tag.tone}
-                              />
-                            ))}
-                          </div>
-                        </div>
+                          )}
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={onViewCalendar}
+                        className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                      >
+                        View Calendar
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+                    <div className="space-y-3">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Weekly Timetable
                       </div>
-                    )
-                  })}
+                      {schedules.filter(
+                        (schedule) =>
+                          schedule.eventType === 'regular' &&
+                          schedule.status === 'active' &&
+                          schedule.classroomId === selectedClassroom.id,
+                      ).length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-sm text-slate-500">
+                          No weekly timetable set yet.
+                        </div>
+                      ) : (
+                        schedules
+                          .filter(
+                            (schedule) =>
+                              schedule.eventType === 'regular' &&
+                              schedule.status === 'active' &&
+                              schedule.classroomId === selectedClassroom.id,
+                          )
+                          .sort((left, right) => {
+                            const leftDay = left.dayOfWeek ?? 0
+                            const rightDay = right.dayOfWeek ?? 0
+                            if (leftDay !== rightDay) {
+                              return leftDay - rightDay
+                            }
+                            return left.startTime.localeCompare(right.startTime)
+                          })
+                          .map((schedule) => (
+                            <div
+                              key={schedule.id}
+                              className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="font-semibold text-slate-900">
+                                    {weekdayLabels[schedule.dayOfWeek ?? 0]}
+                                  </div>
+                                  <div className="mt-1 text-sm text-slate-500">
+                                    {schedule.startTime} - {schedule.endTime}
+                                  </div>
+                                  <div className="mt-1 text-xs text-slate-500">
+                                    Start: {schedule.startRecur ? formatDate(schedule.startRecur) : '-'}
+                                    {schedule.endRecur
+                                      ? ` • End: ${formatDate(schedule.endRecur)}`
+                                      : ''}
+                                  </div>
+                                </div>
+                                {isAdminView && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onEditSchedule(schedule.id)}
+                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                  >
+                                    Edit
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Student Roster
+                      </div>
+                      {(classroomStudentMap.get(selectedClassroom.id) ?? [])
+                        .slice()
+                        .sort((left, right) => {
+                          if (left.isActive !== right.isActive) {
+                            return left.isActive ? -1 : 1
+                          }
+                          return left.name.localeCompare(right.name)
+                        })
+                        .map((student) => {
+                          const status = getStudentStatus(student, todayString)
+                          return (
+                            <div
+                              key={student.id}
+                              className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                            >
+                              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div>
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenStudentDetail(student.id)}
+                                    className="text-left text-base font-semibold text-slate-900 transition hover:text-[#fc0c97]"
+                                  >
+                                    {student.name}
+                                  </button>
+                                  <div className="mt-1 text-sm text-slate-500">
+                                    Classes: {student.remainingHours} - Lesson Expiry:{' '}
+                                    {formatDate(student.lessonExpiryDate)}
+                                  </div>
+                                  <div className="mt-1 text-sm text-slate-500">
+                                    Account Fee: {formatDate(student.accountFeeExpiryDate)} - Mirai Club:{' '}
+                                    {formatDate(student.miraiClubExpiryDate)}
+                                  </div>
+                                  {!student.isActive && (
+                                    <div className="mt-2 text-sm font-semibold text-red-600">
+                                      Deactivated student
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex max-w-[320px] flex-wrap gap-2">
+                                  {status.tags.map((tag) => (
+                                    <StatusChip
+                                      key={`${selectedClassroom.id}-${student.id}-${tag.label}`}
+                                      label={tag.label}
+                                      tone={tag.tone}
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      {(classroomStudentMap.get(selectedClassroom.id) ?? []).length === 0 && (
+                        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-sm text-slate-500">
+                          No students assigned to this classroom yet.
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
       </section>
@@ -1693,21 +1993,21 @@ function PerformanceRadarChart({
 }
 
 type StudentDetailModalProps = {
+  classrooms: Classroom[]
   student: Student
   lessonLogs: LessonLogSummary[]
   lessonReviews: LessonLogStudentReview[]
   onClose: () => void
-  scheduleParticipantMap: Map<number, number[]>
   schedules: Schedule[]
   teacherMap: Map<number, Teacher>
 }
 
 function StudentDetailModal({
+  classrooms,
   student,
   lessonLogs,
   lessonReviews,
   onClose,
-  scheduleParticipantMap,
   schedules,
   teacherMap,
 }: StudentDetailModalProps) {
@@ -1777,14 +2077,16 @@ function StudentDetailModal({
     return result
   }, [latestReviewEntries])
 
-  const assignedClassrooms = useMemo(() => {
+  const assignedClassroom =
+    classrooms.find((classroom) => classroom.id === student.classroomId) ?? null
+  const classroomSchedules = useMemo(() => {
     return schedules.filter(
       (schedule) =>
         schedule.status === 'active' &&
         schedule.eventType === 'regular' &&
-        (scheduleParticipantMap.get(schedule.id) ?? []).includes(student.id),
+        schedule.classroomId === student.classroomId,
     )
-  }, [scheduleParticipantMap, schedules, student.id])
+  }, [schedules, student.classroomId])
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/30 px-4 py-6">
@@ -1847,23 +2149,31 @@ function StudentDetailModal({
                     </div>
                   </div>
                   <div>
-                    <div className="text-sm text-slate-500">Classrooms</div>
+                    <div className="text-sm text-slate-500">Main Classroom</div>
                     <div className="mt-1 text-lg font-semibold text-slate-900">
-                      {assignedClassrooms.length}
+                      {assignedClassroom?.name ?? 'Unassigned'}
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-5 flex flex-wrap gap-2">
-                  {assignedClassrooms.map((schedule) => (
+                  {assignedClassroom && (
+                    <span
+                      key={assignedClassroom.id}
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-medium text-slate-700"
+                    >
+                      {assignedClassroom.ageGroup} / {assignedClassroom.programLevel}
+                    </span>
+                  )}
+                  {classroomSchedules.map((schedule) => (
                     <span
                       key={schedule.id}
                       className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-medium text-slate-700"
                     >
-                      {schedule.title}
+                      {weekdayLabels[schedule.dayOfWeek ?? 0]} {schedule.startTime}-{schedule.endTime}
                     </span>
                   ))}
-                  {assignedClassrooms.length === 0 && (
+                  {!assignedClassroom && (
                     <span className="text-sm text-slate-500">
                       No regular classroom assigned yet.
                     </span>
@@ -1986,6 +2296,7 @@ function App() {
   const isMobile = useIsMobile()
   const todayString = getTodayString()
 
+  const [classrooms, setClassrooms] = useState<Classroom[]>([])
   const [students, setStudents] = useState<Student[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [schedules, setSchedules] = useState<Schedule[]>([])
@@ -2015,12 +2326,18 @@ function App() {
   const [studentFilter, setStudentFilter] = useState<FilterKey>('all')
   const [activeSection, setActiveSection] = useState<AppSection>('calendar')
   const [selectedSessionKey, setSelectedSessionKey] = useState<string>('')
+  const [selectedAgeGroup, setSelectedAgeGroup] = useState<AgeGroup>(ageGroupOptions[0])
+  const [selectedProgramLevel, setSelectedProgramLevel] = useState<ProgramLevel>(
+    programLevelOptions[0],
+  )
 
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null)
   const [selectedStudentDetailId, setSelectedStudentDetailId] = useState<number | null>(
     null,
   )
-  const [selectedClassId, setSelectedClassId] = useState<number | null>(null)
+  const [selectedClassroomId, setSelectedClassroomId] = useState<number | null>(null)
+  const [editingClassroomId, setEditingClassroomId] = useState<number | null>(null)
+  const [isCreatingClassroom, setIsCreatingClassroom] = useState(false)
   const [isCreateStudentOpen, setIsCreateStudentOpen] = useState(false)
   const [isCreateTeacherOpen, setIsCreateTeacherOpen] = useState(false)
   const [studentFormState, setStudentFormState] = useState<RenewalFormState>({
@@ -2034,13 +2351,22 @@ function App() {
     useState<CreateStudentFormState>({
       fullName: '',
       teacherId: '',
+      classroomId: '',
       initialHours: '0',
       lessonExpiryDate: todayString,
       accountFeeExpiryDate: todayString,
       miraiClubExpiryDate: todayString,
       notes: '',
-      classIds: [],
     })
+  const [isSavingClassroom, setIsSavingClassroom] = useState(false)
+  const [classroomSaveError, setClassroomSaveError] = useState<string | null>(null)
+  const [classroomFormState, setClassroomFormState] = useState<ClassroomFormState>({
+    name: '',
+    ageGroup: ageGroupOptions[0],
+    programLevel: programLevelOptions[0],
+    teacherId: '',
+    notes: '',
+  })
   const [createTeacherFormState, setCreateTeacherFormState] =
     useState<CreateTeacherFormState>({
       username: '',
@@ -2055,6 +2381,7 @@ function App() {
   const [scheduleFormState, setScheduleFormState] = useState<ScheduleFormState>({
     title: '',
     teacherId: '',
+    classroomId: '',
     eventType: 'regular',
     dayOfWeek: '2',
     scheduledDate: todayString,
@@ -2084,9 +2411,32 @@ function App() {
     () => new Map(teachers.map((teacher) => [teacher.id, teacher])),
     [teachers],
   )
+  const classroomMap = useMemo(
+    () => new Map(classrooms.map((classroom) => [classroom.id, classroom])),
+    [classrooms],
+  )
   const studentMap = useMemo(
     () => new Map(students.map((student) => [student.id, student])),
     [students],
+  )
+  const classroomStudentMap = useMemo(() => {
+    const nextMap = new Map<number, Student[]>()
+
+    for (const student of students) {
+      if (!student.classroomId) {
+        continue
+      }
+
+      const existing = nextMap.get(student.classroomId) ?? []
+      existing.push(student)
+      nextMap.set(student.classroomId, existing)
+    }
+
+    return nextMap
+  }, [students])
+  const assignableTeachers = useMemo(
+    () => teachers.filter((teacher) => teacher.role === 'teacher'),
+    [teachers],
   )
   const scheduleParticipantMap = useMemo(() => {
     const nextMap = new Map<number, number[]>()
@@ -2110,9 +2460,7 @@ function App() {
 
   const sessionOptions = useMemo<UserSession[]>(() => {
     const defaultTeacherId =
-      teachers.find((teacher) => teacher.role === 'teacher')?.id ??
-      teachers[0]?.id ??
-      null
+      teachers.find((teacher) => teacher.role === 'teacher')?.id ?? null
 
     return [
       {
@@ -2148,8 +2496,18 @@ function App() {
     students.find((student) => student.id === selectedStudentId) ?? null
   const selectedStudentDetail =
     students.find((student) => student.id === selectedStudentDetailId) ?? null
+  const editingClassroom =
+    classrooms.find((classroom) => classroom.id === editingClassroomId) ?? null
   const editingSchedule =
     schedules.find((schedule) => schedule.id === editingScheduleId) ?? null
+  const scheduleLinkedClassroom =
+    scheduleFormState.classroomId
+      ? classroomMap.get(Number(scheduleFormState.classroomId)) ?? null
+      : null
+  const scheduleClassroomRoster =
+    scheduleLinkedClassroom !== null
+      ? classroomStudentMap.get(scheduleLinkedClassroom.id) ?? []
+      : []
 
   useEffect(() => {
     if (!selectedSessionKey && sessionOptions[0]) {
@@ -2191,12 +2549,28 @@ function App() {
   }, [selectedStudent])
 
   useEffect(() => {
+    if (!isCreatingClassroom && !editingClassroom) {
+      return
+    }
+
+    setClassroomFormState({
+      name: editingClassroom?.name ?? '',
+      ageGroup: editingClassroom?.ageGroup ?? selectedAgeGroup,
+      programLevel: editingClassroom?.programLevel ?? selectedProgramLevel,
+      teacherId: editingClassroom?.teacherId ? String(editingClassroom.teacherId) : '',
+      notes: editingClassroom?.notes ?? '',
+    })
+  }, [editingClassroom, isCreatingClassroom, selectedAgeGroup, selectedProgramLevel])
+
+  useEffect(() => {
     if (!isCreatingSchedule && !editingSchedule) {
       return
     }
 
     const currentParticipantIds =
-      editingSchedule && scheduleParticipantMap.has(editingSchedule.id)
+      editingSchedule &&
+      editingSchedule.eventType === 'replacement' &&
+      scheduleParticipantMap.has(editingSchedule.id)
         ? (scheduleParticipantMap.get(editingSchedule.id) ?? []).map(String)
         : []
 
@@ -2234,6 +2608,7 @@ function App() {
         setLoadError(null)
 
         const [
+          nextClassrooms,
           nextTeachers,
           nextStudents,
           nextSchedules,
@@ -2241,6 +2616,7 @@ function App() {
           nextLessonLogs,
           nextLessonReviews,
         ] = await Promise.all([
+          fetchClassroomsFromSupabase(),
           fetchTeachersFromSupabase(),
           fetchStudentsFromSupabase(),
           fetchSchedulesFromSupabase(),
@@ -2250,6 +2626,7 @@ function App() {
         ])
 
         if (!cancelled) {
+          setClassrooms(nextClassrooms)
           setTeachers(nextTeachers)
           setStudents(nextStudents)
           setSchedules(nextSchedules)
@@ -2293,22 +2670,52 @@ function App() {
     return schedules
   }, [currentSession, schedules])
 
+  const visibleClassrooms = useMemo(() => {
+    if (!currentSession) {
+      return classrooms
+    }
+
+    if (currentSession.role === 'teacher' && currentSession.teacherId !== null) {
+      return classrooms.filter(
+        (classroom) => classroom.teacherId === currentSession.teacherId,
+      )
+    }
+
+    if (currentSession.role === 'teacher' && currentSession.teacherId === null) {
+      return []
+    }
+
+    return classrooms
+  }, [classrooms, currentSession])
+
   const calendarEvents = useMemo(
     () =>
       buildScheduleEvents(
         visibleSchedules,
+        classroomMap,
+        classroomStudentMap,
         teacherMap,
         scheduleParticipantMap,
         studentMap,
       ),
-    [scheduleParticipantMap, studentMap, teacherMap, visibleSchedules],
+    [
+      classroomMap,
+      classroomStudentMap,
+      scheduleParticipantMap,
+      studentMap,
+      teacherMap,
+      visibleSchedules,
+    ],
   )
 
   const activeVisibleSchedules = visibleSchedules.filter(
     (schedule) => schedule.status === 'active',
   )
+  const activeVisibleClassrooms = visibleClassrooms.filter(
+    (classroom) => classroom.status === 'active',
+  )
   const activeClassroomSchedules = activeVisibleSchedules.filter(
-    (schedule) => schedule.eventType === 'regular',
+    (schedule) => schedule.eventType === 'regular' && schedule.classroomId !== null,
   )
   const regularCount = activeVisibleSchedules.filter(
     (schedule) => schedule.eventType === 'regular',
@@ -2322,18 +2729,55 @@ function App() {
       : new Set(activeVisibleSchedules.map((schedule) => schedule.teacherId)).size
 
   useEffect(() => {
-    if (!selectedClassId && activeClassroomSchedules[0]) {
-      setSelectedClassId(activeClassroomSchedules[0].id)
+    const availableAgeGroups = ageGroupOptions.filter((ageGroup) =>
+      activeVisibleClassrooms.some((classroom) => classroom.ageGroup === ageGroup),
+    )
+    const nextAgeGroup = availableAgeGroups[0] ?? ageGroupOptions[0]
+
+    if (!availableAgeGroups.includes(selectedAgeGroup)) {
+      setSelectedAgeGroup(nextAgeGroup)
+    }
+  }, [activeVisibleClassrooms, selectedAgeGroup])
+
+  useEffect(() => {
+    const availableLevels = programLevelOptions.filter((programLevel) =>
+      activeVisibleClassrooms.some(
+        (classroom) =>
+          classroom.ageGroup === selectedAgeGroup &&
+          classroom.programLevel === programLevel,
+      ),
+    )
+    const nextProgramLevel = availableLevels[0] ?? programLevelOptions[0]
+
+    if (!availableLevels.includes(selectedProgramLevel)) {
+      setSelectedProgramLevel(nextProgramLevel)
+    }
+  }, [activeVisibleClassrooms, selectedAgeGroup, selectedProgramLevel])
+
+  useEffect(() => {
+    const filtered = activeVisibleClassrooms.filter(
+      (classroom) =>
+        classroom.ageGroup === selectedAgeGroup &&
+        classroom.programLevel === selectedProgramLevel,
+    )
+
+    if (!selectedClassroomId && filtered[0]) {
+      setSelectedClassroomId(filtered[0].id)
       return
     }
 
     if (
-      selectedClassId !== null &&
-      !activeClassroomSchedules.some((schedule) => schedule.id === selectedClassId)
+      selectedClassroomId !== null &&
+      !filtered.some((classroom) => classroom.id === selectedClassroomId)
     ) {
-      setSelectedClassId(activeClassroomSchedules[0]?.id ?? null)
+      setSelectedClassroomId(filtered[0]?.id ?? null)
     }
-  }, [activeClassroomSchedules, selectedClassId])
+  }, [
+    activeVisibleClassrooms,
+    selectedAgeGroup,
+    selectedClassroomId,
+    selectedProgramLevel,
+  ])
 
   const navItems =
     currentSession?.role === 'teacher'
@@ -2353,11 +2797,22 @@ function App() {
       return []
     }
 
+    const schedule = schedules.find((entry) => entry.id === attendanceModal.scheduleId)
+    if (!schedule) {
+      return []
+    }
+
+    if (schedule.eventType === 'regular') {
+      return schedule.classroomId
+        ? (classroomStudentMap.get(schedule.classroomId) ?? [])
+        : []
+    }
+
     const studentIds = scheduleParticipantMap.get(attendanceModal.scheduleId) ?? []
     return studentIds
       .map((studentId) => studentMap.get(studentId))
       .filter((student): student is Student => Boolean(student))
-  }, [attendanceModal, scheduleParticipantMap, studentMap])
+  }, [attendanceModal, classroomStudentMap, scheduleParticipantMap, schedules, studentMap])
 
   function updateStudentForm<K extends keyof RenewalFormState>(
     key: K,
@@ -2389,16 +2844,14 @@ function App() {
     }))
   }
 
-  function toggleCreateStudentClass(scheduleId: string) {
-    setCreateStudentFormState((currentState) => {
-      const exists = currentState.classIds.includes(scheduleId)
-      return {
-        ...currentState,
-        classIds: exists
-          ? currentState.classIds.filter((item) => item !== scheduleId)
-          : [...currentState.classIds, scheduleId],
-      }
-    })
+  function updateClassroomForm<K extends keyof ClassroomFormState>(
+    key: K,
+    value: ClassroomFormState[K],
+  ) {
+    setClassroomFormState((currentState) => ({
+      ...currentState,
+      [key]: value,
+    }))
   }
 
   function updateScheduleForm<K extends keyof ScheduleFormState>(
@@ -2501,12 +2954,12 @@ function App() {
     setCreateStudentFormState({
       fullName: '',
       teacherId: '',
+      classroomId: '',
       initialHours: '0',
       lessonExpiryDate: todayString,
       accountFeeExpiryDate: todayString,
       miraiClubExpiryDate: todayString,
       notes: '',
-      classIds: [],
     })
   }
 
@@ -2532,23 +2985,54 @@ function App() {
     setCreateTeacherSaveError(null)
   }
 
-  function openCreateSchedule(prefillDate?: string) {
+  function openCreateClassroom() {
+    setClassroomSaveError(null)
+    setEditingClassroomId(null)
+    setIsCreatingClassroom(true)
+    setClassroomFormState({
+      name: '',
+      ageGroup: selectedAgeGroup,
+      programLevel: selectedProgramLevel,
+      teacherId: '',
+      notes: '',
+    })
+  }
+
+  function openEditClassroom(classroomId: number) {
+    setClassroomSaveError(null)
+    setEditingClassroomId(classroomId)
+    setIsCreatingClassroom(false)
+  }
+
+  function closeClassroomModal() {
+    setEditingClassroomId(null)
+    setIsCreatingClassroom(false)
+    setClassroomSaveError(null)
+  }
+
+  function openCreateSchedule(prefillDate?: string, classroomId?: number) {
     setScheduleSaveError(null)
     setEditingScheduleId(null)
     setIsCreatingSchedule(true)
 
     const clickedDate = prefillDate ?? todayString
     const clickedDayOfWeek = String(parseLocalDate(clickedDate).getDay())
+    const linkedClassroom =
+      classroomId !== undefined ? classroomMap.get(classroomId) ?? null : null
+    const linkedTeacherId = linkedClassroom?.teacherId ?? null
 
     setScheduleFormState({
-      title: '',
+      title: linkedClassroom?.name ?? '',
       teacherId:
-        currentSession?.role === 'teacher' && currentSession.teacherId
-          ? String(currentSession.teacherId)
-          : teachers[0]
-            ? String(teachers[0].id)
-            : '',
-      eventType: prefillDate ? 'replacement' : 'regular',
+        linkedTeacherId !== null
+          ? String(linkedTeacherId)
+          : currentSession?.role === 'teacher' && currentSession.teacherId
+            ? String(currentSession.teacherId)
+            : assignableTeachers[0]
+              ? String(assignableTeachers[0].id)
+              : '',
+      classroomId: linkedClassroom ? String(linkedClassroom.id) : '',
+      eventType: linkedClassroom ? 'regular' : 'replacement',
       dayOfWeek: clickedDayOfWeek,
       scheduledDate: clickedDate,
       startTime: '19:30',
@@ -2583,32 +3067,63 @@ function App() {
     setLessonReviews(nextLessonReviews)
   }
 
+  async function refreshClassrooms() {
+    const nextClassrooms = await fetchClassroomsFromSupabase()
+    setClassrooms(nextClassrooms)
+  }
+
+  async function refreshSchedulesAndParticipants() {
+    const [nextSchedules, nextParticipants] = await Promise.all([
+      fetchSchedulesFromSupabase(),
+      fetchScheduleParticipantsFromSupabase(),
+    ])
+    setSchedules(nextSchedules)
+    setScheduleParticipants(nextParticipants)
+  }
+
   async function refreshTeachers() {
     const nextTeachers = await fetchTeachersFromSupabase()
     setTeachers(nextTeachers)
   }
 
-  async function assignStudentToSchedules(studentId: number, scheduleIds: number[]) {
-    if (!supabase || scheduleIds.length === 0) {
+  async function syncRegularSchedulesWithClassroom(
+    classroomId: number,
+    classroomName: string,
+    teacherId: number | null,
+  ) {
+    if (!supabase) {
       return
     }
 
-    const rowsToUpsert = scheduleIds.map((scheduleId) => ({
-      schedule_id: scheduleId,
-      student_id: studentId,
-      is_active: true,
-    }))
+    const payload: Database['public']['Tables']['schedules']['Update'] = {
+      title: classroomName,
+      ...(teacherId ? { teacher_id: teacherId } : {}),
+    }
 
-    const { error } = await supabase.from('schedule_students').upsert(rowsToUpsert, {
-      onConflict: 'schedule_id,student_id',
-    })
+    const { error } = await supabase
+      .from('schedules')
+      .update(payload)
+      .eq('classroom_id', classroomId)
+      .eq('event_type', 'regular')
 
     if (error) {
       throw error
     }
+  }
 
-    const nextParticipants = await fetchScheduleParticipantsFromSupabase()
-    setScheduleParticipants(nextParticipants)
+  async function assignStudentToClassroom(studentId: number, classroomId: number | null) {
+    if (!supabase) {
+      return
+    }
+
+    const { error } = await supabase
+      .from('students')
+      .update({ classroom_id: classroomId })
+      .eq('id', studentId)
+
+    if (error) {
+      throw error
+    }
   }
 
   async function handleCreateStudentSubmit(
@@ -2666,14 +3181,17 @@ function App() {
       }
 
       const createdStudentId = data?.[0]?.student_id
-      if (createdStudentId && createStudentFormState.classIds.length > 0) {
-        await assignStudentToSchedules(
+      if (createdStudentId) {
+        await assignStudentToClassroom(
           createdStudentId,
-          createStudentFormState.classIds.map(Number),
+          createStudentFormState.classroomId
+            ? Number(createStudentFormState.classroomId)
+            : null,
         )
       }
 
       await refreshStudentsAndLogs()
+      await refreshClassrooms()
       closeCreateStudentModal()
     } catch (error) {
       setCreateStudentSaveError(
@@ -2730,6 +3248,73 @@ function App() {
       )
     } finally {
       setIsCreatingTeacherRecord(false)
+    }
+  }
+
+  async function handleClassroomSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!supabase) {
+      return
+    }
+
+    const name = classroomFormState.name.trim()
+    const teacherId = classroomFormState.teacherId
+      ? Number(classroomFormState.teacherId)
+      : null
+
+    if (!name) {
+      setClassroomSaveError('Please enter the classroom name.')
+      return
+    }
+
+    if (!teacherId) {
+      setClassroomSaveError('Please assign a teacher to this classroom.')
+      return
+    }
+
+    const payload: Database['public']['Tables']['classrooms']['Update'] = {
+      name,
+      age_group: classroomFormState.ageGroup,
+      program_level: classroomFormState.programLevel,
+      teacher_id: teacherId,
+      notes: classroomFormState.notes.trim() || null,
+      status: 'active',
+    }
+
+    try {
+      setIsSavingClassroom(true)
+      setClassroomSaveError(null)
+
+      if (isCreatingClassroom) {
+        const { error } = await supabase
+          .from('classrooms')
+          .insert(payload as Database['public']['Tables']['classrooms']['Insert'])
+
+        if (error) {
+          throw error
+        }
+      } else if (editingClassroom) {
+        const { error } = await supabase
+          .from('classrooms')
+          .update(payload)
+          .eq('id', editingClassroom.id)
+
+        if (error) {
+          throw error
+        }
+
+        await syncRegularSchedulesWithClassroom(editingClassroom.id, name, teacherId)
+      }
+
+      await Promise.all([refreshClassrooms(), refreshSchedulesAndParticipants()])
+      closeClassroomModal()
+    } catch (error) {
+      setClassroomSaveError(
+        error instanceof Error ? error.message : 'Failed to save classroom.',
+      )
+    } finally {
+      setIsSavingClassroom(false)
     }
   }
 
@@ -2852,32 +3437,58 @@ function App() {
       return
     }
 
-    const teacherId = Number(scheduleFormState.teacherId)
     const participantIds = scheduleFormState.participantIds.map(Number)
+    const linkedClassroom =
+      scheduleFormState.classroomId
+        ? classroomMap.get(Number(scheduleFormState.classroomId)) ?? null
+        : null
 
-    if (!teacherId) {
-      setScheduleSaveError('Please select a teacher for this schedule.')
-      return
-    }
+    let teacherId = Number(scheduleFormState.teacherId)
+    let title = scheduleFormState.title.trim()
 
-    if (!scheduleFormState.title.trim()) {
-      setScheduleSaveError('Please enter a class title.')
-      return
-    }
+    if (scheduleFormState.eventType === 'regular') {
+      if (!linkedClassroom) {
+        setScheduleSaveError('Please select a classroom for this regular schedule.')
+        return
+      }
 
-    if (participantIds.length === 0) {
-      setScheduleSaveError(
-        scheduleFormState.eventType === 'regular'
-          ? 'Please assign the full regular class roster.'
-          : 'Please assign at least one student for the replacement class.',
-      )
-      return
+      if (!linkedClassroom.teacherId) {
+        setScheduleSaveError(
+          'This classroom needs an assigned teacher before setting the weekly timetable.',
+        )
+        return
+      }
+
+      teacherId = linkedClassroom.teacherId
+      title = linkedClassroom.name
+    } else {
+      if (!teacherId) {
+        setScheduleSaveError('Please select a teacher for this replacement schedule.')
+        return
+      }
+
+      if (!title) {
+        setScheduleSaveError('Please enter a title for this replacement schedule.')
+        return
+      }
+
+      if (participantIds.length === 0) {
+        setScheduleSaveError(
+          'Please assign at least one student for the replacement class.',
+        )
+        return
+      }
     }
 
     const payload: Database['public']['Tables']['schedules']['Update'] = {
       teacher_id: teacherId,
-      student_id: participantIds[0] ?? null,
-      title: scheduleFormState.title.trim(),
+      student_id:
+        scheduleFormState.eventType === 'replacement' ? participantIds[0] ?? null : null,
+      classroom_id:
+        scheduleFormState.eventType === 'regular' && linkedClassroom
+          ? linkedClassroom.id
+          : null,
+      title,
       event_type: scheduleFormState.eventType,
       recurrence_type:
         scheduleFormState.eventType === 'regular' ? 'weekly' : 'none',
@@ -2913,7 +3524,7 @@ function App() {
           .from('schedules')
           .insert(payload as Database['public']['Tables']['schedules']['Insert'])
           .select(
-            'id, teacher_id, title, event_type, recurrence_type, day_of_week, scheduled_date, start_time, end_time, start_recur, end_recur, status, notes',
+            'id, teacher_id, classroom_id, title, event_type, recurrence_type, day_of_week, scheduled_date, start_time, end_time, start_recur, end_recur, status, notes',
           )
           .single()
 
@@ -2927,14 +3538,18 @@ function App() {
             left.title.localeCompare(right.title),
           ),
         )
-        await syncScheduleParticipants(nextSchedule.id, participantIds)
+        if (scheduleFormState.eventType === 'replacement') {
+          await syncScheduleParticipants(nextSchedule.id, participantIds)
+        } else {
+          await refreshSchedulesAndParticipants()
+        }
       } else if (editingSchedule) {
         const { data, error } = await supabase
           .from('schedules')
           .update(payload)
           .eq('id', editingSchedule.id)
           .select(
-            'id, teacher_id, title, event_type, recurrence_type, day_of_week, scheduled_date, start_time, end_time, start_recur, end_recur, status, notes',
+            'id, teacher_id, classroom_id, title, event_type, recurrence_type, day_of_week, scheduled_date, start_time, end_time, start_recur, end_recur, status, notes',
           )
           .single()
 
@@ -2948,7 +3563,11 @@ function App() {
             schedule.id === updatedSchedule.id ? updatedSchedule : schedule,
           ),
         )
-        await syncScheduleParticipants(updatedSchedule.id, participantIds)
+        if (scheduleFormState.eventType === 'replacement') {
+          await syncScheduleParticipants(updatedSchedule.id, participantIds)
+        } else {
+          await refreshSchedulesAndParticipants()
+        }
       }
 
       closeScheduleModal()
@@ -2979,7 +3598,7 @@ function App() {
         .update({ status: 'cancelled' })
         .eq('id', editingSchedule.id)
         .select(
-          'id, teacher_id, title, event_type, recurrence_type, day_of_week, scheduled_date, start_time, end_time, start_recur, end_recur, status, notes',
+          'id, teacher_id, classroom_id, title, event_type, recurrence_type, day_of_week, scheduled_date, start_time, end_time, start_recur, end_recur, status, notes',
         )
         .single()
 
@@ -3004,6 +3623,23 @@ function App() {
     }
   }
 
+  function getScheduleRosterStudentIds(scheduleId: number) {
+    const schedule = schedules.find((entry) => entry.id === scheduleId)
+    if (!schedule) {
+      return []
+    }
+
+    if (schedule.eventType === 'regular') {
+      return schedule.classroomId
+        ? (classroomStudentMap.get(schedule.classroomId) ?? []).map(
+            (student) => student.id,
+          )
+        : []
+    }
+
+    return scheduleParticipantMap.get(scheduleId) ?? []
+  }
+
   async function openAttendanceForEvent(
     scheduleId: number,
     occurrenceDate: string,
@@ -3026,7 +3662,7 @@ function App() {
       const { summary, students: latestAttendanceRows, reviews: latestReviewRows } =
         await fetchLatestLessonLogStudents(scheduleId, occurrenceDate)
 
-      const rosterIds = scheduleParticipantMap.get(scheduleId) ?? []
+      const rosterIds = getScheduleRosterStudentIds(scheduleId)
       const nextStatuses: Record<number, AttendanceStatus> = {}
       const nextReviews: Record<number, AttendanceReviewFormState> = {}
 
@@ -3111,7 +3747,7 @@ function App() {
       return
     }
 
-    const rosterIds = scheduleParticipantMap.get(attendanceModal.scheduleId) ?? []
+    const rosterIds = getScheduleRosterStudentIds(attendanceModal.scheduleId)
     const payload = rosterIds.map((studentId) => ({
       student_id: studentId,
       status: attendanceStatuses[studentId] ?? 'present',
@@ -3454,7 +4090,7 @@ function App() {
                             onClick={() => openCreateSchedule()}
                             className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
                           >
-                            New Schedule
+                            New Replacement Class
                           </button>
                         )}
                       </div>
@@ -3534,16 +4170,26 @@ function App() {
 
             {activeSection === 'classrooms' && (
               <ClassListingSection
+                classrooms={activeVisibleClassrooms}
+                classroomStudentMap={classroomStudentMap}
                 isAdminView={isAdminView}
-                onEditClass={openEditSchedule}
-                onOpenCreateClass={isAdminView ? () => openCreateSchedule() : undefined}
+                onEditClassroom={openEditClassroom}
+                onEditSchedule={openEditSchedule}
+                onOpenCreateClassroom={isAdminView ? openCreateClassroom : undefined}
+                onOpenCreateRegularSchedule={
+                  isAdminView
+                    ? (classroomId) => openCreateSchedule(undefined, classroomId)
+                    : undefined
+                }
                 onOpenStudentDetail={openStudentDetail}
+                onSelectAgeGroup={setSelectedAgeGroup}
+                onSelectProgramLevel={setSelectedProgramLevel}
                 onViewCalendar={() => setActiveSection('calendar')}
-                scheduleParticipantMap={scheduleParticipantMap}
                 schedules={activeClassroomSchedules}
-                selectedClassId={selectedClassId}
-                setSelectedClassId={setSelectedClassId}
-                studentMap={studentMap}
+                selectedAgeGroup={selectedAgeGroup}
+                selectedClassroomId={selectedClassroomId}
+                selectedProgramLevel={selectedProgramLevel}
+                setSelectedClassroomId={setSelectedClassroomId}
                 teacherMap={teacherMap}
                 todayString={todayString}
               />
@@ -3643,7 +4289,7 @@ function App() {
                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
                   >
                     <option value="">Unassigned for now</option>
-                    {teachers.map((teacher) => (
+                    {assignableTeachers.map((teacher) => (
                       <option key={teacher.id} value={teacher.id}>
                         {teacher.fullName}
                       </option>
@@ -3717,48 +4363,53 @@ function App() {
 
                 <label className="space-y-2 sm:col-span-2">
                   <span className="text-sm font-semibold text-slate-700">
-                    Assign to Classroom
+                    Main Classroom
                   </span>
-                  <div className="grid max-h-56 gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2">
-                    {activeClassroomSchedules.map((schedule) => {
-                      const selected = createStudentFormState.classIds.includes(
-                        String(schedule.id),
-                      )
-                      return (
-                        <label
-                          key={schedule.id}
-                          className={cn(
-                            'flex items-start gap-3 rounded-xl border px-3 py-3 text-sm transition',
-                            selected
-                              ? 'border-[#fc0c97] bg-[#fff1f8]'
-                              : 'border-slate-200 bg-white',
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={() =>
-                              toggleCreateStudentClass(String(schedule.id))
-                            }
-                            className="mt-1 h-4 w-4 rounded border-slate-300 text-[#fc0c97] focus:ring-[#fc0c97]"
-                          />
-                          <div>
-                            <div className="font-semibold text-slate-900">
-                              {schedule.title}
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              {teacherMap.get(schedule.teacherId)?.fullName ?? 'Unassigned teacher'}
-                            </div>
-                          </div>
-                        </label>
-                      )
-                    })}
-                    {activeClassroomSchedules.length === 0 && (
-                      <div className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500 sm:col-span-2">
-                        No active classroom available yet. Create a regular class first, then assign students into it.
-                      </div>
+                  <select
+                    value={createStudentFormState.classroomId}
+                    onChange={(event) =>
+                      updateCreateStudentForm('classroomId', event.target.value)
+                    }
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                  >
+                    <option value="">Unassigned for now</option>
+                    {ageGroupOptions.map((ageGroup) =>
+                      programLevelOptions
+                        .map((programLevel) => {
+                          const groupClassrooms = activeVisibleClassrooms.filter(
+                            (classroom) =>
+                              classroom.ageGroup === ageGroup &&
+                              classroom.programLevel === programLevel,
+                          )
+
+                          if (groupClassrooms.length === 0) {
+                            return null
+                          }
+
+                          return (
+                            <optgroup
+                              key={`${ageGroup}-${programLevel}`}
+                              label={`${ageGroup} / ${programLevel}`}
+                            >
+                              {groupClassrooms.map((classroom) => (
+                                <option key={classroom.id} value={classroom.id}>
+                                  {classroom.name}
+                                  {classroom.teacherId
+                                    ? ` - ${teacherMap.get(classroom.teacherId)?.fullName ?? 'Unassigned'}`
+                                    : ' - Unassigned'}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )
+                        })
+                        .filter(Boolean),
                     )}
-                  </div>
+                  </select>
+                  {activeVisibleClassrooms.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500">
+                      No active classroom available yet. Create a classroom first, then assign students into it.
+                    </div>
+                  )}
                 </label>
 
                 <label className="space-y-2 sm:col-span-2">
@@ -3795,6 +4446,173 @@ function App() {
             </form>
           </div>
         </div>
+        </div>
+      )}
+
+      {(isCreatingClassroom || editingClassroom) && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/30 px-4 py-6">
+          <div className="mx-auto flex min-h-full w-full max-w-2xl items-center justify-center">
+            <div className="w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
+              <div className="border-b border-slate-200 bg-[#f8fafc] px-6 py-5 sm:px-8">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-medium text-[#fc0c97]">
+                      Classroom setup
+                    </div>
+                    <h2 className="mt-1 text-2xl font-semibold text-slate-900">
+                      {isCreatingClassroom
+                        ? 'Add Classroom'
+                        : editingClassroom?.name ?? 'Edit Classroom'}
+                    </h2>
+                    <p className="mt-2 text-sm text-slate-500">
+                      Organize regular teaching by age group, level, assigned
+                      teacher, and weekly timetable ownership.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeClassroomModal}
+                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-white"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+
+              <form
+                onSubmit={handleClassroomSubmit}
+                className="max-h-[82vh] space-y-6 overflow-y-auto px-6 py-6 sm:px-8"
+              >
+                {classroomSaveError && (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {classroomSaveError}
+                  </div>
+                )}
+
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <label className="space-y-2 sm:col-span-2">
+                    <span className="text-sm font-semibold text-slate-700">
+                      Classroom Name
+                    </span>
+                    <input
+                      type="text"
+                      value={classroomFormState.name}
+                      onChange={(event) =>
+                        updateClassroomForm('name', event.target.value)
+                      }
+                      placeholder="Example: Tuesday Innovator Group A"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                    />
+                  </label>
+
+                  <label className="space-y-2">
+                    <span className="text-sm font-semibold text-slate-700">
+                      Age Group
+                    </span>
+                    <select
+                      value={classroomFormState.ageGroup}
+                      onChange={(event) =>
+                        updateClassroomForm(
+                          'ageGroup',
+                          event.target.value as AgeGroup,
+                        )
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                    >
+                      {ageGroupOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-2">
+                    <span className="text-sm font-semibold text-slate-700">
+                      Program Level
+                    </span>
+                    <select
+                      value={classroomFormState.programLevel}
+                      onChange={(event) =>
+                        updateClassroomForm(
+                          'programLevel',
+                          event.target.value as ProgramLevel,
+                        )
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                    >
+                      {programLevelOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-2 sm:col-span-2">
+                    <span className="text-sm font-semibold text-slate-700">
+                      Assigned Teacher
+                    </span>
+                    <select
+                      value={classroomFormState.teacherId}
+                      onChange={(event) =>
+                        updateClassroomForm('teacherId', event.target.value)
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                    >
+                      <option value="">Select teacher</option>
+                      {assignableTeachers.map((teacher) => (
+                        <option key={teacher.id} value={teacher.id}>
+                          {teacher.fullName}
+                        </option>
+                      ))}
+                    </select>
+                    {assignableTeachers.length === 0 && (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+                        No teacher account is available yet. Add a teacher first,
+                        then create the classroom.
+                      </div>
+                    )}
+                  </label>
+
+                  <label className="space-y-2 sm:col-span-2">
+                    <span className="text-sm font-semibold text-slate-700">
+                      Notes
+                    </span>
+                    <textarea
+                      rows={4}
+                      value={classroomFormState.notes}
+                      onChange={(event) =>
+                        updateClassroomForm('notes', event.target.value)
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                    />
+                  </label>
+                </div>
+
+                <div className="flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={closeClassroomModal}
+                    className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingClassroom}
+                    className="rounded-xl bg-[#fc0c97] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#de0a84] disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {isSavingClassroom
+                      ? 'Saving...'
+                      : isCreatingClassroom
+                        ? 'Create Classroom'
+                        : 'Save Classroom'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         </div>
       )}
 
@@ -3936,11 +4754,11 @@ function App() {
 
       {selectedStudentDetail && (
         <StudentDetailModal
+          classrooms={classrooms}
           student={selectedStudentDetail}
           lessonLogs={lessonLogs}
           lessonReviews={lessonReviews}
           onClose={closeStudentDetail}
-          scheduleParticipantMap={scheduleParticipantMap}
           schedules={schedules}
           teacherMap={teacherMap}
         />
@@ -4113,17 +4931,22 @@ function App() {
                 <div>
                   <div className="text-sm font-medium text-[#fc0c97]">
                     {isCreatingSchedule
-                      ? 'Create timetable entry'
+                      ? scheduleFormState.eventType === 'regular'
+                        ? 'Create classroom timetable'
+                        : 'Create replacement class'
                       : 'Edit timetable entry'}
                   </div>
                   <h2 className="mt-1 text-2xl font-semibold text-slate-900">
                     {isCreatingSchedule
-                      ? 'New Schedule'
+                      ? scheduleFormState.eventType === 'regular'
+                        ? 'New Weekly Timetable'
+                        : 'New Replacement Class'
                       : editingSchedule?.title ?? 'Schedule'}
                   </h2>
                   <p className="mt-2 text-sm text-slate-500">
-                    Set regular recurring classes or one-off replacement classes,
-                    then assign the student roster that will appear in attendance.
+                    {scheduleFormState.eventType === 'regular'
+                      ? 'Regular schedules are bound to one classroom. Attendance will always pull the classroom roster.'
+                      : 'Replacement classes stay separate from My Classroom and use a hand-picked student list.'}
                   </p>
                 </div>
                 <button
@@ -4147,61 +4970,90 @@ function App() {
               )}
 
               <div className="grid gap-5 sm:grid-cols-2">
-                <label className="space-y-2 sm:col-span-2">
-                  <span className="text-sm font-semibold text-slate-700">
-                    Class Title
-                  </span>
-                  <input
-                    type="text"
-                    value={scheduleFormState.title}
-                    onChange={(event) =>
-                      updateScheduleForm('title', event.target.value)
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
-                  />
-                </label>
-
-                <label className="space-y-2">
-                  <span className="text-sm font-semibold text-slate-700">
-                    Teacher
-                  </span>
-                  <select
-                    value={scheduleFormState.teacherId}
-                    onChange={(event) =>
-                      updateScheduleForm('teacherId', event.target.value)
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
-                  >
-                    <option value="">Select teacher</option>
-                    {teachers.map((teacher) => (
-                      <option key={teacher.id} value={teacher.id}>
-                        {teacher.fullName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="space-y-2">
-                  <span className="text-sm font-semibold text-slate-700">
-                    Event Type
-                  </span>
-                  <select
-                    value={scheduleFormState.eventType}
-                    onChange={(event) =>
-                      updateScheduleForm(
-                        'eventType',
-                        event.target.value as ScheduleFormState['eventType'],
-                      )
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
-                  >
-                    <option value="regular">Regular Class</option>
-                    <option value="replacement">Replacement Class</option>
-                  </select>
-                </label>
+                <div className="sm:col-span-2">
+                  <div className="inline-flex rounded-full border border-[#ffd1ea] bg-[#fff2f9] px-4 py-2 text-sm font-semibold text-[#fc0c97]">
+                    {scheduleFormState.eventType === 'regular'
+                      ? 'Regular Classroom Timetable'
+                      : 'Replacement Class'}
+                  </div>
+                </div>
 
                 {scheduleFormState.eventType === 'regular' ? (
                   <>
+                    <label className="space-y-2 sm:col-span-2">
+                      <span className="text-sm font-semibold text-slate-700">
+                        Linked Classroom
+                      </span>
+                      <select
+                        value={scheduleFormState.classroomId}
+                        onChange={(event) =>
+                          updateScheduleForm('classroomId', event.target.value)
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                      >
+                        <option value="">Select classroom</option>
+                        {ageGroupOptions.flatMap((ageGroup) =>
+                          programLevelOptions.map((programLevel) => {
+                            const groupedClassrooms = activeVisibleClassrooms.filter(
+                              (classroom) =>
+                                classroom.ageGroup === ageGroup &&
+                                classroom.programLevel === programLevel,
+                            )
+
+                            if (groupedClassrooms.length === 0) {
+                              return null
+                            }
+
+                            return (
+                              <optgroup
+                                key={`${ageGroup}-${programLevel}`}
+                                label={`${ageGroup} / ${programLevel}`}
+                              >
+                                {groupedClassrooms.map((classroom) => (
+                                  <option key={classroom.id} value={classroom.id}>
+                                    {classroom.name}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )
+                          }),
+                        )}
+                      </select>
+                    </label>
+
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
+                      <div className="grid gap-4 sm:grid-cols-3">
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                            Classroom Name
+                          </div>
+                          <div className="mt-2 text-sm font-semibold text-slate-900">
+                            {scheduleLinkedClassroom?.name ?? 'Not selected'}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                            Assigned Teacher
+                          </div>
+                          <div className="mt-2 text-sm font-semibold text-slate-900">
+                            {scheduleLinkedClassroom?.teacherId
+                              ? teacherMap.get(scheduleLinkedClassroom.teacherId)
+                                  ?.fullName ?? 'Unknown Teacher'
+                              : 'Assign a teacher in classroom first'}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                            Student Roster
+                          </div>
+                          <div className="mt-2 text-sm font-semibold text-slate-900">
+                            {scheduleClassroomRoster.length} student
+                            {scheduleClassroomRoster.length === 1 ? '' : 's'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     <label className="space-y-2">
                       <span className="text-sm font-semibold text-slate-700">
                         Repeat Every
@@ -4248,98 +5100,218 @@ function App() {
                         className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
                       />
                     </label>
+
+                    <label className="space-y-2">
+                      <span className="text-sm font-semibold text-slate-700">
+                        Start Time
+                      </span>
+                      <input
+                        type="time"
+                        value={scheduleFormState.startTime}
+                        onChange={(event) =>
+                          updateScheduleForm('startTime', event.target.value)
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                      />
+                    </label>
+
+                    <label className="space-y-2">
+                      <span className="text-sm font-semibold text-slate-700">
+                        End Time
+                      </span>
+                      <input
+                        type="time"
+                        value={scheduleFormState.endTime}
+                        onChange={(event) =>
+                          updateScheduleForm('endTime', event.target.value)
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                      />
+                    </label>
+
+                    <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
+                      <div className="text-sm font-semibold text-slate-900">
+                        Classroom Roster Preview
+                      </div>
+                      <p className="text-sm text-slate-500">
+                        Attendance for regular classes always pulls students from
+                        the linked classroom.
+                      </p>
+                      <div className="grid max-h-56 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                        {scheduleClassroomRoster.map((student) => {
+                          const status = getStudentStatus(student, todayString)
+                          return (
+                            <div
+                              key={student.id}
+                              className="rounded-xl border border-slate-200 bg-white px-3 py-3"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="font-semibold text-slate-900">
+                                    {student.name}
+                                  </div>
+                                  <div className="text-xs text-slate-500">
+                                    Classes: {student.remainingHours}
+                                  </div>
+                                </div>
+                                {!student.isActive && (
+                                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-500">
+                                    Deactivated
+                                  </span>
+                                )}
+                              </div>
+                              {status.tags.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {status.tags.map((tag) => (
+                                    <span
+                                      key={`${student.id}-${tag.label}`}
+                                      className={cn(
+                                        'rounded-full px-2.5 py-1 text-[11px] font-semibold',
+                                        tag.tone === 'critical'
+                                          ? 'bg-red-50 text-red-600'
+                                          : 'bg-emerald-50 text-emerald-600',
+                                      )}
+                                    >
+                                      {tag.label}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                      {scheduleLinkedClassroom && scheduleClassroomRoster.length === 0 && (
+                        <div className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500">
+                          This classroom does not have any student assigned yet.
+                        </div>
+                      )}
+                    </div>
                   </>
                 ) : (
-                  <label className="space-y-2">
-                    <span className="text-sm font-semibold text-slate-700">
-                      Scheduled Date
-                    </span>
-                    <input
-                      type="date"
-                      value={scheduleFormState.scheduledDate}
-                      onChange={(event) =>
-                        updateScheduleForm('scheduledDate', event.target.value)
-                      }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
-                    />
-                  </label>
+                  <>
+                    <label className="space-y-2 sm:col-span-2">
+                      <span className="text-sm font-semibold text-slate-700">
+                        Class Title
+                      </span>
+                      <input
+                        type="text"
+                        value={scheduleFormState.title}
+                        onChange={(event) =>
+                          updateScheduleForm('title', event.target.value)
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                      />
+                    </label>
+
+                    <label className="space-y-2">
+                      <span className="text-sm font-semibold text-slate-700">
+                        Teacher
+                      </span>
+                      <select
+                        value={scheduleFormState.teacherId}
+                        onChange={(event) =>
+                          updateScheduleForm('teacherId', event.target.value)
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                      >
+                        <option value="">Select teacher</option>
+                        {assignableTeachers.map((teacher) => (
+                          <option key={teacher.id} value={teacher.id}>
+                            {teacher.fullName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="space-y-2">
+                      <span className="text-sm font-semibold text-slate-700">
+                        Scheduled Date
+                      </span>
+                      <input
+                        type="date"
+                        value={scheduleFormState.scheduledDate}
+                        onChange={(event) =>
+                          updateScheduleForm('scheduledDate', event.target.value)
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                      />
+                    </label>
+
+                    <label className="space-y-2">
+                      <span className="text-sm font-semibold text-slate-700">
+                        Start Time
+                      </span>
+                      <input
+                        type="time"
+                        value={scheduleFormState.startTime}
+                        onChange={(event) =>
+                          updateScheduleForm('startTime', event.target.value)
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                      />
+                    </label>
+
+                    <label className="space-y-2">
+                      <span className="text-sm font-semibold text-slate-700">
+                        End Time
+                      </span>
+                      <input
+                        type="time"
+                        value={scheduleFormState.endTime}
+                        onChange={(event) =>
+                          updateScheduleForm('endTime', event.target.value)
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                      />
+                    </label>
+
+                    <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
+                      <div className="text-sm font-semibold text-slate-900">
+                        Replacement Participants
+                      </div>
+                      <p className="text-sm text-slate-500">
+                        Only the selected students will appear for this
+                        replacement attendance record.
+                      </p>
+                      <div className="grid max-h-56 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                        {students.map((student) => {
+                          const selected = scheduleFormState.participantIds.includes(
+                            String(student.id),
+                          )
+                          return (
+                            <label
+                              key={student.id}
+                              className={cn(
+                                'flex items-start gap-3 rounded-xl border px-3 py-3 text-sm transition',
+                                selected
+                                  ? 'border-[#fc0c97] bg-[#fff1f8]'
+                                  : 'border-slate-200 bg-white',
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() =>
+                                  toggleScheduleParticipant(String(student.id))
+                                }
+                                className="mt-1 h-4 w-4 rounded border-slate-300 text-[#fc0c97] focus:ring-[#fc0c97]"
+                              />
+                              <div>
+                                <div className="font-semibold text-slate-900">
+                                  {student.name}
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  Classes: {student.remainingHours}
+                                </div>
+                              </div>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </>
                 )}
-
-                <label className="space-y-2">
-                  <span className="text-sm font-semibold text-slate-700">
-                    Start Time
-                  </span>
-                  <input
-                    type="time"
-                    value={scheduleFormState.startTime}
-                    onChange={(event) =>
-                      updateScheduleForm('startTime', event.target.value)
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
-                  />
-                </label>
-
-                <label className="space-y-2">
-                  <span className="text-sm font-semibold text-slate-700">
-                    End Time
-                  </span>
-                  <input
-                    type="time"
-                    value={scheduleFormState.endTime}
-                    onChange={(event) =>
-                      updateScheduleForm('endTime', event.target.value)
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
-                  />
-                </label>
-
-                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
-                  <div className="text-sm font-semibold text-slate-900">
-                    {scheduleFormState.eventType === 'regular'
-                      ? 'Regular Class Roster'
-                      : 'Replacement Class Participants'}
-                  </div>
-                  <p className="text-sm text-slate-500">
-                    {scheduleFormState.eventType === 'regular'
-                      ? 'These students will appear every time the teacher opens attendance for this regular class.'
-                      : 'Only the selected students will appear for this replacement lesson attendance.'}
-                  </p>
-                  <div className="grid max-h-56 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
-                    {students.map((student) => {
-                      const selected = scheduleFormState.participantIds.includes(
-                        String(student.id),
-                      )
-                      return (
-                        <label
-                          key={student.id}
-                          className={cn(
-                            'flex items-start gap-3 rounded-xl border px-3 py-3 text-sm transition',
-                            selected
-                              ? 'border-[#fc0c97] bg-[#fff1f8]'
-                              : 'border-slate-200 bg-white',
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={() =>
-                              toggleScheduleParticipant(String(student.id))
-                            }
-                            className="mt-1 h-4 w-4 rounded border-slate-300 text-[#fc0c97] focus:ring-[#fc0c97]"
-                          />
-                          <div>
-                            <div className="font-semibold text-slate-900">
-                              {student.name}
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              Classes: {student.remainingHours}
-                            </div>
-                          </div>
-                        </label>
-                      )
-                    })}
-                  </div>
-                </div>
 
                 <label className="space-y-2 sm:col-span-2">
                   <span className="text-sm font-semibold text-slate-700">
@@ -4386,7 +5358,9 @@ function App() {
                     {isSavingSchedule
                       ? 'Saving...'
                       : isCreatingSchedule
-                        ? 'Create Schedule'
+                        ? scheduleFormState.eventType === 'regular'
+                          ? 'Create Timetable'
+                          : 'Create Replacement Class'
                         : 'Save Changes'}
                   </button>
                 </div>

@@ -1,6 +1,80 @@
 export type Database = {
   public: {
     Tables: {
+      classrooms: {
+        Row: {
+          id: number
+          name: string
+          age_group:
+            | '6-8 Years Old'
+            | '9-11 Years Old'
+            | '12-14 Years Old'
+            | '15-17 Years Old'
+          program_level:
+            | 'Coder Foundation'
+            | 'Coder Pro'
+            | 'VibeTech Innovator'
+            | 'VibeTech Pro'
+            | 'VibeTech Future'
+            | 'Software Engineer'
+          teacher_id: number | null
+          status: 'active' | 'archived'
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          age_group:
+            | '6-8 Years Old'
+            | '9-11 Years Old'
+            | '12-14 Years Old'
+            | '15-17 Years Old'
+          program_level:
+            | 'Coder Foundation'
+            | 'Coder Pro'
+            | 'VibeTech Innovator'
+            | 'VibeTech Pro'
+            | 'VibeTech Future'
+            | 'Software Engineer'
+          teacher_id?: number | null
+          status?: 'active' | 'archived'
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          age_group?:
+            | '6-8 Years Old'
+            | '9-11 Years Old'
+            | '12-14 Years Old'
+            | '15-17 Years Old'
+          program_level?:
+            | 'Coder Foundation'
+            | 'Coder Pro'
+            | 'VibeTech Innovator'
+            | 'VibeTech Pro'
+            | 'VibeTech Future'
+            | 'Software Engineer'
+          teacher_id?: number | null
+          status?: 'active' | 'archived'
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'classrooms_teacher_id_fkey'
+            columns: ['teacher_id']
+            isOneToOne: false
+            referencedRelation: 'teachers'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       teachers: {
         Row: {
           id: number
@@ -47,6 +121,7 @@ export type Database = {
         Row: {
           id: number
           teacher_id: number | null
+          classroom_id: number | null
           full_name: string
           remaining_hours: number
           lesson_expiry_date: string
@@ -60,6 +135,7 @@ export type Database = {
         Insert: {
           id?: number
           teacher_id?: number | null
+          classroom_id?: number | null
           full_name: string
           remaining_hours?: number
           lesson_expiry_date: string
@@ -73,6 +149,7 @@ export type Database = {
         Update: {
           id?: number
           teacher_id?: number | null
+          classroom_id?: number | null
           full_name?: string
           remaining_hours?: number
           lesson_expiry_date?: string
@@ -84,6 +161,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: 'students_classroom_id_fkey'
+            columns: ['classroom_id']
+            isOneToOne: false
+            referencedRelation: 'classrooms'
+            referencedColumns: ['id']
+          },
           {
             foreignKeyName: 'students_teacher_id_fkey'
             columns: ['teacher_id']
@@ -98,6 +182,7 @@ export type Database = {
           id: number
           teacher_id: number
           student_id: number | null
+          classroom_id: number | null
           title: string
           event_type: 'regular' | 'replacement'
           recurrence_type: 'weekly' | 'none'
@@ -116,6 +201,7 @@ export type Database = {
           id?: number
           teacher_id: number
           student_id?: number | null
+          classroom_id?: number | null
           title: string
           event_type: 'regular' | 'replacement'
           recurrence_type?: 'weekly' | 'none'
@@ -134,6 +220,7 @@ export type Database = {
           id?: number
           teacher_id?: number
           student_id?: number | null
+          classroom_id?: number | null
           title?: string
           event_type?: 'regular' | 'replacement'
           recurrence_type?: 'weekly' | 'none'
@@ -149,6 +236,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: 'schedules_classroom_id_fkey'
+            columns: ['classroom_id']
+            isOneToOne: false
+            referencedRelation: 'classrooms'
+            referencedColumns: ['id']
+          },
           {
             foreignKeyName: 'schedules_student_id_fkey'
             columns: ['student_id']
