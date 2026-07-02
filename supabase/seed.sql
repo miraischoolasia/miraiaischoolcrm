@@ -1,0 +1,2 @@
+-- Optional local seed file for `supabase db reset`.
+-- Keep empty for now because the project uses migration-based sample data.

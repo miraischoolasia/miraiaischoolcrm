@@ -7,7 +7,15 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "db:login": "set SUPABASE_TELEMETRY_DISABLED=1&& npx supabase login",
+    "db:link": "set SUPABASE_TELEMETRY_DISABLED=1&& npx supabase link --project-ref kgagnvrmmrwaflvdvsrd",
+    "db:push": "set SUPABASE_TELEMETRY_DISABLED=1&& npx supabase db push",
+    "db:status": "set SUPABASE_TELEMETRY_DISABLED=1&& npx supabase migration list",
+    "db:start": "set SUPABASE_TELEMETRY_DISABLED=1&& npx supabase start",
+    "db:stop": "set SUPABASE_TELEMETRY_DISABLED=1&& npx supabase stop",
+    "db:reset": "set SUPABASE_TELEMETRY_DISABLED=1&& npx supabase db reset",
+    "db:new": "set SUPABASE_TELEMETRY_DISABLED=1&& npx supabase migration new"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.21",
@@ -30,6 +38,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "oxlint": "^1.71.0",
+    "supabase": "^2.109.0",
     "typescript": "~6.0.2",
     "vite": "^8.1.1"
   }
