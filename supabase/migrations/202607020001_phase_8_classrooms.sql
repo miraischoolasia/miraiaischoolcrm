@@ -69,6 +69,61 @@ create index if not exists idx_schedules_classroom_id on public.schedules (class
 create index if not exists idx_classrooms_teacher_id on public.classrooms (teacher_id);
 create index if not exists idx_classrooms_hierarchy on public.classrooms (age_group, program_level, name);
 
+insert into public.classrooms (
+  name,
+  age_group,
+  program_level,
+  teacher_id,
+  status,
+  notes
+)
+select distinct
+  s.title,
+  '9-11 Years Old',
+  'Coder Foundation',
+  s.teacher_id,
+  'active',
+  'Auto-migrated from pre-classroom regular schedule during phase 8 upgrade.'
+from public.schedules s
+where s.event_type = 'regular'
+  and s.classroom_id is null
+  and not exists (
+    select 1
+    from public.classrooms c
+    where c.name = s.title
+      and c.teacher_id is not distinct from s.teacher_id
+  );
+
+update public.schedules s
+set classroom_id = c.id
+from public.classrooms c
+where s.event_type = 'regular'
+  and s.classroom_id is null
+  and c.name = s.title
+  and c.teacher_id is not distinct from s.teacher_id;
+
+with migrated_student_classrooms as (
+  select
+    ss.student_id,
+    s.classroom_id,
+    row_number() over (
+      partition by ss.student_id
+      order by s.id desc
+    ) as row_priority
+  from public.schedule_students ss
+  join public.schedules s
+    on s.id = ss.schedule_id
+  where ss.is_active = true
+    and s.event_type = 'regular'
+    and s.classroom_id is not null
+)
+update public.students st
+set classroom_id = migrated.classroom_id
+from migrated_student_classrooms migrated
+where st.id = migrated.student_id
+  and st.classroom_id is null
+  and migrated.row_priority = 1;
+
 alter table public.schedules
 drop constraint if exists schedules_classroom_requirement;
 
