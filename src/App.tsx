@@ -39,6 +39,7 @@ type Student = {
   lessonExpiryDate: string
   accountFeeExpiryDate: string
   miraiClubExpiryDate: string
+  isActive: boolean
 }
 
 type Teacher = {
@@ -193,6 +194,7 @@ type StudentRow = Pick<
   | 'lesson_expiry_date'
   | 'account_fee_expiry_date'
   | 'mirai_club_expiry_date'
+  | 'is_active'
 >
 
 type TeacherRow = Pick<
@@ -365,8 +367,13 @@ function getStudentStatus(student: Student, todayString: string) {
   const lessonExpiry = getDateMeta(student.lessonExpiryDate, todayString)
   const accountFeeExpiry = getDateMeta(student.accountFeeExpiryDate, todayString)
   const miraiClubExpiry = getDateMeta(student.miraiClubExpiryDate, todayString)
+  const isDeactivated = !student.isActive
 
   const tags: StatusTag[] = []
+
+  if (isDeactivated) {
+    tags.push({ label: 'Deactivated', tone: 'critical' })
+  }
 
   if (hoursLow) {
     tags.push({ label: 'Classes Low', tone: 'critical' })
@@ -389,6 +396,7 @@ function getStudentStatus(student: Student, todayString: string) {
   }
 
   return {
+    isDeactivated,
     hoursLow,
     lessonExpired: lessonExpiry.expired,
     accountFeeNeedsAttention: accountFeeExpiry.expired || accountFeeExpiry.dueSoon,
@@ -411,6 +419,7 @@ function mapStudentRow(row: StudentRow): Student {
     lessonExpiryDate: row.lesson_expiry_date,
     accountFeeExpiryDate: row.account_fee_expiry_date,
     miraiClubExpiryDate: row.mirai_club_expiry_date,
+    isActive: row.is_active,
   }
 }
 
@@ -542,9 +551,8 @@ async function fetchStudentsFromSupabase() {
   const { data, error } = await supabase
     .from('students')
     .select(
-      'id, teacher_id, full_name, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date',
+      'id, teacher_id, full_name, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date, is_active',
     )
-    .eq('is_active', true)
     .order('full_name')
 
   if (error) {
@@ -953,7 +961,7 @@ function ClassListingSection({
         }
 
         const status = getStudentStatus(student, todayString)
-        if (status.hoursLow || status.lessonExpired) {
+        if (status.isDeactivated || status.hoursLow || status.lessonExpired) {
           summary.attention += 1
         } else {
           summary.healthy += 1
@@ -1123,6 +1131,11 @@ function ClassListingSection({
                               Account Fee: {formatDate(student.accountFeeExpiryDate)} - Mirai Club:{' '}
                               {formatDate(student.miraiClubExpiryDate)}
                             </div>
+                            {!student.isActive && (
+                              <div className="mt-2 text-sm font-semibold text-red-600">
+                                Deactivated student
+                              </div>
+                            )}
                           </div>
                           <div className="flex max-w-[320px] flex-wrap gap-2">
                             {status.tags.map((tag) => (
@@ -1149,9 +1162,11 @@ function ClassListingSection({
 
 type StudentDashboardSectionProps = {
   activeFilter: FilterKey
+  deactivatingStudentId: number | null
   isLoading: boolean
   students: Student[]
   todayString: string
+  onDeactivateStudent: (studentId: number) => void
   onOpenCreateStudent: () => void
   onOpenStudentDetail: (studentId: number) => void
   onOpenRenewal: (studentId: number) => void
@@ -1160,9 +1175,11 @@ type StudentDashboardSectionProps = {
 
 function StudentDashboardSection({
   activeFilter,
+  deactivatingStudentId,
   isLoading,
   students,
   todayString,
+  onDeactivateStudent,
   onOpenCreateStudent,
   onOpenStudentDetail,
   onOpenRenewal,
@@ -1241,7 +1258,7 @@ function StudentDashboardSection({
                 Student Classes & Expiry Board
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Admin-only table for class balance and renewal control.
+                Admin-only table for class balance, membership, and renewal control.
               </p>
             </div>
 
@@ -1280,11 +1297,11 @@ function StudentDashboardSection({
             <thead className="bg-slate-50">
               <tr className="text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 <th className="px-6 py-4">Student Name</th>
-                <th className="px-6 py-4">Remaining Classes</th>
                 <th className="px-6 py-4">Lesson Expiry</th>
                 <th className="px-6 py-4">Account Fee Expiry</th>
                 <th className="px-6 py-4">Mirai Club Expiry</th>
-                <th className="px-6 py-4">Global Status</th>
+                <th className="px-6 py-4">Membership Status</th>
+                <th className="px-6 py-4">Remaining Classes</th>
                 <th className="px-6 py-4 text-right">Action</th>
               </tr>
             </thead>
@@ -1321,25 +1338,6 @@ function StudentDashboardSection({
                       </div>
                     </td>
                     <td className="px-6 py-5">
-                      <div className="space-y-2">
-                        <div
-                          className={cn(
-                            'inline-flex min-w-20 items-center justify-center rounded-xl px-3 py-2 text-lg font-semibold',
-                            status.hoursLow
-                              ? 'bg-[#fff1f8] text-[#be185d] ring-1 ring-inset ring-[#fecdd3]'
-                              : 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200',
-                          )}
-                        >
-                          {student.remainingHours}
-                        </div>
-                        <div className="text-xs font-medium text-slate-500">
-                          {status.hoursLow
-                            ? 'Immediate action needed'
-                            : 'Healthy balance'}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-5">
                       <ExpiryCell
                         date={student.lessonExpiryDate}
                         meta={status.lessonExpiry}
@@ -1368,6 +1366,27 @@ function StudentDashboardSection({
                         ))}
                       </div>
                     </td>
+                    <td className="px-6 py-5">
+                      <div className="space-y-2">
+                        <div
+                          className={cn(
+                            'inline-flex min-w-20 items-center justify-center rounded-xl px-3 py-2 text-lg font-semibold',
+                            status.isDeactivated || status.hoursLow
+                              ? 'bg-[#fff1f8] text-[#be185d] ring-1 ring-inset ring-[#fecdd3]'
+                              : 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200',
+                          )}
+                        >
+                          {student.remainingHours}
+                        </div>
+                        <div className="text-xs font-medium text-slate-500">
+                          {status.isDeactivated
+                            ? 'Student deactivated'
+                            : status.hoursLow
+                            ? 'Immediate action needed'
+                            : 'Healthy balance'}
+                        </div>
+                      </div>
+                    </td>
                     <td className="px-6 py-5 text-right">
                       <div className="flex justify-end gap-2">
                         <button
@@ -1383,6 +1402,23 @@ function StudentDashboardSection({
                           className="inline-flex items-center justify-center rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
                         >
                           Renew
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!student.isActive || deactivatingStudentId === student.id}
+                          onClick={() => onDeactivateStudent(student.id)}
+                          className={cn(
+                            'inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition',
+                            !student.isActive
+                              ? 'cursor-not-allowed border border-red-200 bg-red-50 text-red-600'
+                              : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+                          )}
+                        >
+                          {!student.isActive
+                            ? 'Deactivated'
+                            : deactivatingStudentId === student.id
+                              ? 'Deactivating...'
+                              : 'Deactivate'}
                         </button>
                       </div>
                     </td>
@@ -1791,6 +1827,12 @@ function StudentDetailModal({
                     </div>
                   </div>
                   <div>
+                    <div className="text-sm text-slate-500">Membership Status</div>
+                    <div className="mt-1 text-lg font-semibold text-slate-900">
+                      {student.isActive ? 'Active' : 'Deactivated'}
+                    </div>
+                  </div>
+                  <div>
                     <div className="text-sm text-slate-500">Assigned Teacher</div>
                     <div className="mt-1 text-lg font-semibold text-slate-900">
                       {student.teacherId
@@ -1957,6 +1999,7 @@ function App() {
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const [isSavingStudent, setIsSavingStudent] = useState(false)
+  const [deactivatingStudentId, setDeactivatingStudentId] = useState<number | null>(null)
   const [studentSaveError, setStudentSaveError] = useState<string | null>(null)
   const [isCreatingStudentRecord, setIsCreatingStudentRecord] = useState(false)
   const [createStudentSaveError, setCreateStudentSaveError] = useState<string | null>(null)
@@ -2412,6 +2455,46 @@ function App() {
     setStudentSaveError(null)
   }
 
+  async function handleDeactivateStudent(studentId: number) {
+    if (!supabase) {
+      return
+    }
+
+    const student = students.find((item) => item.id === studentId)
+    if (!student || !student.isActive) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Deactivate ${student.name}? This marks the student as not renewing and keeps the record visible in classroom views.`,
+    )
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      setDeactivatingStudentId(studentId)
+      setLoadError(null)
+
+      const { error } = await supabase
+        .from('students')
+        .update({ is_active: false })
+        .eq('id', studentId)
+
+      if (error) {
+        throw error
+      }
+
+      await refreshStudentsAndLogs()
+    } catch (error) {
+      setLoadError(
+        error instanceof Error ? error.message : 'Failed to deactivate student.',
+      )
+    } finally {
+      setDeactivatingStudentId(null)
+    }
+  }
+
   function openCreateStudentModal() {
     setCreateStudentSaveError(null)
     setIsCreateStudentOpen(true)
@@ -2684,6 +2767,17 @@ function App() {
 
       if (error) {
         throw error
+      }
+
+      if (!selectedStudent.isActive) {
+        const { error: reactivateError } = await supabase
+          .from('students')
+          .update({ is_active: true })
+          .eq('id', selectedStudent.id)
+
+        if (reactivateError) {
+          throw reactivateError
+        }
       }
 
       await refreshStudentsAndLogs()
@@ -3458,9 +3552,11 @@ function App() {
             {activeSection === 'students' && (
               <StudentDashboardSection
                 activeFilter={studentFilter}
+                deactivatingStudentId={deactivatingStudentId}
                 isLoading={isLoading}
                 students={students}
                 todayString={todayString}
+                onDeactivateStudent={handleDeactivateStudent}
                 onOpenCreateStudent={openCreateStudentModal}
                 onOpenStudentDetail={openStudentDetail}
                 onOpenRenewal={openStudentRenewal}
