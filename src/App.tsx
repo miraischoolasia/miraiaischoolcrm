@@ -3299,7 +3299,7 @@ function App() {
 
       const [
         { count: classroomCount, error: classroomError },
-        { count: scheduleCount, error: scheduleError },
+        { data: linkedSchedules, error: scheduleError },
         { count: lessonLogCount, error: lessonLogError },
         { count: adminLedgerCount, error: adminLedgerError },
       ] = await Promise.all([
@@ -3309,7 +3309,7 @@ function App() {
           .eq('teacher_id', teacherId),
         supabase
           .from('schedules')
-          .select('id', { head: true, count: 'exact' })
+          .select('id')
           .eq('teacher_id', teacherId),
         supabase
           .from('lesson_logs')
@@ -3327,15 +3327,14 @@ function App() {
       if (adminLedgerError) throw adminLedgerError
 
       if ((classroomCount ?? 0) > 0) {
-        throw new Error(
-          'This teacher is still assigned to one or more classrooms. Reassign those classrooms first.',
-        )
-      }
+        const { error: unassignClassroomError } = await supabase
+          .from('classrooms')
+          .update({ teacher_id: null })
+          .eq('teacher_id', teacherId)
 
-      if ((scheduleCount ?? 0) > 0) {
-        throw new Error(
-          'This teacher is still linked to one or more schedules. Reassign or remove those schedules first.',
-        )
+        if (unassignClassroomError) {
+          throw unassignClassroomError
+        }
       }
 
       if ((lessonLogCount ?? 0) > 0 || (adminLedgerCount ?? 0) > 0) {
@@ -3344,12 +3343,39 @@ function App() {
         )
       }
 
+      const linkedScheduleIds = (linkedSchedules ?? []).map((schedule) => schedule.id)
+
+      if (linkedScheduleIds.length > 0) {
+        const { error: scheduleMembershipError } = await supabase
+          .from('schedule_students')
+          .delete()
+          .in('schedule_id', linkedScheduleIds)
+
+        if (scheduleMembershipError) {
+          throw scheduleMembershipError
+        }
+
+        const { error: scheduleDeleteError } = await supabase
+          .from('schedules')
+          .delete()
+          .in('id', linkedScheduleIds)
+
+        if (scheduleDeleteError) {
+          throw scheduleDeleteError
+        }
+      }
+
       const { error } = await supabase.from('teachers').delete().eq('id', teacherId)
       if (error) {
         throw error
       }
 
-      await Promise.all([refreshTeachers(), refreshClassrooms(), refreshStudentsAndLogs()])
+      await Promise.all([
+        refreshTeachers(),
+        refreshClassrooms(),
+        refreshSchedulesAndParticipants(),
+        refreshStudentsAndLogs(),
+      ])
     } catch (error) {
       window.alert(
         error instanceof Error ? error.message : 'Failed to delete teacher account.',
