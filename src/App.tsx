@@ -72,6 +72,7 @@ type Teacher = {
   email: string | null
   phone: string | null
   role: 'admin' | 'teacher'
+  isActive: boolean
 }
 
 type Schedule = {
@@ -506,6 +507,7 @@ function mapTeacherRow(row: TeacherRow): Teacher {
     email: row.email,
     phone: row.phone,
     role: row.role,
+    isActive: row.is_active,
   }
 }
 
@@ -664,7 +666,7 @@ async function fetchTeachersFromSupabase() {
 
   const { data, error } = await supabase
     .from('teachers')
-    .select('id, username, full_name, email, phone, role')
+    .select('id, username, full_name, email, phone, role, is_active')
     .eq('is_active', true)
     .order('role', { ascending: true })
     .order('full_name')
@@ -3337,37 +3339,78 @@ function App() {
         }
       }
 
-      if ((lessonLogCount ?? 0) > 0 || (adminLedgerCount ?? 0) > 0) {
-        throw new Error(
-          'This teacher already has historical records and cannot be deleted safely.',
-        )
-      }
-
       const linkedScheduleIds = (linkedSchedules ?? []).map((schedule) => schedule.id)
 
       if (linkedScheduleIds.length > 0) {
-        const { error: scheduleMembershipError } = await supabase
-          .from('schedule_students')
-          .delete()
+        const { data: linkedLessonLogs, error: linkedLessonLogsError } = await supabase
+          .from('lesson_logs')
+          .select('schedule_id')
           .in('schedule_id', linkedScheduleIds)
 
-        if (scheduleMembershipError) {
-          throw scheduleMembershipError
+        if (linkedLessonLogsError) {
+          throw linkedLessonLogsError
         }
 
-        const { error: scheduleDeleteError } = await supabase
-          .from('schedules')
-          .delete()
-          .in('id', linkedScheduleIds)
+        const scheduleIdsWithHistory = new Set(
+          (linkedLessonLogs ?? []).map((entry) => entry.schedule_id),
+        )
+        const removableScheduleIds = linkedScheduleIds.filter(
+          (scheduleId) => !scheduleIdsWithHistory.has(scheduleId),
+        )
+        const historicalScheduleIds = linkedScheduleIds.filter((scheduleId) =>
+          scheduleIdsWithHistory.has(scheduleId),
+        )
 
-        if (scheduleDeleteError) {
-          throw scheduleDeleteError
+        if (removableScheduleIds.length > 0) {
+          const { error: scheduleMembershipError } = await supabase
+            .from('schedule_students')
+            .delete()
+            .in('schedule_id', removableScheduleIds)
+
+          if (scheduleMembershipError) {
+            throw scheduleMembershipError
+          }
+
+          const { error: scheduleDeleteError } = await supabase
+            .from('schedules')
+            .delete()
+            .in('id', removableScheduleIds)
+
+          if (scheduleDeleteError) {
+            throw scheduleDeleteError
+          }
+        }
+
+        if (historicalScheduleIds.length > 0) {
+          const { error: scheduleCancelError } = await supabase
+            .from('schedules')
+            .update({ status: 'cancelled' })
+            .in('id', historicalScheduleIds)
+
+          if (scheduleCancelError) {
+            throw scheduleCancelError
+          }
         }
       }
 
-      const { error } = await supabase.from('teachers').delete().eq('id', teacherId)
-      if (error) {
-        throw error
+      if ((lessonLogCount ?? 0) > 0 || (adminLedgerCount ?? 0) > 0) {
+        const { error: archiveError } = await supabase
+          .from('teachers')
+          .update({
+            is_active: false,
+            email: null,
+            phone: null,
+          })
+          .eq('id', teacherId)
+
+        if (archiveError) {
+          throw archiveError
+        }
+      } else {
+        const { error } = await supabase.from('teachers').delete().eq('id', teacherId)
+        if (error) {
+          throw error
+        }
       }
 
       await Promise.all([
