@@ -2729,32 +2729,6 @@ function App() {
       : new Set(activeVisibleSchedules.map((schedule) => schedule.teacherId)).size
 
   useEffect(() => {
-    const availableAgeGroups = ageGroupOptions.filter((ageGroup) =>
-      activeVisibleClassrooms.some((classroom) => classroom.ageGroup === ageGroup),
-    )
-    const nextAgeGroup = availableAgeGroups[0] ?? ageGroupOptions[0]
-
-    if (!availableAgeGroups.includes(selectedAgeGroup)) {
-      setSelectedAgeGroup(nextAgeGroup)
-    }
-  }, [activeVisibleClassrooms, selectedAgeGroup])
-
-  useEffect(() => {
-    const availableLevels = programLevelOptions.filter((programLevel) =>
-      activeVisibleClassrooms.some(
-        (classroom) =>
-          classroom.ageGroup === selectedAgeGroup &&
-          classroom.programLevel === programLevel,
-      ),
-    )
-    const nextProgramLevel = availableLevels[0] ?? programLevelOptions[0]
-
-    if (!availableLevels.includes(selectedProgramLevel)) {
-      setSelectedProgramLevel(nextProgramLevel)
-    }
-  }, [activeVisibleClassrooms, selectedAgeGroup, selectedProgramLevel])
-
-  useEffect(() => {
     const filtered = activeVisibleClassrooms.filter(
       (classroom) =>
         classroom.ageGroup === selectedAgeGroup &&
