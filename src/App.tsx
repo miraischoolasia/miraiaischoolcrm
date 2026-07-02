@@ -1025,7 +1025,9 @@ function ExpiryCell({
 type ClassListingSectionProps = {
   classrooms: Classroom[]
   classroomStudentMap: Map<number, Student[]>
+  deletingClassroomId: number | null
   isAdminView: boolean
+  onDeleteClassroom: (classroomId: number) => void
   onEditClassroom: (classroomId: number) => void
   onEditSchedule: (scheduleId: number) => void
   onOpenCreateClassroom?: () => void
@@ -1033,7 +1035,6 @@ type ClassListingSectionProps = {
   onOpenStudentDetail: (studentId: number) => void
   onSelectAgeGroup: (ageGroup: AgeGroup) => void
   onSelectProgramLevel: (programLevel: ProgramLevel) => void
-  onViewCalendar: () => void
   schedules: Schedule[]
   selectedAgeGroup: AgeGroup
   selectedClassroomId: number | null
@@ -1046,7 +1047,9 @@ type ClassListingSectionProps = {
 function ClassListingSection({
   classrooms,
   classroomStudentMap,
+  deletingClassroomId,
   isAdminView,
+  onDeleteClassroom,
   onEditClassroom,
   onEditSchedule,
   onOpenCreateClassroom,
@@ -1054,7 +1057,6 @@ function ClassListingSection({
   onOpenStudentDetail,
   onSelectAgeGroup,
   onSelectProgramLevel,
-  onViewCalendar,
   schedules,
   selectedAgeGroup,
   selectedClassroomId,
@@ -1294,6 +1296,16 @@ function ClassListingSection({
                         <>
                           <button
                             type="button"
+                            disabled={deletingClassroomId === selectedClassroom.id}
+                            onClick={() => onDeleteClassroom(selectedClassroom.id)}
+                            className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            {deletingClassroomId === selectedClassroom.id
+                              ? 'Deleting...'
+                              : 'Delete Classroom'}
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => onEditClassroom(selectedClassroom.id)}
                             className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                           >
@@ -1312,13 +1324,6 @@ function ClassListingSection({
                           )}
                         </>
                       )}
-                      <button
-                        type="button"
-                        onClick={onViewCalendar}
-                        className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                      >
-                        View Calendar
-                      </button>
                     </div>
                   </div>
 
@@ -1560,34 +1565,34 @@ function StudentDashboardSection({
                 Admin-only table for class balance, membership, and renewal control.
               </p>
             </div>
+            <button
+              type="button"
+              onClick={onOpenCreateStudent}
+              className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
+            >
+              Add Student
+            </button>
+          </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={onOpenCreateStudent}
-                className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
-              >
-                Add Student
-              </button>
-              {studentFilterOptions.map((option) => {
-                const selected = activeFilter === option.key
-                return (
-                  <button
-                    key={option.key}
-                    type="button"
-                    onClick={() => onToggleFilter(option.key)}
-                    className={cn(
-                      'rounded-xl border px-4 py-2 text-sm font-medium transition',
-                      selected
-                        ? 'border-[#fc0c97] bg-[#fff1f8] text-[#fc0c97]'
-                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50',
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                )
-              })}
-            </div>
+          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-3 border-t border-slate-200 pt-4">
+            {studentFilterOptions.map((option) => {
+              const selected = activeFilter === option.key
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => onToggleFilter(option.key)}
+                  className={cn(
+                    'inline-flex items-center border-b-2 pb-2 text-sm font-semibold transition',
+                    selected
+                      ? 'border-[#fc0c97] text-[#fc0c97]'
+                      : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700',
+                  )}
+                >
+                  {option.label}
+                </button>
+              )
+            })}
           </div>
         </div>
 
@@ -1744,15 +1749,21 @@ function StudentDashboardSection({
 }
 
 type TeacherManagementSectionProps = {
+  deletingTeacherId: number | null
   isLoading: boolean
   teachers: Teacher[]
+  onDeleteTeacher: (teacherId: number) => void
   onOpenCreateTeacher: () => void
+  protectedTeacherIds: Set<number>
 }
 
 function TeacherManagementSection({
+  deletingTeacherId,
   isLoading,
   teachers,
+  onDeleteTeacher,
   onOpenCreateTeacher,
+  protectedTeacherIds,
 }: TeacherManagementSectionProps) {
   return (
     <div className="space-y-6">
@@ -1815,6 +1826,7 @@ function TeacherManagementSection({
                 <th className="px-6 py-4">Role</th>
                 <th className="px-6 py-4">Email</th>
                 <th className="px-6 py-4">Phone</th>
+                <th className="px-6 py-4 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
@@ -1849,13 +1861,35 @@ function TeacherManagementSection({
                   <td className="px-6 py-5 text-sm text-slate-600">
                     {teacher.phone || '-'}
                   </td>
+                  <td className="px-6 py-5 text-right">
+                    <button
+                      type="button"
+                      disabled={
+                        protectedTeacherIds.has(teacher.id) ||
+                        deletingTeacherId === teacher.id
+                      }
+                      onClick={() => onDeleteTeacher(teacher.id)}
+                      className={cn(
+                        'inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition',
+                        protectedTeacherIds.has(teacher.id)
+                          ? 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400'
+                          : 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100',
+                      )}
+                    >
+                      {protectedTeacherIds.has(teacher.id)
+                        ? 'Protected'
+                        : deletingTeacherId === teacher.id
+                          ? 'Deleting...'
+                          : 'Delete'}
+                    </button>
+                  </td>
                 </tr>
               ))}
 
               {!isLoading && teachers.length === 0 && (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     className="px-6 py-16 text-center text-sm text-slate-500"
                   >
                     No teachers found yet.
@@ -2310,6 +2344,8 @@ function App() {
 
   const [isSavingStudent, setIsSavingStudent] = useState(false)
   const [deactivatingStudentId, setDeactivatingStudentId] = useState<number | null>(null)
+  const [deletingTeacherId, setDeletingTeacherId] = useState<number | null>(null)
+  const [deletingClassroomId, setDeletingClassroomId] = useState<number | null>(null)
   const [studentSaveError, setStudentSaveError] = useState<string | null>(null)
   const [isCreatingStudentRecord, setIsCreatingStudentRecord] = useState(false)
   const [createStudentSaveError, setCreateStudentSaveError] = useState<string | null>(null)
@@ -2491,6 +2527,17 @@ function App() {
     sessionOptions[0]
 
   const isAdminView = currentSession?.role !== 'teacher'
+  const protectedTeacherIds = useMemo(() => {
+    const next = new Set<number>()
+    const bootstrapAdmin = teachers.find((teacher) => teacher.username === 'admin_demo')
+    if (bootstrapAdmin) {
+      next.add(bootstrapAdmin.id)
+    }
+    if (currentSession?.teacherId) {
+      next.add(currentSession.teacherId)
+    }
+    return next
+  }, [currentSession, teachers])
   const selectedStudent =
     students.find((student) => student.id === selectedStudentId) ?? null
   const selectedStudentDetail =
@@ -3224,6 +3271,94 @@ function App() {
     }
   }
 
+  async function handleDeleteTeacher(teacherId: number) {
+    if (!supabase) {
+      return
+    }
+
+    const teacher = teachers.find((entry) => entry.id === teacherId)
+    if (!teacher) {
+      return
+    }
+
+    if (protectedTeacherIds.has(teacherId) || teacher.username === 'admin_demo') {
+      window.alert('This teacher account is protected and cannot be deleted.')
+      return
+    }
+
+    if (
+      !window.confirm(
+        `Delete teacher account "${teacher.fullName}"? This only works when no classroom, schedule, or history still references the account.`,
+      )
+    ) {
+      return
+    }
+
+    try {
+      setDeletingTeacherId(teacherId)
+
+      const [
+        { count: classroomCount, error: classroomError },
+        { count: scheduleCount, error: scheduleError },
+        { count: lessonLogCount, error: lessonLogError },
+        { count: adminLedgerCount, error: adminLedgerError },
+      ] = await Promise.all([
+        supabase
+          .from('classrooms')
+          .select('id', { head: true, count: 'exact' })
+          .eq('teacher_id', teacherId),
+        supabase
+          .from('schedules')
+          .select('id', { head: true, count: 'exact' })
+          .eq('teacher_id', teacherId),
+        supabase
+          .from('lesson_logs')
+          .select('id', { head: true, count: 'exact' })
+          .eq('teacher_id', teacherId),
+        supabase
+          .from('student_admin_ledger')
+          .select('id', { head: true, count: 'exact' })
+          .eq('actor_teacher_id', teacherId),
+      ])
+
+      if (classroomError) throw classroomError
+      if (scheduleError) throw scheduleError
+      if (lessonLogError) throw lessonLogError
+      if (adminLedgerError) throw adminLedgerError
+
+      if ((classroomCount ?? 0) > 0) {
+        throw new Error(
+          'This teacher is still assigned to one or more classrooms. Reassign those classrooms first.',
+        )
+      }
+
+      if ((scheduleCount ?? 0) > 0) {
+        throw new Error(
+          'This teacher is still linked to one or more schedules. Reassign or remove those schedules first.',
+        )
+      }
+
+      if ((lessonLogCount ?? 0) > 0 || (adminLedgerCount ?? 0) > 0) {
+        throw new Error(
+          'This teacher already has historical records and cannot be deleted safely.',
+        )
+      }
+
+      const { error } = await supabase.from('teachers').delete().eq('id', teacherId)
+      if (error) {
+        throw error
+      }
+
+      await Promise.all([refreshTeachers(), refreshClassrooms(), refreshStudentsAndLogs()])
+    } catch (error) {
+      window.alert(
+        error instanceof Error ? error.message : 'Failed to delete teacher account.',
+      )
+    } finally {
+      setDeletingTeacherId(null)
+    }
+  }
+
   async function handleClassroomSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
@@ -3288,6 +3423,102 @@ function App() {
       )
     } finally {
       setIsSavingClassroom(false)
+    }
+  }
+
+  async function handleDeleteClassroom(classroomId: number) {
+    if (!supabase) {
+      return
+    }
+
+    const classroom = classrooms.find((entry) => entry.id === classroomId)
+    if (!classroom) {
+      return
+    }
+
+    if (
+      !window.confirm(
+        `Delete classroom "${classroom.name}"? Students will be unassigned from this classroom, and weekly timetables without attendance history will be removed.`,
+      )
+    ) {
+      return
+    }
+
+    try {
+      setDeletingClassroomId(classroomId)
+
+      const regularSchedules = schedules.filter(
+        (schedule) =>
+          schedule.classroomId === classroomId && schedule.eventType === 'regular',
+      )
+      const regularScheduleIds = regularSchedules.map((schedule) => schedule.id)
+
+      if (regularScheduleIds.length > 0) {
+        const { count: lessonLogCount, error: lessonLogError } = await supabase
+          .from('lesson_logs')
+          .select('id', { head: true, count: 'exact' })
+          .in('schedule_id', regularScheduleIds)
+
+        if (lessonLogError) {
+          throw lessonLogError
+        }
+
+        if ((lessonLogCount ?? 0) > 0) {
+          throw new Error(
+            'This classroom already has attendance history. Delete is blocked to protect historical records.',
+          )
+        }
+
+        const { error: membershipError } = await supabase
+          .from('schedule_students')
+          .delete()
+          .in('schedule_id', regularScheduleIds)
+
+        if (membershipError) {
+          throw membershipError
+        }
+
+        const { error: scheduleDeleteError } = await supabase
+          .from('schedules')
+          .delete()
+          .in('id', regularScheduleIds)
+
+        if (scheduleDeleteError) {
+          throw scheduleDeleteError
+        }
+      }
+
+      const { error: unassignStudentsError } = await supabase
+        .from('students')
+        .update({ classroom_id: null })
+        .eq('classroom_id', classroomId)
+
+      if (unassignStudentsError) {
+        throw unassignStudentsError
+      }
+
+      const { error: classroomDeleteError } = await supabase
+        .from('classrooms')
+        .delete()
+        .eq('id', classroomId)
+
+      if (classroomDeleteError) {
+        throw classroomDeleteError
+      }
+
+      if (selectedClassroomId === classroomId) {
+        setSelectedClassroomId(null)
+      }
+
+      await Promise.all([
+        refreshClassrooms(),
+        refreshSchedulesAndParticipants(),
+        refreshStudentsAndLogs(),
+      ])
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Failed to delete classroom.')
+    } finally {
+      setDeletingClassroomId(null)
     }
   }
 
@@ -4145,7 +4376,9 @@ function App() {
               <ClassListingSection
                 classrooms={activeVisibleClassrooms}
                 classroomStudentMap={classroomStudentMap}
+                deletingClassroomId={deletingClassroomId}
                 isAdminView={isAdminView}
+                onDeleteClassroom={handleDeleteClassroom}
                 onEditClassroom={openEditClassroom}
                 onEditSchedule={openEditSchedule}
                 onOpenCreateClassroom={isAdminView ? openCreateClassroom : undefined}
@@ -4157,7 +4390,6 @@ function App() {
                 onOpenStudentDetail={openStudentDetail}
                 onSelectAgeGroup={setSelectedAgeGroup}
                 onSelectProgramLevel={setSelectedProgramLevel}
-                onViewCalendar={() => setActiveSection('calendar')}
                 schedules={activeClassroomSchedules}
                 selectedAgeGroup={selectedAgeGroup}
                 selectedClassroomId={selectedClassroomId}
@@ -4189,9 +4421,12 @@ function App() {
 
             {activeSection === 'teachers' && isAdminView && (
               <TeacherManagementSection
+                deletingTeacherId={deletingTeacherId}
                 isLoading={isLoading}
                 teachers={teachers}
+                onDeleteTeacher={handleDeleteTeacher}
                 onOpenCreateTeacher={openCreateTeacherModal}
+                protectedTeacherIds={protectedTeacherIds}
               />
             )}
           </div>
