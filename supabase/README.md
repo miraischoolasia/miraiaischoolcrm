@@ -40,6 +40,10 @@ When `db:link` asks for the database password, copy it once from:
 - `supabase/migrations/202607010004_phase_5_student_records.sql`
 - `supabase/migrations/202607010005_phase_6_teacher_records.sql`
 - `supabase/migrations/202607010006_phase_7_student_reviews.sql`
+- `supabase/migrations/202607020001_phase_8_classrooms.sql`
+- `supabase/migrations/202607020002_reset_operational_data_keep_admins.sql`
+- `supabase/migrations/202607030001_admin_activity_and_record_editing.sql`
+- `supabase/migrations/202607030002_attendance_roster_snapshot.sql`
 
 ## Important
 

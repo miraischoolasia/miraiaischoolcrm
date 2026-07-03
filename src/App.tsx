@@ -7,6 +7,14 @@ import listPlugin from '@fullcalendar/list'
 import rrulePlugin from '@fullcalendar/rrule'
 import timeGridPlugin from '@fullcalendar/timegrid'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
+import {
+  formatDate,
+  getDateMeta,
+  getStudentStatus,
+  getTodayString,
+  parseLocalDate,
+  type StatusTag,
+} from './domain/studentStatus'
 import type { Database } from './types/database'
 
 type AppSection = 'calendar' | 'classrooms' | 'students' | 'teachers' | 'activity'
@@ -157,11 +165,6 @@ type AttendanceReviewFormState = {
   expressivenessRemark: string
   sustainedFocusScore: number | null
   sustainedFocusRemark: string
-}
-
-type StatusTag = {
-  label: string
-  tone: 'critical' | 'healthy'
 }
 
 type RenewalFormState = {
@@ -339,7 +342,6 @@ type LessonLogStudentReviewRow = Pick<
   | 'sustained_focus_remark'
 >
 
-const warningWindowDays = 14
 const weekdayLabels = [
   'Sunday',
   'Monday',
@@ -417,94 +419,11 @@ const programLevelOptions: ProgramLevel[] = [
   'Software Engineer',
 ]
 
-function getTodayString() {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-function parseLocalDate(dateString: string) {
-  const [year, month, day] = dateString.split('-').map(Number)
-  return new Date(year, month - 1, day)
-}
-
-function formatDate(dateString: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(parseLocalDate(dateString))
-}
-
 function getDateKeyFromDate(date: Date) {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
-}
-
-function getDayDifference(dateString: string, todayString: string) {
-  const current = parseLocalDate(todayString).getTime()
-  const target = parseLocalDate(dateString).getTime()
-  return Math.round((target - current) / 86400000)
-}
-
-function getDateMeta(dateString: string, todayString: string) {
-  const daysUntil = getDayDifference(dateString, todayString)
-  const expired = daysUntil < 0
-  const dueSoon = !expired && daysUntil < warningWindowDays
-
-  return { daysUntil, expired, dueSoon }
-}
-
-function getStudentStatus(student: Student, todayString: string) {
-  const hoursLow = student.remainingHours <= 2
-  const lessonExpiry = getDateMeta(student.lessonExpiryDate, todayString)
-  const accountFeeExpiry = getDateMeta(student.accountFeeExpiryDate, todayString)
-  const miraiClubExpiry = getDateMeta(student.miraiClubExpiryDate, todayString)
-  const isDeactivated = !student.isActive
-
-  const tags: StatusTag[] = []
-
-  if (isDeactivated) {
-    tags.push({ label: 'Deactivated', tone: 'critical' })
-  }
-
-  if (hoursLow) {
-    tags.push({ label: 'Classes Low', tone: 'critical' })
-  }
-
-  if (lessonExpiry.expired) {
-    tags.push({ label: 'Lesson Expired', tone: 'critical' })
-  }
-
-  if (accountFeeExpiry.expired || accountFeeExpiry.dueSoon) {
-    tags.push({ label: 'Renew Account Fee', tone: 'critical' })
-  }
-
-  if (miraiClubExpiry.expired || miraiClubExpiry.dueSoon) {
-    tags.push({ label: 'Renew Mirai Club', tone: 'critical' })
-  }
-
-  if (tags.length === 0) {
-    tags.push({ label: 'Normal', tone: 'healthy' })
-  }
-
-  return {
-    isDeactivated,
-    hoursLow,
-    lessonExpired: lessonExpiry.expired,
-    accountFeeNeedsAttention: accountFeeExpiry.expired || accountFeeExpiry.dueSoon,
-    miraiClubNeedsAttention:
-      miraiClubExpiry.expired || miraiClubExpiry.dueSoon,
-    lessonExpiry,
-    accountFeeExpiry,
-    miraiClubExpiry,
-    tags,
-    isNormal: tags.length === 1 && tags[0].label === 'Normal',
-  }
 }
 
 function mapStudentRow(row: StudentRow): Student {
@@ -2684,6 +2603,7 @@ function App() {
   const [attendanceStatuses, setAttendanceStatuses] = useState<
     Record<number, AttendanceStatus>
   >({})
+  const [attendanceRosterIds, setAttendanceRosterIds] = useState<number[]>([])
   const [attendanceReviews, setAttendanceReviews] = useState<
     Record<number, AttendanceReviewFormState>
   >({})
@@ -3081,22 +3001,10 @@ function App() {
       return []
     }
 
-    const schedule = schedules.find((entry) => entry.id === attendanceModal.scheduleId)
-    if (!schedule) {
-      return []
-    }
-
-    if (schedule.eventType === 'regular') {
-      return schedule.classroomId
-        ? (classroomStudentMap.get(schedule.classroomId) ?? [])
-        : []
-    }
-
-    const studentIds = scheduleParticipantMap.get(attendanceModal.scheduleId) ?? []
-    return studentIds
+    return attendanceRosterIds
       .map((studentId) => studentMap.get(studentId))
       .filter((student): student is Student => Boolean(student))
-  }, [attendanceModal, classroomStudentMap, scheduleParticipantMap, schedules, studentMap])
+  }, [attendanceModal, attendanceRosterIds, studentMap])
 
   function updateStudentForm<K extends keyof RenewalFormState>(
     key: K,
@@ -4412,6 +4320,7 @@ function App() {
     })
     setAttendanceRemark('')
     setAttendanceStatuses({})
+    setAttendanceRosterIds([])
     setAttendanceReviews({})
     setAttendanceExistingLog(null)
     setAttendanceLocked(false)
@@ -4421,7 +4330,9 @@ function App() {
       const { summary, students: latestAttendanceRows, reviews: latestReviewRows } =
         await fetchLatestLessonLogStudents(scheduleId, occurrenceDate)
 
-      const rosterIds = getScheduleRosterStudentIds(scheduleId)
+      const rosterIds = summary
+        ? latestAttendanceRows.map((row) => row.studentId)
+        : getScheduleRosterStudentIds(scheduleId)
       const nextStatuses: Record<number, AttendanceStatus> = {}
       const nextReviews: Record<number, AttendanceReviewFormState> = {}
 
@@ -4439,6 +4350,7 @@ function App() {
       }
 
       setAttendanceStatuses(nextStatuses)
+      setAttendanceRosterIds(rosterIds)
       setAttendanceReviews(nextReviews)
       setAttendanceExistingLog(summary)
       setAttendanceRemark(summary?.lessonRemark ?? '')
@@ -4462,6 +4374,7 @@ function App() {
     setAttendanceSaveError(null)
     setAttendanceRemark('')
     setAttendanceStatuses({})
+    setAttendanceRosterIds([])
     setAttendanceReviews({})
     setAttendanceExistingLog(null)
     setAttendanceLocked(false)
@@ -4506,7 +4419,7 @@ function App() {
       return
     }
 
-    const rosterIds = getScheduleRosterStudentIds(attendanceModal.scheduleId)
+    const rosterIds = attendanceRosterIds
     const payload = rosterIds.map((studentId) => ({
       student_id: studentId,
       status: attendanceStatuses[studentId] ?? 'present',
@@ -4670,7 +4583,7 @@ function App() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f3f4f6] text-slate-900">
+    <main className="min-h-screen bg-[#f3f4f6] pb-20 text-slate-900 lg:pb-0">
       <div className="flex min-h-screen">
         <aside className="hidden w-[248px] shrink-0 bg-[#2f2f2f] text-white lg:flex lg:flex-col">
           <div className="flex h-16 items-center border-b border-white/10 px-6">
@@ -6312,9 +6225,6 @@ function App() {
                 <>
                   <div className="space-y-3">
                     {attendanceRoster.map((student) => {
-                      const expired = parseLocalDate(student.lessonExpiryDate) < parseLocalDate(todayString)
-                      const zeroOrLess = student.remainingHours <= 0
-                      const highlight = expired || zeroOrLess
                       const currentStatus =
                         attendanceStatuses[student.id] ?? 'present'
                       const reviewForm =
@@ -6330,16 +6240,12 @@ function App() {
                             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                               <div className="space-y-1">
                                 <div
-                                  className={cn(
-                                    'text-base font-semibold',
-                                    highlight ? 'text-red-600' : 'text-slate-900',
-                                  )}
+                                  className="text-base font-semibold text-slate-900"
                                 >
                                   {student.name}
                                 </div>
                                 <div className="text-sm text-slate-500">
-                                  Remaining Classes: {student.remainingHours} - Lesson
-                                  Expiry: {formatDate(student.lessonExpiryDate)}
+                                  Student ID #{String(student.id).padStart(3, '0')}
                                 </div>
                               </div>
 
@@ -6498,6 +6404,29 @@ function App() {
         </div>
         </div>
       )}
+
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-2 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur lg:hidden">
+        <div className="mx-auto flex max-w-xl gap-1 overflow-x-auto">
+          {navItems.map((item) => {
+            const active = activeSection === item.key
+            return (
+              <button
+                key={`mobile-${item.key}`}
+                type="button"
+                onClick={() => setActiveSection(item.key as AppSection)}
+                className={cn(
+                  'min-w-fit flex-1 rounded-xl px-3 py-2 text-xs font-semibold transition',
+                  active
+                    ? 'bg-[#fff1f8] text-[#fc0c97]'
+                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800',
+                )}
+              >
+                {item.label}
+              </button>
+            )
+          })}
+        </div>
+      </nav>
     </main>
   )
 }

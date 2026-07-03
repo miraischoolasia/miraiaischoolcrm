@@ -1,32 +1,57 @@
-# React + TypeScript + Vite
+# Mirai Teaching System
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Lightweight teaching administration system built with Vite, React, TypeScript,
+Tailwind CSS, FullCalendar, and Supabase.
 
-Currently, two official plugins are available:
+## Current Modules
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Admin student classes, expiry, renewal, and membership dashboard
+- Age Group > Level > Classroom management
+- Teacher records and classroom assignment
+- Regular and replacement class calendar
+- Mobile attendance, lesson remarks, and five-metric student reviews
+- Immutable lesson revisions, class deduction ledger, and Admin activity log
+- Classroom archive and restore flow
 
-## React Compiler
+## Local Development
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Create `.env.local` with:
+
+```env
+VITE_SUPABASE_URL=your-project-url
+VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+```
+
+Never commit `.env.local`, database passwords, access tokens, or service-role keys.
+
+## Validation
+
+```bash
+npm run lint
+npm run test
+npm run build
+```
+
+## Database Workflow
+
+All schema changes must be added as a new file under `supabase/migrations`.
+
+```bash
+npm run db:status
+npm run db:push
+```
+
+Do not edit an already-applied production migration. Add a corrective migration
+instead. The older manual phase SQL copies have been removed so migrations remain
+the single database source of truth.
+
+## Testing-Stage Note
+
+The project currently keeps the local `View As` role preview and development RLS
+policies for testing. Supabase Auth and production role isolation must be completed
+before real student or teacher data is used.
