@@ -1,3 +1,11 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
 export type Database = {
   public: {
     Tables: {
@@ -20,6 +28,7 @@ export type Database = {
           teacher_id: number | null
           status: 'active' | 'archived'
           notes: string | null
+          archived_at: string | null
           created_at: string
           updated_at: string
         }
@@ -41,6 +50,7 @@ export type Database = {
           teacher_id?: number | null
           status?: 'active' | 'archived'
           notes?: string | null
+          archived_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -62,6 +72,7 @@ export type Database = {
           teacher_id?: number | null
           status?: 'active' | 'archived'
           notes?: string | null
+          archived_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -116,6 +127,47 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      admin_activity_logs: {
+        Row: {
+          id: number
+          actor_teacher_id: number | null
+          action_type: string
+          entity_type: 'student' | 'teacher' | 'classroom' | 'schedule'
+          entity_id: number | null
+          entity_label: string
+          details: Json
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          actor_teacher_id?: number | null
+          action_type: string
+          entity_type: 'student' | 'teacher' | 'classroom' | 'schedule'
+          entity_id?: number | null
+          entity_label: string
+          details?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          actor_teacher_id?: number | null
+          action_type?: string
+          entity_type?: 'student' | 'teacher' | 'classroom' | 'schedule'
+          entity_id?: number | null
+          entity_label?: string
+          details?: Json
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'admin_activity_logs_actor_teacher_id_fkey'
+            columns: ['actor_teacher_id']
+            isOneToOne: false
+            referencedRelation: 'teachers'
+            referencedColumns: ['id']
+          },
+        ]
       }
       students: {
         Row: {
@@ -598,6 +650,54 @@ export type Database = {
         Returns: {
           teacher_id: number
         }[]
+      }
+      record_admin_activity: {
+        Args: {
+          p_actor_teacher_id: number | null
+          p_action_type: string
+          p_entity_type: 'student' | 'teacher' | 'classroom' | 'schedule'
+          p_entity_id: number | null
+          p_entity_label: string
+          p_details?: Json
+        }
+        Returns: number
+      }
+      update_student_record: {
+        Args: {
+          p_student_id: number
+          p_full_name: string
+          p_teacher_id: number | null
+          p_classroom_id: number | null
+          p_notes: string | null
+          p_actor_teacher_id?: number | null
+        }
+        Returns: undefined
+      }
+      update_teacher_record: {
+        Args: {
+          p_teacher_id: number
+          p_username: string
+          p_full_name: string
+          p_email: string | null
+          p_phone: string | null
+          p_role: string
+          p_actor_teacher_id?: number | null
+        }
+        Returns: undefined
+      }
+      archive_classroom: {
+        Args: {
+          p_classroom_id: number
+          p_actor_teacher_id?: number | null
+        }
+        Returns: undefined
+      }
+      restore_classroom: {
+        Args: {
+          p_classroom_id: number
+          p_actor_teacher_id?: number | null
+        }
+        Returns: undefined
       }
       renew_student_record: {
         Args: {

@@ -9,7 +9,7 @@ import timeGridPlugin from '@fullcalendar/timegrid'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import type { Database } from './types/database'
 
-type AppSection = 'calendar' | 'classrooms' | 'students' | 'teachers'
+type AppSection = 'calendar' | 'classrooms' | 'students' | 'teachers' | 'activity'
 type FilterKey = 'all' | 'hours' | 'accountFee' | 'mirai' | 'normal'
 type AttendanceStatus = 'present' | 'absent' | 'leave'
 type AgeGroup =
@@ -52,6 +52,7 @@ type Student = {
   lessonExpiryDate: string
   accountFeeExpiryDate: string
   miraiClubExpiryDate: string
+  notes: string | null
   isActive: boolean
 }
 
@@ -63,6 +64,7 @@ type Classroom = {
   teacherId: number | null
   status: 'active' | 'archived'
   notes: string | null
+  archivedAt: string | null
 }
 
 type Teacher = {
@@ -73,6 +75,17 @@ type Teacher = {
   phone: string | null
   role: 'admin' | 'teacher'
   isActive: boolean
+}
+
+type AdminActivity = {
+  id: number
+  actorTeacherId: number | null
+  actionType: string
+  entityType: 'student' | 'teacher' | 'classroom' | 'schedule'
+  entityId: number | null
+  entityLabel: string
+  details: Record<string, unknown>
+  createdAt: string
 }
 
 type Schedule = {
@@ -178,6 +191,13 @@ type CreateTeacherFormState = {
   role: 'admin' | 'teacher'
 }
 
+type StudentDetailsFormState = {
+  fullName: string
+  teacherId: string
+  classroomId: string
+  notes: string
+}
+
 type ScheduleFormState = {
   title: string
   teacherId: string
@@ -229,6 +249,7 @@ type StudentRow = Pick<
   | 'lesson_expiry_date'
   | 'account_fee_expiry_date'
   | 'mirai_club_expiry_date'
+  | 'notes'
   | 'is_active'
 >
 
@@ -241,11 +262,24 @@ type ClassroomRow = Pick<
   | 'teacher_id'
   | 'status'
   | 'notes'
+  | 'archived_at'
 >
 
 type TeacherRow = Pick<
   Database['public']['Tables']['teachers']['Row'],
-  'id' | 'username' | 'full_name' | 'email' | 'phone' | 'role'
+  'id' | 'username' | 'full_name' | 'email' | 'phone' | 'role' | 'is_active'
+>
+
+type AdminActivityRow = Pick<
+  Database['public']['Tables']['admin_activity_logs']['Row'],
+  | 'id'
+  | 'actor_teacher_id'
+  | 'action_type'
+  | 'entity_type'
+  | 'entity_id'
+  | 'entity_label'
+  | 'details'
+  | 'created_at'
 >
 
 type ScheduleRow = Pick<
@@ -483,6 +517,7 @@ function mapStudentRow(row: StudentRow): Student {
     lessonExpiryDate: row.lesson_expiry_date,
     accountFeeExpiryDate: row.account_fee_expiry_date,
     miraiClubExpiryDate: row.mirai_club_expiry_date,
+    notes: row.notes,
     isActive: row.is_active,
   }
 }
@@ -496,6 +531,7 @@ function mapClassroomRow(row: ClassroomRow): Classroom {
     teacherId: row.teacher_id,
     status: row.status,
     notes: row.notes,
+    archivedAt: row.archived_at,
   }
 }
 
@@ -508,6 +544,19 @@ function mapTeacherRow(row: TeacherRow): Teacher {
     phone: row.phone,
     role: row.role,
     isActive: row.is_active,
+  }
+}
+
+function mapAdminActivityRow(row: AdminActivityRow): AdminActivity {
+  return {
+    id: row.id,
+    actorTeacherId: row.actor_teacher_id,
+    actionType: row.action_type,
+    entityType: row.entity_type,
+    entityId: row.entity_id,
+    entityLabel: row.entity_label,
+    details: (row.details ?? {}) as Record<string, unknown>,
+    createdAt: row.created_at,
   }
 }
 
@@ -629,7 +678,7 @@ async function fetchStudentsFromSupabase() {
   const { data, error } = await supabase
     .from('students')
     .select(
-      'id, teacher_id, classroom_id, full_name, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date, is_active',
+      'id, teacher_id, classroom_id, full_name, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date, notes, is_active',
     )
     .order('full_name')
 
@@ -647,7 +696,7 @@ async function fetchClassroomsFromSupabase() {
 
   const { data, error } = await supabase
     .from('classrooms')
-    .select('id, name, age_group, program_level, teacher_id, status, notes')
+    .select('id, name, age_group, program_level, teacher_id, status, notes, archived_at')
     .order('age_group')
     .order('program_level')
     .order('name')
@@ -676,6 +725,26 @@ async function fetchTeachersFromSupabase() {
   }
 
   return data.map(mapTeacherRow)
+}
+
+async function fetchAdminActivityFromSupabase() {
+  if (!supabase) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('admin_activity_logs')
+    .select(
+      'id, actor_teacher_id, action_type, entity_type, entity_id, entity_label, details, created_at',
+    )
+    .order('created_at', { ascending: false })
+    .limit(250)
+
+  if (error) {
+    throw error
+  }
+
+  return data.map(mapAdminActivityRow)
 }
 
 async function fetchSchedulesFromSupabase() {
@@ -1028,6 +1097,7 @@ type ClassListingSectionProps = {
   classrooms: Classroom[]
   classroomStudentMap: Map<number, Student[]>
   deletingClassroomId: number | null
+  restoringClassroomId: number | null
   isAdminView: boolean
   onDeleteClassroom: (classroomId: number) => void
   onEditClassroom: (classroomId: number) => void
@@ -1035,6 +1105,7 @@ type ClassListingSectionProps = {
   onOpenCreateClassroom?: () => void
   onOpenCreateRegularSchedule?: (classroomId: number) => void
   onOpenStudentDetail: (studentId: number) => void
+  onRestoreClassroom: (classroomId: number) => void
   onSelectAgeGroup: (ageGroup: AgeGroup) => void
   onSelectProgramLevel: (programLevel: ProgramLevel) => void
   schedules: Schedule[]
@@ -1050,6 +1121,7 @@ function ClassListingSection({
   classrooms,
   classroomStudentMap,
   deletingClassroomId,
+  restoringClassroomId,
   isAdminView,
   onDeleteClassroom,
   onEditClassroom,
@@ -1057,6 +1129,7 @@ function ClassListingSection({
   onOpenCreateClassroom,
   onOpenCreateRegularSchedule,
   onOpenStudentDetail,
+  onRestoreClassroom,
   onSelectAgeGroup,
   onSelectProgramLevel,
   schedules,
@@ -1069,6 +1142,9 @@ function ClassListingSection({
 }: ClassListingSectionProps) {
   const activeClassrooms = classrooms.filter(
     (classroom) => classroom.status === 'active',
+  )
+  const archivedClassrooms = classrooms.filter(
+    (classroom) => classroom.status === 'archived',
   )
   const filteredClassrooms = activeClassrooms.filter(
     (classroom) =>
@@ -1461,6 +1537,67 @@ function ClassListingSection({
             </div>
           </div>
         )}
+
+        {isAdminView && (
+          <div className="border-t border-slate-200 bg-slate-50 px-5 py-5 sm:px-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">
+                  Classroom Archive
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Archived classrooms are removed from active views while their details and student links remain stored.
+                </p>
+              </div>
+              <span className="text-sm font-semibold text-slate-500">
+                {archivedClassrooms.length}
+              </span>
+            </div>
+
+            {archivedClassrooms.length === 0 ? (
+              <div className="mt-4 border-t border-slate-200 pt-4 text-sm text-slate-500">
+                No archived classrooms.
+              </div>
+            ) : (
+              <div className="mt-4 divide-y divide-slate-200 border-t border-slate-200">
+                {archivedClassrooms.map((classroom) => {
+                  const roster = classroomStudentMap.get(classroom.id) ?? []
+                  return (
+                    <div
+                      key={classroom.id}
+                      className="flex flex-col gap-3 py-4 lg:flex-row lg:items-center lg:justify-between"
+                    >
+                      <div>
+                        <div className="font-semibold text-slate-900">{classroom.name}</div>
+                        <div className="mt-1 text-sm text-slate-500">
+                          {classroom.ageGroup} / {classroom.programLevel} /{' '}
+                          {teacherMap.get(classroom.teacherId ?? -1)?.fullName ?? 'Unassigned'}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-400">
+                          {roster.length} linked student{roster.length === 1 ? '' : 's'}
+                          {classroom.archivedAt
+                            ? ` / Archived ${new Date(classroom.archivedAt).toLocaleString('en-MY')}`
+                            : ''}
+                        </div>
+                        {classroom.notes && (
+                          <div className="mt-2 text-sm text-slate-500">{classroom.notes}</div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={restoringClassroomId === classroom.id}
+                        onClick={() => onRestoreClassroom(classroom.id)}
+                        className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {restoringClassroomId === classroom.id ? 'Restoring...' : 'Restore'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </section>
     </div>
   )
@@ -1473,6 +1610,7 @@ type StudentDashboardSectionProps = {
   students: Student[]
   todayString: string
   onDeactivateStudent: (studentId: number) => void
+  onEditStudent: (studentId: number) => void
   onOpenCreateStudent: () => void
   onOpenStudentDetail: (studentId: number) => void
   onOpenRenewal: (studentId: number) => void
@@ -1486,6 +1624,7 @@ function StudentDashboardSection({
   students,
   todayString,
   onDeactivateStudent,
+  onEditStudent,
   onOpenCreateStudent,
   onOpenStudentDetail,
   onOpenRenewal,
@@ -1704,6 +1843,13 @@ function StudentDashboardSection({
                         </button>
                         <button
                           type="button"
+                          onClick={() => onEditStudent(student.id)}
+                          className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => onOpenRenewal(student.id)}
                           className="inline-flex items-center justify-center rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
                         >
@@ -1755,6 +1901,7 @@ type TeacherManagementSectionProps = {
   isLoading: boolean
   teachers: Teacher[]
   onDeleteTeacher: (teacherId: number) => void
+  onEditTeacher: (teacherId: number) => void
   onOpenCreateTeacher: () => void
   protectedTeacherIds: Set<number>
 }
@@ -1764,6 +1911,7 @@ function TeacherManagementSection({
   isLoading,
   teachers,
   onDeleteTeacher,
+  onEditTeacher,
   onOpenCreateTeacher,
   protectedTeacherIds,
 }: TeacherManagementSectionProps) {
@@ -1864,26 +2012,35 @@ function TeacherManagementSection({
                     {teacher.phone || '-'}
                   </td>
                   <td className="px-6 py-5 text-right">
-                    <button
-                      type="button"
-                      disabled={
-                        protectedTeacherIds.has(teacher.id) ||
-                        deletingTeacherId === teacher.id
-                      }
-                      onClick={() => onDeleteTeacher(teacher.id)}
-                      className={cn(
-                        'inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition',
-                        protectedTeacherIds.has(teacher.id)
-                          ? 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400'
-                          : 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100',
-                      )}
-                    >
-                      {protectedTeacherIds.has(teacher.id)
-                        ? 'Protected'
-                        : deletingTeacherId === teacher.id
-                          ? 'Deleting...'
-                          : 'Delete'}
-                    </button>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onEditTeacher(teacher.id)}
+                        className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        disabled={
+                          protectedTeacherIds.has(teacher.id) ||
+                          deletingTeacherId === teacher.id
+                        }
+                        onClick={() => onDeleteTeacher(teacher.id)}
+                        className={cn(
+                          'inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition',
+                          protectedTeacherIds.has(teacher.id)
+                            ? 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400'
+                            : 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100',
+                        )}
+                      >
+                        {protectedTeacherIds.has(teacher.id)
+                          ? 'Protected'
+                          : deletingTeacherId === teacher.id
+                            ? 'Deleting...'
+                            : 'Delete'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1903,6 +2060,85 @@ function TeacherManagementSection({
         </div>
       </section>
     </div>
+  )
+}
+
+function AdminActivitySection({
+  activities,
+  teacherMap,
+}: {
+  activities: AdminActivity[]
+  teacherMap: Map<number, Teacher>
+}) {
+  const formatAction = (action: string) =>
+    action
+      .split('_')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+
+  return (
+    <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 bg-slate-50 px-5 py-4 sm:px-6">
+        <h2 className="text-lg font-semibold text-slate-900">Admin Activity Log</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Immutable history of Admin changes. Entries cannot be edited or deleted.
+        </p>
+      </div>
+
+      {activities.length === 0 ? (
+        <div className="px-6 py-16 text-center text-sm text-slate-500">
+          No Admin activity has been recorded yet.
+        </div>
+      ) : (
+        <div className="divide-y divide-slate-200">
+          {activities.map((activity) => {
+            const details = Object.entries(activity.details).filter(
+              ([, value]) => value !== null && value !== '',
+            )
+            return (
+              <div
+                key={activity.id}
+                className="grid gap-3 px-5 py-4 sm:px-6 lg:grid-cols-[190px_180px_minmax(0,1fr)]"
+              >
+                <div>
+                  <div className="text-sm font-semibold text-slate-700">
+                    {new Date(activity.createdAt).toLocaleString('en-MY')}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-400">
+                    Log #{activity.id}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-[#fc0c97]">
+                    {formatAction(activity.actionType)}
+                  </div>
+                  <div className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-400">
+                    {activity.entityType}
+                  </div>
+                </div>
+                <div>
+                  <div className="font-semibold text-slate-900">
+                    {activity.entityLabel}
+                  </div>
+                  <div className="mt-1 text-sm text-slate-500">
+                    By {teacherMap.get(activity.actorTeacherId ?? -1)?.fullName ?? 'System Admin'}
+                  </div>
+                  {details.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
+                      {details.map(([key, value]) => (
+                        <span key={key}>
+                          {key.replaceAll('_', ' ')}: {String(value)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -2340,6 +2576,7 @@ function App() {
   >([])
   const [lessonLogs, setLessonLogs] = useState<LessonLogSummary[]>([])
   const [lessonReviews, setLessonReviews] = useState<LessonLogStudentReview[]>([])
+  const [adminActivities, setAdminActivities] = useState<AdminActivity[]>([])
 
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -2348,6 +2585,7 @@ function App() {
   const [deactivatingStudentId, setDeactivatingStudentId] = useState<number | null>(null)
   const [deletingTeacherId, setDeletingTeacherId] = useState<number | null>(null)
   const [deletingClassroomId, setDeletingClassroomId] = useState<number | null>(null)
+  const [restoringClassroomId, setRestoringClassroomId] = useState<number | null>(null)
   const [studentSaveError, setStudentSaveError] = useState<string | null>(null)
   const [isCreatingStudentRecord, setIsCreatingStudentRecord] = useState(false)
   const [createStudentSaveError, setCreateStudentSaveError] = useState<string | null>(null)
@@ -2372,11 +2610,15 @@ function App() {
   const [selectedStudentDetailId, setSelectedStudentDetailId] = useState<number | null>(
     null,
   )
+  const [editingStudentId, setEditingStudentId] = useState<number | null>(null)
+  const [studentDetailsSaveError, setStudentDetailsSaveError] = useState<string | null>(null)
+  const [isSavingStudentDetails, setIsSavingStudentDetails] = useState(false)
   const [selectedClassroomId, setSelectedClassroomId] = useState<number | null>(null)
   const [editingClassroomId, setEditingClassroomId] = useState<number | null>(null)
   const [isCreatingClassroom, setIsCreatingClassroom] = useState(false)
   const [isCreateStudentOpen, setIsCreateStudentOpen] = useState(false)
   const [isCreateTeacherOpen, setIsCreateTeacherOpen] = useState(false)
+  const [editingTeacherId, setEditingTeacherId] = useState<number | null>(null)
   const [studentFormState, setStudentFormState] = useState<RenewalFormState>({
     addHours: '0',
     lessonExpiryDate: '',
@@ -2393,6 +2635,13 @@ function App() {
       lessonExpiryDate: todayString,
       accountFeeExpiryDate: todayString,
       miraiClubExpiryDate: todayString,
+      notes: '',
+    })
+  const [studentDetailsFormState, setStudentDetailsFormState] =
+    useState<StudentDetailsFormState>({
+      fullName: '',
+      teacherId: '',
+      classroomId: '',
       notes: '',
     })
   const [isSavingClassroom, setIsSavingClassroom] = useState(false)
@@ -2528,6 +2777,11 @@ function App() {
     sessionOptions.find((session) => session.key === selectedSessionKey) ??
     sessionOptions[0]
 
+  const currentAdminActorId =
+    currentSession?.teacherId ??
+    teachers.find((teacher) => teacher.username === 'admin_demo')?.id ??
+    null
+
   const isAdminView = currentSession?.role !== 'teacher'
   const protectedTeacherIds = useMemo(() => {
     const next = new Set<number>()
@@ -2544,6 +2798,10 @@ function App() {
     students.find((student) => student.id === selectedStudentId) ?? null
   const selectedStudentDetail =
     students.find((student) => student.id === selectedStudentDetailId) ?? null
+  const editingStudent =
+    students.find((student) => student.id === editingStudentId) ?? null
+  const editingTeacher =
+    teachers.find((teacher) => teacher.id === editingTeacherId) ?? null
   const editingClassroom =
     classrooms.find((classroom) => classroom.id === editingClassroomId) ?? null
   const editingSchedule =
@@ -2663,6 +2921,7 @@ function App() {
           nextParticipants,
           nextLessonLogs,
           nextLessonReviews,
+          nextAdminActivities,
         ] = await Promise.all([
           fetchClassroomsFromSupabase(),
           fetchTeachersFromSupabase(),
@@ -2671,6 +2930,7 @@ function App() {
           fetchScheduleParticipantsFromSupabase(),
           fetchLessonLogSummariesFromSupabase(),
           fetchLessonLogStudentReviewsFromSupabase(),
+          fetchAdminActivityFromSupabase(),
         ])
 
         if (!cancelled) {
@@ -2681,6 +2941,7 @@ function App() {
           setScheduleParticipants(nextParticipants)
           setLessonLogs(nextLessonLogs)
           setLessonReviews(nextLessonReviews)
+          setAdminActivities(nextAdminActivities)
         }
       } catch (error) {
         if (!cancelled) {
@@ -2812,6 +3073,7 @@ function App() {
           { key: 'classrooms', label: 'My Classroom' },
           { key: 'students', label: 'Students' },
           { key: 'teachers', label: 'My Teacher' },
+          { key: 'activity', label: 'Activity Log' },
         ]
 
   const attendanceRoster = useMemo(() => {
@@ -2863,6 +3125,23 @@ function App() {
     setCreateTeacherFormState((currentState) => ({
       ...currentState,
       [key]: value,
+    }))
+  }
+
+  function updateStudentDetailsForm<K extends keyof StudentDetailsFormState>(
+    key: K,
+    value: StudentDetailsFormState[K],
+  ) {
+    setStudentDetailsFormState((currentState) => ({
+      ...currentState,
+      [key]: value,
+      ...(key === 'classroomId' && value
+        ? {
+            teacherId: String(
+              classroomMap.get(Number(value))?.teacherId ?? currentState.teacherId,
+            ),
+          }
+        : {}),
     }))
   }
 
@@ -2920,6 +3199,27 @@ function App() {
     setSelectedStudentDetailId(null)
   }
 
+  function openEditStudent(studentId: number) {
+    const student = students.find((entry) => entry.id === studentId)
+    if (!student) {
+      return
+    }
+
+    setStudentDetailsSaveError(null)
+    setEditingStudentId(studentId)
+    setStudentDetailsFormState({
+      fullName: student.name,
+      teacherId: student.teacherId ? String(student.teacherId) : '',
+      classroomId: student.classroomId ? String(student.classroomId) : '',
+      notes: student.notes ?? '',
+    })
+  }
+
+  function closeEditStudent() {
+    setEditingStudentId(null)
+    setStudentDetailsSaveError(null)
+  }
+
   function openStudentRenewal(studentId: number) {
     setStudentSaveError(null)
     setSelectedStudentId(studentId)
@@ -2960,7 +3260,14 @@ function App() {
         throw error
       }
 
+      await recordAdminActivity(
+        'student_deactivated',
+        'student',
+        student.id,
+        student.name,
+      )
       await refreshStudentsAndLogs()
+      await refreshAdminActivities()
     } catch (error) {
       setLoadError(
         error instanceof Error ? error.message : 'Failed to deactivate student.',
@@ -2992,6 +3299,7 @@ function App() {
 
   function openCreateTeacherModal() {
     setCreateTeacherSaveError(null)
+    setEditingTeacherId(null)
     setIsCreateTeacherOpen(true)
     setCreateTeacherFormState({
       username: '',
@@ -3002,8 +3310,27 @@ function App() {
     })
   }
 
+  function openEditTeacherModal(teacherId: number) {
+    const teacher = teachers.find((entry) => entry.id === teacherId)
+    if (!teacher) {
+      return
+    }
+
+    setCreateTeacherSaveError(null)
+    setEditingTeacherId(teacherId)
+    setIsCreateTeacherOpen(true)
+    setCreateTeacherFormState({
+      username: teacher.username,
+      fullName: teacher.fullName,
+      email: teacher.email ?? '',
+      phone: teacher.phone ?? '',
+      role: teacher.role,
+    })
+  }
+
   function closeCreateTeacherModal() {
     setIsCreateTeacherOpen(false)
+    setEditingTeacherId(null)
     setCreateTeacherSaveError(null)
   }
 
@@ -3108,6 +3435,36 @@ function App() {
     setTeachers(nextTeachers)
   }
 
+  async function refreshAdminActivities() {
+    const nextActivities = await fetchAdminActivityFromSupabase()
+    setAdminActivities(nextActivities)
+  }
+
+  async function recordAdminActivity(
+    actionType: string,
+    entityType: AdminActivity['entityType'],
+    entityId: number | null,
+    entityLabel: string,
+    details: Record<string, string | number | boolean | null> = {},
+  ) {
+    if (!supabase) {
+      return
+    }
+
+    const { error } = await supabase.rpc('record_admin_activity', {
+      p_actor_teacher_id: currentAdminActorId,
+      p_action_type: actionType,
+      p_entity_type: entityType,
+      p_entity_id: entityId,
+      p_entity_label: entityLabel,
+      p_details: details,
+    })
+
+    if (error) {
+      throw error
+    }
+  }
+
   async function syncRegularSchedulesWithClassroom(
     classroomId: number,
     classroomName: string,
@@ -3145,6 +3502,57 @@ function App() {
 
     if (error) {
       throw error
+    }
+  }
+
+  async function handleStudentDetailsSubmit(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault()
+
+    if (!editingStudent || !supabase) {
+      return
+    }
+
+    const fullName = studentDetailsFormState.fullName.trim()
+    if (!fullName) {
+      setStudentDetailsSaveError('Please enter the student full name.')
+      return
+    }
+
+    try {
+      setIsSavingStudentDetails(true)
+      setStudentDetailsSaveError(null)
+
+      const { error } = await supabase.rpc('update_student_record', {
+        p_student_id: editingStudent.id,
+        p_full_name: fullName,
+        p_teacher_id: studentDetailsFormState.teacherId
+          ? Number(studentDetailsFormState.teacherId)
+          : null,
+        p_classroom_id: studentDetailsFormState.classroomId
+          ? Number(studentDetailsFormState.classroomId)
+          : null,
+        p_notes: studentDetailsFormState.notes.trim() || null,
+        p_actor_teacher_id: currentAdminActorId,
+      })
+
+      if (error) {
+        throw error
+      }
+
+      await Promise.all([
+        refreshStudentsAndLogs(),
+        refreshClassrooms(),
+        refreshAdminActivities(),
+      ])
+      closeEditStudent()
+    } catch (error) {
+      setStudentDetailsSaveError(
+        error instanceof Error ? error.message : 'Failed to update student details.',
+      )
+    } finally {
+      setIsSavingStudentDetails(false)
     }
   }
 
@@ -3195,7 +3603,7 @@ function App() {
         p_account_fee_expiry_date: createStudentFormState.accountFeeExpiryDate,
         p_mirai_club_expiry_date: createStudentFormState.miraiClubExpiryDate,
         p_notes: createStudentFormState.notes.trim() || null,
-        p_actor_teacher_id: currentSession?.teacherId ?? null,
+        p_actor_teacher_id: currentAdminActorId,
       })
 
       if (error) {
@@ -3210,10 +3618,18 @@ function App() {
             ? Number(createStudentFormState.classroomId)
             : null,
         )
+        await recordAdminActivity('student_created', 'student', createdStudentId, fullName, {
+          classroom_id: createStudentFormState.classroomId
+            ? Number(createStudentFormState.classroomId)
+            : null,
+        })
       }
 
-      await refreshStudentsAndLogs()
-      await refreshClassrooms()
+      await Promise.all([
+        refreshStudentsAndLogs(),
+        refreshClassrooms(),
+        refreshAdminActivities(),
+      ])
       closeCreateStudentModal()
     } catch (error) {
       setCreateStudentSaveError(
@@ -3250,23 +3666,44 @@ function App() {
       setIsCreatingTeacherRecord(true)
       setCreateTeacherSaveError(null)
 
-      const { error } = await supabase.rpc('create_teacher_record', {
-        p_username: username,
-        p_full_name: fullName,
-        p_email: createTeacherFormState.email.trim() || null,
-        p_phone: createTeacherFormState.phone.trim() || null,
-        p_role: createTeacherFormState.role,
-      })
+      const { data, error } = editingTeacher
+        ? await supabase.rpc('update_teacher_record', {
+            p_teacher_id: editingTeacher.id,
+            p_username: username,
+            p_full_name: fullName,
+            p_email: createTeacherFormState.email.trim() || null,
+            p_phone: createTeacherFormState.phone.trim() || null,
+            p_role: createTeacherFormState.role,
+            p_actor_teacher_id: currentAdminActorId,
+          })
+        : await supabase.rpc('create_teacher_record', {
+            p_username: username,
+            p_full_name: fullName,
+            p_email: createTeacherFormState.email.trim() || null,
+            p_phone: createTeacherFormState.phone.trim() || null,
+            p_role: createTeacherFormState.role,
+          })
 
       if (error) {
         throw error
       }
 
-      await refreshTeachers()
+      if (!editingTeacher) {
+        const createdTeacherId = data?.[0]?.teacher_id ?? null
+        await recordAdminActivity(
+          'teacher_created',
+          'teacher',
+          createdTeacherId,
+          fullName,
+          { role: createTeacherFormState.role },
+        )
+      }
+
+      await Promise.all([refreshTeachers(), refreshAdminActivities()])
       closeCreateTeacherModal()
     } catch (error) {
       setCreateTeacherSaveError(
-        error instanceof Error ? error.message : 'Failed to create teacher record.',
+        error instanceof Error ? error.message : 'Failed to save teacher record.',
       )
     } finally {
       setIsCreatingTeacherRecord(false)
@@ -3413,11 +3850,20 @@ function App() {
         }
       }
 
+      await recordAdminActivity(
+        'teacher_deleted',
+        'teacher',
+        teacherId,
+        teacher.fullName,
+        { retained_for_history: (lessonLogCount ?? 0) > 0 || (adminLedgerCount ?? 0) > 0 },
+      )
+
       await Promise.all([
         refreshTeachers(),
         refreshClassrooms(),
         refreshSchedulesAndParticipants(),
         refreshStudentsAndLogs(),
+        refreshAdminActivities(),
       ])
     } catch (error) {
       window.alert(
@@ -3464,13 +3910,27 @@ function App() {
       setClassroomSaveError(null)
 
       if (isCreatingClassroom) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('classrooms')
           .insert(payload as Database['public']['Tables']['classrooms']['Insert'])
+          .select('id')
+          .single()
 
         if (error) {
           throw error
         }
+
+        await recordAdminActivity(
+          'classroom_created',
+          'classroom',
+          data.id,
+          name,
+          {
+            age_group: classroomFormState.ageGroup,
+            program_level: classroomFormState.programLevel,
+            teacher_id: teacherId,
+          },
+        )
       } else if (editingClassroom) {
         const { error } = await supabase
           .from('classrooms')
@@ -3482,9 +3942,24 @@ function App() {
         }
 
         await syncRegularSchedulesWithClassroom(editingClassroom.id, name, teacherId)
+        await recordAdminActivity(
+          'classroom_updated',
+          'classroom',
+          editingClassroom.id,
+          name,
+          {
+            age_group: classroomFormState.ageGroup,
+            program_level: classroomFormState.programLevel,
+            teacher_id: teacherId,
+          },
+        )
       }
 
-      await Promise.all([refreshClassrooms(), refreshSchedulesAndParticipants()])
+      await Promise.all([
+        refreshClassrooms(),
+        refreshSchedulesAndParticipants(),
+        refreshAdminActivities(),
+      ])
       closeClassroomModal()
     } catch (error) {
       setClassroomSaveError(
@@ -3507,7 +3982,7 @@ function App() {
 
     if (
       !window.confirm(
-        `Delete classroom "${classroom.name}"? Students will be unassigned from this classroom, and weekly timetables without attendance history will be removed.`,
+        `Delete classroom "${classroom.name}"? It will disappear from active classrooms and move to Classroom Archive. Existing details and students will be retained.`,
       )
     ) {
       return
@@ -3516,63 +3991,13 @@ function App() {
     try {
       setDeletingClassroomId(classroomId)
 
-      const regularSchedules = schedules.filter(
-        (schedule) =>
-          schedule.classroomId === classroomId && schedule.eventType === 'regular',
-      )
-      const regularScheduleIds = regularSchedules.map((schedule) => schedule.id)
+      const { error } = await supabase.rpc('archive_classroom', {
+        p_classroom_id: classroomId,
+        p_actor_teacher_id: currentAdminActorId,
+      })
 
-      if (regularScheduleIds.length > 0) {
-        const { count: lessonLogCount, error: lessonLogError } = await supabase
-          .from('lesson_logs')
-          .select('id', { head: true, count: 'exact' })
-          .in('schedule_id', regularScheduleIds)
-
-        if (lessonLogError) {
-          throw lessonLogError
-        }
-
-        if ((lessonLogCount ?? 0) > 0) {
-          throw new Error(
-            'This classroom already has attendance history. Delete is blocked to protect historical records.',
-          )
-        }
-
-        const { error: membershipError } = await supabase
-          .from('schedule_students')
-          .delete()
-          .in('schedule_id', regularScheduleIds)
-
-        if (membershipError) {
-          throw membershipError
-        }
-
-        const { error: scheduleDeleteError } = await supabase
-          .from('schedules')
-          .delete()
-          .in('id', regularScheduleIds)
-
-        if (scheduleDeleteError) {
-          throw scheduleDeleteError
-        }
-      }
-
-      const { error: unassignStudentsError } = await supabase
-        .from('students')
-        .update({ classroom_id: null })
-        .eq('classroom_id', classroomId)
-
-      if (unassignStudentsError) {
-        throw unassignStudentsError
-      }
-
-      const { error: classroomDeleteError } = await supabase
-        .from('classrooms')
-        .delete()
-        .eq('id', classroomId)
-
-      if (classroomDeleteError) {
-        throw classroomDeleteError
+      if (error) {
+        throw error
       }
 
       if (selectedClassroomId === classroomId) {
@@ -3583,11 +4008,36 @@ function App() {
         refreshClassrooms(),
         refreshSchedulesAndParticipants(),
         refreshStudentsAndLogs(),
+        refreshAdminActivities(),
       ])
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Failed to delete classroom.')
     } finally {
       setDeletingClassroomId(null)
+    }
+  }
+
+  async function handleRestoreClassroom(classroomId: number) {
+    if (!supabase) {
+      return
+    }
+
+    try {
+      setRestoringClassroomId(classroomId)
+      const { error } = await supabase.rpc('restore_classroom', {
+        p_classroom_id: classroomId,
+        p_actor_teacher_id: currentAdminActorId,
+      })
+
+      if (error) {
+        throw error
+      }
+
+      await Promise.all([refreshClassrooms(), refreshAdminActivities()])
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Failed to restore classroom.')
+    } finally {
+      setRestoringClassroomId(null)
     }
   }
 
@@ -3620,7 +4070,7 @@ function App() {
           studentFormState.miraiClubExpiryDate ||
           selectedStudent.miraiClubExpiryDate,
         p_remark: studentFormState.remark.trim() || null,
-        p_actor_teacher_id: currentSession?.teacherId ?? null,
+        p_actor_teacher_id: currentAdminActorId,
       })
 
       if (error) {
@@ -3638,7 +4088,20 @@ function App() {
         }
       }
 
-      await refreshStudentsAndLogs()
+      await recordAdminActivity(
+        'student_renewed',
+        'student',
+        selectedStudent.id,
+        selectedStudent.name,
+        {
+          classes_added: hoursToAdd,
+          lesson_expiry: studentFormState.lessonExpiryDate,
+          account_fee_expiry: studentFormState.accountFeeExpiryDate,
+          mirai_club_expiry: studentFormState.miraiClubExpiryDate,
+        },
+      )
+
+      await Promise.all([refreshStudentsAndLogs(), refreshAdminActivities()])
       closeStudentRenewal()
     } catch (error) {
       setStudentSaveError(
@@ -3816,6 +4279,13 @@ function App() {
         } else {
           await refreshSchedulesAndParticipants()
         }
+        await recordAdminActivity(
+          'schedule_created',
+          'schedule',
+          nextSchedule.id,
+          nextSchedule.title,
+          { event_type: nextSchedule.eventType, teacher_id: nextSchedule.teacherId },
+        )
       } else if (editingSchedule) {
         const { data, error } = await supabase
           .from('schedules')
@@ -3841,8 +4311,16 @@ function App() {
         } else {
           await refreshSchedulesAndParticipants()
         }
+        await recordAdminActivity(
+          'schedule_updated',
+          'schedule',
+          updatedSchedule.id,
+          updatedSchedule.title,
+          { event_type: updatedSchedule.eventType, teacher_id: updatedSchedule.teacherId },
+        )
       }
 
+      await refreshAdminActivities()
       closeScheduleModal()
     } catch (error) {
       setScheduleSaveError(
@@ -3885,6 +4363,14 @@ function App() {
           schedule.id === cancelledSchedule.id ? cancelledSchedule : schedule,
         ),
       )
+
+      await recordAdminActivity(
+        'schedule_cancelled',
+        'schedule',
+        cancelledSchedule.id,
+        cancelledSchedule.title,
+      )
+      await refreshAdminActivities()
 
       closeScheduleModal()
     } catch (error) {
@@ -4250,7 +4736,9 @@ function App() {
                       ? 'Classroom Board'
                       : activeSection === 'teachers'
                         ? 'Teacher Board'
-                        : 'Student Board'}
+                        : activeSection === 'activity'
+                          ? 'Admin Audit'
+                          : 'Student Board'}
                 </div>
                 <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">
                   {activeSection === 'calendar'
@@ -4259,7 +4747,9 @@ function App() {
                       ? 'My Classroom'
                       : activeSection === 'teachers'
                         ? 'My Teacher'
-                        : 'Student Classes & Expiry'}
+                        : activeSection === 'activity'
+                          ? 'Admin Activity Log'
+                          : 'Student Classes & Expiry'}
                 </h1>
               </div>
 
@@ -4443,9 +4933,10 @@ function App() {
 
             {activeSection === 'classrooms' && (
               <ClassListingSection
-                classrooms={activeVisibleClassrooms}
+                classrooms={visibleClassrooms}
                 classroomStudentMap={classroomStudentMap}
                 deletingClassroomId={deletingClassroomId}
+                restoringClassroomId={restoringClassroomId}
                 isAdminView={isAdminView}
                 onDeleteClassroom={handleDeleteClassroom}
                 onEditClassroom={openEditClassroom}
@@ -4457,6 +4948,7 @@ function App() {
                     : undefined
                 }
                 onOpenStudentDetail={openStudentDetail}
+                onRestoreClassroom={handleRestoreClassroom}
                 onSelectAgeGroup={setSelectedAgeGroup}
                 onSelectProgramLevel={setSelectedProgramLevel}
                 schedules={activeClassroomSchedules}
@@ -4477,6 +4969,7 @@ function App() {
                 students={students}
                 todayString={todayString}
                 onDeactivateStudent={handleDeactivateStudent}
+                onEditStudent={openEditStudent}
                 onOpenCreateStudent={openCreateStudentModal}
                 onOpenStudentDetail={openStudentDetail}
                 onOpenRenewal={openStudentRenewal}
@@ -4494,13 +4987,127 @@ function App() {
                 isLoading={isLoading}
                 teachers={teachers}
                 onDeleteTeacher={handleDeleteTeacher}
+                onEditTeacher={openEditTeacherModal}
                 onOpenCreateTeacher={openCreateTeacherModal}
                 protectedTeacherIds={protectedTeacherIds}
+              />
+            )}
+
+            {activeSection === 'activity' && isAdminView && (
+              <AdminActivitySection
+                activities={adminActivities}
+                teacherMap={teacherMap}
               />
             )}
           </div>
         </section>
       </div>
+
+      {editingStudent && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/30 px-4 py-6">
+          <div className="mx-auto flex min-h-full w-full max-w-2xl items-center justify-center">
+            <div className="w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
+              <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-6 py-5">
+                <div>
+                  <div className="text-sm font-medium text-[#fc0c97]">Student profile</div>
+                  <h2 className="mt-1 text-2xl font-semibold text-slate-900">
+                    Edit {editingStudent.name}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Update basic details or move this student to another classroom.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeEditStudent}
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600"
+                >
+                  Close
+                </button>
+              </div>
+
+              <form
+                onSubmit={handleStudentDetailsSubmit}
+                className="max-h-[75vh] space-y-5 overflow-y-auto px-6 py-6"
+              >
+                {studentDetailsSaveError && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {studentDetailsSaveError}
+                  </div>
+                )}
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="space-y-2 sm:col-span-2">
+                    <span className="text-sm font-semibold text-slate-700">Full Name</span>
+                    <input
+                      value={studentDetailsFormState.fullName}
+                      onChange={(event) => updateStudentDetailsForm('fullName', event.target.value)}
+                      className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#fc0c97]"
+                    />
+                  </label>
+
+                  <label className="space-y-2 sm:col-span-2">
+                    <span className="text-sm font-semibold text-slate-700">Main Classroom</span>
+                    <select
+                      value={studentDetailsFormState.classroomId}
+                      onChange={(event) => updateStudentDetailsForm('classroomId', event.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-[#fc0c97]"
+                    >
+                      <option value="">No classroom</option>
+                      {classrooms
+                        .filter((classroom) => classroom.status === 'active')
+                        .map((classroom) => (
+                          <option key={classroom.id} value={classroom.id}>
+                            {classroom.ageGroup} / {classroom.programLevel} / {classroom.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-2 sm:col-span-2">
+                    <span className="text-sm font-semibold text-slate-700">Assigned Teacher</span>
+                    <select
+                      value={studentDetailsFormState.teacherId}
+                      onChange={(event) => updateStudentDetailsForm('teacherId', event.target.value)}
+                      disabled={Boolean(studentDetailsFormState.classroomId)}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-[#fc0c97] disabled:bg-slate-100"
+                    >
+                      <option value="">Unassigned</option>
+                      {assignableTeachers.map((teacher) => (
+                        <option key={teacher.id} value={teacher.id}>{teacher.fullName}</option>
+                      ))}
+                    </select>
+                    {studentDetailsFormState.classroomId && (
+                      <p className="text-xs text-slate-500">
+                        Teacher is automatically taken from the selected classroom.
+                      </p>
+                    )}
+                  </label>
+
+                  <label className="space-y-2 sm:col-span-2">
+                    <span className="text-sm font-semibold text-slate-700">Notes</span>
+                    <textarea
+                      rows={3}
+                      value={studentDetailsFormState.notes}
+                      onChange={(event) => updateStudentDetailsForm('notes', event.target.value)}
+                      className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#fc0c97]"
+                    />
+                  </label>
+                </div>
+
+                <div className="flex justify-end gap-3 border-t border-slate-200 pt-5">
+                  <button type="button" onClick={closeEditStudent} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700">
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={isSavingStudentDetails} className="rounded-xl bg-[#fc0c97] px-5 py-3 text-sm font-semibold text-white disabled:opacity-60">
+                    {isSavingStudentDetails ? 'Saving...' : 'Save Details'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isCreateStudentOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/30 px-4 py-6">
@@ -4901,13 +5508,15 @@ function App() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="text-sm font-medium text-[#fc0c97]">
-                      Teacher record setup
+                      {editingTeacher ? 'Teacher profile' : 'Teacher record setup'}
                     </div>
                     <h2 className="mt-1 text-2xl font-semibold text-slate-900">
-                      Add Teacher
+                      {editingTeacher ? `Edit ${editingTeacher.fullName}` : 'Add Teacher'}
                     </h2>
                     <p className="mt-2 text-sm text-slate-500">
-                      Create a teacher profile for classroom assignment and timetable visibility.
+                      {editingTeacher
+                        ? 'Update this account’s basic details and role.'
+                        : 'Create a teacher profile for classroom assignment and timetable visibility.'}
                     </p>
                   </div>
                   <button
@@ -4938,10 +5547,11 @@ function App() {
                     <input
                       type="text"
                       value={createTeacherFormState.username}
+                      disabled={editingTeacher?.username === 'admin_demo'}
                       onChange={(event) =>
                         updateCreateTeacherForm('username', event.target.value)
                       }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2] disabled:bg-slate-100 disabled:text-slate-500"
                     />
                   </label>
 
@@ -4993,13 +5603,14 @@ function App() {
                     </span>
                     <select
                       value={createTeacherFormState.role}
+                      disabled={editingTeacher?.username === 'admin_demo'}
                       onChange={(event) =>
                         updateCreateTeacherForm(
                           'role',
                           event.target.value as CreateTeacherFormState['role'],
                         )
                       }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2] disabled:bg-slate-100 disabled:text-slate-500"
                     >
                       <option value="teacher">Teacher</option>
                       <option value="admin">Admin</option>
@@ -5020,7 +5631,11 @@ function App() {
                     disabled={isCreatingTeacherRecord}
                     className="rounded-xl bg-[#fc0c97] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#de0a84] disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    {isCreatingTeacherRecord ? 'Creating...' : 'Create Teacher'}
+                    {isCreatingTeacherRecord
+                      ? 'Saving...'
+                      : editingTeacher
+                        ? 'Save Details'
+                        : 'Create Teacher'}
                   </button>
                 </div>
               </form>
