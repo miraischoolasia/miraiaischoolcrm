@@ -970,11 +970,48 @@ function useIsMobile() {
   return isMobile
 }
 
+type SummaryMetric = {
+  label: string
+  value: number
+  tone?: 'default' | 'brand' | 'blue' | 'orange' | 'green'
+}
+
+function SummaryBar({ metrics }: { metrics: SummaryMetric[] }) {
+  const toneClass = {
+    default: 'text-slate-900',
+    brand: 'text-[#fc0c97]',
+    blue: 'text-sky-600',
+    orange: 'text-orange-500',
+    green: 'text-emerald-600',
+  }
+
+  return (
+    <section className="grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:grid-cols-4">
+      {metrics.map((metric, index) => (
+        <div
+          key={metric.label}
+          className={cn(
+            'flex min-h-16 items-center justify-between gap-3 px-4 py-2.5',
+            index % 2 !== 0 && 'border-l border-slate-200',
+            index >= 2 && 'border-t border-slate-200 md:border-t-0',
+            index > 0 && 'md:border-l md:border-slate-200',
+          )}
+        >
+          <div className="text-xs font-medium text-slate-500">{metric.label}</div>
+          <div className={cn('text-xl font-semibold', toneClass[metric.tone ?? 'default'])}>
+            {metric.value}
+          </div>
+        </div>
+      ))}
+    </section>
+  )
+}
+
 function StatusChip({ label, tone }: StatusTag) {
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold tracking-wide',
+        'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide',
         tone === 'critical' && 'border-[#fecdd3] bg-[#fff1f8] text-[#be185d]',
         tone === 'healthy' && 'border-emerald-200 bg-emerald-50 text-emerald-700',
       )}
@@ -1093,7 +1130,7 @@ function ClassListingSection({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 bg-[#f8fafc] px-5 py-4 sm:px-6">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -1128,13 +1165,13 @@ function ClassListingSection({
             No active classroom found yet. Create the first classroom, then add weekly schedules inside it.
           </div>
         ) : (
-          <div className="space-y-6 p-6">
-            <div className="space-y-5 border-b border-slate-200 pb-5">
+          <div className="space-y-4 p-4">
+            <div className="space-y-3 border-b border-slate-200 pb-3">
               <div className="space-y-2">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Age Group
                 </div>
-                <div className="flex flex-wrap gap-x-5 gap-y-3">
+                <div className="flex flex-wrap gap-x-4 gap-y-2">
                   {ageGroupOptions.map((ageGroup) => {
                     const selected = selectedAgeGroup === ageGroup
                     const count = activeClassrooms.filter(
@@ -1147,7 +1184,7 @@ function ClassListingSection({
                         type="button"
                         onClick={() => onSelectAgeGroup(ageGroup)}
                         className={cn(
-                          'inline-flex items-center gap-2 border-b-2 pb-2 text-left text-sm font-semibold transition',
+                          'inline-flex items-center gap-1.5 border-b-2 pb-1.5 text-left text-xs font-semibold transition',
                           selected
                             ? 'border-[#fc0c97] text-[#fc0c97]'
                             : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700',
@@ -1167,7 +1204,7 @@ function ClassListingSection({
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Level
                 </div>
-                <div className="flex flex-wrap gap-x-5 gap-y-3">
+                <div className="flex flex-wrap gap-x-4 gap-y-2">
                   {programLevelOptions.map((programLevel) => {
                     const selected = selectedProgramLevel === programLevel
                     const count = activeClassrooms.filter(
@@ -1182,7 +1219,7 @@ function ClassListingSection({
                         type="button"
                         onClick={() => onSelectProgramLevel(programLevel)}
                         className={cn(
-                          'inline-flex items-center gap-2 border-b-2 pb-2 text-left text-sm font-semibold transition',
+                          'inline-flex items-center gap-1.5 border-b-2 pb-1.5 text-left text-xs font-semibold transition',
                           selected
                             ? 'border-[#fc0c97] text-[#fc0c97]'
                             : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700',
@@ -1199,7 +1236,7 @@ function ClassListingSection({
               </div>
             </div>
 
-            <div className="grid gap-8 xl:grid-cols-[340px_minmax(0,1fr)]">
+            <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
               <div className="space-y-4">
                 <div className="flex items-end justify-between gap-4">
                   <div>
@@ -1232,12 +1269,12 @@ function ClassListingSection({
                           type="button"
                           onClick={() => setSelectedClassroomId(classroom.id)}
                           className={cn(
-                            'relative w-full px-0 py-4 text-left transition',
+                            'relative w-full px-0 py-3 text-left transition',
                             selected ? 'text-slate-900' : 'text-slate-700 hover:text-slate-900',
                           )}
                         >
                           {selected && (
-                            <span className="absolute left-0 top-4 h-5 w-1 rounded-full bg-[#fc0c97]" />
+                            <span className="absolute left-0 top-3 h-5 w-1 rounded-full bg-[#fc0c97]" />
                           )}
                           <div className={cn('space-y-1', selected ? 'pl-4' : '')}>
                             <div className="text-base font-semibold">
@@ -1264,7 +1301,7 @@ function ClassListingSection({
 
               {selectedClassroom && (
                 <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 lg:flex-row lg:items-start lg:justify-between">
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#fc0c97]">
                         Classroom Detail
@@ -1288,7 +1325,7 @@ function ClassListingSection({
                       )}
                     </div>
 
-                    <div className="flex flex-wrap gap-3">
+                    <div className="flex flex-wrap gap-2">
                       {isAdminView && (
                         <>
                           <button
@@ -1324,7 +1361,7 @@ function ClassListingSection({
                     </div>
                   </div>
 
-                  <div className="mt-5 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+                  <div className="mt-4 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
                     <div className="space-y-3">
                       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                         Weekly Timetable
@@ -1357,7 +1394,7 @@ function ClassListingSection({
                           .map((schedule) => (
                             <div
                               key={schedule.id}
-                              className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
+                              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5"
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div>
@@ -1406,9 +1443,9 @@ function ClassListingSection({
                           return (
                             <div
                               key={student.id}
-                              className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                              className="border-b border-slate-200 py-3 last:border-b-0"
                             >
-                              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                              <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                                 <div>
                                   <button
                                     type="button"
@@ -1417,11 +1454,11 @@ function ClassListingSection({
                                   >
                                     {student.name}
                                   </button>
-                                  <div className="mt-1 text-sm text-slate-500">
+                                  <div className="mt-1 text-xs text-slate-500">
                                     Classes: {student.remainingHours} - Lesson Expiry:{' '}
                                     {formatDate(student.lessonExpiryDate)}
                                   </div>
-                                  <div className="mt-1 text-sm text-slate-500">
+                                  <div className="mt-1 text-xs text-slate-500">
                                     Account Fee: {formatDate(student.accountFeeExpiryDate)} - Mirai Club:{' '}
                                     {formatDate(student.miraiClubExpiryDate)}
                                   </div>
@@ -1478,13 +1515,13 @@ function ClassListingSection({
                 No archived classrooms.
               </div>
             ) : (
-              <div className="mt-4 divide-y divide-slate-200 border-t border-slate-200">
+            <div className="mt-3 divide-y divide-slate-200 border-t border-slate-200">
                 {archivedClassrooms.map((classroom) => {
                   const roster = classroomStudentMap.get(classroom.id) ?? []
                   return (
                     <div
                       key={classroom.id}
-                      className="flex flex-col gap-3 py-4 lg:flex-row lg:items-center lg:justify-between"
+                      className="flex flex-col gap-2 py-3 lg:flex-row lg:items-center lg:justify-between"
                     >
                       <div>
                         <div className="font-semibold text-slate-900">{classroom.name}</div>
@@ -1586,33 +1623,15 @@ function StudentDashboardSection({
   ).length
 
   return (
-    <div className="space-y-6">
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-sm font-medium text-slate-500">Total Students</div>
-          <div className="mt-3 text-3xl font-semibold text-slate-900">
-            {totalStudents}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-sm font-medium text-slate-500">Classes Attention</div>
-          <div className="mt-3 text-3xl font-semibold text-[#fc0c97]">
-            {hoursAlertCount}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-sm font-medium text-slate-500">Account Fee Due</div>
-          <div className="mt-3 text-3xl font-semibold text-[#fc0c97]">
-            {accountFeeAlertCount}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-sm font-medium text-slate-500">Mirai Club Due</div>
-          <div className="mt-3 text-3xl font-semibold text-[#fc0c97]">
-            {miraiAlertCount}
-          </div>
-        </div>
-      </section>
+    <div className="space-y-4">
+      <SummaryBar
+        metrics={[
+          { label: 'Total Students', value: totalStudents },
+          { label: 'Classes Attention', value: hoursAlertCount, tone: 'brand' },
+          { label: 'Account Fee Due', value: accountFeeAlertCount, tone: 'brand' },
+          { label: 'Mirai Club Due', value: miraiAlertCount, tone: 'brand' },
+        ]}
+      />
 
       <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 bg-[#f8fafc] px-5 py-4 sm:px-6">
@@ -1657,7 +1676,7 @@ function StudentDashboardSection({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1120px] divide-y divide-slate-200">
+          <table data-compact-table className="min-w-[980px] divide-y divide-slate-200">
             <thead className="bg-slate-50">
               <tr className="text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 <th className="px-6 py-4">Student Name</th>
@@ -1734,7 +1753,7 @@ function StudentDashboardSection({
                       <div className="space-y-2">
                         <div
                           className={cn(
-                            'inline-flex min-w-20 items-center justify-center rounded-xl px-3 py-2 text-lg font-semibold',
+                            'inline-flex min-w-14 items-center justify-center rounded-lg px-2 py-1 text-sm font-semibold',
                             status.isDeactivated || status.hoursLow
                               ? 'bg-[#fff1f8] text-[#be185d] ring-1 ring-inset ring-[#fecdd3]'
                               : 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200',
@@ -1835,37 +1854,32 @@ function TeacherManagementSection({
   protectedTeacherIds,
 }: TeacherManagementSectionProps) {
   return (
-    <div className="space-y-6">
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-sm font-medium text-slate-500">Total Teachers</div>
-          <div className="mt-3 text-3xl font-semibold text-slate-900">
-            {teachers.filter((teacher) => teacher.role === 'teacher').length}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-sm font-medium text-slate-500">Admin Accounts</div>
-          <div className="mt-3 text-3xl font-semibold text-[#fc0c97]">
-            {teachers.filter((teacher) => teacher.role === 'admin').length}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-sm font-medium text-slate-500">Teacher Accounts</div>
-          <div className="mt-3 text-3xl font-semibold text-sky-600">
-            {teachers.filter((teacher) => teacher.role === 'teacher').length}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-sm font-medium text-slate-500">With Contact Info</div>
-          <div className="mt-3 text-3xl font-semibold text-emerald-600">
-            {
-              teachers.filter(
-                (teacher) => Boolean(teacher.email) || Boolean(teacher.phone),
-              ).length
-            }
-          </div>
-        </div>
-      </section>
+    <div className="space-y-4">
+      <SummaryBar
+        metrics={[
+          {
+            label: 'Total Teachers',
+            value: teachers.filter((teacher) => teacher.role === 'teacher').length,
+          },
+          {
+            label: 'Admin Accounts',
+            value: teachers.filter((teacher) => teacher.role === 'admin').length,
+            tone: 'brand',
+          },
+          {
+            label: 'Teacher Accounts',
+            value: teachers.filter((teacher) => teacher.role === 'teacher').length,
+            tone: 'blue',
+          },
+          {
+            label: 'With Contact Info',
+            value: teachers.filter(
+              (teacher) => Boolean(teacher.email) || Boolean(teacher.phone),
+            ).length,
+            tone: 'green',
+          },
+        ]}
+      />
 
       <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 bg-[#f8fafc] px-5 py-4 sm:px-6">
@@ -1887,7 +1901,7 @@ function TeacherManagementSection({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-left">
+          <table data-compact-table className="min-w-full divide-y divide-slate-200 text-left">
             <thead className="bg-white text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
               <tr>
                 <th className="px-6 py-4">Teacher</th>
@@ -1997,7 +2011,7 @@ function AdminActivitySection({
 
   return (
     <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 bg-slate-50 px-5 py-4 sm:px-6">
+      <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
         <h2 className="text-lg font-semibold text-slate-900">Admin Activity Log</h2>
         <p className="mt-1 text-sm text-slate-500">
           Immutable history of Admin changes. Entries cannot be edited or deleted.
@@ -2017,7 +2031,7 @@ function AdminActivitySection({
             return (
               <div
                 key={activity.id}
-                className="grid gap-3 px-5 py-4 sm:px-6 lg:grid-cols-[190px_180px_minmax(0,1fr)]"
+                className="grid gap-2 px-4 py-3 lg:grid-cols-[170px_160px_minmax(0,1fr)]"
               >
                 <div>
                   <div className="text-sm font-semibold text-slate-700">
@@ -2100,9 +2114,9 @@ function PerformanceRadarChart({
 }: {
   averages: Record<ReviewScoreField, number>
 }) {
-  const size = 280
+  const size = 240
   const center = size / 2
-  const radius = 88
+  const radius = 74
 
   function getPoint(index: number, value: number) {
     const angle = -Math.PI / 2 + (Math.PI * 2 * index) / performanceMetricDefinitions.length
@@ -2121,7 +2135,7 @@ function PerformanceRadarChart({
     .join(' ')
 
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} className="mx-auto h-[280px] w-[280px]">
+    <svg viewBox={`0 0 ${size} ${size}`} className="mx-auto h-[230px] w-[230px]">
       {[1, 2, 3, 4, 5].map((level) => {
         const levelPoints = performanceMetricDefinitions
           .map((_, index) => {
@@ -2280,8 +2294,8 @@ function StudentDetailModal({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/30 px-4 py-6">
-      <div className="mx-auto flex min-h-full w-full max-w-5xl items-center justify-center">
-        <div className="w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
+      <div className="mx-auto flex min-h-full w-full max-w-[760px] items-center justify-center">
+        <div data-modal-shell className="w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
           <div className="border-b border-slate-200 bg-[#f8fafc] px-6 py-5 sm:px-8">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -2305,7 +2319,7 @@ function StudentDetailModal({
             </div>
           </div>
 
-          <div className="max-h-[82vh] space-y-6 overflow-y-auto px-6 py-6 sm:px-8">
+          <div data-modal-body className="max-h-[82vh] space-y-6 overflow-y-auto px-6 py-6 sm:px-8">
             <section className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -4515,7 +4529,7 @@ function App() {
     return (
       <div
         className={cn(
-          'rounded-xl border px-2.5 py-2 shadow-sm',
+          'rounded-lg border px-2 py-1.5 shadow-sm',
           eventType === 'regular' && !completed && 'border-sky-200 bg-sky-500 text-white',
           eventType === 'replacement' &&
             !completed &&
@@ -4531,7 +4545,7 @@ function App() {
         <div className="flex items-center justify-between gap-2">
           <span
             className={cn(
-              'rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em]',
+              'rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em]',
               eventType === 'regular' && !completed && 'bg-sky-100 text-sky-700',
               eventType === 'replacement' &&
                 !completed &&
@@ -4556,7 +4570,7 @@ function App() {
         </div>
         <div
           className={cn(
-            'mt-2 text-xs font-semibold leading-snug',
+            'mt-1 text-[11px] font-semibold leading-snug',
             completed ? 'text-slate-700' : 'text-white',
           )}
         >
@@ -4564,7 +4578,7 @@ function App() {
         </div>
         <div
           className={cn(
-            'mt-1 text-[11px]',
+            'mt-0.5 text-[10px]',
             completed ? 'text-slate-500' : 'text-white/90',
           )}
         >
@@ -4572,7 +4586,7 @@ function App() {
         </div>
         <div
           className={cn(
-            'mt-0.5 text-[11px]',
+            'mt-0.5 truncate text-[10px]',
             completed ? 'text-slate-400' : 'text-white/80',
           )}
         >
@@ -4583,11 +4597,11 @@ function App() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f3f4f6] pb-20 text-slate-900 lg:pb-0">
+    <main className="compact-admin min-h-screen bg-[#f3f4f6] pb-20 text-slate-900 lg:pb-0">
       <div className="flex min-h-screen">
-        <aside className="hidden w-[248px] shrink-0 bg-[#2f2f2f] text-white lg:flex lg:flex-col">
-          <div className="flex h-16 items-center border-b border-white/10 px-6">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#fc0c97] text-lg font-bold">
+        <aside className="hidden w-[220px] shrink-0 bg-[#2f2f2f] text-white lg:flex lg:flex-col">
+          <div className="flex h-14 items-center border-b border-white/10 px-4">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fc0c97] text-base font-bold">
               M
             </div>
             <div className="ml-3">
@@ -4596,8 +4610,8 @@ function App() {
             </div>
           </div>
 
-          <div className="px-4 py-5">
-            <div className="rounded-2xl bg-[#fc0c97] px-4 py-3">
+          <div className="px-3 py-3">
+            <div className="rounded-xl bg-[#fc0c97] px-3 py-2.5">
               <div className="text-sm font-semibold">
                 {currentSession?.role === 'teacher'
                   ? 'Teacher Workspace'
@@ -4620,7 +4634,7 @@ function App() {
                   type="button"
                   onClick={() => setActiveSection(item.key as AppSection)}
                   className={cn(
-                    'flex w-full items-center rounded-xl px-4 py-3 text-left text-sm font-medium transition',
+                    'flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium transition',
                     active
                       ? 'bg-white text-[#fc0c97]'
                       : 'text-white/70 hover:bg-white/5 hover:text-white',
@@ -4640,7 +4654,7 @@ function App() {
 
         <section className="min-w-0 flex-1">
           <div className="border-b border-slate-200 bg-white">
-            <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8 xl:flex-row xl:items-center xl:justify-between">
+            <div className="mx-auto flex max-w-[1600px] flex-col gap-3 px-4 py-3 lg:px-5 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#fc0c97]">
                   {activeSection === 'calendar'
@@ -4653,7 +4667,7 @@ function App() {
                           ? 'Admin Audit'
                           : 'Student Board'}
                 </div>
-                <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">
+                <h1 className="mt-0.5 text-2xl font-semibold tracking-tight text-slate-900">
                   {activeSection === 'calendar'
                     ? 'Classes, Attendance & Timetable'
                     : activeSection === 'classrooms'
@@ -4667,15 +4681,15 @@ function App() {
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
                   Local Date: {formatDate(todayString)}
                 </div>
-                <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+                <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600">
                   <span className="font-medium">View As</span>
                   <select
                     value={currentSession?.key ?? ''}
                     onChange={(event) => setSelectedSessionKey(event.target.value)}
-                    className="bg-transparent text-sm font-semibold text-slate-900 outline-none"
+                    className="!min-h-0 bg-transparent !p-0 text-xs font-semibold text-slate-900 outline-none"
                   >
                     {sessionOptions.map((session) => (
                       <option key={session.key} value={session.key}>
@@ -4693,7 +4707,7 @@ function App() {
             </div>
           </div>
 
-          <div className="mx-auto flex max-w-[1600px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+          <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-4 lg:px-5">
             {loadError && (
               <section className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
                 {loadError}
@@ -4702,40 +4716,21 @@ function App() {
 
             {activeSection === 'calendar' && (
               <>
-                <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <div className="text-sm font-medium text-slate-500">
-                      Active Schedule Cards
-                    </div>
-                    <div className="mt-3 text-3xl font-semibold text-slate-900">
-                      {activeVisibleSchedules.length}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <div className="text-sm font-medium text-slate-500">
-                      Regular Classes
-                    </div>
-                    <div className="mt-3 text-3xl font-semibold text-sky-600">
-                      {regularCount}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <div className="text-sm font-medium text-slate-500">
-                      Replacement Classes
-                    </div>
-                    <div className="mt-3 text-3xl font-semibold text-orange-500">
-                      {replacementCount}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <div className="text-sm font-medium text-slate-500">
-                      Visible Teachers
-                    </div>
-                    <div className="mt-3 text-3xl font-semibold text-[#fc0c97]">
-                      {visibleTeacherCount}
-                    </div>
-                  </div>
-                </section>
+                <SummaryBar
+                  metrics={[
+                    {
+                      label: 'Active Schedule Cards',
+                      value: activeVisibleSchedules.length,
+                    },
+                    { label: 'Regular Classes', value: regularCount, tone: 'blue' },
+                    {
+                      label: 'Replacement Classes',
+                      value: replacementCount,
+                      tone: 'orange',
+                    },
+                    { label: 'Visible Teachers', value: visibleTeacherCount, tone: 'brand' },
+                  ]}
+                />
 
                 <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
                   <div className="border-b border-slate-200 bg-[#f8fafc] px-5 py-4 sm:px-6">
@@ -4773,7 +4768,7 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="p-4 sm:p-6">
+                  <div className="p-3 sm:p-4">
                     <FullCalendar
                       key={`calendar-${isMobile ? 'mobile' : 'desktop'}-${currentSession?.key ?? 'anon'}`}
                       plugins={[
@@ -4919,7 +4914,7 @@ function App() {
       {editingStudent && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/30 px-4 py-6">
           <div className="mx-auto flex min-h-full w-full max-w-2xl items-center justify-center">
-            <div className="w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
+            <div data-modal-shell className="w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
               <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-6 py-5">
                 <div>
                   <div className="text-sm font-medium text-[#fc0c97]">Student profile</div>
@@ -4940,6 +4935,7 @@ function App() {
               </div>
 
               <form
+                data-modal-body
                 onSubmit={handleStudentDetailsSubmit}
                 className="max-h-[75vh] space-y-5 overflow-y-auto px-6 py-6"
               >
@@ -5025,7 +5021,7 @@ function App() {
       {isCreateStudentOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/30 px-4 py-6">
           <div className="mx-auto flex min-h-full w-full max-w-2xl items-center justify-center">
-            <div className="w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
+            <div data-modal-shell className="w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
             <div className="border-b border-slate-200 bg-[#f8fafc] px-6 py-5 sm:px-8">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -5050,6 +5046,7 @@ function App() {
             </div>
 
             <form
+              data-modal-body
               onSubmit={handleCreateStudentSubmit}
               className="max-h-[82vh] space-y-6 overflow-y-auto px-6 py-6 sm:px-8"
             >
@@ -5249,7 +5246,7 @@ function App() {
       {(isCreatingClassroom || editingClassroom) && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/30 px-4 py-6">
           <div className="mx-auto flex min-h-full w-full max-w-2xl items-center justify-center">
-            <div className="w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
+            <div data-modal-shell className="w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
               <div className="border-b border-slate-200 bg-[#f8fafc] px-6 py-5 sm:px-8">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -5277,6 +5274,7 @@ function App() {
               </div>
 
               <form
+                data-modal-body
                 onSubmit={handleClassroomSubmit}
                 className="max-h-[82vh] space-y-6 overflow-y-auto px-6 py-6 sm:px-8"
               >
@@ -5416,7 +5414,7 @@ function App() {
       {isCreateTeacherOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/30 px-4 py-6">
           <div className="mx-auto flex min-h-full w-full max-w-2xl items-center justify-center">
-            <div className="w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
+            <div data-modal-shell className="w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
               <div className="border-b border-slate-200 bg-[#f8fafc] px-6 py-5 sm:px-8">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -5443,6 +5441,7 @@ function App() {
               </div>
 
               <form
+                data-modal-body
                 onSubmit={handleCreateTeacherSubmit}
                 className="max-h-[82vh] space-y-6 overflow-y-auto px-6 py-6 sm:px-8"
               >
@@ -5572,7 +5571,7 @@ function App() {
       {selectedStudent && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/30 px-4 py-6">
           <div className="mx-auto flex min-h-full w-full max-w-2xl items-center justify-center">
-            <div className="w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
+            <div data-modal-shell className="w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
             <div className="border-b border-slate-200 bg-[#f8fafc] px-6 py-5 sm:px-8">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -5597,6 +5596,7 @@ function App() {
             </div>
 
             <form
+              data-modal-body
               onSubmit={handleStudentRenewalSubmit}
               className="max-h-[82vh] space-y-6 overflow-y-auto px-6 py-6 sm:px-8"
             >
@@ -5730,7 +5730,7 @@ function App() {
 
       {(isCreatingSchedule || editingSchedule) && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/30 px-4 py-6">
-          <div className="mx-auto w-full max-w-3xl overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
+          <div data-modal-shell className="mx-auto w-full max-w-[760px] overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
             <div className="border-b border-slate-200 bg-[#f8fafc] px-6 py-5 sm:px-8">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -5765,6 +5765,7 @@ function App() {
             </div>
 
             <form
+              data-modal-body
               onSubmit={handleScheduleSubmit}
               className="max-h-[82vh] space-y-6 overflow-y-auto px-6 py-6 sm:px-8"
             >
@@ -6177,8 +6178,8 @@ function App() {
 
       {attendanceModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/30 px-4 py-6">
-          <div className="mx-auto flex min-h-full w-full max-w-3xl items-center justify-center">
-            <div className="w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
+          <div className="mx-auto flex min-h-full w-full max-w-[760px] items-center justify-center">
+            <div data-modal-shell className="w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.15)]">
             <div className="border-b border-slate-200 bg-[#f8fafc] px-6 py-5 sm:px-8">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -6208,6 +6209,7 @@ function App() {
             </div>
 
             <form
+              data-modal-body
               onSubmit={handleAttendanceSubmit}
               className="max-h-[82vh] space-y-6 overflow-y-auto px-6 py-6 sm:px-8"
             >
