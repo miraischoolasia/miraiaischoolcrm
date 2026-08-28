@@ -181,6 +181,7 @@ export type Database = {
           mirai_club_expiry_date: string
           notes: string | null
           is_active: boolean
+          student_type: 'trial' | 'regular'
           created_at: string
           updated_at: string
         }
@@ -195,6 +196,7 @@ export type Database = {
           mirai_club_expiry_date: string
           notes?: string | null
           is_active?: boolean
+          student_type?: 'trial' | 'regular'
           created_at?: string
           updated_at?: string
         }
@@ -209,6 +211,7 @@ export type Database = {
           mirai_club_expiry_date?: string
           notes?: string | null
           is_active?: boolean
+          student_type?: 'trial' | 'regular'
           created_at?: string
           updated_at?: string
         }
@@ -634,6 +637,7 @@ export type Database = {
           p_mirai_club_expiry_date: string
           p_notes: string | null
           p_actor_teacher_id?: number | null
+          p_student_type?: 'trial' | 'regular'
         }
         Returns: {
           student_id: number
@@ -670,6 +674,7 @@ export type Database = {
           p_classroom_id: number | null
           p_notes: string | null
           p_actor_teacher_id?: number | null
+          p_student_type?: 'trial' | 'regular'
         }
         Returns: undefined
       }
