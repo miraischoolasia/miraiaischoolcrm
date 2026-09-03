@@ -3,9 +3,12 @@ import { cn } from '../../lib/cn'
 import { formatDate } from '../../domain/studentStatus'
 import { MAX_LEAD_FOLLOW_UPS, leadSourceOptions, leadStatusOptions } from '../../lib/constants'
 import { SummaryBar } from '../SummaryBar'
+import { LeadTrendChart } from '../LeadTrendChart'
 import mascotGordo from '../../assets/mascot-gordo.png'
 import {
   ArrowRight,
+  ChartLineUp,
+  ListChecks,
   MagnifyingGlass,
   PencilSimple,
   Phone,
@@ -20,6 +23,15 @@ const stageToneClass: Record<LeadStatus, string> = {
   trial_completed: 'bg-violet-50 text-violet-700',
   converted: 'bg-emerald-50 text-emerald-700',
   lost: 'bg-red-50 text-red-700',
+}
+
+const stageChartColor: Record<LeadStatus, string> = {
+  new: '#94a3b8',
+  contacted: '#0ea5e9',
+  trial_scheduled: '#f59e0b',
+  trial_completed: '#8b5cf6',
+  converted: '#10b981',
+  lost: '#ef4444',
 }
 
 const sourceLabelMap = new Map(leadSourceOptions.map((option) => [option.key, option.label]))
@@ -52,6 +64,7 @@ export function LeadsSection({
   onOpenCreateLead,
   onOpenFollowUp,
 }: LeadsSectionProps) {
+  const [view, setView] = useState<'pipeline' | 'dashboard'>('pipeline')
   const [searchTerm, setSearchTerm] = useState('')
   const [stageFilter, setStageFilter] = useState<LeadStatus | 'all'>('all')
 
@@ -69,6 +82,28 @@ export function LeadsSection({
   const openLeads = leads.filter(
     (lead) => lead.status !== 'converted' && lead.status !== 'lost',
   )
+
+  const convertedLeads = leads.filter((lead) => lead.status === 'converted')
+  const conversionRate =
+    leads.length > 0 ? Math.round((convertedLeads.length / leads.length) * 100) : 0
+  const avgFollowUpsToConvert =
+    convertedLeads.length > 0
+      ? (
+          convertedLeads.reduce((sum, lead) => sum + lead.followUps.length, 0) /
+          convertedLeads.length
+        ).toFixed(1)
+      : '-'
+
+  const stageChartData = leadStatusOptions.map((option) => ({
+    label: option.label,
+    value: leads.filter((lead) => lead.status === option.key).length,
+    color: stageChartColor[option.key],
+  }))
+
+  const sourceChartData = leadSourceOptions.map((option) => ({
+    label: option.label,
+    value: leads.filter((lead) => lead.source === option.key).length,
+  }))
 
   return (
     <div className="space-y-4">
@@ -98,50 +133,130 @@ export function LeadsSection({
                 Track prospective students from first inquiry through to enrollment.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={onOpenCreateLead}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
-            >
-              <UserPlus size={16} weight="bold" aria-hidden="true" />
-              Add Lead
-            </button>
-          </div>
-
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative">
-              <MagnifyingGlass
-                size={16}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                aria-hidden="true"
-              />
-              <input
-                type="search"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search leads by name, phone, or child's name..."
-                className="w-full max-w-xs rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#fc0c97] focus:outline-none"
-              />
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                <button
+                  type="button"
+                  onClick={() => setView('pipeline')}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition',
+                    view === 'pipeline'
+                      ? 'bg-white text-[#be185d] shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700',
+                  )}
+                >
+                  <ListChecks size={16} aria-hidden="true" />
+                  Pipeline
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setView('dashboard')}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition',
+                    view === 'dashboard'
+                      ? 'bg-white text-[#be185d] shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700',
+                  )}
+                >
+                  <ChartLineUp size={16} aria-hidden="true" />
+                  Dashboard
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={onOpenCreateLead}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
+              >
+                <UserPlus size={16} weight="bold" aria-hidden="true" />
+                Add Lead
+              </button>
             </div>
-
-            <select
-              value={stageFilter}
-              onChange={(event) =>
-                setStageFilter(event.target.value as LeadStatus | 'all')
-              }
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] sm:w-52"
-            >
-              <option value="all">All Stages</option>
-              {leadStatusOptions.map((option) => (
-                <option key={option.key} value={option.key}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
           </div>
+
+          {view === 'pipeline' && (
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="relative">
+                <MagnifyingGlass
+                  size={16}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  aria-hidden="true"
+                />
+                <input
+                  type="search"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Search leads by name, phone, or child's name..."
+                  className="w-full max-w-xs rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#fc0c97] focus:outline-none"
+                />
+              </div>
+
+              <select
+                value={stageFilter}
+                onChange={(event) =>
+                  setStageFilter(event.target.value as LeadStatus | 'all')
+                }
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] sm:w-52"
+              >
+                <option value="all">All Stages</option>
+                {leadStatusOptions.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
-        {!isLoading && filteredLeads.length === 0 && (
+        {view === 'dashboard' && (
+          <div className="space-y-6 p-5 sm:p-6">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <div className="text-xs font-medium text-slate-500">Total Leads</div>
+                <div className="mt-1 text-2xl font-semibold text-slate-900">
+                  {leads.length}
+                </div>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <div className="text-xs font-medium text-slate-500">In Pipeline</div>
+                <div className="mt-1 text-2xl font-semibold text-slate-900">
+                  {openLeads.length}
+                </div>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <div className="text-xs font-medium text-slate-500">Conversion Rate</div>
+                <div className="mt-1 text-2xl font-semibold text-emerald-600">
+                  {conversionRate}%
+                </div>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <div className="text-xs font-medium text-slate-500">
+                  Avg Follow-ups to Convert
+                </div>
+                <div className="mt-1 text-2xl font-semibold text-slate-900">
+                  {avgFollowUpsToConvert}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Leads by Stage
+                </div>
+                <LeadTrendChart data={stageChartData} />
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Leads by Source
+                </div>
+                <LeadTrendChart data={sourceChartData} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {view === 'pipeline' && !isLoading && filteredLeads.length === 0 && (
           <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
             <img src={mascotGordo} alt="" aria-hidden="true" className="h-24 w-auto" />
             <p className="text-sm text-slate-500">
@@ -152,7 +267,7 @@ export function LeadsSection({
           </div>
         )}
 
-        {filteredLeads.length > 0 && (
+        {view === 'pipeline' && filteredLeads.length > 0 && (
           <>
             <ul className="divide-y divide-slate-200 md:hidden">
               {filteredLeads.map((lead) => (
@@ -162,7 +277,7 @@ export function LeadsSection({
                       <div className="font-semibold text-slate-900">
                         {lead.fullName || 'Unnamed Lead'}
                       </div>
-                      <div className="text-xs text-slate-500">
+                      <div className="mt-1 text-xs text-slate-500">
                         {sourceLabelMap.get(lead.source) ?? lead.source} · Added{' '}
                         {formatDate(lead.addedDate)}
                       </div>
@@ -281,7 +396,7 @@ export function LeadsSection({
                           }
                           disabled={lead.status === 'converted'}
                           className={cn(
-                            'rounded-full border-0 px-2.5 py-1 text-xs font-semibold outline-none disabled:cursor-not-allowed',
+                            'rounded-full border-0 px-2.5 py-0.5 text-xs font-semibold outline-none disabled:cursor-not-allowed',
                             stageToneClass[lead.status],
                           )}
                         >
