@@ -411,8 +411,8 @@ export function LeadsSection({
               <table data-compact-table className="min-w-full divide-y divide-slate-200 text-left">
                 <thead className="bg-white text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                   <tr>
-                    <th className="px-6 py-4">Contact</th>
                     <th className="px-6 py-4">Date</th>
+                    <th className="px-6 py-4">Contact</th>
                     <th className="px-6 py-4">Name</th>
                     <th className="px-6 py-4">Children</th>
                     <th className="px-6 py-4">Source</th>
@@ -425,10 +425,10 @@ export function LeadsSection({
                   {filteredLeads.map((lead) => (
                     <tr key={lead.id} className="align-top">
                       <td className="px-6 py-5 text-sm text-slate-600">
-                        {lead.phone || '-'}
+                        {formatDate(lead.addedDate)}
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
-                        {formatDate(lead.addedDate)}
+                        {lead.phone || '-'}
                       </td>
                       <td className="px-6 py-5">
                         <div className="font-semibold text-slate-900">
