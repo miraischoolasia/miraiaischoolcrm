@@ -235,9 +235,8 @@ export type Database = {
       leads: {
         Row: {
           id: number
-          full_name: string
+          full_name: string | null
           phone: string | null
-          email: string | null
           source: 'walk_in' | 'referral' | 'social_media' | 'advertisement' | 'other'
           status:
             | 'new'
@@ -246,12 +245,7 @@ export type Database = {
             | 'trial_completed'
             | 'converted'
             | 'lost'
-          interested_age_group:
-            | '6-8 Years Old'
-            | '9-11 Years Old'
-            | '12-14 Years Old'
-            | '15-17 Years Old'
-            | null
+          children: { name: string; age: number }[]
           notes: string | null
           follow_up_date: string | null
           converted_student_id: number | null
@@ -260,9 +254,8 @@ export type Database = {
         }
         Insert: {
           id?: number
-          full_name: string
+          full_name?: string | null
           phone?: string | null
-          email?: string | null
           source?: 'walk_in' | 'referral' | 'social_media' | 'advertisement' | 'other'
           status?:
             | 'new'
@@ -271,12 +264,7 @@ export type Database = {
             | 'trial_completed'
             | 'converted'
             | 'lost'
-          interested_age_group?:
-            | '6-8 Years Old'
-            | '9-11 Years Old'
-            | '12-14 Years Old'
-            | '15-17 Years Old'
-            | null
+          children?: { name: string; age: number }[]
           notes?: string | null
           follow_up_date?: string | null
           converted_student_id?: number | null
@@ -285,9 +273,8 @@ export type Database = {
         }
         Update: {
           id?: number
-          full_name?: string
+          full_name?: string | null
           phone?: string | null
-          email?: string | null
           source?: 'walk_in' | 'referral' | 'social_media' | 'advertisement' | 'other'
           status?:
             | 'new'
@@ -296,12 +283,7 @@ export type Database = {
             | 'trial_completed'
             | 'converted'
             | 'lost'
-          interested_age_group?:
-            | '6-8 Years Old'
-            | '9-11 Years Old'
-            | '12-14 Years Old'
-            | '15-17 Years Old'
-            | null
+          children?: { name: string; age: number }[]
           notes?: string | null
           follow_up_date?: string | null
           converted_student_id?: number | null

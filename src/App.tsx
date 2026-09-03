@@ -198,10 +198,9 @@ function App() {
   const [leadFormState, setLeadFormState] = useState<LeadFormState>({
     fullName: '',
     phone: '',
-    email: '',
     source: 'other',
     status: 'new',
-    interestedAgeGroup: '',
+    children: [],
     notes: '',
     followUpDate: '',
   })
@@ -897,10 +896,9 @@ function App() {
     setLeadFormState({
       fullName: '',
       phone: '',
-      email: '',
       source: 'other',
       status: 'new',
-      interestedAgeGroup: '',
+      children: [],
       notes: '',
       followUpDate: '',
     })
@@ -916,12 +914,14 @@ function App() {
     setEditingLeadId(leadId)
     setIsCreateLeadOpen(true)
     setLeadFormState({
-      fullName: lead.fullName,
+      fullName: lead.fullName ?? '',
       phone: lead.phone ?? '',
-      email: lead.email ?? '',
       source: lead.source,
       status: lead.status,
-      interestedAgeGroup: lead.interestedAgeGroup ?? '',
+      children: lead.children.map((child) => ({
+        name: child.name,
+        age: String(child.age),
+      })),
       notes: lead.notes ?? '',
       followUpDate: lead.followUpDate ?? '',
     })
@@ -1342,23 +1342,22 @@ function App() {
     }
 
     const fullName = leadFormState.fullName.trim()
-
-    if (!fullName) {
-      setLeadSaveError('Please enter the lead full name.')
-      return
-    }
+    const children = leadFormState.children
+      .filter((child) => child.age !== '')
+      .map((child) => ({ name: child.name.trim(), age: Number(child.age) }))
+    const activityLabel =
+      fullName || children[0]?.name || leadFormState.phone.trim() || 'Unnamed Lead'
 
     try {
       setIsSavingLead(true)
       setLeadSaveError(null)
 
       const payload = {
-        full_name: fullName,
+        full_name: fullName || null,
         phone: leadFormState.phone.trim() || null,
-        email: leadFormState.email.trim() || null,
         source: leadFormState.source,
         status: leadFormState.status,
-        interested_age_group: leadFormState.interestedAgeGroup || null,
+        children,
         notes: leadFormState.notes.trim() || null,
         follow_up_date: leadFormState.followUpDate || null,
       }
@@ -1373,7 +1372,7 @@ function App() {
           throw error
         }
 
-        await recordAdminActivity('lead_updated', 'lead', editingLead.id, fullName, {
+        await recordAdminActivity('lead_updated', 'lead', editingLead.id, activityLabel, {
           status: leadFormState.status,
         })
       } else {
@@ -1387,7 +1386,7 @@ function App() {
           throw error
         }
 
-        await recordAdminActivity('lead_created', 'lead', data?.id ?? null, fullName, {
+        await recordAdminActivity('lead_created', 'lead', data?.id ?? null, activityLabel, {
           source: leadFormState.source,
         })
       }
@@ -1426,9 +1425,13 @@ function App() {
       return
     }
 
-    await recordAdminActivity('lead_stage_changed', 'lead', leadId, lead.fullName, {
-      status,
-    })
+    await recordAdminActivity(
+      'lead_stage_changed',
+      'lead',
+      leadId,
+      lead.fullName || lead.children[0]?.name || lead.phone || 'Unnamed Lead',
+      { status },
+    )
     await refreshAdminActivities()
   }
 
@@ -1442,7 +1445,7 @@ function App() {
     setCreateStudentSaveError(null)
     setIsCreateStudentOpen(true)
     setCreateStudentFormState({
-      fullName: lead.fullName,
+      fullName: lead.fullName ?? lead.children[0]?.name ?? '',
       classroomId: '',
       initialHours: '0',
       lessonExpiryDate: todayString,

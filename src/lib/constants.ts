@@ -92,3 +92,7 @@ export const leadSourceOptions: Array<{ key: LeadSource; label: string }> = [
   { key: 'advertisement', label: 'Advertisement' },
   { key: 'other', label: 'Other' },
 ]
+
+export const leadChildAgeOptions = Array.from({ length: 15 }, (_, index) => index + 4)
+
+export const MAX_LEAD_CHILDREN = 3

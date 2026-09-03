@@ -84,14 +84,18 @@ export type Teacher = {
   isActive: boolean
 }
 
+export type LeadChild = {
+  name: string
+  age: number
+}
+
 export type Lead = {
   id: number
-  fullName: string
+  fullName: string | null
   phone: string | null
-  email: string | null
   source: LeadSource
   status: LeadStatus
-  interestedAgeGroup: AgeGroup | null
+  children: LeadChild[]
   notes: string | null
   followUpDate: string | null
   convertedStudentId: number | null
@@ -200,13 +204,17 @@ export type CreateStudentFormState = {
   studentType: StudentType
 }
 
+export type LeadChildFormState = {
+  name: string
+  age: string
+}
+
 export type LeadFormState = {
   fullName: string
   phone: string
-  email: string
   source: LeadSource
   status: LeadStatus
-  interestedAgeGroup: AgeGroup | ''
+  children: LeadChildFormState[]
   notes: string
   followUpDate: string
 }
@@ -304,10 +312,9 @@ export type LeadRow = Pick<
   | 'id'
   | 'full_name'
   | 'phone'
-  | 'email'
   | 'source'
   | 'status'
-  | 'interested_age_group'
+  | 'children'
   | 'notes'
   | 'follow_up_date'
   | 'converted_student_id'

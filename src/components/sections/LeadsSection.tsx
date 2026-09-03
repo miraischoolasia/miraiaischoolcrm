@@ -5,7 +5,7 @@ import { leadSourceOptions, leadStatusOptions } from '../../lib/constants'
 import { SummaryBar } from '../SummaryBar'
 import mascotGordo from '../../assets/mascot-gordo.png'
 import { ArrowRight, MagnifyingGlass, PencilSimple, UserPlus } from '@phosphor-icons/react'
-import type { Lead, LeadStatus } from '../../types/domain'
+import type { Lead, LeadChild, LeadStatus } from '../../types/domain'
 
 const stageToneClass: Record<LeadStatus, string> = {
   new: 'bg-slate-100 text-slate-700',
@@ -17,6 +17,23 @@ const stageToneClass: Record<LeadStatus, string> = {
 }
 
 const sourceLabelMap = new Map(leadSourceOptions.map((option) => [option.key, option.label]))
+
+function formatChildren(children: LeadChild[]) {
+  if (children.length === 0) {
+    return '-'
+  }
+  return children
+    .map((child) => (child.name ? `${child.name} (${child.age})` : `${child.age} yrs`))
+    .join(', ')
+}
+
+function formatAddedDate(createdAt: string) {
+  return new Date(createdAt).toLocaleDateString('en-MY', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
 
 type LeadsSectionProps = {
   isLoading: boolean
@@ -41,9 +58,9 @@ export function LeadsSection({
   const normalizedSearch = searchTerm.trim().toLowerCase()
   const filteredLeads = leads.filter((lead) => {
     const matchesSearch = normalizedSearch
-      ? lead.fullName.toLowerCase().includes(normalizedSearch) ||
+      ? (lead.fullName ?? '').toLowerCase().includes(normalizedSearch) ||
         (lead.phone ?? '').toLowerCase().includes(normalizedSearch) ||
-        (lead.email ?? '').toLowerCase().includes(normalizedSearch)
+        lead.children.some((child) => child.name.toLowerCase().includes(normalizedSearch))
       : true
     const matchesStage = stageFilter === 'all' ? true : lead.status === stageFilter
     return matchesSearch && matchesStage
@@ -102,7 +119,7 @@ export function LeadsSection({
                 type="search"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search leads by name, phone, or email..."
+                placeholder="Search leads by name, phone, or child's name..."
                 className="w-full max-w-xs rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#fc0c97] focus:outline-none"
               />
             </div>
@@ -157,10 +174,12 @@ export function LeadsSection({
                 <li key={lead.id} className="space-y-3 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="font-semibold text-slate-900">{lead.fullName}</div>
+                      <div className="font-semibold text-slate-900">
+                        {lead.fullName || 'Unnamed Lead'}
+                      </div>
                       <div className="text-xs text-slate-500">
-                        {sourceLabelMap.get(lead.source) ?? lead.source}
-                        {lead.interestedAgeGroup ? ` · ${lead.interestedAgeGroup}` : ''}
+                        {sourceLabelMap.get(lead.source) ?? lead.source} · Added{' '}
+                        {formatAddedDate(lead.createdAt)}
                       </div>
                     </div>
                     <span
@@ -179,8 +198,10 @@ export function LeadsSection({
                       <dd className="text-slate-700">{lead.phone || '-'}</dd>
                     </div>
                     <div className="flex justify-between gap-3">
-                      <dt className="text-xs font-medium text-slate-500">Email</dt>
-                      <dd className="text-slate-700">{lead.email || '-'}</dd>
+                      <dt className="text-xs font-medium text-slate-500">Children</dt>
+                      <dd className="text-right text-slate-700">
+                        {formatChildren(lead.children)}
+                      </dd>
                     </div>
                     <div className="flex justify-between gap-3">
                       <dt className="text-xs font-medium text-slate-500">Follow-up</dt>
@@ -234,8 +255,10 @@ export function LeadsSection({
                   <tr>
                     <th className="px-6 py-4">Lead</th>
                     <th className="px-6 py-4">Contact</th>
+                    <th className="px-6 py-4">Children</th>
                     <th className="px-6 py-4">Source</th>
                     <th className="px-6 py-4">Stage</th>
+                    <th className="px-6 py-4">Added</th>
                     <th className="px-6 py-4">Follow-up</th>
                     <th className="px-6 py-4 text-right">Action</th>
                   </tr>
@@ -244,16 +267,15 @@ export function LeadsSection({
                   {filteredLeads.map((lead) => (
                     <tr key={lead.id} className="align-top">
                       <td className="px-6 py-5">
-                        <div className="font-semibold text-slate-900">{lead.fullName}</div>
-                        {lead.interestedAgeGroup && (
-                          <div className="mt-1 text-sm text-slate-500">
-                            {lead.interestedAgeGroup}
-                          </div>
-                        )}
+                        <div className="font-semibold text-slate-900">
+                          {lead.fullName || 'Unnamed Lead'}
+                        </div>
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
-                        <div>{lead.phone || '-'}</div>
-                        <div className="text-slate-400">{lead.email || '-'}</div>
+                        {lead.phone || '-'}
+                      </td>
+                      <td className="px-6 py-5 text-sm text-slate-600">
+                        {formatChildren(lead.children)}
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
                         {sourceLabelMap.get(lead.source) ?? lead.source}
@@ -276,6 +298,9 @@ export function LeadsSection({
                             </option>
                           ))}
                         </select>
+                      </td>
+                      <td className="px-6 py-5 text-sm text-slate-600">
+                        {formatAddedDate(lead.createdAt)}
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
                         {lead.followUpDate ? formatDate(lead.followUpDate) : '-'}
