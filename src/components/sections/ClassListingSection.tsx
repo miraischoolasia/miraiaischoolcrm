@@ -1,6 +1,6 @@
 import { cn } from '../../lib/cn'
 import { formatDate, getStudentStatus } from '../../domain/studentStatus'
-import { ageGroupOptions, programLevelOptions } from '../../lib/constants'
+import { ageGroupOptions } from '../../lib/constants'
 import { weekdayLabels } from '../../lib/schedule'
 import { StatusChip } from '../StatusChip'
 import mascotGordo from '../../assets/mascot-gordo.png'
@@ -15,7 +15,6 @@ import type {
   AgeGroup,
   ClassStatusSummary,
   Classroom,
-  ProgramLevel,
   Schedule,
   Student,
   Teacher,
@@ -35,11 +34,9 @@ type ClassListingSectionProps = {
   onOpenStudentDetail: (studentId: number) => void
   onRestoreClassroom: (classroomId: number) => void
   onSelectAgeGroup: (ageGroup: AgeGroup) => void
-  onSelectProgramLevel: (programLevel: ProgramLevel) => void
   schedules: Schedule[]
   selectedAgeGroup: AgeGroup
   selectedClassroomId: number | null
-  selectedProgramLevel: ProgramLevel
   setSelectedClassroomId: (classroomId: number) => void
   teacherMap: Map<number, Teacher>
   todayString: string
@@ -59,11 +56,9 @@ export function ClassListingSection({
   onOpenStudentDetail,
   onRestoreClassroom,
   onSelectAgeGroup,
-  onSelectProgramLevel,
   schedules,
   selectedAgeGroup,
   selectedClassroomId,
-  selectedProgramLevel,
   setSelectedClassroomId,
   teacherMap,
   todayString,
@@ -75,9 +70,7 @@ export function ClassListingSection({
     (classroom) => classroom.status === 'archived',
   )
   const filteredClassrooms = activeClassrooms.filter(
-    (classroom) =>
-      classroom.ageGroup === selectedAgeGroup &&
-      classroom.programLevel === selectedProgramLevel,
+    (classroom) => classroom.ageGroup === selectedAgeGroup,
   )
   const selectedClassroom =
     filteredClassrooms.find((classroom) => classroom.id === selectedClassroomId) ??
@@ -110,8 +103,8 @@ export function ClassListingSection({
               <h2 className="text-lg font-semibold text-slate-900">My Classroom</h2>
               <p className="mt-1 text-sm text-slate-500">
                 {isAdminView
-                  ? 'Browse classrooms by age group and level, then open each class roster and timetable.'
-                  : 'Browse assigned classrooms by age group and level, then open the class roster quickly.'}
+                  ? 'Browse classrooms by age group, then open each class roster and timetable.'
+                  : 'Browse assigned classrooms by age group, then open the class roster quickly.'}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -172,41 +165,6 @@ export function ClassListingSection({
                   })}
                 </div>
               </div>
-
-              <div className="space-y-2">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Level
-                </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-2">
-                  {programLevelOptions.map((programLevel) => {
-                    const selected = selectedProgramLevel === programLevel
-                    const count = activeClassrooms.filter(
-                      (classroom) =>
-                        classroom.ageGroup === selectedAgeGroup &&
-                        classroom.programLevel === programLevel,
-                    ).length
-
-                    return (
-                      <button
-                        key={programLevel}
-                        type="button"
-                        onClick={() => onSelectProgramLevel(programLevel)}
-                        className={cn(
-                          'inline-flex items-center gap-1.5 border-b-2 pb-1.5 text-left text-xs font-semibold transition',
-                          selected
-                            ? 'border-[#fc0c97] text-[#be185d]'
-                            : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700',
-                        )}
-                      >
-                        <span>{programLevel}</span>
-                        <span className="text-xs font-medium text-slate-400">
-                          {count}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
             </div>
 
             <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
@@ -217,7 +175,7 @@ export function ClassListingSection({
                       Classroom List
                     </div>
                     <h3 className="mt-1 text-lg font-semibold text-slate-900">
-                      {selectedAgeGroup} / {selectedProgramLevel}
+                      {selectedAgeGroup}
                     </h3>
                   </div>
                   <div className="text-sm text-slate-500">
@@ -253,8 +211,13 @@ export function ClassListingSection({
                             <span className="absolute left-0 top-3 h-5 w-1 rounded-full bg-[#fc0c97]" />
                           )}
                           <div className={cn('space-y-1', selected ? 'pl-4' : '')}>
-                            <div className="text-base font-semibold">
-                              {classroom.name}
+                            <div className="flex items-center gap-2">
+                              <div className="text-base font-semibold">
+                                {classroom.name}
+                              </div>
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                                {classroom.programLevel}
+                              </span>
                             </div>
                             <div className="text-sm text-slate-500">
                               {teacherMap.get(classroom.teacherId ?? -1)?.fullName ??

@@ -34,7 +34,6 @@ import type {
   FilterKey,
   LessonLogStudentReview,
   LessonLogSummary,
-  ProgramLevel,
   RenewalFormState,
   ReviewRemarkField,
   ReviewScoreField,
@@ -127,9 +126,6 @@ function App() {
   const [activeSection, setActiveSection] = useState<AppSection>('calendar')
   const [selectedSessionKey, setSelectedSessionKey] = useState<string>('')
   const [selectedAgeGroup, setSelectedAgeGroup] = useState<AgeGroup>(ageGroupOptions[0])
-  const [selectedProgramLevel, setSelectedProgramLevel] = useState<ProgramLevel>(
-    programLevelOptions[0],
-  )
 
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null)
   const [selectedStudentDetailId, setSelectedStudentDetailId] = useState<number | null>(
@@ -388,11 +384,11 @@ function App() {
     setClassroomFormState({
       name: editingClassroom?.name ?? '',
       ageGroup: editingClassroom?.ageGroup ?? selectedAgeGroup,
-      programLevel: editingClassroom?.programLevel ?? selectedProgramLevel,
+      programLevel: editingClassroom?.programLevel ?? programLevelOptions[0],
       teacherId: editingClassroom?.teacherId ? String(editingClassroom.teacherId) : '',
       notes: editingClassroom?.notes ?? '',
     })
-  }, [editingClassroom, isCreatingClassroom, selectedAgeGroup, selectedProgramLevel])
+  }, [editingClassroom, isCreatingClassroom, selectedAgeGroup])
 
   useEffect(() => {
     if (!isCreatingSchedule && !editingSchedule) {
@@ -575,23 +571,18 @@ function App() {
     hasAutoSelectedClassroomFilterRef.current = true
 
     const currentComboHasClassrooms = activeVisibleClassrooms.some(
-      (classroom) =>
-        classroom.ageGroup === selectedAgeGroup &&
-        classroom.programLevel === selectedProgramLevel,
+      (classroom) => classroom.ageGroup === selectedAgeGroup,
     )
 
     if (!currentComboHasClassrooms) {
       const firstClassroom = activeVisibleClassrooms[0]
       setSelectedAgeGroup(firstClassroom.ageGroup)
-      setSelectedProgramLevel(firstClassroom.programLevel)
     }
-  }, [activeVisibleClassrooms, selectedAgeGroup, selectedProgramLevel])
+  }, [activeVisibleClassrooms, selectedAgeGroup])
 
   useEffect(() => {
     const filtered = activeVisibleClassrooms.filter(
-      (classroom) =>
-        classroom.ageGroup === selectedAgeGroup &&
-        classroom.programLevel === selectedProgramLevel,
+      (classroom) => classroom.ageGroup === selectedAgeGroup,
     )
 
     if (!selectedClassroomId && filtered[0]) {
@@ -605,12 +596,7 @@ function App() {
     ) {
       setSelectedClassroomId(filtered[0]?.id ?? null)
     }
-  }, [
-    activeVisibleClassrooms,
-    selectedAgeGroup,
-    selectedClassroomId,
-    selectedProgramLevel,
-  ])
+  }, [activeVisibleClassrooms, selectedAgeGroup, selectedClassroomId])
 
   const navItems =
     currentSession?.role === 'teacher'
@@ -872,7 +858,7 @@ function App() {
     setClassroomFormState({
       name: '',
       ageGroup: selectedAgeGroup,
-      programLevel: selectedProgramLevel,
+      programLevel: programLevelOptions[0],
       teacherId: '',
       notes: '',
     })
@@ -2465,11 +2451,9 @@ function App() {
                 onOpenStudentDetail={openStudentDetail}
                 onRestoreClassroom={handleRestoreClassroom}
                 onSelectAgeGroup={setSelectedAgeGroup}
-                onSelectProgramLevel={setSelectedProgramLevel}
                 schedules={activeClassroomSchedules}
                 selectedAgeGroup={selectedAgeGroup}
                 selectedClassroomId={selectedClassroomId}
-                selectedProgramLevel={selectedProgramLevel}
                 setSelectedClassroomId={setSelectedClassroomId}
                 teacherMap={teacherMap}
                 todayString={todayString}
