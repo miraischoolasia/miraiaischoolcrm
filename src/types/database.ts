@@ -247,7 +247,7 @@ export type Database = {
             | 'lost'
           children: { name: string; age: number }[]
           notes: string | null
-          follow_up_date: string | null
+          follow_ups: { date: string; note: string }[]
           converted_student_id: number | null
           created_at: string
           updated_at: string
@@ -266,7 +266,7 @@ export type Database = {
             | 'lost'
           children?: { name: string; age: number }[]
           notes?: string | null
-          follow_up_date?: string | null
+          follow_ups?: { date: string; note: string }[]
           converted_student_id?: number | null
           created_at?: string
           updated_at?: string
@@ -285,7 +285,7 @@ export type Database = {
             | 'lost'
           children?: { name: string; age: number }[]
           notes?: string | null
-          follow_up_date?: string | null
+          follow_ups?: { date: string; note: string }[]
           converted_student_id?: number | null
           created_at?: string
           updated_at?: string

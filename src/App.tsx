@@ -71,7 +71,7 @@ import {
   getSupabaseLoadErrorMessage,
 } from './lib/api'
 import { buildScheduleEvents, buildScheduleFormState, getDateKeyFromDate } from './lib/schedule'
-import { ageGroupOptions, programLevelOptions } from './lib/constants'
+import { MAX_LEAD_FOLLOW_UPS, ageGroupOptions, programLevelOptions } from './lib/constants'
 import { cn } from './lib/cn'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useConfirm } from './hooks/useConfirm'
@@ -88,6 +88,7 @@ import { CreateStudentModal } from './components/modals/CreateStudentModal'
 import { ClassroomModal } from './components/modals/ClassroomModal'
 import { TeacherModal } from './components/modals/TeacherModal'
 import { LeadModal } from './components/modals/LeadModal'
+import { LeadFollowUpModal } from './components/modals/LeadFollowUpModal'
 import { StudentRenewalModal } from './components/modals/StudentRenewalModal'
 import { ScheduleModal } from './components/modals/ScheduleModal'
 import { AttendanceModal } from './components/modals/AttendanceModal'
@@ -153,6 +154,9 @@ function App() {
   const [convertingLeadId, setConvertingLeadId] = useState<number | null>(null)
   const [isSavingLead, setIsSavingLead] = useState(false)
   const [leadSaveError, setLeadSaveError] = useState<string | null>(null)
+  const [followUpLeadId, setFollowUpLeadId] = useState<number | null>(null)
+  const [isSavingFollowUp, setIsSavingFollowUp] = useState(false)
+  const [followUpSaveError, setFollowUpSaveError] = useState<string | null>(null)
   const [studentFormState, setStudentFormState] = useState<RenewalFormState>({
     addHours: '0',
     lessonExpiryDate: '',
@@ -202,7 +206,6 @@ function App() {
     status: 'new',
     children: [],
     notes: '',
-    followUpDate: '',
   })
 
   const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null)
@@ -347,6 +350,7 @@ function App() {
   const editingTeacher =
     teachers.find((teacher) => teacher.id === editingTeacherId) ?? null
   const editingLead = leads.find((lead) => lead.id === editingLeadId) ?? null
+  const followUpLead = leads.find((lead) => lead.id === followUpLeadId) ?? null
   const editingClassroom =
     classrooms.find((classroom) => classroom.id === editingClassroomId) ?? null
   const editingSchedule =
@@ -900,7 +904,6 @@ function App() {
       status: 'new',
       children: [],
       notes: '',
-      followUpDate: '',
     })
   }
 
@@ -923,7 +926,6 @@ function App() {
         age: String(child.age),
       })),
       notes: lead.notes ?? '',
-      followUpDate: lead.followUpDate ?? '',
     })
   }
 
@@ -931,6 +933,16 @@ function App() {
     setIsCreateLeadOpen(false)
     setEditingLeadId(null)
     setLeadSaveError(null)
+  }
+
+  function openFollowUpModal(leadId: number) {
+    setFollowUpSaveError(null)
+    setFollowUpLeadId(leadId)
+  }
+
+  function closeFollowUpModal() {
+    setFollowUpLeadId(null)
+    setFollowUpSaveError(null)
   }
 
   function openCreateClassroom() {
@@ -1359,7 +1371,6 @@ function App() {
         status: leadFormState.status,
         children,
         notes: leadFormState.notes.trim() || null,
-        follow_up_date: leadFormState.followUpDate || null,
       }
 
       if (editingLead) {
@@ -1454,6 +1465,48 @@ function App() {
       notes: lead.notes ?? '',
       studentType: 'trial',
     })
+  }
+
+  async function handleAddFollowUp(note: string) {
+    if (!supabase || !followUpLead) {
+      return
+    }
+
+    if (followUpLead.followUps.length >= MAX_LEAD_FOLLOW_UPS) {
+      return
+    }
+
+    try {
+      setIsSavingFollowUp(true)
+      setFollowUpSaveError(null)
+
+      const nextFollowUps = [...followUpLead.followUps, { date: todayString, note }]
+
+      const { error } = await supabase
+        .from('leads')
+        .update({ follow_ups: nextFollowUps })
+        .eq('id', followUpLead.id)
+
+      if (error) {
+        throw error
+      }
+
+      await recordAdminActivity(
+        'lead_follow_up_logged',
+        'lead',
+        followUpLead.id,
+        followUpLead.fullName || followUpLead.children[0]?.name || 'Unnamed Lead',
+        { follow_up_number: nextFollowUps.length },
+      )
+
+      await Promise.all([refreshLeads(), refreshAdminActivities()])
+    } catch (error) {
+      setFollowUpSaveError(
+        error instanceof Error ? error.message : 'Failed to log follow-up.',
+      )
+    } finally {
+      setIsSavingFollowUp(false)
+    }
   }
 
   async function handleDeleteTeacher(teacherId: number) {
@@ -2729,6 +2782,7 @@ function App() {
                 onConvertLead={handleConvertLead}
                 onEditLead={openEditLeadModal}
                 onOpenCreateLead={openCreateLeadModal}
+                onOpenFollowUp={openFollowUpModal}
               />
             )}
 
@@ -2804,6 +2858,16 @@ function App() {
           onClose={closeLeadModal}
           onSubmit={handleLeadSubmit}
           onFieldChange={updateLeadForm}
+        />
+      )}
+
+      {followUpLead && (
+        <LeadFollowUpModal
+          lead={followUpLead}
+          isSaving={isSavingFollowUp}
+          saveError={followUpSaveError}
+          onClose={closeFollowUpModal}
+          onAddFollowUp={handleAddFollowUp}
         />
       )}
 

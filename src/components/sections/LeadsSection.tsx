@@ -1,10 +1,15 @@
 import { useState } from 'react'
 import { cn } from '../../lib/cn'
-import { formatDate } from '../../domain/studentStatus'
-import { leadSourceOptions, leadStatusOptions } from '../../lib/constants'
+import { MAX_LEAD_FOLLOW_UPS, leadSourceOptions, leadStatusOptions } from '../../lib/constants'
 import { SummaryBar } from '../SummaryBar'
 import mascotGordo from '../../assets/mascot-gordo.png'
-import { ArrowRight, MagnifyingGlass, PencilSimple, UserPlus } from '@phosphor-icons/react'
+import {
+  ArrowRight,
+  MagnifyingGlass,
+  PencilSimple,
+  Phone,
+  UserPlus,
+} from '@phosphor-icons/react'
 import type { Lead, LeadChild, LeadStatus } from '../../types/domain'
 
 const stageToneClass: Record<LeadStatus, string> = {
@@ -42,6 +47,7 @@ type LeadsSectionProps = {
   onConvertLead: (leadId: number) => void
   onEditLead: (leadId: number) => void
   onOpenCreateLead: () => void
+  onOpenFollowUp: (leadId: number) => void
 }
 
 export function LeadsSection({
@@ -51,6 +57,7 @@ export function LeadsSection({
   onConvertLead,
   onEditLead,
   onOpenCreateLead,
+  onOpenFollowUp,
 }: LeadsSectionProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [stageFilter, setStageFilter] = useState<LeadStatus | 'all'>('all')
@@ -206,7 +213,7 @@ export function LeadsSection({
                     <div className="flex justify-between gap-3">
                       <dt className="text-xs font-medium text-slate-500">Follow-up</dt>
                       <dd className="text-slate-700">
-                        {lead.followUpDate ? formatDate(lead.followUpDate) : '-'}
+                        {lead.followUps.length}/{MAX_LEAD_FOLLOW_UPS}
                       </dd>
                     </div>
                   </dl>
@@ -226,20 +233,28 @@ export function LeadsSection({
                     ))}
                   </select>
 
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => onEditLead(lead.id)}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                     >
                       <PencilSimple size={16} aria-hidden="true" />
                       Edit
                     </button>
                     <button
                       type="button"
+                      onClick={() => onOpenFollowUp(lead.id)}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      <Phone size={16} aria-hidden="true" />
+                      Follow Up
+                    </button>
+                    <button
+                      type="button"
                       disabled={lead.status === 'converted'}
                       onClick={() => onConvertLead(lead.id)}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84] disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#fc0c97] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <ArrowRight size={16} aria-hidden="true" />
                       {lead.status === 'converted' ? 'Converted' : 'Convert'}
@@ -303,7 +318,7 @@ export function LeadsSection({
                         {formatAddedDate(lead.createdAt)}
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
-                        {lead.followUpDate ? formatDate(lead.followUpDate) : '-'}
+                        {lead.followUps.length}/{MAX_LEAD_FOLLOW_UPS}
                       </td>
                       <td className="px-6 py-5 text-right">
                         <div className="flex justify-end gap-2">
@@ -314,6 +329,14 @@ export function LeadsSection({
                           >
                             <PencilSimple size={16} aria-hidden="true" />
                             Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onOpenFollowUp(lead.id)}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                          >
+                            <Phone size={16} aria-hidden="true" />
+                            Follow Up
                           </button>
                           <button
                             type="button"

@@ -72,7 +72,7 @@ export function mapLeadRow(row: LeadRow): Lead {
     status: row.status,
     children: row.children ?? [],
     notes: row.notes,
-    followUpDate: row.follow_up_date,
+    followUps: row.follow_ups ?? [],
     convertedStudentId: row.converted_student_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

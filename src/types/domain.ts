@@ -89,6 +89,11 @@ export type LeadChild = {
   age: number
 }
 
+export type LeadFollowUp = {
+  date: string
+  note: string
+}
+
 export type Lead = {
   id: number
   fullName: string | null
@@ -97,7 +102,7 @@ export type Lead = {
   status: LeadStatus
   children: LeadChild[]
   notes: string | null
-  followUpDate: string | null
+  followUps: LeadFollowUp[]
   convertedStudentId: number | null
   createdAt: string
   updatedAt: string
@@ -216,7 +221,6 @@ export type LeadFormState = {
   status: LeadStatus
   children: LeadChildFormState[]
   notes: string
-  followUpDate: string
 }
 
 export type CreateTeacherFormState = {
@@ -316,7 +320,7 @@ export type LeadRow = Pick<
   | 'status'
   | 'children'
   | 'notes'
-  | 'follow_up_date'
+  | 'follow_ups'
   | 'converted_student_id'
   | 'created_at'
   | 'updated_at'
