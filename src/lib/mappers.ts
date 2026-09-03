@@ -4,6 +4,8 @@ import type {
   AttendanceReviewFormState,
   Classroom,
   ClassroomRow,
+  Lead,
+  LeadRow,
   LessonLogStudent,
   LessonLogStudentRow,
   LessonLogStudentReview,
@@ -58,6 +60,23 @@ export function mapTeacherRow(row: TeacherRow): Teacher {
     phone: row.phone,
     role: row.role,
     isActive: row.is_active,
+  }
+}
+
+export function mapLeadRow(row: LeadRow): Lead {
+  return {
+    id: row.id,
+    fullName: row.full_name,
+    phone: row.phone,
+    email: row.email,
+    source: row.source,
+    status: row.status,
+    interestedAgeGroup: row.interested_age_group,
+    notes: row.notes,
+    followUpDate: row.follow_up_date,
+    convertedStudentId: row.converted_student_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   }
 }
 

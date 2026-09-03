@@ -133,7 +133,7 @@ export type Database = {
           id: number
           actor_teacher_id: number | null
           action_type: string
-          entity_type: 'student' | 'teacher' | 'classroom' | 'schedule'
+          entity_type: 'student' | 'teacher' | 'classroom' | 'schedule' | 'lead'
           entity_id: number | null
           entity_label: string
           details: Json
@@ -143,7 +143,7 @@ export type Database = {
           id?: number
           actor_teacher_id?: number | null
           action_type: string
-          entity_type: 'student' | 'teacher' | 'classroom' | 'schedule'
+          entity_type: 'student' | 'teacher' | 'classroom' | 'schedule' | 'lead'
           entity_id?: number | null
           entity_label: string
           details?: Json
@@ -153,7 +153,7 @@ export type Database = {
           id?: number
           actor_teacher_id?: number | null
           action_type?: string
-          entity_type?: 'student' | 'teacher' | 'classroom' | 'schedule'
+          entity_type?: 'student' | 'teacher' | 'classroom' | 'schedule' | 'lead'
           entity_id?: number | null
           entity_label?: string
           details?: Json
@@ -228,6 +228,92 @@ export type Database = {
             columns: ['teacher_id']
             isOneToOne: false
             referencedRelation: 'teachers'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      leads: {
+        Row: {
+          id: number
+          full_name: string
+          phone: string | null
+          email: string | null
+          source: 'walk_in' | 'referral' | 'social_media' | 'advertisement' | 'other'
+          status:
+            | 'new'
+            | 'contacted'
+            | 'trial_scheduled'
+            | 'trial_completed'
+            | 'converted'
+            | 'lost'
+          interested_age_group:
+            | '6-8 Years Old'
+            | '9-11 Years Old'
+            | '12-14 Years Old'
+            | '15-17 Years Old'
+            | null
+          notes: string | null
+          follow_up_date: string | null
+          converted_student_id: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          full_name: string
+          phone?: string | null
+          email?: string | null
+          source?: 'walk_in' | 'referral' | 'social_media' | 'advertisement' | 'other'
+          status?:
+            | 'new'
+            | 'contacted'
+            | 'trial_scheduled'
+            | 'trial_completed'
+            | 'converted'
+            | 'lost'
+          interested_age_group?:
+            | '6-8 Years Old'
+            | '9-11 Years Old'
+            | '12-14 Years Old'
+            | '15-17 Years Old'
+            | null
+          notes?: string | null
+          follow_up_date?: string | null
+          converted_student_id?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          full_name?: string
+          phone?: string | null
+          email?: string | null
+          source?: 'walk_in' | 'referral' | 'social_media' | 'advertisement' | 'other'
+          status?:
+            | 'new'
+            | 'contacted'
+            | 'trial_scheduled'
+            | 'trial_completed'
+            | 'converted'
+            | 'lost'
+          interested_age_group?:
+            | '6-8 Years Old'
+            | '9-11 Years Old'
+            | '12-14 Years Old'
+            | '15-17 Years Old'
+            | null
+          notes?: string | null
+          follow_up_date?: string | null
+          converted_student_id?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'leads_converted_student_id_fkey'
+            columns: ['converted_student_id']
+            isOneToOne: false
+            referencedRelation: 'students'
             referencedColumns: ['id']
           },
         ]
@@ -659,7 +745,7 @@ export type Database = {
         Args: {
           p_actor_teacher_id: number | null
           p_action_type: string
-          p_entity_type: 'student' | 'teacher' | 'classroom' | 'schedule'
+          p_entity_type: 'student' | 'teacher' | 'classroom' | 'schedule' | 'lead'
           p_entity_id: number | null
           p_entity_label: string
           p_details?: Json

@@ -1,9 +1,23 @@
 import type { Database } from './database'
 
-export type AppSection = 'calendar' | 'classrooms' | 'students' | 'teachers' | 'activity'
+export type AppSection =
+  | 'calendar'
+  | 'classrooms'
+  | 'students'
+  | 'teachers'
+  | 'leads'
+  | 'activity'
 export type FilterKey = 'all' | 'hours' | 'accountFee' | 'mirai' | 'normal'
 export type AttendanceStatus = 'present' | 'absent' | 'leave'
 export type StudentType = 'trial' | 'regular'
+export type LeadSource = 'walk_in' | 'referral' | 'social_media' | 'advertisement' | 'other'
+export type LeadStatus =
+  | 'new'
+  | 'contacted'
+  | 'trial_scheduled'
+  | 'trial_completed'
+  | 'converted'
+  | 'lost'
 export type AgeGroup =
   | '6-8 Years Old'
   | '9-11 Years Old'
@@ -70,11 +84,26 @@ export type Teacher = {
   isActive: boolean
 }
 
+export type Lead = {
+  id: number
+  fullName: string
+  phone: string | null
+  email: string | null
+  source: LeadSource
+  status: LeadStatus
+  interestedAgeGroup: AgeGroup | null
+  notes: string | null
+  followUpDate: string | null
+  convertedStudentId: number | null
+  createdAt: string
+  updatedAt: string
+}
+
 export type AdminActivity = {
   id: number
   actorTeacherId: number | null
   actionType: string
-  entityType: 'student' | 'teacher' | 'classroom' | 'schedule'
+  entityType: 'student' | 'teacher' | 'classroom' | 'schedule' | 'lead'
   entityId: number | null
   entityLabel: string
   details: Record<string, unknown>
@@ -171,6 +200,17 @@ export type CreateStudentFormState = {
   studentType: StudentType
 }
 
+export type LeadFormState = {
+  fullName: string
+  phone: string
+  email: string
+  source: LeadSource
+  status: LeadStatus
+  interestedAgeGroup: AgeGroup | ''
+  notes: string
+  followUpDate: string
+}
+
 export type CreateTeacherFormState = {
   username: string
   fullName: string
@@ -257,6 +297,22 @@ export type ClassroomRow = Pick<
 export type TeacherRow = Pick<
   Database['public']['Tables']['teachers']['Row'],
   'id' | 'username' | 'full_name' | 'email' | 'phone' | 'role' | 'is_active'
+>
+
+export type LeadRow = Pick<
+  Database['public']['Tables']['leads']['Row'],
+  | 'id'
+  | 'full_name'
+  | 'phone'
+  | 'email'
+  | 'source'
+  | 'status'
+  | 'interested_age_group'
+  | 'notes'
+  | 'follow_up_date'
+  | 'converted_student_id'
+  | 'created_at'
+  | 'updated_at'
 >
 
 export type AdminActivityRow = Pick<

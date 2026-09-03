@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import {
   mapAdminActivityRow,
   mapClassroomRow,
+  mapLeadRow,
   mapLessonLogStudentReviewRow,
   mapLessonLogStudentRow,
   mapLessonLogSummaryRow,
@@ -67,6 +68,25 @@ export async function fetchTeachersFromSupabase() {
   }
 
   return data.map(mapTeacherRow)
+}
+
+export async function fetchLeadsFromSupabase() {
+  if (!supabase) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('leads')
+    .select(
+      'id, full_name, phone, email, source, status, interested_age_group, notes, follow_up_date, converted_student_id, created_at, updated_at',
+    )
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    throw error
+  }
+
+  return data.map(mapLeadRow)
 }
 
 const ADMIN_ACTIVITY_PAGE_SIZE = 250

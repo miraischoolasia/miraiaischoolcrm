@@ -13,6 +13,7 @@ import {
   CalendarBlank,
   Chalkboard,
   ClockCounterClockwise,
+  Funnel,
   GraduationCap,
   IdentificationBadge,
   WarningCircle,
@@ -32,6 +33,9 @@ import type {
   CreateStudentFormState,
   CreateTeacherFormState,
   FilterKey,
+  Lead,
+  LeadFormState,
+  LeadStatus,
   LessonLogStudentReview,
   LessonLogSummary,
   RenewalFormState,
@@ -57,6 +61,7 @@ import {
   fetchAdminActivityFromSupabase,
   fetchClassroomsFromSupabase,
   fetchLatestLessonLogStudents,
+  fetchLeadsFromSupabase,
   fetchLessonLogStudentReviewsFromSupabase,
   fetchLessonLogSummariesFromSupabase,
   fetchScheduleParticipantsFromSupabase,
@@ -75,12 +80,14 @@ import { SummaryBar } from './components/SummaryBar'
 import { ClassListingSection } from './components/sections/ClassListingSection'
 import { StudentDashboardSection } from './components/sections/StudentDashboardSection'
 import { TeacherManagementSection } from './components/sections/TeacherManagementSection'
+import { LeadsSection } from './components/sections/LeadsSection'
 import { AdminActivitySection } from './components/sections/AdminActivitySection'
 import { StudentDetailModal } from './components/StudentDetailModal'
 import { EditStudentModal } from './components/modals/EditStudentModal'
 import { CreateStudentModal } from './components/modals/CreateStudentModal'
 import { ClassroomModal } from './components/modals/ClassroomModal'
 import { TeacherModal } from './components/modals/TeacherModal'
+import { LeadModal } from './components/modals/LeadModal'
 import { StudentRenewalModal } from './components/modals/StudentRenewalModal'
 import { ScheduleModal } from './components/modals/ScheduleModal'
 import { AttendanceModal } from './components/modals/AttendanceModal'
@@ -94,6 +101,7 @@ function App() {
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
   const [students, setStudents] = useState<Student[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
+  const [leads, setLeads] = useState<Lead[]>([])
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [scheduleParticipants, setScheduleParticipants] = useState<
     ScheduleParticipant[]
@@ -140,6 +148,11 @@ function App() {
   const [isCreateStudentOpen, setIsCreateStudentOpen] = useState(false)
   const [isCreateTeacherOpen, setIsCreateTeacherOpen] = useState(false)
   const [editingTeacherId, setEditingTeacherId] = useState<number | null>(null)
+  const [isCreateLeadOpen, setIsCreateLeadOpen] = useState(false)
+  const [editingLeadId, setEditingLeadId] = useState<number | null>(null)
+  const [convertingLeadId, setConvertingLeadId] = useState<number | null>(null)
+  const [isSavingLead, setIsSavingLead] = useState(false)
+  const [leadSaveError, setLeadSaveError] = useState<string | null>(null)
   const [studentFormState, setStudentFormState] = useState<RenewalFormState>({
     addHours: '0',
     lessonExpiryDate: '',
@@ -182,6 +195,16 @@ function App() {
       phone: '',
       role: 'teacher',
     })
+  const [leadFormState, setLeadFormState] = useState<LeadFormState>({
+    fullName: '',
+    phone: '',
+    email: '',
+    source: 'other',
+    status: 'new',
+    interestedAgeGroup: '',
+    notes: '',
+    followUpDate: '',
+  })
 
   const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null)
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false)
@@ -324,6 +347,7 @@ function App() {
     students.find((student) => student.id === editingStudentId) ?? null
   const editingTeacher =
     teachers.find((teacher) => teacher.id === editingTeacherId) ?? null
+  const editingLead = leads.find((lead) => lead.id === editingLeadId) ?? null
   const editingClassroom =
     classrooms.find((classroom) => classroom.id === editingClassroomId) ?? null
   const editingSchedule =
@@ -444,6 +468,7 @@ function App() {
           nextLessonLogs,
           nextLessonReviews,
           nextAdminActivities,
+          nextLeads,
         ] = await Promise.all([
           fetchClassroomsFromSupabase(),
           fetchTeachersFromSupabase(),
@@ -453,6 +478,7 @@ function App() {
           fetchLessonLogSummariesFromSupabase(),
           fetchLessonLogStudentReviewsFromSupabase(),
           fetchAdminActivityFromSupabase(),
+          fetchLeadsFromSupabase(),
         ])
 
         if (!cancelled) {
@@ -464,6 +490,7 @@ function App() {
           setLessonLogs(nextLessonLogs)
           setLessonReviews(nextLessonReviews)
           setAdminActivities(nextAdminActivities)
+          setLeads(nextLeads)
         }
       } catch (error) {
         if (!cancelled) {
@@ -609,6 +636,7 @@ function App() {
           { key: 'classrooms', label: 'My Classroom', icon: Chalkboard },
           { key: 'students', label: 'Students', icon: GraduationCap },
           { key: 'teachers', label: 'My Teacher', icon: IdentificationBadge },
+          { key: 'leads', label: 'Leads', icon: Funnel },
           { key: 'activity', label: 'Activity Log', icon: ClockCounterClockwise },
         ]
 
@@ -647,6 +675,16 @@ function App() {
     value: CreateTeacherFormState[K],
   ) {
     setCreateTeacherFormState((currentState) => ({
+      ...currentState,
+      [key]: value,
+    }))
+  }
+
+  function updateLeadForm<K extends keyof LeadFormState>(
+    key: K,
+    value: LeadFormState[K],
+  ) {
+    setLeadFormState((currentState) => ({
       ...currentState,
       [key]: value,
     }))
@@ -812,6 +850,7 @@ function App() {
   function closeCreateStudentModal() {
     setIsCreateStudentOpen(false)
     setCreateStudentSaveError(null)
+    setConvertingLeadId(null)
   }
 
   function openCreateTeacherModal() {
@@ -849,6 +888,49 @@ function App() {
     setIsCreateTeacherOpen(false)
     setEditingTeacherId(null)
     setCreateTeacherSaveError(null)
+  }
+
+  function openCreateLeadModal() {
+    setLeadSaveError(null)
+    setEditingLeadId(null)
+    setIsCreateLeadOpen(true)
+    setLeadFormState({
+      fullName: '',
+      phone: '',
+      email: '',
+      source: 'other',
+      status: 'new',
+      interestedAgeGroup: '',
+      notes: '',
+      followUpDate: '',
+    })
+  }
+
+  function openEditLeadModal(leadId: number) {
+    const lead = leads.find((entry) => entry.id === leadId)
+    if (!lead) {
+      return
+    }
+
+    setLeadSaveError(null)
+    setEditingLeadId(leadId)
+    setIsCreateLeadOpen(true)
+    setLeadFormState({
+      fullName: lead.fullName,
+      phone: lead.phone ?? '',
+      email: lead.email ?? '',
+      source: lead.source,
+      status: lead.status,
+      interestedAgeGroup: lead.interestedAgeGroup ?? '',
+      notes: lead.notes ?? '',
+      followUpDate: lead.followUpDate ?? '',
+    })
+  }
+
+  function closeLeadModal() {
+    setIsCreateLeadOpen(false)
+    setEditingLeadId(null)
+    setLeadSaveError(null)
   }
 
   function openCreateClassroom() {
@@ -950,6 +1032,11 @@ function App() {
   async function refreshTeachers() {
     const nextTeachers = await fetchTeachersFromSupabase()
     setTeachers(nextTeachers)
+  }
+
+  async function refreshLeads() {
+    const nextLeads = await fetchLeadsFromSupabase()
+    setLeads(nextLeads)
   }
 
   async function refreshAdminActivities() {
@@ -1144,6 +1231,22 @@ function App() {
             ? Number(createStudentFormState.classroomId)
             : null,
         })
+
+        if (convertingLeadId) {
+          const { error: convertError } = await supabase
+            .from('leads')
+            .update({ status: 'converted', converted_student_id: createdStudentId })
+            .eq('id', convertingLeadId)
+
+          if (!convertError) {
+            await recordAdminActivity('lead_converted', 'lead', convertingLeadId, fullName, {
+              student_id: createdStudentId,
+            })
+          }
+
+          setConvertingLeadId(null)
+          await refreshLeads()
+        }
       }
 
       await Promise.all([
@@ -1229,6 +1332,125 @@ function App() {
     } finally {
       setIsCreatingTeacherRecord(false)
     }
+  }
+
+  async function handleLeadSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!supabase) {
+      return
+    }
+
+    const fullName = leadFormState.fullName.trim()
+
+    if (!fullName) {
+      setLeadSaveError('Please enter the lead full name.')
+      return
+    }
+
+    try {
+      setIsSavingLead(true)
+      setLeadSaveError(null)
+
+      const payload = {
+        full_name: fullName,
+        phone: leadFormState.phone.trim() || null,
+        email: leadFormState.email.trim() || null,
+        source: leadFormState.source,
+        status: leadFormState.status,
+        interested_age_group: leadFormState.interestedAgeGroup || null,
+        notes: leadFormState.notes.trim() || null,
+        follow_up_date: leadFormState.followUpDate || null,
+      }
+
+      if (editingLead) {
+        const { error } = await supabase
+          .from('leads')
+          .update(payload)
+          .eq('id', editingLead.id)
+
+        if (error) {
+          throw error
+        }
+
+        await recordAdminActivity('lead_updated', 'lead', editingLead.id, fullName, {
+          status: leadFormState.status,
+        })
+      } else {
+        const { data, error } = await supabase
+          .from('leads')
+          .insert(payload)
+          .select('id')
+          .single()
+
+        if (error) {
+          throw error
+        }
+
+        await recordAdminActivity('lead_created', 'lead', data?.id ?? null, fullName, {
+          source: leadFormState.source,
+        })
+      }
+
+      await Promise.all([refreshLeads(), refreshAdminActivities()])
+      closeLeadModal()
+    } catch (error) {
+      setLeadSaveError(
+        error instanceof Error ? error.message : 'Failed to save lead record.',
+      )
+    } finally {
+      setIsSavingLead(false)
+    }
+  }
+
+  async function handleChangeLeadStatus(leadId: number, status: LeadStatus) {
+    if (!supabase) {
+      return
+    }
+
+    const lead = leads.find((entry) => entry.id === leadId)
+    if (!lead) {
+      return
+    }
+
+    const previousLeads = leads
+    setLeads((current) =>
+      current.map((entry) => (entry.id === leadId ? { ...entry, status } : entry)),
+    )
+
+    const { error } = await supabase.from('leads').update({ status }).eq('id', leadId)
+
+    if (error) {
+      setLeads(previousLeads)
+      showToast('Failed to update lead stage.')
+      return
+    }
+
+    await recordAdminActivity('lead_stage_changed', 'lead', leadId, lead.fullName, {
+      status,
+    })
+    await refreshAdminActivities()
+  }
+
+  function handleConvertLead(leadId: number) {
+    const lead = leads.find((entry) => entry.id === leadId)
+    if (!lead) {
+      return
+    }
+
+    setConvertingLeadId(leadId)
+    setCreateStudentSaveError(null)
+    setIsCreateStudentOpen(true)
+    setCreateStudentFormState({
+      fullName: lead.fullName,
+      classroomId: '',
+      initialHours: '0',
+      lessonExpiryDate: todayString,
+      accountFeeExpiryDate: todayString,
+      miraiClubExpiryDate: todayString,
+      notes: lead.notes ?? '',
+      studentType: 'trial',
+    })
   }
 
   async function handleDeleteTeacher(teacherId: number) {
@@ -2236,9 +2458,11 @@ function App() {
                       ? 'Classroom Board'
                       : activeSection === 'teachers'
                         ? 'Teacher Board'
-                        : activeSection === 'activity'
-                          ? 'Admin Audit'
-                          : 'Student Board'}
+                        : activeSection === 'leads'
+                          ? 'Sales Pipeline'
+                          : activeSection === 'activity'
+                            ? 'Admin Audit'
+                            : 'Student Board'}
                 </div>
                 <h1 className="mt-0.5 text-2xl font-semibold tracking-tight text-slate-900">
                   {activeSection === 'calendar'
@@ -2247,9 +2471,11 @@ function App() {
                       ? 'My Classroom'
                       : activeSection === 'teachers'
                         ? 'My Teacher'
-                        : activeSection === 'activity'
-                          ? 'Admin Activity Log'
-                          : 'Student Classes & Expiry'}
+                        : activeSection === 'leads'
+                          ? 'Leads'
+                          : activeSection === 'activity'
+                            ? 'Admin Activity Log'
+                            : 'Student Classes & Expiry'}
                 </h1>
               </div>
 
@@ -2492,6 +2718,17 @@ function App() {
               />
             )}
 
+            {activeSection === 'leads' && isAdminView && (
+              <LeadsSection
+                isLoading={isLoading}
+                leads={leads}
+                onChangeStatus={handleChangeLeadStatus}
+                onConvertLead={handleConvertLead}
+                onEditLead={openEditLeadModal}
+                onOpenCreateLead={openCreateLeadModal}
+              />
+            )}
+
             {activeSection === 'activity' && isAdminView && (
               <AdminActivitySection
                 activities={adminActivities}
@@ -2552,6 +2789,18 @@ function App() {
           onClose={closeCreateTeacherModal}
           onSubmit={handleCreateTeacherSubmit}
           onFieldChange={updateCreateTeacherForm}
+        />
+      )}
+
+      {isCreateLeadOpen && (
+        <LeadModal
+          editingLead={editingLead}
+          formState={leadFormState}
+          saveError={leadSaveError}
+          isSaving={isSavingLead}
+          onClose={closeLeadModal}
+          onSubmit={handleLeadSubmit}
+          onFieldChange={updateLeadForm}
         />
       )}
 

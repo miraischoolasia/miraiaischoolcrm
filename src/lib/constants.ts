@@ -1,6 +1,8 @@
 import type {
   AgeGroup,
   FilterKey,
+  LeadSource,
+  LeadStatus,
   PerformanceMetricKey,
   ProgramLevel,
   ReviewRemarkField,
@@ -72,4 +74,21 @@ export const programLevelOptions: ProgramLevel[] = [
   'VibeTech Pro',
   'VibeTech Future',
   'Software Engineer',
+]
+
+export const leadStatusOptions: Array<{ key: LeadStatus; label: string }> = [
+  { key: 'new', label: 'New' },
+  { key: 'contacted', label: 'Contacted' },
+  { key: 'trial_scheduled', label: 'Trial Scheduled' },
+  { key: 'trial_completed', label: 'Trial Completed' },
+  { key: 'converted', label: 'Converted' },
+  { key: 'lost', label: 'Lost' },
+]
+
+export const leadSourceOptions: Array<{ key: LeadSource; label: string }> = [
+  { key: 'walk_in', label: 'Walk-in' },
+  { key: 'referral', label: 'Referral' },
+  { key: 'social_media', label: 'Social Media' },
+  { key: 'advertisement', label: 'Advertisement' },
+  { key: 'other', label: 'Other' },
 ]
