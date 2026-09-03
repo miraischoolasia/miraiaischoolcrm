@@ -8,6 +8,7 @@ import rrulePlugin from '@fullcalendar/rrule'
 import timeGridPlugin from '@fullcalendar/timegrid'
 import miraiLogo from './assets/mirai-logo.png'
 import mascotEggy from './assets/mascot-eggy.png'
+import { malaysiaHolidayEvents } from './lib/holidays'
 import {
   CalendarBlank,
   Chalkboard,
@@ -523,8 +524,8 @@ function App() {
   }, [classrooms, currentSession])
 
   const calendarEvents = useMemo(
-    () =>
-      buildScheduleEvents(
+    () => [
+      ...buildScheduleEvents(
         visibleSchedules,
         classroomMap,
         classroomStudentMap,
@@ -532,6 +533,8 @@ function App() {
         scheduleParticipantMap,
         studentMap,
       ),
+      ...malaysiaHolidayEvents,
+    ],
     [
       classroomMap,
       classroomStudentMap,
@@ -2087,6 +2090,19 @@ function App() {
   }
 
   function renderCalendarEventContent(eventInfo: EventContentArg) {
+    if (eventInfo.event.extendedProps.isHoliday) {
+      return (
+        <div className="rounded-lg border border-red-200 bg-red-500 px-2 py-1.5 text-white shadow-sm">
+          <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-red-700">
+            Public Holiday
+          </span>
+          <div className="mt-1 text-[11px] font-semibold leading-snug">
+            {eventInfo.event.title}
+          </div>
+        </div>
+      )
+    }
+
     const eventType = eventInfo.event.extendedProps.eventType as
       | 'regular'
       | 'replacement'
@@ -2338,6 +2354,10 @@ function App() {
                           <span className="h-3 w-3 rounded-full bg-orange-500" />
                           <span>Replacement Class</span>
                         </div>
+                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                          <span className="h-3 w-3 rounded-full bg-red-500" />
+                          <span>Public Holiday</span>
+                        </div>
                         {isAdminView && (
                           <button
                             type="button"
@@ -2399,6 +2419,10 @@ function App() {
                         }
                       }}
                       eventClick={(arg: EventClickArg) => {
+                        if (arg.event.extendedProps.isHoliday) {
+                          return
+                        }
+
                         const scheduleId = Number(arg.event.extendedProps.scheduleId)
                         const occurrenceDate = arg.event.start
                           ? getDateKeyFromDate(arg.event.start)

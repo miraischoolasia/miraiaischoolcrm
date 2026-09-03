@@ -112,6 +112,9 @@ export function buildScheduleEvents(
       }
 
       if (schedule.eventType === 'regular') {
+        const dtstart = `${schedule.startRecur}T${schedule.startTime}`
+        const until = schedule.endRecur ? `${schedule.endRecur}T23:59:59` : undefined
+
         return {
           ...shared,
           rrule: {
@@ -120,10 +123,18 @@ export function buildScheduleEvents(
               schedule.dayOfWeek !== null
                 ? [weekdayToRRule[schedule.dayOfWeek]]
                 : [],
-            dtstart: `${schedule.startRecur}T${schedule.startTime}`,
-            ...(schedule.endRecur
-              ? { until: `${schedule.endRecur}T23:59:59` }
-              : {}),
+            dtstart,
+            ...(until ? { until } : {}),
+          },
+          // Every regular class only meets 4 times a month: the 5th weekly
+          // occurrence in a month (when it exists) always lands on the 29th,
+          // 30th, or 31st, so excluding those calendar dates caps every
+          // weekly schedule at exactly 4 classes per month.
+          exrule: {
+            freq: 'daily',
+            bymonthday: [29, 30, 31],
+            dtstart,
+            ...(until ? { until } : {}),
           },
         }
       }

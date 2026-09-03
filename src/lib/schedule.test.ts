@@ -1,6 +1,37 @@
 import { describe, expect, it } from 'vitest'
+import { RRule, RRuleSet } from 'rrule'
+import type { Weekday } from 'rrule'
 import { buildScheduleEvents, calculateDuration, getDateKeyFromDate } from './schedule'
 import type { Classroom, Schedule, Student, Teacher } from '../types/domain'
+
+const weekdayConstants: Record<string, Weekday> = {
+  su: RRule.SU,
+  mo: RRule.MO,
+  tu: RRule.TU,
+  we: RRule.WE,
+  th: RRule.TH,
+  fr: RRule.FR,
+  sa: RRule.SA,
+}
+
+// Mirrors the string -> constant conversion @fullcalendar/rrule performs on
+// the plain rrule/exrule objects buildScheduleEvents returns, so the test
+// can expand the real rrule.js RRuleSet FullCalendar will render.
+function toRRule(input: {
+  freq: string
+  byweekday?: string[]
+  bymonthday?: number[]
+  dtstart: string
+  until?: string
+}) {
+  return new RRule({
+    freq: input.freq === 'weekly' ? RRule.WEEKLY : RRule.DAILY,
+    ...(input.byweekday ? { byweekday: input.byweekday.map((day) => weekdayConstants[day]) } : {}),
+    ...(input.bymonthday ? { bymonthday: input.bymonthday } : {}),
+    dtstart: new Date(input.dtstart),
+    ...(input.until ? { until: new Date(input.until) } : {}),
+  })
+}
 
 describe('calculateDuration', () => {
   it('computes hours and minutes between two times', () => {
@@ -88,6 +119,50 @@ describe('buildScheduleEvents', () => {
     expect(event.duration).toBe('02:00')
     expect(event.extendedProps?.participantNames).toBe('Olivia Tan')
     expect(event.rrule).toMatchObject({ freq: 'weekly', byweekday: ['tu'] })
+    expect(event.exrule).toMatchObject({ freq: 'daily', bymonthday: [29, 30, 31] })
+  })
+
+  it('caps every regular class at 4 occurrences per month with no class on the 29th/30th/31st', () => {
+    const schedule: Schedule = {
+      id: 103,
+      teacherId: 1,
+      classroomId: 1,
+      title: 'Group A',
+      eventType: 'regular',
+      recurrenceType: 'weekly',
+      dayOfWeek: 2, // Tuesday
+      scheduledDate: null,
+      startTime: '19:30',
+      endTime: '21:30',
+      startRecur: '2026-01-01',
+      endRecur: null,
+      status: 'active',
+      notes: null,
+    }
+
+    const [event] = buildScheduleEvents(
+      [schedule],
+      classroomMap,
+      classroomStudentMap,
+      teacherMap,
+      new Map(),
+      studentMap,
+    )
+
+    const set = new RRuleSet()
+    set.rrule(toRRule(event.rrule as Parameters<typeof toRRule>[0]))
+    set.exrule(toRRule(event.exrule as Parameters<typeof toRRule>[0]))
+
+    for (let month = 0; month < 12; month++) {
+      const monthStart = new Date(2026, month, 1)
+      const monthEnd = new Date(2026, month + 1, 1)
+      const occurrences = set.between(monthStart, monthEnd, true)
+
+      for (const occurrence of occurrences) {
+        expect([29, 30, 31]).not.toContain(occurrence.getDate())
+      }
+      expect(occurrences.length).toBeLessThanOrEqual(4)
+    }
   })
 
   it('builds a fixed start/end event for a replacement schedule using the participant map', () => {
