@@ -67,6 +67,8 @@ export function LeadsSection({
   const [view, setView] = useState<'pipeline' | 'dashboard'>('pipeline')
   const [searchTerm, setSearchTerm] = useState('')
   const [stageFilter, setStageFilter] = useState<LeadStatus | 'all'>('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
 
   const normalizedSearch = searchTerm.trim().toLowerCase()
   const filteredLeads = leads.filter((lead) => {
@@ -76,7 +78,9 @@ export function LeadsSection({
         lead.children.some((child) => child.name.toLowerCase().includes(normalizedSearch))
       : true
     const matchesStage = stageFilter === 'all' ? true : lead.status === stageFilter
-    return matchesSearch && matchesStage
+    const matchesDateRange =
+      (!dateFrom || lead.addedDate >= dateFrom) && (!dateTo || lead.addedDate <= dateTo)
+    return matchesSearch && matchesStage && matchesDateRange
   })
 
   const openLeads = leads.filter(
@@ -204,6 +208,38 @@ export function LeadsSection({
                   </option>
                 ))}
               </select>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(event) => setDateFrom(event.target.value)}
+                  max={dateTo || undefined}
+                  aria-label="From date"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] sm:w-40"
+                />
+                <span className="text-sm text-slate-400">to</span>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(event) => setDateTo(event.target.value)}
+                  min={dateFrom || undefined}
+                  aria-label="To date"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] sm:w-40"
+                />
+                {(dateFrom || dateTo) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDateFrom('')
+                      setDateTo('')
+                    }}
+                    className="text-sm font-medium text-slate-400 transition hover:text-slate-600"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -361,12 +397,12 @@ export function LeadsSection({
               <table data-compact-table className="min-w-full divide-y divide-slate-200 text-left">
                 <thead className="bg-white text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                   <tr>
-                    <th className="px-6 py-4">Lead</th>
                     <th className="px-6 py-4">Contact</th>
+                    <th className="px-6 py-4">Date</th>
+                    <th className="px-6 py-4">Name</th>
                     <th className="px-6 py-4">Children</th>
                     <th className="px-6 py-4">Source</th>
                     <th className="px-6 py-4">Stage</th>
-                    <th className="px-6 py-4">Added</th>
                     <th className="px-6 py-4">Follow-up</th>
                     <th className="px-6 py-4 text-right">Action</th>
                   </tr>
@@ -374,13 +410,16 @@ export function LeadsSection({
                 <tbody className="divide-y divide-slate-200 bg-white">
                   {filteredLeads.map((lead) => (
                     <tr key={lead.id} className="align-top">
+                      <td className="px-6 py-5 text-sm text-slate-600">
+                        {lead.phone || '-'}
+                      </td>
+                      <td className="px-6 py-5 text-sm text-slate-600">
+                        {formatDate(lead.addedDate)}
+                      </td>
                       <td className="px-6 py-5">
                         <div className="font-semibold text-slate-900">
                           {lead.fullName || 'Unnamed Lead'}
                         </div>
-                      </td>
-                      <td className="px-6 py-5 text-sm text-slate-600">
-                        {lead.phone || '-'}
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
                         {formatChildren(lead.children)}
@@ -406,9 +445,6 @@ export function LeadsSection({
                             </option>
                           ))}
                         </select>
-                      </td>
-                      <td className="px-6 py-5 text-sm text-slate-600">
-                        {formatDate(lead.addedDate)}
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
                         {lead.followUps.length}/{MAX_LEAD_FOLLOW_UPS}
