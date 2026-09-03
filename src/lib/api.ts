@@ -78,8 +78,9 @@ export async function fetchLeadsFromSupabase() {
   const { data, error } = await supabase
     .from('leads')
     .select(
-      'id, full_name, phone, source, status, children, notes, follow_ups, converted_student_id, created_at, updated_at',
+      'id, full_name, phone, source, status, children, notes, follow_ups, converted_student_id, added_date, created_at, updated_at',
     )
+    .order('added_date', { ascending: false })
     .order('created_at', { ascending: false })
 
   if (error) {

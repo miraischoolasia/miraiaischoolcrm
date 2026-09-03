@@ -206,6 +206,7 @@ function App() {
     status: 'new',
     children: [],
     notes: '',
+    addedDate: todayString,
   })
 
   const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null)
@@ -635,11 +636,11 @@ function App() {
           { key: 'classrooms', label: 'My Classroom', icon: Chalkboard },
         ]
       : [
+          { key: 'leads', label: 'Leads', icon: Funnel },
           { key: 'calendar', label: 'Calendar', icon: CalendarBlank },
           { key: 'classrooms', label: 'My Classroom', icon: Chalkboard },
           { key: 'students', label: 'Students', icon: GraduationCap },
           { key: 'teachers', label: 'My Teacher', icon: IdentificationBadge },
-          { key: 'leads', label: 'Leads', icon: Funnel },
           { key: 'activity', label: 'Activity Log', icon: ClockCounterClockwise },
         ]
 
@@ -904,6 +905,7 @@ function App() {
       status: 'new',
       children: [],
       notes: '',
+      addedDate: todayString,
     })
   }
 
@@ -926,6 +928,7 @@ function App() {
         age: String(child.age),
       })),
       notes: lead.notes ?? '',
+      addedDate: lead.addedDate,
     })
   }
 
@@ -1371,6 +1374,7 @@ function App() {
         status: leadFormState.status,
         children,
         notes: leadFormState.notes.trim() || null,
+        added_date: leadFormState.addedDate || todayString,
       }
 
       if (editingLead) {

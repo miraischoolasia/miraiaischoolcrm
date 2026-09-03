@@ -104,6 +104,7 @@ export type Lead = {
   notes: string | null
   followUps: LeadFollowUp[]
   convertedStudentId: number | null
+  addedDate: string
   createdAt: string
   updatedAt: string
 }
@@ -221,6 +222,7 @@ export type LeadFormState = {
   status: LeadStatus
   children: LeadChildFormState[]
   notes: string
+  addedDate: string
 }
 
 export type CreateTeacherFormState = {
@@ -322,6 +324,7 @@ export type LeadRow = Pick<
   | 'notes'
   | 'follow_ups'
   | 'converted_student_id'
+  | 'added_date'
   | 'created_at'
   | 'updated_at'
 >

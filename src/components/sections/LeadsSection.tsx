@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { cn } from '../../lib/cn'
+import { formatDate } from '../../domain/studentStatus'
 import { MAX_LEAD_FOLLOW_UPS, leadSourceOptions, leadStatusOptions } from '../../lib/constants'
 import { SummaryBar } from '../SummaryBar'
 import mascotGordo from '../../assets/mascot-gordo.png'
@@ -30,14 +31,6 @@ function formatChildren(children: LeadChild[]) {
   return children
     .map((child) => (child.name ? `${child.name} (${child.age})` : `${child.age} yrs`))
     .join(', ')
-}
-
-function formatAddedDate(createdAt: string) {
-  return new Date(createdAt).toLocaleDateString('en-MY', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
 }
 
 type LeadsSectionProps = {
@@ -131,35 +124,20 @@ export function LeadsSection({
               />
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setStageFilter('all')}
-                className={cn(
-                  'rounded-full border px-3 py-1 text-xs font-semibold transition',
-                  stageFilter === 'all'
-                    ? 'border-[#fc0c97] bg-[#fff1f8] text-[#be185d]'
-                    : 'border-slate-200 text-slate-600 hover:bg-slate-50',
-                )}
-              >
-                All
-              </button>
+            <select
+              value={stageFilter}
+              onChange={(event) =>
+                setStageFilter(event.target.value as LeadStatus | 'all')
+              }
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] sm:w-52"
+            >
+              <option value="all">All Stages</option>
               {leadStatusOptions.map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => setStageFilter(option.key)}
-                  className={cn(
-                    'rounded-full border px-3 py-1 text-xs font-semibold transition',
-                    stageFilter === option.key
-                      ? 'border-[#fc0c97] bg-[#fff1f8] text-[#be185d]'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50',
-                  )}
-                >
+                <option key={option.key} value={option.key}>
                   {option.label}
-                </button>
+                </option>
               ))}
-            </div>
+            </select>
           </div>
         </div>
 
@@ -186,7 +164,7 @@ export function LeadsSection({
                       </div>
                       <div className="text-xs text-slate-500">
                         {sourceLabelMap.get(lead.source) ?? lead.source} · Added{' '}
-                        {formatAddedDate(lead.createdAt)}
+                        {formatDate(lead.addedDate)}
                       </div>
                     </div>
                     <span
@@ -315,7 +293,7 @@ export function LeadsSection({
                         </select>
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
-                        {formatAddedDate(lead.createdAt)}
+                        {formatDate(lead.addedDate)}
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
                         {lead.followUps.length}/{MAX_LEAD_FOLLOW_UPS}

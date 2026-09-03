@@ -249,6 +249,7 @@ export type Database = {
           notes: string | null
           follow_ups: { date: string; note: string }[]
           converted_student_id: number | null
+          added_date: string
           created_at: string
           updated_at: string
         }
@@ -268,6 +269,7 @@ export type Database = {
           notes?: string | null
           follow_ups?: { date: string; note: string }[]
           converted_student_id?: number | null
+          added_date?: string
           created_at?: string
           updated_at?: string
         }
@@ -287,6 +289,7 @@ export type Database = {
           notes?: string | null
           follow_ups?: { date: string; note: string }[]
           converted_student_id?: number | null
+          added_date?: string
           created_at?: string
           updated_at?: string
         }
