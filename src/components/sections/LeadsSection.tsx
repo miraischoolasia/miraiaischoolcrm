@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { cn } from '../../lib/cn'
-import { formatDate } from '../../domain/studentStatus'
+import { formatDate, getTodayString, parseLocalDate } from '../../domain/studentStatus'
 import { MAX_LEAD_FOLLOW_UPS, leadSourceOptions, leadStatusOptions } from '../../lib/constants'
 import { SummaryBar } from '../SummaryBar'
 import { LeadTrendChart } from '../LeadTrendChart'
@@ -36,6 +36,19 @@ const stageChartColor: Record<LeadStatus, string> = {
 
 const sourceLabelMap = new Map(leadSourceOptions.map((option) => [option.key, option.label]))
 
+function toDateString(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function getOneMonthAgo(todayString: string) {
+  const date = parseLocalDate(todayString)
+  date.setMonth(date.getMonth() - 1)
+  return toDateString(date)
+}
+
 function formatChildren(children: LeadChild[]) {
   if (children.length === 0) {
     return '-'
@@ -67,8 +80,9 @@ export function LeadsSection({
   const [view, setView] = useState<'pipeline' | 'dashboard'>('pipeline')
   const [searchTerm, setSearchTerm] = useState('')
   const [stageFilter, setStageFilter] = useState<LeadStatus | 'all'>('all')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const todayString = getTodayString()
+  const [dateFrom, setDateFrom] = useState(() => getOneMonthAgo(todayString))
+  const [dateTo, setDateTo] = useState(() => todayString)
 
   const normalizedSearch = searchTerm.trim().toLowerCase()
   const filteredLeads = leads.filter((lead) => {
