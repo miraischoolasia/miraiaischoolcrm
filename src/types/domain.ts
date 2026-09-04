@@ -76,6 +76,7 @@ export type Classroom = {
 
 export type Teacher = {
   id: number
+  authUserId: string | null
   username: string
   fullName: string
   email: string | null
@@ -94,6 +95,13 @@ export type LeadFollowUp = {
   note: string
 }
 
+export type LeadTask = {
+  id: string
+  title: string
+  dueDate: string
+  completed: boolean
+}
+
 export type Lead = {
   id: number
   fullName: string | null
@@ -103,6 +111,7 @@ export type Lead = {
   children: LeadChild[]
   notes: string | null
   followUps: LeadFollowUp[]
+  tasks: LeadTask[]
   convertedStudentId: number | null
   addedDate: string
   createdAt: string
@@ -310,7 +319,14 @@ export type ClassroomRow = Pick<
 
 export type TeacherRow = Pick<
   Database['public']['Tables']['teachers']['Row'],
-  'id' | 'username' | 'full_name' | 'email' | 'phone' | 'role' | 'is_active'
+  | 'id'
+  | 'auth_user_id'
+  | 'username'
+  | 'full_name'
+  | 'email'
+  | 'phone'
+  | 'role'
+  | 'is_active'
 >
 
 export type LeadRow = Pick<
@@ -323,6 +339,7 @@ export type LeadRow = Pick<
   | 'children'
   | 'notes'
   | 'follow_ups'
+  | 'tasks'
   | 'converted_student_id'
   | 'added_date'
   | 'created_at'

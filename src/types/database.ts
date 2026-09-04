@@ -248,6 +248,7 @@ export type Database = {
           children: { name: string; age: number }[]
           notes: string | null
           follow_ups: { date: string; note: string }[]
+          tasks: { id: string; title: string; dueDate: string; completed: boolean }[]
           converted_student_id: number | null
           added_date: string
           created_at: string
@@ -268,6 +269,7 @@ export type Database = {
           children?: { name: string; age: number }[]
           notes?: string | null
           follow_ups?: { date: string; note: string }[]
+          tasks?: { id: string; title: string; dueDate: string; completed: boolean }[]
           converted_student_id?: number | null
           added_date?: string
           created_at?: string
@@ -288,6 +290,7 @@ export type Database = {
           children?: { name: string; age: number }[]
           notes?: string | null
           follow_ups?: { date: string; note: string }[]
+          tasks?: { id: string; title: string; dueDate: string; completed: boolean }[]
           converted_student_id?: number | null
           added_date?: string
           created_at?: string
@@ -707,7 +710,6 @@ export type Database = {
           p_account_fee_expiry_date: string
           p_mirai_club_expiry_date: string
           p_notes: string | null
-          p_actor_teacher_id?: number | null
           p_student_type?: 'trial' | 'regular'
         }
         Returns: {
@@ -728,7 +730,6 @@ export type Database = {
       }
       record_admin_activity: {
         Args: {
-          p_actor_teacher_id: number | null
           p_action_type: string
           p_entity_type: 'student' | 'teacher' | 'classroom' | 'schedule' | 'lead'
           p_entity_id: number | null
@@ -744,7 +745,6 @@ export type Database = {
           p_teacher_id: number | null
           p_classroom_id: number | null
           p_notes: string | null
-          p_actor_teacher_id?: number | null
           p_student_type?: 'trial' | 'regular'
         }
         Returns: undefined
@@ -757,21 +757,18 @@ export type Database = {
           p_email: string | null
           p_phone: string | null
           p_role: string
-          p_actor_teacher_id?: number | null
         }
         Returns: undefined
       }
       archive_classroom: {
         Args: {
           p_classroom_id: number
-          p_actor_teacher_id?: number | null
         }
         Returns: undefined
       }
       restore_classroom: {
         Args: {
           p_classroom_id: number
-          p_actor_teacher_id?: number | null
         }
         Returns: undefined
       }
@@ -783,7 +780,6 @@ export type Database = {
           p_new_account_fee_expiry_date: string | null
           p_new_mirai_club_expiry_date: string | null
           p_remark: string | null
-          p_actor_teacher_id?: number | null
         }
         Returns: {
           student_id: number
@@ -794,7 +790,6 @@ export type Database = {
         Args: {
           p_schedule_id: number
           p_occurrence_date: string
-          p_teacher_id: number
           p_lesson_remark: string | null
           p_attendance: {
             student_id: number

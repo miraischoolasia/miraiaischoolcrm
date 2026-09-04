@@ -70,6 +70,7 @@ describe('mapTeacherRow', () => {
   it('maps role and active flag through unchanged', () => {
     const row: TeacherRow = {
       id: 9,
+      auth_user_id: 'auth-uuid-9',
       username: 'admin_demo',
       full_name: 'Admin Demo',
       email: 'admin@example.com',
@@ -80,6 +81,7 @@ describe('mapTeacherRow', () => {
 
     expect(mapTeacherRow(row)).toEqual({
       id: 9,
+      authUserId: 'auth-uuid-9',
       username: 'admin_demo',
       fullName: 'Admin Demo',
       email: 'admin@example.com',

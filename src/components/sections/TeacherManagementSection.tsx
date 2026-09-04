@@ -128,6 +128,11 @@ export function TeacherManagementSection({
                         Teacher ID #{String(teacher.id).padStart(3, '0')} ·{' '}
                         {teacher.username}
                       </div>
+                      {!teacher.authUserId && (
+                        <span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                          No login
+                        </span>
+                      )}
                     </div>
                     <span
                       className={cn(
@@ -216,6 +221,11 @@ export function TeacherManagementSection({
                       </td>
                       <td className="px-6 py-5 text-sm font-medium text-slate-700">
                         {teacher.username}
+                        {!teacher.authUserId && (
+                          <span className="ml-2 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                            No login
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-5">
                         <span

@@ -52,6 +52,7 @@ describe('getDateKeyFromDate', () => {
 describe('buildScheduleEvents', () => {
   const teacher: Teacher = {
     id: 1,
+    authUserId: null,
     username: 't1',
     fullName: 'Jane Teacher',
     email: null,

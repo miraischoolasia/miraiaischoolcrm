@@ -58,7 +58,7 @@ export async function fetchTeachersFromSupabase() {
 
   const { data, error } = await supabase
     .from('teachers')
-    .select('id, username, full_name, email, phone, role, is_active')
+    .select('id, auth_user_id, username, full_name, email, phone, role, is_active')
     .eq('is_active', true)
     .order('role', { ascending: true })
     .order('full_name')
@@ -78,7 +78,7 @@ export async function fetchLeadsFromSupabase() {
   const { data, error } = await supabase
     .from('leads')
     .select(
-      'id, full_name, phone, source, status, children, notes, follow_ups, converted_student_id, added_date, created_at, updated_at',
+      'id, full_name, phone, source, status, children, notes, follow_ups, tasks, converted_student_id, added_date, created_at, updated_at',
     )
     .order('added_date', { ascending: false })
     .order('created_at', { ascending: false })

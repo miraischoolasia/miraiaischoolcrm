@@ -54,6 +54,7 @@ export function mapClassroomRow(row: ClassroomRow): Classroom {
 export function mapTeacherRow(row: TeacherRow): Teacher {
   return {
     id: row.id,
+    authUserId: row.auth_user_id,
     username: row.username,
     fullName: row.full_name,
     email: row.email,
@@ -73,6 +74,7 @@ export function mapLeadRow(row: LeadRow): Lead {
     children: row.children ?? [],
     notes: row.notes,
     followUps: row.follow_ups ?? [],
+    tasks: row.tasks ?? [],
     convertedStudentId: row.converted_student_id,
     addedDate: row.added_date,
     createdAt: row.created_at,

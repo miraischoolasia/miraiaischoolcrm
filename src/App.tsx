@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Session } from '@supabase/supabase-js'
 import type { EventClickArg, EventContentArg } from '@fullcalendar/core'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import FullCalendar from '@fullcalendar/react'
@@ -57,6 +58,7 @@ import {
   mapScheduleRow,
 } from './lib/mappers'
 import { buildAttendanceSubmission } from './lib/attendance'
+import { provisionTeacherLogin, resetTeacherPassword } from './lib/teacherAuth'
 import {
   fetchAdminActivityFromSupabase,
   fetchClassroomsFromSupabase,
@@ -76,6 +78,7 @@ import { cn } from './lib/cn'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useConfirm } from './hooks/useConfirm'
 import { useToast } from './hooks/useToast'
+import { AuthScreen } from './components/AuthScreen'
 import { SummaryBar } from './components/SummaryBar'
 import { ClassListingSection } from './components/sections/ClassListingSection'
 import { StudentDashboardSection } from './components/sections/StudentDashboardSection'
@@ -124,6 +127,9 @@ function App() {
   const [createStudentSaveError, setCreateStudentSaveError] = useState<string | null>(null)
   const [isCreatingTeacherRecord, setIsCreatingTeacherRecord] = useState(false)
   const [createTeacherSaveError, setCreateTeacherSaveError] = useState<string | null>(null)
+  const [teacherLoginPassword, setTeacherLoginPassword] = useState('')
+  const [isProvisioningLogin, setIsProvisioningLogin] = useState(false)
+  const [provisionLoginError, setProvisionLoginError] = useState<string | null>(null)
   const [isSavingSchedule, setIsSavingSchedule] = useState(false)
   const [scheduleSaveError, setScheduleSaveError] = useState<string | null>(null)
   const [isSavingAttendance, setIsSavingAttendance] = useState(false)
@@ -133,7 +139,10 @@ function App() {
 
   const [studentFilter, setStudentFilter] = useState<FilterKey>('all')
   const [activeSection, setActiveSection] = useState<AppSection>('calendar')
-  const [selectedSessionKey, setSelectedSessionKey] = useState<string>('')
+  const [authSession, setAuthSession] = useState<Session | null>(null)
+  const [authInitializing, setAuthInitializing] = useState(true)
+  const [authBlockedMessage, setAuthBlockedMessage] = useState<string | null>(null)
+  const [viewAsTeacherId, setViewAsTeacherId] = useState<number | null>(null)
   const [selectedAgeGroup, setSelectedAgeGroup] = useState<AgeGroup>(ageGroupOptions[0])
 
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null)
@@ -157,6 +166,8 @@ function App() {
   const [followUpLeadId, setFollowUpLeadId] = useState<number | null>(null)
   const [isSavingFollowUp, setIsSavingFollowUp] = useState(false)
   const [followUpSaveError, setFollowUpSaveError] = useState<string | null>(null)
+  const [isSavingTask, setIsSavingTask] = useState(false)
+  const [taskSaveError, setTaskSaveError] = useState<string | null>(null)
   const [studentFormState, setStudentFormState] = useState<RenewalFormState>({
     addHours: '0',
     lessonExpiryDate: '',
@@ -292,43 +303,40 @@ function App() {
     [lessonLogs],
   )
 
-  const sessionOptions = useMemo<UserSession[]>(() => {
-    const defaultTeacherId =
-      teachers.find((teacher) => teacher.role === 'teacher')?.id ?? null
+  // The real, logged-in identity — resolved from the Supabase Auth session
+  // via teachers.auth_user_id. Never used for RPC/audit attribution
+  // spoofing: the server derives its own actor from auth.uid().
+  const currentTeacher = useMemo(
+    () =>
+      authSession
+        ? teachers.find((teacher) => teacher.authUserId === authSession.user.id) ?? null
+        : null,
+    [authSession, teachers],
+  )
 
-    return [
-      {
-        key: 'local-admin',
-        role: 'admin',
-        label: 'Local Admin Preview',
-        teacherId: null,
-      },
-      {
-        key: 'local-teacher',
-        role: 'teacher',
-        label: 'Local Teacher Preview',
-        teacherId: defaultTeacherId,
-      },
-      ...teachers.map((teacher) => ({
-        key: `teacher-${teacher.id}`,
-        role: teacher.role,
-        label:
-          teacher.role === 'admin'
-            ? `${teacher.fullName} (Admin)`
-            : `${teacher.fullName} (Teacher)`,
-        teacherId: teacher.id,
-      })),
-    ]
-  }, [teachers])
+  // Dev-only convenience: lets a logged-in real admin locally preview
+  // another teacher's view. Dead-code-eliminated from production builds
+  // since `import.meta.env.DEV` is statically false there.
+  const effectiveTeacher = useMemo(
+    () =>
+      import.meta.env.DEV && currentTeacher?.role === 'admin' && viewAsTeacherId
+        ? teachers.find((teacher) => teacher.id === viewAsTeacherId) ?? currentTeacher
+        : currentTeacher,
+    [currentTeacher, teachers, viewAsTeacherId],
+  )
 
-  const currentSession =
-    sessionOptions.find((session) => session.key === selectedSessionKey) ??
-    sessionOptions[0]
-
-  const currentAdminActorId =
-    currentSession?.teacherId ??
-    teachers.find((teacher) => teacher.username === 'admin_demo')?.id ??
-    null
+  const currentSession: UserSession | null = useMemo(
+    () =>
+      effectiveTeacher
+        ? {
+            key: `teacher-${effectiveTeacher.id}`,
+            role: effectiveTeacher.role,
+            label: effectiveTeacher.fullName,
+            teacherId: effectiveTeacher.id,
+          }
+        : null,
+    [effectiveTeacher],
+  )
 
   const isAdminView = currentSession?.role !== 'teacher'
   const protectedTeacherIds = useMemo(() => {
@@ -337,11 +345,11 @@ function App() {
     if (bootstrapAdmin) {
       next.add(bootstrapAdmin.id)
     }
-    if (currentSession?.teacherId) {
-      next.add(currentSession.teacherId)
+    if (currentTeacher?.id) {
+      next.add(currentTeacher.id)
     }
     return next
-  }, [currentSession, teachers])
+  }, [currentTeacher, teachers])
   const selectedStudent =
     students.find((student) => student.id === selectedStudentId) ?? null
   const selectedStudentDetail =
@@ -366,19 +374,45 @@ function App() {
       : []
 
   useEffect(() => {
-    if (!selectedSessionKey && sessionOptions[0]) {
-      setSelectedSessionKey(sessionOptions[0].key)
+    if (!supabase) {
+      setAuthInitializing(false)
       return
     }
 
-    if (
-      selectedSessionKey &&
-      !sessionOptions.some((session) => session.key === selectedSessionKey) &&
-      sessionOptions[0]
-    ) {
-      setSelectedSessionKey(sessionOptions[0].key)
+    supabase.auth.getSession().then(({ data }) => {
+      setAuthSession(data.session)
+      setAuthInitializing(false)
+    })
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthSession(session)
+      if (!session) {
+        setAuthBlockedMessage(null)
+        setViewAsTeacherId(null)
+      }
+    })
+
+    return () => {
+      authListener.subscription.unsubscribe()
     }
-  }, [selectedSessionKey, sessionOptions])
+  }, [])
+
+  useEffect(() => {
+    if (!authSession || !supabase || isLoading) {
+      return
+    }
+
+    if (!currentTeacher) {
+      setAuthBlockedMessage("This login isn't linked to a teacher profile. Contact your admin.")
+      supabase.auth.signOut()
+      return
+    }
+
+    if (!currentTeacher.isActive) {
+      setAuthBlockedMessage('Your account has been deactivated. Contact your admin.')
+      supabase.auth.signOut()
+    }
+  }, [authSession, currentTeacher, isLoading])
 
   useEffect(() => {
     if (
@@ -459,6 +493,10 @@ function App() {
         return
       }
 
+      if (!authSession) {
+        return
+      }
+
       try {
         setIsLoading(true)
         setLoadError(null)
@@ -512,7 +550,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [authSession])
 
   const visibleSchedules = useMemo(() => {
     if (!currentSession) {
@@ -861,6 +899,8 @@ function App() {
     setCreateTeacherSaveError(null)
     setEditingTeacherId(null)
     setIsCreateTeacherOpen(true)
+    setTeacherLoginPassword('')
+    setProvisionLoginError(null)
     setCreateTeacherFormState({
       username: '',
       fullName: '',
@@ -879,6 +919,8 @@ function App() {
     setCreateTeacherSaveError(null)
     setEditingTeacherId(teacherId)
     setIsCreateTeacherOpen(true)
+    setTeacherLoginPassword('')
+    setProvisionLoginError(null)
     setCreateTeacherFormState({
       username: teacher.username,
       fullName: teacher.fullName,
@@ -892,6 +934,36 @@ function App() {
     setIsCreateTeacherOpen(false)
     setEditingTeacherId(null)
     setCreateTeacherSaveError(null)
+    setTeacherLoginPassword('')
+    setProvisionLoginError(null)
+  }
+
+  async function handleProvisionTeacherLogin() {
+    if (!editingTeacher) {
+      return
+    }
+
+    if (teacherLoginPassword.length < 8) {
+      setProvisionLoginError('Password must be at least 8 characters.')
+      return
+    }
+
+    setIsProvisioningLogin(true)
+    setProvisionLoginError(null)
+
+    const result = editingTeacher.authUserId
+      ? await resetTeacherPassword(editingTeacher.id, teacherLoginPassword)
+      : await provisionTeacherLogin(editingTeacher.id, teacherLoginPassword)
+
+    setIsProvisioningLogin(false)
+
+    if (!result.ok) {
+      setProvisionLoginError(result.error)
+      return
+    }
+
+    setTeacherLoginPassword('')
+    await refreshTeachers()
   }
 
   function openCreateLeadModal() {
@@ -946,6 +1018,7 @@ function App() {
   function closeFollowUpModal() {
     setFollowUpLeadId(null)
     setFollowUpSaveError(null)
+    setTaskSaveError(null)
   }
 
   function openCreateClassroom() {
@@ -1071,7 +1144,6 @@ function App() {
     }
 
     const { error } = await supabase.rpc('record_admin_activity', {
-      p_actor_teacher_id: currentAdminActorId,
       p_action_type: actionType,
       p_entity_type: entityType,
       p_entity_id: entityId,
@@ -1157,7 +1229,6 @@ function App() {
           : null,
         p_classroom_id: editClassroomId,
         p_notes: studentDetailsFormState.notes.trim() || null,
-        p_actor_teacher_id: currentAdminActorId,
         p_student_type: studentDetailsFormState.studentType,
       })
 
@@ -1225,7 +1296,6 @@ function App() {
         p_account_fee_expiry_date: createStudentFormState.accountFeeExpiryDate,
         p_mirai_club_expiry_date: createStudentFormState.miraiClubExpiryDate,
         p_notes: createStudentFormState.notes.trim() || null,
-        p_actor_teacher_id: currentAdminActorId,
         p_student_type: createStudentFormState.studentType,
       })
 
@@ -1313,7 +1383,6 @@ function App() {
             p_email: createTeacherFormState.email.trim() || null,
             p_phone: createTeacherFormState.phone.trim() || null,
             p_role: createTeacherFormState.role,
-            p_actor_teacher_id: currentAdminActorId,
           })
         : await supabase.rpc('create_teacher_record', {
             p_username: username,
@@ -1327,8 +1396,9 @@ function App() {
         throw error
       }
 
+      let createdTeacherId: number | null = null
       if (!editingTeacher) {
-        const createdTeacherId = data?.[0]?.teacher_id ?? null
+        createdTeacherId = data?.[0]?.teacher_id ?? null
         await recordAdminActivity(
           'teacher_created',
           'teacher',
@@ -1339,7 +1409,14 @@ function App() {
       }
 
       await Promise.all([refreshTeachers(), refreshAdminActivities()])
-      closeCreateTeacherModal()
+
+      if (createdTeacherId) {
+        // Keep the modal open, now in "edit" mode for the row just
+        // created, so the admin can set up its login in one continuous flow.
+        setEditingTeacherId(createdTeacherId)
+      } else {
+        closeCreateTeacherModal()
+      }
     } catch (error) {
       setCreateTeacherSaveError(
         error instanceof Error ? error.message : 'Failed to save teacher record.',
@@ -1510,6 +1587,89 @@ function App() {
       )
     } finally {
       setIsSavingFollowUp(false)
+    }
+  }
+
+  async function handleAddTask(title: string, dueDate: string) {
+    if (!supabase || !followUpLead) {
+      return
+    }
+
+    try {
+      setIsSavingTask(true)
+      setTaskSaveError(null)
+
+      const nextTasks = [
+        ...followUpLead.tasks,
+        { id: crypto.randomUUID(), title, dueDate, completed: false },
+      ]
+
+      const { error } = await supabase
+        .from('leads')
+        .update({ tasks: nextTasks })
+        .eq('id', followUpLead.id)
+
+      if (error) {
+        throw error
+      }
+
+      await refreshLeads()
+    } catch (error) {
+      setTaskSaveError(error instanceof Error ? error.message : 'Failed to add task.')
+    } finally {
+      setIsSavingTask(false)
+    }
+  }
+
+  async function handleToggleTask(taskId: string) {
+    if (!supabase || !followUpLead) {
+      return
+    }
+
+    try {
+      setTaskSaveError(null)
+
+      const nextTasks = followUpLead.tasks.map((task) =>
+        task.id === taskId ? { ...task, completed: !task.completed } : task,
+      )
+
+      const { error } = await supabase
+        .from('leads')
+        .update({ tasks: nextTasks })
+        .eq('id', followUpLead.id)
+
+      if (error) {
+        throw error
+      }
+
+      await refreshLeads()
+    } catch (error) {
+      setTaskSaveError(error instanceof Error ? error.message : 'Failed to update task.')
+    }
+  }
+
+  async function handleDeleteTask(taskId: string) {
+    if (!supabase || !followUpLead) {
+      return
+    }
+
+    try {
+      setTaskSaveError(null)
+
+      const nextTasks = followUpLead.tasks.filter((task) => task.id !== taskId)
+
+      const { error } = await supabase
+        .from('leads')
+        .update({ tasks: nextTasks })
+        .eq('id', followUpLead.id)
+
+      if (error) {
+        throw error
+      }
+
+      await refreshLeads()
+    } catch (error) {
+      setTaskSaveError(error instanceof Error ? error.message : 'Failed to delete task.')
     }
   }
 
@@ -1796,7 +1956,6 @@ function App() {
 
       const { error } = await supabase.rpc('archive_classroom', {
         p_classroom_id: classroomId,
-        p_actor_teacher_id: currentAdminActorId,
       })
 
       if (error) {
@@ -1829,7 +1988,6 @@ function App() {
       setRestoringClassroomId(classroomId)
       const { error } = await supabase.rpc('restore_classroom', {
         p_classroom_id: classroomId,
-        p_actor_teacher_id: currentAdminActorId,
       })
 
       if (error) {
@@ -1873,7 +2031,6 @@ function App() {
           studentFormState.miraiClubExpiryDate ||
           selectedStudent.miraiClubExpiryDate,
         p_remark: studentFormState.remark.trim() || null,
-        p_actor_teacher_id: currentAdminActorId,
       })
 
       if (error) {
@@ -2336,7 +2493,6 @@ function App() {
       const { error } = await supabase.rpc('submit_lesson_attendance', {
         p_schedule_id: attendanceModal.scheduleId,
         p_occurrence_date: attendanceModal.occurrenceDate,
-        p_teacher_id: currentSession.teacherId,
         p_lesson_remark: attendanceRemark.trim() || null,
         p_attendance: submission.payload,
         p_student_reviews: submission.reviewPayload,
@@ -2452,6 +2608,20 @@ function App() {
     )
   }
 
+  if (authInitializing) {
+    return <main className="min-h-screen bg-[#f8fafc]" />
+  }
+
+  if (!authSession) {
+    return <AuthScreen blockedMessage={authBlockedMessage} />
+  }
+
+  if (isLoading || !currentTeacher) {
+    // Either core data (including the teachers table) is still loading, or
+    // the auth-blocked effect above is about to sign this session out.
+    return <main className="min-h-screen bg-[#f8fafc]" />
+  }
+
   return (
     <main className="compact-admin min-h-screen bg-[#f3f4f6] pb-20 text-slate-900 lg:pb-0">
       {confirmDialog}
@@ -2543,20 +2713,39 @@ function App() {
                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
                   Local Date: {formatDate(todayString)}
                 </div>
-                <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600">
-                  <span className="font-medium">View As</span>
-                  <select
-                    value={currentSession?.key ?? ''}
-                    onChange={(event) => setSelectedSessionKey(event.target.value)}
-                    className="!min-h-0 bg-transparent !p-0 text-xs font-semibold text-slate-900 outline-none"
+                {import.meta.env.DEV && currentTeacher.role === 'admin' && (
+                  <label className="flex items-center gap-2 rounded-lg border border-dashed border-amber-300 bg-amber-50 px-2.5 py-1 text-xs text-amber-800">
+                    <span className="font-medium">View As (dev only)</span>
+                    <select
+                      value={viewAsTeacherId ?? ''}
+                      onChange={(event) =>
+                        setViewAsTeacherId(
+                          event.target.value ? Number(event.target.value) : null,
+                        )
+                      }
+                      className="!min-h-0 bg-transparent !p-0 text-xs font-semibold text-amber-900 outline-none"
+                    >
+                      <option value="">{currentTeacher.fullName} (Me)</option>
+                      {teachers
+                        .filter((teacher) => teacher.id !== currentTeacher.id)
+                        .map((teacher) => (
+                          <option key={teacher.id} value={teacher.id}>
+                            {teacher.fullName} ({teacher.role === 'admin' ? 'Admin' : 'Teacher'})
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
+                <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600">
+                  <span className="font-medium">{currentTeacher.fullName}</span>
+                  <button
+                    type="button"
+                    onClick={() => supabase?.auth.signOut()}
+                    className="font-semibold text-[#be185d] transition hover:text-[#9d174d]"
                   >
-                    {sessionOptions.map((session) => (
-                      <option key={session.key} value={session.key}>
-                        {session.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                    Log out
+                  </button>
+                </div>
                 {!isSupabaseConfigured && (
                   <div className="flex items-center gap-1.5 rounded-xl bg-amber-100 px-4 py-2 text-sm font-semibold text-amber-800">
                     <WarningCircle size={16} weight="fill" aria-hidden="true" />
@@ -2850,6 +3039,11 @@ function App() {
           onClose={closeCreateTeacherModal}
           onSubmit={handleCreateTeacherSubmit}
           onFieldChange={updateCreateTeacherForm}
+          loginPassword={teacherLoginPassword}
+          onLoginPasswordChange={setTeacherLoginPassword}
+          onProvisionLogin={handleProvisionTeacherLogin}
+          isProvisioningLogin={isProvisioningLogin}
+          provisionLoginError={provisionLoginError}
         />
       )}
 
@@ -2872,6 +3066,11 @@ function App() {
           saveError={followUpSaveError}
           onClose={closeFollowUpModal}
           onAddFollowUp={handleAddFollowUp}
+          isSavingTask={isSavingTask}
+          taskSaveError={taskSaveError}
+          onAddTask={handleAddTask}
+          onToggleTask={handleToggleTask}
+          onDeleteTask={handleDeleteTask}
         />
       )}
 

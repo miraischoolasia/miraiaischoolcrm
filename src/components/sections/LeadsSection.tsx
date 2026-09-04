@@ -4,10 +4,12 @@ import { formatDate, getTodayString, parseLocalDate } from '../../domain/student
 import { MAX_LEAD_FOLLOW_UPS, leadSourceOptions, leadStatusOptions } from '../../lib/constants'
 import { SummaryBar } from '../SummaryBar'
 import { LeadTrendChart } from '../LeadTrendChart'
+import { LeadKanbanBoard } from '../LeadKanbanBoard'
 import mascotGordo from '../../assets/mascot-gordo.png'
 import {
   ArrowRight,
   ChartLineUp,
+  Kanban,
   ListChecks,
   MagnifyingGlass,
   PencilSimple,
@@ -77,7 +79,7 @@ export function LeadsSection({
   onOpenCreateLead,
   onOpenFollowUp,
 }: LeadsSectionProps) {
-  const [view, setView] = useState<'pipeline' | 'dashboard'>('pipeline')
+  const [view, setView] = useState<'pipeline' | 'board' | 'dashboard'>('pipeline')
   const [searchTerm, setSearchTerm] = useState('')
   const [stageFilter, setStageFilter] = useState<LeadStatus | 'all'>('all')
   const todayString = getTodayString()
@@ -165,6 +167,19 @@ export function LeadsSection({
                 >
                   <ListChecks size={16} aria-hidden="true" />
                   Pipeline
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setView('board')}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition',
+                    view === 'board'
+                      ? 'bg-white text-[#be185d] shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700',
+                  )}
+                >
+                  <Kanban size={16} aria-hidden="true" />
+                  Board
                 </button>
                 <button
                   type="button"
@@ -257,6 +272,15 @@ export function LeadsSection({
             </div>
           )}
         </div>
+
+        {view === 'board' && (
+          <LeadKanbanBoard
+            leads={leads}
+            onChangeStatus={onChangeStatus}
+            onEditLead={onEditLead}
+            onOpenFollowUp={onOpenFollowUp}
+          />
+        )}
 
         {view === 'dashboard' && (
           <div className="space-y-6 p-5 sm:p-6">
