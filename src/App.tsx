@@ -161,6 +161,7 @@ function App() {
   const [isCreateLeadOpen, setIsCreateLeadOpen] = useState(false)
   const [editingLeadId, setEditingLeadId] = useState<number | null>(null)
   const [convertingLeadId, setConvertingLeadId] = useState<number | null>(null)
+  const [deletingLeadId, setDeletingLeadId] = useState<number | null>(null)
   const [isSavingLead, setIsSavingLead] = useState(false)
   const [leadSaveError, setLeadSaveError] = useState<string | null>(null)
   const [followUpLeadId, setFollowUpLeadId] = useState<number | null>(null)
@@ -1673,6 +1674,44 @@ function App() {
     }
   }
 
+  async function handleDeleteLead(leadId: number) {
+    if (!supabase) {
+      return
+    }
+
+    const lead = leads.find((entry) => entry.id === leadId)
+    if (!lead) {
+      return
+    }
+
+    const label = lead.fullName || lead.children[0]?.name || 'this lead'
+
+    if (
+      !(await confirm(
+        `Delete ${label}? This permanently removes the lead, its follow-up log, and its tasks. This cannot be undone.`,
+      ))
+    ) {
+      return
+    }
+
+    try {
+      setDeletingLeadId(leadId)
+
+      const { error } = await supabase.from('leads').delete().eq('id', leadId)
+
+      if (error) {
+        throw error
+      }
+
+      await recordAdminActivity('lead_deleted', 'lead', leadId, label)
+      await Promise.all([refreshLeads(), refreshAdminActivities()])
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to delete lead.')
+    } finally {
+      setDeletingLeadId(null)
+    }
+  }
+
   async function handleDeleteTeacher(teacherId: number) {
     if (!supabase) {
       return
@@ -2976,6 +3015,8 @@ function App() {
                 onEditLead={openEditLeadModal}
                 onOpenCreateLead={openCreateLeadModal}
                 onOpenFollowUp={openFollowUpModal}
+                onDeleteLead={handleDeleteLead}
+                deletingLeadId={deletingLeadId}
               />
             )}
 

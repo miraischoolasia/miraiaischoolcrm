@@ -14,6 +14,7 @@ import {
   MagnifyingGlass,
   PencilSimple,
   Phone,
+  Trash,
   UserPlus,
 } from '@phosphor-icons/react'
 import type { Lead, LeadChild, LeadStatus } from '../../types/domain'
@@ -68,6 +69,8 @@ type LeadsSectionProps = {
   onEditLead: (leadId: number) => void
   onOpenCreateLead: () => void
   onOpenFollowUp: (leadId: number) => void
+  onDeleteLead: (leadId: number) => void
+  deletingLeadId: number | null
 }
 
 export function LeadsSection({
@@ -78,6 +81,8 @@ export function LeadsSection({
   onEditLead,
   onOpenCreateLead,
   onOpenFollowUp,
+  onDeleteLead,
+  deletingLeadId,
 }: LeadsSectionProps) {
   const [view, setView] = useState<'pipeline' | 'board' | 'dashboard'>('pipeline')
   const [searchTerm, setSearchTerm] = useState('')
@@ -400,7 +405,7 @@ export function LeadsSection({
                     ))}
                   </select>
 
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => onEditLead(lead.id)}
@@ -425,6 +430,15 @@ export function LeadsSection({
                     >
                       <ArrowRight size={16} aria-hidden="true" />
                       {lead.status === 'converted' ? 'Converted' : 'Convert'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={deletingLeadId === lead.id}
+                      onClick={() => onDeleteLead(lead.id)}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Trash size={16} aria-hidden="true" />
+                      {deletingLeadId === lead.id ? 'Deleting...' : 'Delete'}
                     </button>
                   </div>
                 </li>
@@ -513,6 +527,15 @@ export function LeadsSection({
                           >
                             <ArrowRight size={16} aria-hidden="true" />
                             {lead.status === 'converted' ? 'Converted' : 'Convert'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={deletingLeadId === lead.id}
+                            onClick={() => onDeleteLead(lead.id)}
+                            aria-label="Delete lead"
+                            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Trash size={16} aria-hidden="true" />
                           </button>
                         </div>
                       </td>
