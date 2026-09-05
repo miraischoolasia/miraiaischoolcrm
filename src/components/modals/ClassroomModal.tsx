@@ -31,7 +31,7 @@ export function ClassroomModal({
 }: ClassroomModalProps) {
   return (
     <ModalShell maxWidth="2xl" onClose={onClose}>
-      <div className="border-b border-slate-200 bg-[#f8fafc] px-6 py-5 sm:px-8">
+      <div className="border-b border-slate-200 bg-white px-6 py-5 sm:px-8">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-sm font-medium text-[#be185d]">

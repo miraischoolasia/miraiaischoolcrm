@@ -2662,11 +2662,11 @@ function App() {
   }
 
   return (
-    <main className="compact-admin min-h-screen bg-[#f3f4f6] pb-20 text-slate-900 lg:pb-0">
+    <main className="compact-admin min-h-screen bg-white pb-20 text-slate-900 lg:pb-0">
       {confirmDialog}
       {toastHost}
       <div className="flex min-h-screen">
-        <aside className="hidden w-[220px] shrink-0 bg-[#2f2f2f] text-white lg:flex lg:flex-col">
+        <aside className="hidden w-[220px] shrink-0 bg-[#0a0a0a] text-white lg:flex lg:flex-col">
           <div className="flex flex-col items-center gap-1 border-b border-white/10 px-4 py-4">
             <img src={miraiLogo} alt="Mirai AI School" className="h-24 w-auto" />
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/60">
@@ -2749,7 +2749,7 @@ function App() {
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
+                <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600">
                   Local Date: {formatDate(todayString)}
                 </div>
                 {import.meta.env.DEV && currentTeacher.role === 'admin' && (
@@ -2832,8 +2832,8 @@ function App() {
                 />
 
                 <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-                  <div className="border-b border-slate-200 bg-[#f8fafc] px-5 py-4 sm:px-6">
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                       <div>
                         <h2 className="text-lg font-semibold text-slate-900">
                           Full Calendar Timetable Board
