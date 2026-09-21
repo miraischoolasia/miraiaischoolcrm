@@ -35,6 +35,7 @@ export function StudentDetailModal({
   schedules,
   teacherMap,
 }: StudentDetailModalProps) {
+  const isPreviewStudent = student.studentType === 'preview'
   const latestLessonLogIds = useMemo(() => {
     return new Set(
       Array.from(getLatestLessonLogMap(lessonLogs).values()).map((log) => log.id),
@@ -122,14 +123,17 @@ export function StudentDetailModal({
             </div>
             <h2 className="mt-1 flex items-center gap-2 text-2xl font-semibold text-slate-900">
               {student.name}
-              {student.studentType === 'trial' && (
+              {student.studentType !== 'regular' && (
                 <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
-                  Trial
+                  {isPreviewStudent ? 'Preview' : 'Trial'}
                 </span>
               )}
             </h2>
             <p className="mt-2 text-sm text-slate-500">
-              Student ID #{String(student.id).padStart(3, '0')} - recent class reviews and five-metric performance profile.
+              Student ID #{String(student.id).padStart(3, '0')}
+              {isPreviewStudent
+                ? ' - preview class contact profile.'
+                : ' - recent class reviews and five-metric performance profile.'}
             </p>
           </div>
           <button
@@ -151,9 +155,11 @@ export function StudentDetailModal({
             </div>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <div>
-                <div className="text-sm text-slate-500">Remaining Classes</div>
+                <div className="text-sm text-slate-500">
+                  {isPreviewStudent ? 'Phone Number' : 'Remaining Classes'}
+                </div>
                 <div className="mt-1 text-2xl font-semibold text-slate-900">
-                  {student.remainingHours}
+                  {isPreviewStudent ? student.phone ?? '-' : student.remainingHours}
                 </div>
               </div>
               <div>
@@ -162,6 +168,7 @@ export function StudentDetailModal({
                   {student.isActive ? 'Active' : 'Deactivated'}
                 </div>
               </div>
+              {!isPreviewStudent && (
               <div>
                 <div className="text-sm text-slate-500">Assigned Teacher</div>
                 <div className="mt-1 text-lg font-semibold text-slate-900">
@@ -170,20 +177,26 @@ export function StudentDetailModal({
                     : 'Unassigned'}
                 </div>
               </div>
+              )}
+              {!isPreviewStudent && (
               <div>
                 <div className="text-sm text-slate-500">Lesson Expiry</div>
                 <div className="mt-1 text-lg font-semibold text-slate-900">
                   {formatDate(student.lessonExpiryDate)}
                 </div>
               </div>
+              )}
+              {!isPreviewStudent && (
               <div>
                 <div className="text-sm text-slate-500">Main Classroom</div>
                 <div className="mt-1 text-lg font-semibold text-slate-900">
                   {assignedClassroom?.name ?? 'Unassigned'}
                 </div>
               </div>
+              )}
             </div>
 
+            {!isPreviewStudent && (
             <div className="mt-5 flex flex-wrap gap-2">
               {assignedClassroom && (
                 <span
@@ -207,8 +220,10 @@ export function StudentDetailModal({
                 </span>
               )}
             </div>
+            )}
           </div>
 
+          {!isPreviewStudent && (
           <div className="rounded-2xl border border-slate-200 bg-white p-5">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
               Five-Metric Radar
@@ -233,8 +248,10 @@ export function StudentDetailModal({
               ))}
             </div>
           </div>
+          )}
         </section>
 
+        {!isPreviewStudent && (
         <section className="rounded-2xl border border-slate-200 bg-white">
           <div className="border-b border-slate-200 px-5 py-4">
             <h3 className="text-lg font-semibold text-slate-900">
@@ -313,6 +330,7 @@ export function StudentDetailModal({
             )}
           </div>
         </section>
+        )}
       </div>
     </ModalShell>
   )

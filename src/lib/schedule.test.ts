@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { RRule, RRuleSet } from 'rrule'
 import type { Weekday } from 'rrule'
-import { buildScheduleEvents, calculateDuration, getDateKeyFromDate } from './schedule'
-import type { Classroom, Schedule, Student, Teacher } from '../types/domain'
+import {
+  buildScheduleEvents,
+  calculateDuration,
+  filterSchedulesByClassKind,
+  getDateKeyFromDate,
+  getScheduleClassKind,
+} from './schedule'
+import type { Classroom, Schedule, ScheduleException, Student, Teacher } from '../types/domain'
 
 const weekdayConstants: Record<string, Weekday> = {
   su: RRule.SU,
@@ -63,6 +69,7 @@ describe('buildScheduleEvents', () => {
   const classroom: Classroom = {
     id: 1,
     name: 'Group A',
+    category: 'regular',
     ageGroup: '6-8 Years Old',
     programLevel: 'Coder Foundation',
     teacherId: 1,
@@ -75,6 +82,7 @@ describe('buildScheduleEvents', () => {
     teacherId: 1,
     classroomId: 1,
     name: 'Olivia Tan',
+    phone: null,
     remainingHours: 5,
     lessonExpiryDate: '2026-09-01',
     accountFeeExpiryDate: '2026-09-01',
@@ -164,6 +172,169 @@ describe('buildScheduleEvents', () => {
       }
       expect(occurrences.length).toBeLessThanOrEqual(4)
     }
+  })
+
+  describe('class kind filter', () => {
+    const trialClassroom: Classroom = { ...classroom, id: 2, name: 'Trial A', category: 'trial' }
+    const kindClassroomMap = new Map([
+      [classroom.id, classroom],
+      [trialClassroom.id, trialClassroom],
+    ])
+    const base: Schedule = {
+      id: 200,
+      teacherId: 1,
+      classroomId: 1,
+      title: 'Group A',
+      eventType: 'regular',
+      recurrenceType: 'weekly',
+      dayOfWeek: 2,
+      scheduledDate: null,
+      startTime: '19:30',
+      endTime: '21:30',
+      startRecur: '2026-09-01',
+      endRecur: null,
+      status: 'active',
+      notes: null,
+    }
+    const regularSchedule = base
+    const trialSchedule: Schedule = { ...base, id: 201, classroomId: 2, title: 'Trial A' }
+    const replacementSchedule: Schedule = {
+      ...base,
+      id: 202,
+      classroomId: null,
+      eventType: 'replacement',
+      recurrenceType: 'none',
+      dayOfWeek: null,
+      scheduledDate: '2026-09-10',
+      startRecur: null,
+    }
+    const all = [regularSchedule, trialSchedule, replacementSchedule]
+
+    it('classifies schedules as regular, trial or replacement', () => {
+      expect(getScheduleClassKind(regularSchedule, kindClassroomMap)).toBe('regular')
+      expect(getScheduleClassKind(trialSchedule, kindClassroomMap)).toBe('trial')
+      expect(getScheduleClassKind(replacementSchedule, kindClassroomMap)).toBe('replacement')
+    })
+
+    it('returns everything for the all filter', () => {
+      expect(filterSchedulesByClassKind(all, kindClassroomMap, 'all')).toHaveLength(3)
+    })
+
+    it.each([
+      ['regular', 200],
+      ['trial', 201],
+      ['replacement', 202],
+    ] as const)('keeps only %s schedules', (filter, expectedId) => {
+      const result = filterSchedulesByClassKind(all, kindClassroomMap, filter)
+      expect(result.map((schedule) => schedule.id)).toEqual([expectedId])
+    })
+
+    it('tags calendar events with their class kind', () => {
+      const events = buildScheduleEvents(
+        all,
+        kindClassroomMap,
+        classroomStudentMap,
+        teacherMap,
+        new Map(),
+        studentMap,
+      )
+
+      expect(events.map((event) => event.extendedProps?.classKind)).toEqual([
+        'regular',
+        'trial',
+        'replacement',
+      ])
+    })
+  })
+
+  describe('single-day cancellation', () => {
+    const weeklySchedule: Schedule = {
+      id: 104,
+      teacherId: 1,
+      classroomId: 1,
+      title: 'Group A',
+      eventType: 'regular',
+      recurrenceType: 'weekly',
+      dayOfWeek: 2, // Tuesday
+      scheduledDate: null,
+      startTime: '19:30',
+      endTime: '21:30',
+      startRecur: '2026-09-01',
+      endRecur: null,
+      status: 'active',
+      notes: null,
+    }
+
+    function buildWithExceptions(exceptions: ScheduleException[]) {
+      return buildScheduleEvents(
+        [weeklySchedule],
+        classroomMap,
+        classroomStudentMap,
+        teacherMap,
+        new Map(),
+        studentMap,
+        exceptions,
+      )
+    }
+
+    it('leaves the series untouched when there are no exceptions', () => {
+      const events = buildWithExceptions([])
+
+      expect(events).toHaveLength(1)
+      expect(events[0].exdate).toBeUndefined()
+    })
+
+    it('adds an exdate that removes only the cancelled Tuesday from the rrule expansion', () => {
+      const events = buildWithExceptions([
+        { id: 1, scheduleId: 104, exceptionDate: '2026-09-08', reason: 'Teacher on leave' },
+      ])
+      const [series] = events
+
+      expect(series.exdate).toEqual(['2026-09-08T19:30'])
+
+      const set = new RRuleSet()
+      set.rrule(toRRule(series.rrule as Parameters<typeof toRRule>[0]))
+      set.exrule(toRRule(series.exrule as Parameters<typeof toRRule>[0]))
+      for (const exdate of series.exdate as string[]) {
+        set.exdate(new Date(exdate))
+      }
+
+      const septemberDays = set
+        .between(new Date(2026, 8, 1), new Date(2026, 9, 1), true)
+        .map((occurrence) => occurrence.getDate())
+
+      // Tuesdays in Sep 2026 are 1, 8, 15, 22, 29 (29th is capped out already).
+      expect(septemberDays).toEqual([1, 15, 22])
+    })
+
+    it('emits a cancelled-occurrence card carrying the date and reason', () => {
+      const events = buildWithExceptions([
+        { id: 1, scheduleId: 104, exceptionDate: '2026-09-08', reason: 'Teacher on leave' },
+      ])
+
+      expect(events).toHaveLength(2)
+      expect(events[1]).toMatchObject({
+        id: 'schedule-104-cancelled-2026-09-08',
+        title: 'Group A',
+        start: '2026-09-08T19:30',
+        end: '2026-09-08T21:30',
+        extendedProps: {
+          scheduleId: 104,
+          isCancelledOccurrence: true,
+          occurrenceDate: '2026-09-08',
+          cancelReason: 'Teacher on leave',
+        },
+      })
+    })
+
+    it('ignores exceptions that belong to a different schedule', () => {
+      const events = buildWithExceptions([
+        { id: 2, scheduleId: 999, exceptionDate: '2026-09-08', reason: null },
+      ])
+
+      expect(events).toHaveLength(1)
+      expect(events[0].exdate).toBeUndefined()
+    })
   })
 
   it('builds a fixed start/end event for a replacement schedule using the participant map', () => {

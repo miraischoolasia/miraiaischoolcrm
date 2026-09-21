@@ -58,6 +58,7 @@ export const studentFilterOptions: Array<{ key: FilterKey; label: string }> = [
   { key: 'accountFee', label: 'Account Fee Due' },
   { key: 'mirai', label: 'Mirai Club Due' },
   { key: 'normal', label: 'All Normal' },
+  { key: 'preview', label: 'Preview Class' },
 ]
 
 export const ageGroupOptions: AgeGroup[] = [

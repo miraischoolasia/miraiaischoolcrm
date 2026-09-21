@@ -13,6 +13,8 @@ import type {
   LessonLogSummary,
   LessonLogSummaryRow,
   Schedule,
+  ScheduleException,
+  ScheduleExceptionRow,
   ScheduleParticipant,
   ScheduleParticipantRow,
   ScheduleRow,
@@ -28,6 +30,7 @@ export function mapStudentRow(row: StudentRow): Student {
     teacherId: row.teacher_id,
     classroomId: row.classroom_id,
     name: row.full_name,
+    phone: row.phone,
     remainingHours: row.remaining_hours,
     lessonExpiryDate: row.lesson_expiry_date,
     accountFeeExpiryDate: row.account_fee_expiry_date,
@@ -42,6 +45,7 @@ export function mapClassroomRow(row: ClassroomRow): Classroom {
   return {
     id: row.id,
     name: row.name,
+    category: row.category,
     ageGroup: row.age_group,
     programLevel: row.program_level,
     teacherId: row.teacher_id,
@@ -124,6 +128,15 @@ export function mapScheduleParticipantRow(row: ScheduleParticipantRow): Schedule
     scheduleId: row.schedule_id,
     studentId: row.student_id,
     isActive: row.is_active,
+  }
+}
+
+export function mapScheduleExceptionRow(row: ScheduleExceptionRow): ScheduleException {
+  return {
+    id: row.id,
+    scheduleId: row.schedule_id,
+    exceptionDate: row.exception_date,
+    reason: row.reason,
   }
 }
 

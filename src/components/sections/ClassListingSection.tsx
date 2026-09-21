@@ -68,6 +68,7 @@ export function ClassListingSection({
   teacherMap,
   todayString,
 }: ClassListingSectionProps) {
+  const [category, setCategory] = useState<'all' | 'regular' | 'trial'>('all')
   const activeClassrooms = classrooms.filter(
     (classroom) => classroom.status === 'active',
   )
@@ -75,7 +76,8 @@ export function ClassListingSection({
     (classroom) => classroom.status === 'archived',
   )
   const filteredClassrooms = activeClassrooms.filter(
-    (classroom) => classroom.ageGroup === selectedAgeGroup,
+    (classroom) => classroom.ageGroup === selectedAgeGroup &&
+      (category === 'all' || classroom.category === category),
   )
   const selectedClassroom =
     filteredClassrooms.find((classroom) => classroom.id === selectedClassroomId) ??
@@ -176,6 +178,13 @@ export function ClassListingSection({
           </div>
         ) : (
           <div className="space-y-4 p-4">
+            <div className="flex flex-wrap gap-2" aria-label="Classroom category">
+              {(['all', 'regular', 'trial'] as const).map((value) => (
+                <button key={value} type="button" aria-pressed={category === value} onClick={() => setCategory(value)} className={cn('rounded-xl border px-4 py-2 text-sm font-semibold', category === value ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]' : 'border-slate-200 text-slate-600')}>
+                  {value === 'all' ? 'All Classes' : value === 'trial' ? 'Trial Class' : 'Regular Class'}
+                </button>
+              ))}
+            </div>
             <div className="space-y-3 border-b border-slate-200 pb-3">
               <div className="space-y-2">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -185,7 +194,8 @@ export function ClassListingSection({
                   {ageGroupOptions.map((ageGroup) => {
                     const selected = selectedAgeGroup === ageGroup
                     const count = activeClassrooms.filter(
-                      (classroom) => classroom.ageGroup === ageGroup,
+                      (classroom) => classroom.ageGroup === ageGroup &&
+                        (category === 'all' || classroom.category === category),
                     ).length
 
                     return (
@@ -247,7 +257,7 @@ export function ClassListingSection({
                           )}
                         >
                           <div className="text-base font-semibold text-slate-900">
-                            {classroom.name}
+                            {classroom.name}{classroom.category === 'trial' && <span className="ml-2 text-xs text-[#be185d]">Trial Class</span>}
                           </div>
                           <div className="mt-1 text-sm text-slate-500">
                             {teacherMap.get(classroom.teacherId ?? -1)?.fullName ??
@@ -278,7 +288,7 @@ export function ClassListingSection({
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div>
                       <h3 className="text-2xl font-semibold text-slate-900">
-                        {selectedClassroom.name}
+                        {selectedClassroom.name}{selectedClassroom.category === 'trial' && <span className="ml-2 text-xs text-[#be185d]">Trial Class</span>}
                       </h3>
                       <div className="mt-1 text-sm text-slate-500">
                         Teacher:{' '}

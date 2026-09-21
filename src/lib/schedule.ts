@@ -1,6 +1,13 @@
 import type { EventInput } from '@fullcalendar/core'
 import { parseLocalDate } from '../domain/studentStatus'
-import type { Classroom, Schedule, ScheduleFormState, Student, Teacher } from '../types/domain'
+import type {
+  Classroom,
+  Schedule,
+  ScheduleException,
+  ScheduleFormState,
+  Student,
+  Teacher,
+} from '../types/domain'
 
 export const weekdayLabels = [
   'Sunday',
@@ -12,6 +19,43 @@ export const weekdayLabels = [
   'Saturday',
 ] as const
 export const weekdayToRRule = ['su', 'mo', 'tu', 'we', 'th', 'fr', 'sa'] as const
+
+export type CalendarClassFilter = 'all' | 'regular' | 'trial' | 'replacement'
+
+export const calendarClassFilterOptions: { value: CalendarClassFilter; label: string }[] = [
+  { value: 'all', label: 'All Classes' },
+  { value: 'regular', label: 'Regular Class' },
+  { value: 'trial', label: 'Trial Class' },
+  { value: 'replacement', label: 'Replacement Class' },
+]
+
+// A weekly schedule takes its kind from the classroom it is bound to
+// (regular vs trial); replacement classes have no classroom and stand alone.
+export function getScheduleClassKind(
+  schedule: Schedule,
+  classroomMap: Map<number, Classroom>,
+): Exclude<CalendarClassFilter, 'all'> {
+  if (schedule.eventType === 'replacement') {
+    return 'replacement'
+  }
+
+  const classroom = schedule.classroomId ? classroomMap.get(schedule.classroomId) : null
+  return classroom?.category === 'trial' ? 'trial' : 'regular'
+}
+
+export function filterSchedulesByClassKind(
+  schedules: Schedule[],
+  classroomMap: Map<number, Classroom>,
+  filter: CalendarClassFilter,
+) {
+  if (filter === 'all') {
+    return schedules
+  }
+
+  return schedules.filter(
+    (schedule) => getScheduleClassKind(schedule, classroomMap) === filter,
+  )
+}
 
 export function getDateKeyFromDate(date: Date) {
   const year = date.getFullYear()
@@ -76,10 +120,19 @@ export function buildScheduleEvents(
   teacherMap: Map<number, Teacher>,
   scheduleParticipantMap: Map<number, number[]>,
   studentMap: Map<number, Student>,
+  scheduleExceptions: ScheduleException[] = [],
 ): EventInput[] {
+  const exceptionsByScheduleId = new Map<number, ScheduleException[]>()
+
+  for (const exception of scheduleExceptions) {
+    const existing = exceptionsByScheduleId.get(exception.scheduleId) ?? []
+    existing.push(exception)
+    exceptionsByScheduleId.set(exception.scheduleId, existing)
+  }
+
   return schedules
     .filter((schedule) => schedule.status === 'active')
-    .map((schedule) => {
+    .flatMap((schedule): EventInput[] => {
       const teacher = teacherMap.get(schedule.teacherId)
       const classroom = schedule.classroomId ? classroomMap.get(schedule.classroomId) : null
       const participantNames =
@@ -102,6 +155,7 @@ export function buildScheduleEvents(
         extendedProps: {
           scheduleId: schedule.id,
           classroomId: schedule.classroomId,
+          classKind: getScheduleClassKind(schedule, classroomMap),
           teacherName: teacher?.fullName ?? 'Unknown Teacher',
           participantNames: participantNames || 'No students assigned',
           eventType: schedule.eventType,
@@ -115,8 +169,19 @@ export function buildScheduleEvents(
         const dtstart = `${schedule.startRecur}T${schedule.startTime}`
         const until = schedule.endRecur ? `${schedule.endRecur}T23:59:59` : undefined
 
-        return {
+        const exceptions = exceptionsByScheduleId.get(schedule.id) ?? []
+
+        // A single skipped day is an rrule `exdate` on the weekly series, which
+        // must carry the same time-of-day as dtstart to match an occurrence.
+        const recurringEvent: EventInput = {
           ...shared,
+          ...(exceptions.length > 0
+            ? {
+                exdate: exceptions.map(
+                  (exception) => `${exception.exceptionDate}T${schedule.startTime}`,
+                ),
+              }
+            : {}),
           rrule: {
             freq: 'weekly',
             byweekday:
@@ -137,12 +202,31 @@ export function buildScheduleEvents(
             ...(until ? { until } : {}),
           },
         }
+
+        // Skipped days stay visible as a struck-through card so an admin can
+        // restore them.
+        const cancelledEvents: EventInput[] = exceptions.map((exception) => ({
+          id: `schedule-${schedule.id}-cancelled-${exception.exceptionDate}`,
+          title: shared.title,
+          start: `${exception.exceptionDate}T${schedule.startTime}`,
+          end: `${exception.exceptionDate}T${schedule.endTime}`,
+          extendedProps: {
+            ...shared.extendedProps,
+            isCancelledOccurrence: true,
+            occurrenceDate: exception.exceptionDate,
+            cancelReason: exception.reason ?? '',
+          },
+        }))
+
+        return [recurringEvent, ...cancelledEvents]
       }
 
-      return {
-        ...shared,
-        start: `${schedule.scheduledDate}T${schedule.startTime}`,
-        end: `${schedule.scheduledDate}T${schedule.endTime}`,
-      }
+      return [
+        {
+          ...shared,
+          start: `${schedule.scheduledDate}T${schedule.startTime}`,
+          end: `${schedule.scheduledDate}T${schedule.endTime}`,
+        },
+      ]
     })
 }

@@ -11,6 +11,7 @@ export type Database = {
     Tables: {
       classrooms: {
         Row: {
+          category: 'regular' | 'trial'
           id: number
           name: string
           age_group:
@@ -33,6 +34,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          category?: 'regular' | 'trial'
           id?: number
           name: string
           age_group:
@@ -55,6 +57,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          category?: 'regular' | 'trial'
           id?: number
           name?: string
           age_group?:
@@ -175,13 +178,14 @@ export type Database = {
           teacher_id: number | null
           classroom_id: number | null
           full_name: string
+          phone: string | null
           remaining_hours: number
           lesson_expiry_date: string
           account_fee_expiry_date: string
           mirai_club_expiry_date: string
           notes: string | null
           is_active: boolean
-          student_type: 'trial' | 'regular'
+          student_type: 'trial' | 'preview' | 'regular'
           created_at: string
           updated_at: string
         }
@@ -190,13 +194,14 @@ export type Database = {
           teacher_id?: number | null
           classroom_id?: number | null
           full_name: string
+          phone?: string | null
           remaining_hours?: number
           lesson_expiry_date: string
           account_fee_expiry_date: string
           mirai_club_expiry_date: string
           notes?: string | null
           is_active?: boolean
-          student_type?: 'trial' | 'regular'
+          student_type?: 'trial' | 'preview' | 'regular'
           created_at?: string
           updated_at?: string
         }
@@ -205,13 +210,14 @@ export type Database = {
           teacher_id?: number | null
           classroom_id?: number | null
           full_name?: string
+          phone?: string | null
           remaining_hours?: number
           lesson_expiry_date?: string
           account_fee_expiry_date?: string
           mirai_club_expiry_date?: string
           notes?: string | null
           is_active?: boolean
-          student_type?: 'trial' | 'regular'
+          student_type?: 'trial' | 'preview' | 'regular'
           created_at?: string
           updated_at?: string
         }
@@ -245,7 +251,7 @@ export type Database = {
             | 'trial_completed'
             | 'converted'
             | 'lost'
-          children: { name: string; age: number }[]
+          children: { name: string; age: number; phone: string | null }[]
           notes: string | null
           follow_ups: { date: string; note: string }[]
           tasks: { id: string; title: string; dueDate: string; completed: boolean }[]
@@ -266,7 +272,7 @@ export type Database = {
             | 'trial_completed'
             | 'converted'
             | 'lost'
-          children?: { name: string; age: number }[]
+          children?: { name: string; age: number; phone: string | null }[]
           notes?: string | null
           follow_ups?: { date: string; note: string }[]
           tasks?: { id: string; title: string; dueDate: string; completed: boolean }[]
@@ -287,7 +293,7 @@ export type Database = {
             | 'trial_completed'
             | 'converted'
             | 'lost'
-          children?: { name: string; age: number }[]
+          children?: { name: string; age: number; phone: string | null }[]
           notes?: string | null
           follow_ups?: { date: string; note: string }[]
           tasks?: { id: string; title: string; dueDate: string; completed: boolean }[]
@@ -423,6 +429,41 @@ export type Database = {
             columns: ['student_id']
             isOneToOne: false
             referencedRelation: 'students'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      schedule_exceptions: {
+        Row: {
+          id: number
+          schedule_id: number
+          exception_date: string
+          reason: string | null
+          created_by: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          schedule_id: number
+          exception_date: string
+          reason?: string | null
+          created_by?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          schedule_id?: number
+          exception_date?: string
+          reason?: string | null
+          created_by?: number | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'schedule_exceptions_schedule_id_fkey'
+            columns: ['schedule_id']
+            isOneToOne: false
+            referencedRelation: 'schedules'
             referencedColumns: ['id']
           },
         ]
@@ -701,16 +742,43 @@ export type Database = {
     }
     Views: Record<string, never>
     Functions: {
+      cancel_schedule_occurrence: {
+        Args: {
+          p_schedule_id: number
+          p_occurrence_date: string
+          p_reason?: string | null
+        }
+        Returns: number | null
+      }
+      restore_schedule_occurrence: {
+        Args: {
+          p_schedule_id: number
+          p_occurrence_date: string
+        }
+        Returns: undefined
+      }
       create_student_record: {
         Args: {
           p_full_name: string
+          p_phone?: string | null
           p_teacher_id: number | null
           p_initial_hours: number
           p_lesson_expiry_date: string
           p_account_fee_expiry_date: string
           p_mirai_club_expiry_date: string
           p_notes: string | null
-          p_student_type?: 'trial' | 'regular'
+          p_student_type?: 'trial' | 'preview' | 'regular'
+        }
+        Returns: {
+          student_id: number
+        }[]
+      }
+      create_preview_student_records: {
+        Args: {
+          p_students: {
+            full_name: string
+            phone: string
+          }[]
         }
         Returns: {
           student_id: number
@@ -742,10 +810,11 @@ export type Database = {
         Args: {
           p_student_id: number
           p_full_name: string
+          p_phone?: string | null
           p_teacher_id: number | null
           p_classroom_id: number | null
           p_notes: string | null
-          p_student_type?: 'trial' | 'regular'
+          p_student_type?: 'trial' | 'preview' | 'regular'
         }
         Returns: undefined
       }

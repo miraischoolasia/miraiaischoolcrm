@@ -11,6 +11,7 @@ export type StudentStatusInput = {
   accountFeeExpiryDate: string
   miraiClubExpiryDate: string
   isActive: boolean
+  studentType?: 'trial' | 'preview' | 'regular'
 }
 
 export function getTodayString() {
@@ -52,6 +53,26 @@ export function getStudentStatus(
   student: StudentStatusInput,
   todayString: string,
 ) {
+  if (student.studentType === 'preview') {
+    const tags: StatusTag[] = student.isActive
+      ? [{ label: 'Preview', tone: 'healthy' }]
+      : [{ label: 'Deactivated', tone: 'critical' }]
+    const meta = { daysUntil: 0, expired: false, dueSoon: false }
+
+    return {
+      isDeactivated: !student.isActive,
+      hoursLow: false,
+      lessonExpired: false,
+      accountFeeNeedsAttention: false,
+      miraiClubNeedsAttention: false,
+      lessonExpiry: meta,
+      accountFeeExpiry: meta,
+      miraiClubExpiry: meta,
+      tags,
+      isNormal: student.isActive,
+    }
+  }
+
   const hoursLow = student.remainingHours <= 2
   const lessonExpiry = getDateMeta(student.lessonExpiryDate, todayString)
   const accountFeeExpiry = getDateMeta(student.accountFeeExpiryDate, todayString)

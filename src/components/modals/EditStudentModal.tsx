@@ -28,6 +28,7 @@ export function EditStudentModal({
   const selectedClassroom = formState.classroomId
     ? classrooms.find((classroom) => classroom.id === Number(formState.classroomId))
     : undefined
+  const isPreviewStudent = formState.studentType === 'preview'
   const derivedTeacherName = selectedClassroom?.teacherId
     ? teacherMap.get(selectedClassroom.teacherId)?.fullName
     : undefined
@@ -75,21 +76,13 @@ export function EditStudentModal({
           </label>
 
           <label className="space-y-2 sm:col-span-2">
-            <span className="text-sm font-semibold text-slate-700">Main Classroom</span>
-            <select
-              value={formState.classroomId}
-              onChange={(event) => onFieldChange('classroomId', event.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-[#fc0c97]"
-            >
-              <option value="">No classroom</option>
-              {classrooms
-                .filter((classroom) => classroom.status === 'active')
-                .map((classroom) => (
-                  <option key={classroom.id} value={classroom.id}>
-                    {classroom.ageGroup} / {classroom.programLevel} / {classroom.name}
-                  </option>
-                ))}
-            </select>
+            <span className="text-sm font-semibold text-slate-700">Phone Number</span>
+            <input
+              type="tel"
+              value={formState.phone}
+              onChange={(event) => onFieldChange('phone', event.target.value)}
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#fc0c97]"
+            />
           </label>
 
           <label className="space-y-2 sm:col-span-2">
@@ -106,9 +99,31 @@ export function EditStudentModal({
             >
               <option value="regular">Regular Student</option>
               <option value="trial">Trial Student</option>
+              <option value="preview">Preview Class</option>
             </select>
           </label>
 
+          {!isPreviewStudent && (
+          <label className="space-y-2 sm:col-span-2">
+            <span className="text-sm font-semibold text-slate-700">Main Classroom</span>
+            <select
+              value={formState.classroomId}
+              onChange={(event) => onFieldChange('classroomId', event.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-[#fc0c97]"
+            >
+              <option value="">No classroom</option>
+              {classrooms
+                .filter((classroom) => classroom.status === 'active')
+                .map((classroom) => (
+                  <option key={classroom.id} value={classroom.id}>
+                    {classroom.ageGroup} / {classroom.programLevel} / {classroom.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          )}
+
+          {!isPreviewStudent && (
           <div className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-slate-700">Assigned Teacher</span>
             <div className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700">
@@ -118,7 +133,9 @@ export function EditStudentModal({
               Teacher is set automatically from the selected classroom above.
             </p>
           </div>
+          )}
 
+          {!isPreviewStudent && (
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-slate-700">Notes</span>
             <textarea
@@ -128,6 +145,7 @@ export function EditStudentModal({
               className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#fc0c97]"
             />
           </label>
+          )}
         </div>
 
         <div className="flex justify-end gap-3 border-t border-slate-200 pt-5">

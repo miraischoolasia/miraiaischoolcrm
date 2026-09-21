@@ -13,6 +13,7 @@ import {
   MagnifyingGlass,
   PencilSimple,
   Prohibit,
+  UploadSimple,
   UserPlus,
 } from '@phosphor-icons/react'
 
@@ -24,6 +25,7 @@ type StudentDashboardSectionProps = {
   todayString: string
   onDeactivateStudent: (studentId: number) => void
   onEditStudent: (studentId: number) => void
+  onOpenBulkImportPreviewStudents: () => void
   onOpenCreateStudent: () => void
   onOpenStudentDetail: (studentId: number) => void
   onOpenRenewal: (studentId: number) => void
@@ -38,6 +40,7 @@ export function StudentDashboardSection({
   todayString,
   onDeactivateStudent,
   onEditStudent,
+  onOpenBulkImportPreviewStudents,
   onOpenCreateStudent,
   onOpenStudentDetail,
   onOpenRenewal,
@@ -57,6 +60,10 @@ export function StudentDashboardSection({
       return false
     }
 
+    if (activeFilter === 'preview') {
+      return student.studentType === 'preview'
+    }
+
     if (activeFilter === 'hours') {
       return status.hoursLow || status.lessonExpired
     }
@@ -70,7 +77,7 @@ export function StudentDashboardSection({
     }
 
     if (activeFilter === 'normal') {
-      return status.isNormal
+      return status.isNormal && student.studentType !== 'preview'
     }
 
     return true
@@ -86,6 +93,21 @@ export function StudentDashboardSection({
   const miraiAlertCount = studentsWithStatus.filter(
     ({ status }) => status.miraiClubNeedsAttention,
   ).length
+  const previewStudentCount = studentsWithStatus.filter(
+    ({ student }) => student.studentType === 'preview',
+  ).length
+
+  function getStudentTypeLabel(student: Student) {
+    if (student.studentType === 'preview') {
+      return 'Preview'
+    }
+
+    if (student.studentType === 'trial') {
+      return 'Trial'
+    }
+
+    return null
+  }
 
   return (
     <div className="space-y-4">
@@ -95,6 +117,7 @@ export function StudentDashboardSection({
           { label: 'Classes Attention', value: hoursAlertCount, tone: 'brand' },
           { label: 'Account Fee Due', value: accountFeeAlertCount, tone: 'brand' },
           { label: 'Mirai Club Due', value: miraiAlertCount, tone: 'brand' },
+          { label: 'Preview Students', value: previewStudentCount },
         ]}
       />
 
@@ -109,14 +132,24 @@ export function StudentDashboardSection({
                 Admin-only table for class balance, membership, and renewal control.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={onOpenCreateStudent}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
-            >
-              <UserPlus size={16} weight="bold" aria-hidden="true" />
-              Add Student
-            </button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={onOpenBulkImportPreviewStudents}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                <UploadSimple size={16} weight="bold" aria-hidden="true" />
+                Bulk Import Preview
+              </button>
+              <button
+                type="button"
+                onClick={onOpenCreateStudent}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
+              >
+                <UserPlus size={16} weight="bold" aria-hidden="true" />
+                Add Student
+              </button>
+            </div>
           </div>
 
           <div className="relative mt-4">
@@ -187,14 +220,15 @@ export function StudentDashboardSection({
                         >
                           {student.name}
                         </button>
-                        {student.studentType === 'trial' && (
+                        {getStudentTypeLabel(student) && (
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                            Trial
+                            {getStudentTypeLabel(student)}
                           </span>
                         )}
                       </div>
                       <div className="mt-1 text-xs text-slate-500">
                         Student ID #{student.id.toString().padStart(3, '0')}
+                        {student.phone ? ` - ${student.phone}` : ''}
                       </div>
                     </div>
                     <div className="text-right">
@@ -283,14 +317,16 @@ export function StudentDashboardSection({
                       <PencilSimple size={16} aria-hidden="true" />
                       Edit
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => onOpenRenewal(student.id)}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
-                    >
-                      <ArrowsClockwise size={16} aria-hidden="true" />
-                      Renew
-                    </button>
+                    {student.studentType !== 'preview' && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenRenewal(student.id)}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
+                      >
+                        <ArrowsClockwise size={16} aria-hidden="true" />
+                        Renew
+                      </button>
+                    )}
                     <button
                       type="button"
                       disabled={!student.isActive || deactivatingStudentId === student.id}
@@ -343,14 +379,15 @@ export function StudentDashboardSection({
                             >
                               {student.name}
                             </button>
-                            {student.studentType === 'trial' && (
+                            {getStudentTypeLabel(student) && (
                               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                                Trial
+                                {getStudentTypeLabel(student)}
                               </span>
                             )}
                           </div>
                           <div className="text-sm text-slate-500">
                             Student ID #{student.id.toString().padStart(3, '0')}
+                            {student.phone ? ` - ${student.phone}` : ''}
                           </div>
                         </div>
                       </td>
@@ -422,14 +459,16 @@ export function StudentDashboardSection({
                             <PencilSimple size={16} aria-hidden="true" />
                             Edit
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => onOpenRenewal(student.id)}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
-                          >
-                            <ArrowsClockwise size={16} aria-hidden="true" />
-                            Renew
-                          </button>
+                          {student.studentType !== 'preview' && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenRenewal(student.id)}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
+                            >
+                              <ArrowsClockwise size={16} aria-hidden="true" />
+                              Renew
+                            </button>
+                          )}
                           <button
                             type="button"
                             disabled={!student.isActive || deactivatingStudentId === student.id}

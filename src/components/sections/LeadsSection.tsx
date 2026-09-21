@@ -15,6 +15,7 @@ import {
   PencilSimple,
   Phone,
   Trash,
+  UploadSimple,
   UserPlus,
 } from '@phosphor-icons/react'
 import type { Lead, LeadChild, LeadStatus } from '../../types/domain'
@@ -68,6 +69,7 @@ type LeadsSectionProps = {
   onConvertLead: (leadId: number) => void
   onEditLead: (leadId: number) => void
   onOpenCreateLead: () => void
+  onOpenBulkImportLeads: () => void
   onOpenFollowUp: (leadId: number) => void
   onDeleteLead: (leadId: number) => void
   deletingLeadId: number | null
@@ -80,6 +82,7 @@ export function LeadsSection({
   onConvertLead,
   onEditLead,
   onOpenCreateLead,
+  onOpenBulkImportLeads,
   onOpenFollowUp,
   onDeleteLead,
   deletingLeadId,
@@ -92,16 +95,29 @@ export function LeadsSection({
   const [dateTo, setDateTo] = useState(() => todayString)
 
   const normalizedSearch = searchTerm.trim().toLowerCase()
-  const filteredLeads = leads.filter((lead) => {
-    const matchesSearch = normalizedSearch
-      ? (lead.fullName ?? '').toLowerCase().includes(normalizedSearch) ||
-        (lead.phone ?? '').toLowerCase().includes(normalizedSearch) ||
-        lead.children.some((child) => child.name.toLowerCase().includes(normalizedSearch))
-      : true
+  const searchDigits = normalizedSearch.replace(/\D/g, '')
+  function matchesText(value: string | null) {
+    return (value ?? '').toLowerCase().includes(normalizedSearch)
+  }
+  function matchesPhone(value: string | null) {
+    return (
+      matchesText(value) ||
+      (searchDigits.length > 0 && (value ?? '').replace(/\D/g, '').includes(searchDigits))
+    )
+  }
+  const searchedLeads = normalizedSearch
+    ? leads.filter(
+        (lead) =>
+          matchesText(lead.fullName) ||
+          matchesPhone(lead.phone) ||
+          lead.children.some((child) => matchesText(child.name) || matchesPhone(child.phone)),
+      )
+    : leads
+  const filteredLeads = searchedLeads.filter((lead) => {
     const matchesStage = stageFilter === 'all' ? true : lead.status === stageFilter
     const matchesDateRange =
       (!dateFrom || lead.addedDate >= dateFrom) && (!dateTo || lead.addedDate <= dateTo)
-    return matchesSearch && matchesStage && matchesDateRange
+    return matchesStage && matchesDateRange
   })
 
   const openLeads = leads.filter(
@@ -202,6 +218,14 @@ export function LeadsSection({
               </div>
               <button
                 type="button"
+                onClick={onOpenBulkImportLeads}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                <UploadSimple size={16} weight="bold" aria-hidden="true" />
+                Bulk Import
+              </button>
+              <button
+                type="button"
                 onClick={onOpenCreateLead}
                 className="inline-flex items-center gap-1.5 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
               >
@@ -211,7 +235,7 @@ export function LeadsSection({
             </div>
           </div>
 
-          {view === 'pipeline' && (
+          {(view === 'pipeline' || view === 'board') && (
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="relative">
                 <MagnifyingGlass
@@ -228,6 +252,8 @@ export function LeadsSection({
                 />
               </div>
 
+              {view === 'pipeline' && (
+              <>
               <select
                 value={stageFilter}
                 onChange={(event) =>
@@ -274,13 +300,15 @@ export function LeadsSection({
                   </button>
                 )}
               </div>
+              </>
+              )}
             </div>
           )}
         </div>
 
         {view === 'board' && (
           <LeadKanbanBoard
-            leads={leads}
+            leads={searchedLeads}
             onChangeStatus={onChangeStatus}
             onEditLead={onEditLead}
             onOpenFollowUp={onOpenFollowUp}

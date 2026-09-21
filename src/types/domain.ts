@@ -7,9 +7,9 @@ export type AppSection =
   | 'teachers'
   | 'leads'
   | 'activity'
-export type FilterKey = 'all' | 'hours' | 'accountFee' | 'mirai' | 'normal'
+export type FilterKey = 'all' | 'hours' | 'accountFee' | 'mirai' | 'normal' | 'preview'
 export type AttendanceStatus = 'present' | 'absent' | 'leave'
-export type StudentType = 'trial' | 'regular'
+export type StudentType = 'trial' | 'preview' | 'regular'
 export type LeadSource = 'walk_in' | 'referral' | 'social_media' | 'advertisement' | 'other'
 export type LeadStatus =
   | 'new'
@@ -54,6 +54,7 @@ export type Student = {
   teacherId: number | null
   classroomId: number | null
   name: string
+  phone: string | null
   remainingHours: number
   lessonExpiryDate: string
   accountFeeExpiryDate: string
@@ -63,7 +64,10 @@ export type Student = {
   studentType: StudentType
 }
 
+export type ClassroomCategory = 'regular' | 'trial'
+
 export type Classroom = {
+  category: ClassroomCategory
   id: number
   name: string
   ageGroup: AgeGroup
@@ -88,6 +92,7 @@ export type Teacher = {
 export type LeadChild = {
   name: string
   age: number
+  phone: string | null
 }
 
 export type LeadFollowUp = {
@@ -153,6 +158,13 @@ export type ScheduleParticipant = {
   isActive: boolean
 }
 
+export type ScheduleException = {
+  id: number
+  scheduleId: number
+  exceptionDate: string
+  reason: string | null
+}
+
 export type LessonLogSummary = {
   id: number
   scheduleId: number
@@ -210,6 +222,7 @@ export type RenewalFormState = {
 
 export type CreateStudentFormState = {
   fullName: string
+  phone: string
   classroomId: string
   initialHours: string
   lessonExpiryDate: string
@@ -222,6 +235,7 @@ export type CreateStudentFormState = {
 export type LeadChildFormState = {
   name: string
   age: string
+  phone: string
 }
 
 export type LeadFormState = {
@@ -244,6 +258,7 @@ export type CreateTeacherFormState = {
 
 export type StudentDetailsFormState = {
   fullName: string
+  phone: string
   classroomId: string
   notes: string
   studentType: StudentType
@@ -265,6 +280,7 @@ export type ScheduleFormState = {
 }
 
 export type ClassroomFormState = {
+  category: ClassroomCategory
   name: string
   ageGroup: AgeGroup
   programLevel: ProgramLevel
@@ -296,6 +312,7 @@ export type StudentRow = Pick<
   | 'teacher_id'
   | 'classroom_id'
   | 'full_name'
+  | 'phone'
   | 'remaining_hours'
   | 'lesson_expiry_date'
   | 'account_fee_expiry_date'
@@ -309,6 +326,7 @@ export type ClassroomRow = Pick<
   Database['public']['Tables']['classrooms']['Row'],
   | 'id'
   | 'name'
+  | 'category'
   | 'age_group'
   | 'program_level'
   | 'teacher_id'
@@ -379,6 +397,11 @@ export type ScheduleRow = Pick<
 export type ScheduleParticipantRow = Pick<
   Database['public']['Tables']['schedule_students']['Row'],
   'id' | 'schedule_id' | 'student_id' | 'is_active'
+>
+
+export type ScheduleExceptionRow = Pick<
+  Database['public']['Tables']['schedule_exceptions']['Row'],
+  'id' | 'schedule_id' | 'exception_date' | 'reason'
 >
 
 export type LessonLogSummaryRow = Pick<

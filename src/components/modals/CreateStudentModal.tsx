@@ -29,6 +29,7 @@ export function CreateStudentModal({
         (classroom) => classroom.id === Number(formState.classroomId),
       )
     : undefined
+  const isPreviewStudent = formState.studentType === 'preview'
   const derivedTeacherName = selectedClassroom?.teacherId
     ? teacherMap.get(selectedClassroom.teacherId)?.fullName
     : undefined
@@ -44,7 +45,7 @@ export function CreateStudentModal({
               Add Student Record
             </h2>
             <p className="mt-2 text-sm text-slate-500">
-              Create a new student profile with initial classes and all active expiry dates.
+              Create a student profile for preview, trial, or regular classes.
             </p>
           </div>
           <button
@@ -84,6 +85,20 @@ export function CreateStudentModal({
             />
           </label>
 
+          <label className="space-y-2 sm:col-span-2">
+            <span className="text-sm font-semibold text-slate-700">
+              Phone Number
+            </span>
+            <input
+              type="tel"
+              value={formState.phone}
+              onChange={(event) =>
+                onFieldChange('phone', event.target.value)
+              }
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+            />
+          </label>
+
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">
               Student Category
@@ -100,9 +115,11 @@ export function CreateStudentModal({
             >
               <option value="regular">Regular Student</option>
               <option value="trial">Trial Student</option>
+              <option value="preview">Preview Class</option>
             </select>
           </label>
 
+          {!isPreviewStudent && (
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">
               Initial Classes
@@ -118,7 +135,9 @@ export function CreateStudentModal({
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
             />
           </label>
+          )}
 
+          {!isPreviewStudent && (
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">
               Lesson Expiry Date
@@ -132,7 +151,9 @@ export function CreateStudentModal({
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
             />
           </label>
+          )}
 
+          {!isPreviewStudent && (
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">
               Account Fee Expiry Date
@@ -149,7 +170,9 @@ export function CreateStudentModal({
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
             />
           </label>
+          )}
 
+          {!isPreviewStudent && (
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">
               Mirai Club Expiry Date
@@ -166,7 +189,9 @@ export function CreateStudentModal({
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
             />
           </label>
+          )}
 
+          {!isPreviewStudent && (
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-slate-700">
               Main Classroom
@@ -222,7 +247,9 @@ export function CreateStudentModal({
                 : 'Teacher is set automatically once a classroom is selected.'}
             </p>
           </label>
+          )}
 
+          {!isPreviewStudent && (
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-slate-700">
               Internal Note
@@ -236,6 +263,7 @@ export function CreateStudentModal({
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
             />
           </label>
+          )}
         </div>
 
         <div className="flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-end">

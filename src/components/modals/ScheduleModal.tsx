@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { cn } from '../../lib/cn'
@@ -24,6 +25,11 @@ type ScheduleModalProps = {
   onFieldChange: (field: keyof ScheduleFormState, value: string) => void
   onToggleParticipant: (studentId: string) => void
   onCancelSchedule: () => void
+  // The calendar day that was clicked (regular classes only). Enables
+  // cancelling just that one day instead of the whole weekly series.
+  occurrenceDate: string | null
+  isOccurrenceLogged: boolean
+  onCancelOccurrence: (reason: string) => void
 }
 
 export function ScheduleModal({
@@ -44,7 +50,16 @@ export function ScheduleModal({
   onFieldChange,
   onToggleParticipant,
   onCancelSchedule,
+  occurrenceDate,
+  isOccurrenceLogged,
+  onCancelOccurrence,
 }: ScheduleModalProps) {
+  const [occurrenceReason, setOccurrenceReason] = useState('')
+  const canCancelOccurrence =
+    !isCreatingSchedule &&
+    editingSchedule?.eventType === 'regular' &&
+    occurrenceDate !== null
+
   return (
     <ModalShell maxWidth="760" onClose={onClose}>
       <div className="border-b border-slate-200 bg-white px-6 py-5 sm:px-8">
@@ -451,6 +466,45 @@ export function ScheduleModal({
           </label>
         </div>
 
+        {canCancelOccurrence && (
+          <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-sm font-semibold text-slate-900">
+              Cancel only {occurrenceDate}
+            </div>
+            {isOccurrenceLogged ? (
+              <p className="text-sm text-slate-500">
+                Attendance was already submitted for this day, so it can no longer
+                be cancelled.
+              </p>
+            ) : (
+              <>
+                <p className="text-sm text-slate-500">
+                  Skips this one class. The weekly schedule and every other day
+                  stay unchanged.
+                </p>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <input
+                    type="text"
+                    value={occurrenceReason}
+                    onChange={(event) => setOccurrenceReason(event.target.value)}
+                    placeholder="Reason (optional), e.g. Teacher on leave"
+                    maxLength={120}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onCancelOccurrence(occurrenceReason)}
+                    disabled={isSaving}
+                    className="shrink-0 rounded-xl border border-red-200 bg-red-50 px-5 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    Cancel This Day
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         <div className="flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             {!isCreatingSchedule && editingSchedule && (
@@ -460,7 +514,7 @@ export function ScheduleModal({
                 disabled={isSaving}
                 className="rounded-xl border border-red-200 bg-red-50 px-5 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-70"
               >
-                Cancel Schedule
+                {canCancelOccurrence ? 'Cancel Entire Schedule' : 'Cancel Schedule'}
               </button>
             )}
           </div>

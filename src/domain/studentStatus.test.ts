@@ -66,4 +66,22 @@ describe('getStudentStatus', () => {
       'Classes Low',
     ])
   })
+
+  it('keeps preview students out of expiry and class balance warnings', () => {
+    const status = getStudentStatus(
+      {
+        ...healthyStudent,
+        remainingHours: 0,
+        lessonExpiryDate: '2026-07-01',
+        accountFeeExpiryDate: '2026-07-01',
+        miraiClubExpiryDate: '2026-07-01',
+        studentType: 'preview',
+      },
+      today,
+    )
+
+    expect(status.hoursLow).toBe(false)
+    expect(status.accountFeeNeedsAttention).toBe(false)
+    expect(status.tags).toEqual([{ label: 'Preview', tone: 'healthy' }])
+  })
 })

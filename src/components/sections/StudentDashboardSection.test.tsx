@@ -9,6 +9,7 @@ const student: Student = {
   isActive: true,
   teacherId: null,
   classroomId: null,
+  phone: null,
   remainingHours: 10,
   lessonExpiryDate: '2026-12-31',
   accountFeeExpiryDate: '2026-12-31',
@@ -30,6 +31,7 @@ describe('StudentDashboardSection', () => {
         todayString="2026-01-01"
         onDeactivateStudent={noop}
         onEditStudent={noop}
+        onOpenBulkImportPreviewStudents={noop}
         onOpenCreateStudent={noop}
         onOpenStudentDetail={noop}
         onOpenRenewal={noop}
@@ -44,5 +46,36 @@ describe('StudentDashboardSection', () => {
     const cards = document.querySelectorAll('ul.md\\:hidden > li')
     expect(rows).toHaveLength(1)
     expect(cards).toHaveLength(1)
+  })
+
+  it('filters preview students separately from regular students', () => {
+    render(
+      <StudentDashboardSection
+        activeFilter="preview"
+        deactivatingStudentId={null}
+        isLoading={false}
+        students={[
+          student,
+          {
+            ...student,
+            id: 2,
+            name: 'Preview Learner',
+            phone: '+60 12-000 0000',
+            studentType: 'preview',
+          },
+        ]}
+        todayString="2026-01-01"
+        onDeactivateStudent={noop}
+        onEditStudent={noop}
+        onOpenBulkImportPreviewStudents={noop}
+        onOpenCreateStudent={noop}
+        onOpenStudentDetail={noop}
+        onOpenRenewal={noop}
+        onToggleFilter={noop}
+      />,
+    )
+
+    expect(screen.getAllByText('Preview Learner')).toHaveLength(2)
+    expect(screen.queryByText('Ada Lovelace')).not.toBeInTheDocument()
   })
 })

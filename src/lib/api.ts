@@ -6,6 +6,7 @@ import {
   mapLessonLogStudentReviewRow,
   mapLessonLogStudentRow,
   mapLessonLogSummaryRow,
+  mapScheduleExceptionRow,
   mapScheduleParticipantRow,
   mapScheduleRow,
   mapStudentRow,
@@ -21,7 +22,7 @@ export async function fetchStudentsFromSupabase() {
   const { data, error } = await supabase
     .from('students')
     .select(
-      'id, teacher_id, classroom_id, full_name, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date, notes, is_active, student_type',
+      'id, teacher_id, classroom_id, full_name, phone, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date, notes, is_active, student_type',
     )
     .order('full_name')
 
@@ -39,7 +40,7 @@ export async function fetchClassroomsFromSupabase() {
 
   const { data, error } = await supabase
     .from('classrooms')
-    .select('id, name, age_group, program_level, teacher_id, status, notes, archived_at')
+    .select('id, name, category, age_group, program_level, teacher_id, status, notes, archived_at')
     .order('age_group')
     .order('program_level')
     .order('name')
@@ -155,6 +156,23 @@ export async function fetchScheduleParticipantsFromSupabase() {
   }
 
   return data.map(mapScheduleParticipantRow)
+}
+
+export async function fetchScheduleExceptionsFromSupabase() {
+  if (!supabase) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('schedule_exceptions')
+    .select('id, schedule_id, exception_date, reason')
+    .order('exception_date')
+
+  if (error) {
+    throw error
+  }
+
+  return data.map(mapScheduleExceptionRow)
 }
 
 export async function fetchLessonLogSummariesFromSupabase() {

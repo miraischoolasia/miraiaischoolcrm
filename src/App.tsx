@@ -43,6 +43,7 @@ import type {
   ReviewRemarkField,
   ReviewScoreField,
   Schedule,
+  ScheduleException,
   ScheduleFormState,
   ScheduleParticipant,
   Student,
@@ -58,6 +59,8 @@ import {
   mapScheduleRow,
 } from './lib/mappers'
 import { buildAttendanceSubmission } from './lib/attendance'
+import type { BulkLeadRow } from './lib/leadCsv'
+import type { BulkPreviewStudentRow } from './lib/studentCsv'
 import { provisionTeacherLogin, resetTeacherPassword } from './lib/teacherAuth'
 import {
   fetchAdminActivityFromSupabase,
@@ -66,13 +69,21 @@ import {
   fetchLeadsFromSupabase,
   fetchLessonLogStudentReviewsFromSupabase,
   fetchLessonLogSummariesFromSupabase,
+  fetchScheduleExceptionsFromSupabase,
   fetchScheduleParticipantsFromSupabase,
   fetchSchedulesFromSupabase,
   fetchStudentsFromSupabase,
   fetchTeachersFromSupabase,
   getSupabaseLoadErrorMessage,
 } from './lib/api'
-import { buildScheduleEvents, buildScheduleFormState, getDateKeyFromDate } from './lib/schedule'
+import {
+  buildScheduleEvents,
+  buildScheduleFormState,
+  calendarClassFilterOptions,
+  filterSchedulesByClassKind,
+  getDateKeyFromDate,
+  type CalendarClassFilter,
+} from './lib/schedule'
 import { MAX_LEAD_FOLLOW_UPS, ageGroupOptions, programLevelOptions } from './lib/constants'
 import { cn } from './lib/cn'
 import { useIsMobile } from './hooks/useIsMobile'
@@ -91,6 +102,8 @@ import { CreateStudentModal } from './components/modals/CreateStudentModal'
 import { ClassroomModal } from './components/modals/ClassroomModal'
 import { TeacherModal } from './components/modals/TeacherModal'
 import { LeadModal } from './components/modals/LeadModal'
+import { LeadBulkImportModal } from './components/modals/LeadBulkImportModal'
+import { PreviewStudentBulkImportModal } from './components/modals/PreviewStudentBulkImportModal'
 import { LeadFollowUpModal } from './components/modals/LeadFollowUpModal'
 import { StudentRenewalModal } from './components/modals/StudentRenewalModal'
 import { ScheduleModal } from './components/modals/ScheduleModal'
@@ -110,12 +123,15 @@ function App() {
   const [scheduleParticipants, setScheduleParticipants] = useState<
     ScheduleParticipant[]
   >([])
+  const [scheduleExceptions, setScheduleExceptions] = useState<ScheduleException[]>([])
   const [lessonLogs, setLessonLogs] = useState<LessonLogSummary[]>([])
   const [lessonReviews, setLessonReviews] = useState<LessonLogStudentReview[]>([])
   const [adminActivities, setAdminActivities] = useState<AdminActivity[]>([])
 
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadedUserId, setLoadedUserId] = useState<string | null>(null)
+  const [loadAttempt, setLoadAttempt] = useState(0)
 
   const [isSavingStudent, setIsSavingStudent] = useState(false)
   const [deactivatingStudentId, setDeactivatingStudentId] = useState<number | null>(null)
@@ -144,6 +160,7 @@ function App() {
   const [authBlockedMessage, setAuthBlockedMessage] = useState<string | null>(null)
   const [viewAsTeacherId, setViewAsTeacherId] = useState<number | null>(null)
   const [selectedAgeGroup, setSelectedAgeGroup] = useState<AgeGroup>(ageGroupOptions[0])
+  const [calendarClassFilter, setCalendarClassFilter] = useState<CalendarClassFilter>('all')
 
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null)
   const [selectedStudentDetailId, setSelectedStudentDetailId] = useState<number | null>(
@@ -156,6 +173,11 @@ function App() {
   const [editingClassroomId, setEditingClassroomId] = useState<number | null>(null)
   const [isCreatingClassroom, setIsCreatingClassroom] = useState(false)
   const [isCreateStudentOpen, setIsCreateStudentOpen] = useState(false)
+  const [isBulkImportPreviewStudentsOpen, setIsBulkImportPreviewStudentsOpen] =
+    useState(false)
+  const [isImportingPreviewStudents, setIsImportingPreviewStudents] = useState(false)
+  const [bulkImportPreviewStudentError, setBulkImportPreviewStudentError] =
+    useState<string | null>(null)
   const [isCreateTeacherOpen, setIsCreateTeacherOpen] = useState(false)
   const [editingTeacherId, setEditingTeacherId] = useState<number | null>(null)
   const [isCreateLeadOpen, setIsCreateLeadOpen] = useState(false)
@@ -164,6 +186,9 @@ function App() {
   const [deletingLeadId, setDeletingLeadId] = useState<number | null>(null)
   const [isSavingLead, setIsSavingLead] = useState(false)
   const [leadSaveError, setLeadSaveError] = useState<string | null>(null)
+  const [isBulkImportLeadsOpen, setIsBulkImportLeadsOpen] = useState(false)
+  const [isImportingLeads, setIsImportingLeads] = useState(false)
+  const [bulkImportLeadError, setBulkImportLeadError] = useState<string | null>(null)
   const [followUpLeadId, setFollowUpLeadId] = useState<number | null>(null)
   const [isSavingFollowUp, setIsSavingFollowUp] = useState(false)
   const [followUpSaveError, setFollowUpSaveError] = useState<string | null>(null)
@@ -179,6 +204,7 @@ function App() {
   const [createStudentFormState, setCreateStudentFormState] =
     useState<CreateStudentFormState>({
       fullName: '',
+      phone: '',
       classroomId: '',
       initialHours: '0',
       lessonExpiryDate: todayString,
@@ -190,6 +216,7 @@ function App() {
   const [studentDetailsFormState, setStudentDetailsFormState] =
     useState<StudentDetailsFormState>({
       fullName: '',
+      phone: '',
       classroomId: '',
       notes: '',
       studentType: 'regular',
@@ -197,6 +224,7 @@ function App() {
   const [isSavingClassroom, setIsSavingClassroom] = useState(false)
   const [classroomSaveError, setClassroomSaveError] = useState<string | null>(null)
   const [classroomFormState, setClassroomFormState] = useState<ClassroomFormState>({
+    category: 'regular',
     name: '',
     ageGroup: ageGroupOptions[0],
     programLevel: programLevelOptions[0],
@@ -222,6 +250,9 @@ function App() {
   })
 
   const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null)
+  // The calendar day the admin clicked, so a single occurrence of a weekly
+  // class can be cancelled without cancelling the whole series.
+  const [editingOccurrenceDate, setEditingOccurrenceDate] = useState<string | null>(null)
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false)
   const [scheduleFormState, setScheduleFormState] = useState<ScheduleFormState>({
     title: '',
@@ -387,8 +418,10 @@ function App() {
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthSession(session)
-      if (!session) {
+      if (session) {
         setAuthBlockedMessage(null)
+      } else {
+        setLoadedUserId(null)
         setViewAsTeacherId(null)
       }
     })
@@ -399,7 +432,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!authSession || !supabase || isLoading) {
+    if (!authSession || !supabase || isLoading || loadError || loadedUserId !== authSession.user.id) {
       return
     }
 
@@ -413,7 +446,7 @@ function App() {
       setAuthBlockedMessage('Your account has been deactivated. Contact your admin.')
       supabase.auth.signOut()
     }
-  }, [authSession, currentTeacher, isLoading])
+  }, [authSession, currentTeacher, isLoading, loadError, loadedUserId])
 
   useEffect(() => {
     if (
@@ -445,6 +478,7 @@ function App() {
     }
 
     setClassroomFormState({
+      category: editingClassroom?.category ?? 'regular',
       name: editingClassroom?.name ?? '',
       ageGroup: editingClassroom?.ageGroup ?? selectedAgeGroup,
       programLevel: editingClassroom?.programLevel ?? programLevelOptions[0],
@@ -501,6 +535,7 @@ function App() {
       try {
         setIsLoading(true)
         setLoadError(null)
+        setLoadedUserId(null)
 
         const [
           nextClassrooms,
@@ -508,6 +543,7 @@ function App() {
           nextStudents,
           nextSchedules,
           nextParticipants,
+          nextScheduleExceptions,
           nextLessonLogs,
           nextLessonReviews,
           nextAdminActivities,
@@ -518,6 +554,7 @@ function App() {
           fetchStudentsFromSupabase(),
           fetchSchedulesFromSupabase(),
           fetchScheduleParticipantsFromSupabase(),
+          fetchScheduleExceptionsFromSupabase(),
           fetchLessonLogSummariesFromSupabase(),
           fetchLessonLogStudentReviewsFromSupabase(),
           fetchAdminActivityFromSupabase(),
@@ -530,10 +567,12 @@ function App() {
           setStudents(nextStudents)
           setSchedules(nextSchedules)
           setScheduleParticipants(nextParticipants)
+          setScheduleExceptions(nextScheduleExceptions)
           setLessonLogs(nextLessonLogs)
           setLessonReviews(nextLessonReviews)
           setAdminActivities(nextAdminActivities)
           setLeads(nextLeads)
+          setLoadedUserId(authSession.user.id)
         }
       } catch (error) {
         if (!cancelled) {
@@ -551,7 +590,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [authSession])
+  }, [authSession, loadAttempt])
 
   const visibleSchedules = useMemo(() => {
     if (!currentSession) {
@@ -592,18 +631,21 @@ function App() {
   const calendarEvents = useMemo(
     () => [
       ...buildScheduleEvents(
-        visibleSchedules,
+        filterSchedulesByClassKind(visibleSchedules, classroomMap, calendarClassFilter),
         classroomMap,
         classroomStudentMap,
         teacherMap,
         scheduleParticipantMap,
         studentMap,
+        scheduleExceptions,
       ),
       ...malaysiaHolidayEvents,
     ],
     [
+      calendarClassFilter,
       classroomMap,
       classroomStudentMap,
+      scheduleExceptions,
       scheduleParticipantMap,
       studentMap,
       teacherMap,
@@ -807,6 +849,7 @@ function App() {
     setEditingStudentId(studentId)
     setStudentDetailsFormState({
       fullName: student.name,
+      phone: student.phone ?? '',
       classroomId: student.classroomId ? String(student.classroomId) : '',
       notes: student.notes ?? '',
       studentType: student.studentType,
@@ -880,6 +923,7 @@ function App() {
     setIsCreateStudentOpen(true)
     setCreateStudentFormState({
       fullName: '',
+      phone: '',
       classroomId: '',
       initialHours: '0',
       lessonExpiryDate: todayString,
@@ -894,6 +938,16 @@ function App() {
     setIsCreateStudentOpen(false)
     setCreateStudentSaveError(null)
     setConvertingLeadId(null)
+  }
+
+  function openBulkImportPreviewStudentsModal() {
+    setBulkImportPreviewStudentError(null)
+    setIsBulkImportPreviewStudentsOpen(true)
+  }
+
+  function closeBulkImportPreviewStudentsModal() {
+    setIsBulkImportPreviewStudentsOpen(false)
+    setBulkImportPreviewStudentError(null)
   }
 
   function openCreateTeacherModal() {
@@ -999,6 +1053,7 @@ function App() {
       children: lead.children.map((child) => ({
         name: child.name,
         age: String(child.age),
+        phone: child.phone ?? '',
       })),
       notes: lead.notes ?? '',
       addedDate: lead.addedDate,
@@ -1009,6 +1064,46 @@ function App() {
     setIsCreateLeadOpen(false)
     setEditingLeadId(null)
     setLeadSaveError(null)
+  }
+
+  function openBulkImportLeadsModal() {
+    setBulkImportLeadError(null)
+    setIsBulkImportLeadsOpen(true)
+  }
+
+  function closeBulkImportLeadsModal() {
+    setIsBulkImportLeadsOpen(false)
+    setBulkImportLeadError(null)
+  }
+
+  async function handleBulkImportLeads(rows: BulkLeadRow[]) {
+    if (!supabase || rows.length === 0) {
+      return
+    }
+
+    try {
+      setIsImportingLeads(true)
+      setBulkImportLeadError(null)
+
+      const { error } = await supabase.from('leads').insert(rows)
+
+      if (error) {
+        throw error
+      }
+
+      await recordAdminActivity('lead_bulk_imported', 'lead', null, `${rows.length} leads`, {
+        count: rows.length,
+      })
+
+      await Promise.all([refreshLeads(), refreshAdminActivities()])
+      closeBulkImportLeadsModal()
+    } catch (error) {
+      setBulkImportLeadError(
+        error instanceof Error ? error.message : 'Failed to import leads.',
+      )
+    } finally {
+      setIsImportingLeads(false)
+    }
   }
 
   function openFollowUpModal(leadId: number) {
@@ -1027,6 +1122,7 @@ function App() {
     setEditingClassroomId(null)
     setIsCreatingClassroom(true)
     setClassroomFormState({
+      category: 'regular',
       name: '',
       ageGroup: selectedAgeGroup,
       programLevel: programLevelOptions[0],
@@ -1050,6 +1146,7 @@ function App() {
   function openCreateSchedule(prefillDate?: string, classroomId?: number) {
     setScheduleSaveError(null)
     setEditingScheduleId(null)
+    setEditingOccurrenceDate(null)
     setIsCreatingSchedule(true)
 
     const clickedDate = prefillDate ?? todayString
@@ -1081,15 +1178,17 @@ function App() {
     })
   }
 
-  function openEditSchedule(scheduleId: number) {
+  function openEditSchedule(scheduleId: number, occurrenceDate?: string) {
     setScheduleSaveError(null)
     setIsCreatingSchedule(false)
     setEditingScheduleId(scheduleId)
+    setEditingOccurrenceDate(occurrenceDate ?? null)
   }
 
   function closeScheduleModal() {
     setIsCreatingSchedule(false)
     setEditingScheduleId(null)
+    setEditingOccurrenceDate(null)
     setScheduleSaveError(null)
   }
 
@@ -1110,12 +1209,14 @@ function App() {
   }
 
   async function refreshSchedulesAndParticipants() {
-    const [nextSchedules, nextParticipants] = await Promise.all([
+    const [nextSchedules, nextParticipants, nextScheduleExceptions] = await Promise.all([
       fetchSchedulesFromSupabase(),
       fetchScheduleParticipantsFromSupabase(),
+      fetchScheduleExceptionsFromSupabase(),
     ])
     setSchedules(nextSchedules)
     setScheduleParticipants(nextParticipants)
+    setScheduleExceptions(nextScheduleExceptions)
   }
 
   async function refreshTeachers() {
@@ -1209,8 +1310,14 @@ function App() {
     }
 
     const fullName = studentDetailsFormState.fullName.trim()
+    const isPreviewStudent = studentDetailsFormState.studentType === 'preview'
     if (!fullName) {
       setStudentDetailsSaveError('Please enter the student full name.')
+      return
+    }
+
+    if (isPreviewStudent && !studentDetailsFormState.phone.trim()) {
+      setStudentDetailsSaveError('Please enter the student phone number.')
       return
     }
 
@@ -1221,15 +1328,17 @@ function App() {
       const editClassroomId = studentDetailsFormState.classroomId
         ? Number(studentDetailsFormState.classroomId)
         : null
+      const nextClassroomId = isPreviewStudent ? null : editClassroomId
 
       const { error } = await supabase.rpc('update_student_record', {
         p_student_id: editingStudent.id,
         p_full_name: fullName,
-        p_teacher_id: editClassroomId
-          ? classroomMap.get(editClassroomId)?.teacherId ?? null
+        p_phone: studentDetailsFormState.phone.trim() || null,
+        p_teacher_id: nextClassroomId
+          ? classroomMap.get(nextClassroomId)?.teacherId ?? null
           : null,
-        p_classroom_id: editClassroomId,
-        p_notes: studentDetailsFormState.notes.trim() || null,
+        p_classroom_id: nextClassroomId,
+        p_notes: isPreviewStudent ? null : studentDetailsFormState.notes.trim() || null,
         p_student_type: studentDetailsFormState.studentType,
       })
 
@@ -1262,24 +1371,31 @@ function App() {
     }
 
     const fullName = createStudentFormState.fullName.trim()
+    const phone = createStudentFormState.phone.trim()
     const initialHours = Number.parseInt(createStudentFormState.initialHours, 10)
+    const isPreviewStudent = createStudentFormState.studentType === 'preview'
 
     if (!fullName) {
       setCreateStudentSaveError('Please enter the student full name.')
       return
     }
 
-    if (!createStudentFormState.lessonExpiryDate) {
+    if (isPreviewStudent && !phone) {
+      setCreateStudentSaveError('Please enter the student phone number.')
+      return
+    }
+
+    if (!isPreviewStudent && !createStudentFormState.lessonExpiryDate) {
       setCreateStudentSaveError('Please select the lesson expiry date.')
       return
     }
 
-    if (!createStudentFormState.accountFeeExpiryDate) {
+    if (!isPreviewStudent && !createStudentFormState.accountFeeExpiryDate) {
       setCreateStudentSaveError('Please select the Account Fee expiry date.')
       return
     }
 
-    if (!createStudentFormState.miraiClubExpiryDate) {
+    if (!isPreviewStudent && !createStudentFormState.miraiClubExpiryDate) {
       setCreateStudentSaveError('Please select the Mirai Club expiry date.')
       return
     }
@@ -1290,13 +1406,22 @@ function App() {
 
       const { data, error } = await supabase.rpc('create_student_record', {
         p_full_name: fullName,
+        p_phone: phone || null,
         p_teacher_id: null,
         p_initial_hours:
-          Number.isFinite(initialHours) && initialHours > 0 ? initialHours : 0,
-        p_lesson_expiry_date: createStudentFormState.lessonExpiryDate,
-        p_account_fee_expiry_date: createStudentFormState.accountFeeExpiryDate,
-        p_mirai_club_expiry_date: createStudentFormState.miraiClubExpiryDate,
-        p_notes: createStudentFormState.notes.trim() || null,
+          !isPreviewStudent && Number.isFinite(initialHours) && initialHours > 0
+            ? initialHours
+            : 0,
+        p_lesson_expiry_date: isPreviewStudent
+          ? todayString
+          : createStudentFormState.lessonExpiryDate,
+        p_account_fee_expiry_date: isPreviewStudent
+          ? todayString
+          : createStudentFormState.accountFeeExpiryDate,
+        p_mirai_club_expiry_date: isPreviewStudent
+          ? todayString
+          : createStudentFormState.miraiClubExpiryDate,
+        p_notes: isPreviewStudent ? null : createStudentFormState.notes.trim() || null,
         p_student_type: createStudentFormState.studentType,
       })
 
@@ -1308,14 +1433,15 @@ function App() {
       if (createdStudentId) {
         await assignStudentToClassroom(
           createdStudentId,
-          createStudentFormState.classroomId
+          !isPreviewStudent && createStudentFormState.classroomId
             ? Number(createStudentFormState.classroomId)
             : null,
         )
         await recordAdminActivity('student_created', 'student', createdStudentId, fullName, {
-          classroom_id: createStudentFormState.classroomId
+          classroom_id: !isPreviewStudent && createStudentFormState.classroomId
             ? Number(createStudentFormState.classroomId)
             : null,
+          student_type: createStudentFormState.studentType,
         })
 
         if (convertingLeadId) {
@@ -1347,6 +1473,44 @@ function App() {
       )
     } finally {
       setIsCreatingStudentRecord(false)
+    }
+  }
+
+  async function handleBulkImportPreviewStudents(rows: BulkPreviewStudentRow[]) {
+    if (!supabase || rows.length === 0) {
+      return
+    }
+
+    try {
+      setIsImportingPreviewStudents(true)
+      setBulkImportPreviewStudentError(null)
+
+      const { error } = await supabase.rpc('create_preview_student_records', {
+        p_students: rows,
+      })
+
+      if (error) {
+        throw error
+      }
+
+      await recordAdminActivity(
+        'preview_students_bulk_imported',
+        'student',
+        null,
+        `${rows.length} preview students`,
+        { count: rows.length },
+      )
+
+      await Promise.all([refreshStudentsAndLogs(), refreshAdminActivities()])
+      closeBulkImportPreviewStudentsModal()
+    } catch (error) {
+      setBulkImportPreviewStudentError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to import preview students.',
+      )
+    } finally {
+      setIsImportingPreviewStudents(false)
     }
   }
 
@@ -1437,7 +1601,11 @@ function App() {
     const fullName = leadFormState.fullName.trim()
     const children = leadFormState.children
       .filter((child) => child.age !== '')
-      .map((child) => ({ name: child.name.trim(), age: Number(child.age) }))
+      .map((child) => ({
+        name: child.name.trim(),
+        age: Number(child.age),
+        phone: child.phone.trim() || null,
+      }))
     const activityLabel =
       fullName || children[0]?.name || leadFormState.phone.trim() || 'Unnamed Lead'
 
@@ -1539,6 +1707,7 @@ function App() {
     setIsCreateStudentOpen(true)
     setCreateStudentFormState({
       fullName: lead.fullName ?? lead.children[0]?.name ?? '',
+      phone: lead.children[0]?.phone ?? lead.phone ?? '',
       classroomId: '',
       initialHours: '0',
       lessonExpiryDate: todayString,
@@ -1900,6 +2069,7 @@ function App() {
 
     const payload: Database['public']['Tables']['classrooms']['Update'] = {
       name,
+      category: classroomFormState.category,
       age_group: classroomFormState.ageGroup,
       program_level: classroomFormState.programLevel,
       teacher_id: teacherId,
@@ -2330,6 +2500,78 @@ function App() {
     }
   }
 
+  async function handleCancelOccurrence(reason: string) {
+    if (!editingSchedule || !editingOccurrenceDate || !supabase) {
+      return
+    }
+
+    const occurrenceDate = editingOccurrenceDate
+
+    if (
+      !(await confirm(
+        `Cancel only the class on ${occurrenceDate}? The rest of the weekly schedule stays as it is.`,
+      ))
+    ) {
+      return
+    }
+
+    try {
+      setIsSavingSchedule(true)
+      setScheduleSaveError(null)
+
+      // The RPC records the admin-activity entry itself.
+      const { error } = await supabase.rpc('cancel_schedule_occurrence', {
+        p_schedule_id: editingSchedule.id,
+        p_occurrence_date: occurrenceDate,
+        p_reason: reason.trim() || null,
+      })
+
+      if (error) {
+        throw error
+      }
+
+      await Promise.all([refreshSchedulesAndParticipants(), refreshAdminActivities()])
+      closeScheduleModal()
+      showToast(`Class on ${occurrenceDate} cancelled.`)
+    } catch (error) {
+      setScheduleSaveError(
+        error instanceof Error ? error.message : 'Failed to cancel this class day.',
+      )
+    } finally {
+      setIsSavingSchedule(false)
+    }
+  }
+
+  async function handleRestoreOccurrence(scheduleId: number, occurrenceDate: string) {
+    if (!supabase) {
+      return
+    }
+
+    if (
+      !(await confirm(
+        `Restore the class on ${occurrenceDate}? It will appear on the calendar again.`,
+      ))
+    ) {
+      return
+    }
+
+    try {
+      const { error } = await supabase.rpc('restore_schedule_occurrence', {
+        p_schedule_id: scheduleId,
+        p_occurrence_date: occurrenceDate,
+      })
+
+      if (error) {
+        throw error
+      }
+
+      await Promise.all([refreshSchedulesAndParticipants(), refreshAdminActivities()])
+      showToast(`Class on ${occurrenceDate} restored.`)
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to restore this class day.')
+    }
+  }
+
   async function handleCancelSchedule() {
     if (!editingSchedule || !supabase) {
       return
@@ -2566,8 +2808,30 @@ function App() {
       )
     }
 
-    const eventType = eventInfo.event.extendedProps.eventType as
+    if (eventInfo.event.extendedProps.isCancelledOccurrence) {
+      const cancelReason = eventInfo.event.extendedProps.cancelReason as string
+
+      return (
+        <div className="rounded-lg border border-slate-200 bg-slate-100 px-2 py-1.5 text-slate-500 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+              Cancelled
+            </span>
+            <span className="text-[10px] font-medium">{eventInfo.timeText}</span>
+          </div>
+          <div className="mt-1 text-[11px] font-semibold leading-snug line-through">
+            {eventInfo.event.title}
+          </div>
+          {cancelReason && (
+            <div className="mt-0.5 text-[10px] leading-snug">{cancelReason}</div>
+          )}
+        </div>
+      )
+    }
+
+    const classKind = eventInfo.event.extendedProps.classKind as
       | 'regular'
+      | 'trial'
       | 'replacement'
     const teacherName = eventInfo.event.extendedProps.teacherName as string
     const participantNames = eventInfo.event.extendedProps.participantNames as string
@@ -2581,14 +2845,18 @@ function App() {
       <div
         className={cn(
           'rounded-lg border px-2 py-1.5 shadow-sm',
-          eventType === 'regular' && !completed && 'border-sky-200 bg-sky-500 text-white',
-          eventType === 'replacement' &&
+          classKind === 'regular' && !completed && 'border-sky-200 bg-sky-500 text-white',
+          classKind === 'trial' && !completed && 'border-violet-200 bg-violet-500 text-white',
+          classKind === 'replacement' &&
             !completed &&
             'border-orange-200 bg-orange-500 text-white',
-          eventType === 'regular' &&
+          classKind === 'regular' &&
             completed &&
             'border-sky-200 bg-sky-100 text-sky-700 opacity-75',
-          eventType === 'replacement' &&
+          classKind === 'trial' &&
+            completed &&
+            'border-violet-200 bg-violet-100 text-violet-700 opacity-75',
+          classKind === 'replacement' &&
             completed &&
             'border-orange-200 bg-orange-100 text-orange-700 opacity-75',
         )}
@@ -2597,8 +2865,9 @@ function App() {
           <span
             className={cn(
               'rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em]',
-              eventType === 'regular' && !completed && 'bg-sky-100 text-sky-700',
-              eventType === 'replacement' &&
+              classKind === 'regular' && !completed && 'bg-sky-100 text-sky-700',
+              classKind === 'trial' && !completed && 'bg-violet-100 text-violet-700',
+              classKind === 'replacement' &&
                 !completed &&
                 'bg-orange-100 text-orange-700',
               completed && 'bg-white/80 text-slate-600',
@@ -2606,9 +2875,11 @@ function App() {
           >
             {completed
               ? 'Completed'
-              : eventType === 'regular'
+              : classKind === 'regular'
                 ? 'Regular'
-                : 'Replacement'}
+                : classKind === 'trial'
+                  ? 'Trial'
+                  : 'Replacement'}
           </span>
           <span
             className={cn(
@@ -2655,7 +2926,21 @@ function App() {
     return <AuthScreen blockedMessage={authBlockedMessage} />
   }
 
-  if (isLoading || !currentTeacher) {
+  if (loadError && !isLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f8fafc] p-6">
+        <div className="max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-sm">
+          <h1 className="text-lg font-semibold">Unable to load your workspace</h1>
+          <p role="alert" className="text-sm text-red-700">{loadError}</p>
+          <p className="text-sm text-slate-600">You are still signed in. Retry loading your data.</p>
+          <button className="rounded-xl bg-[#fc0c97] px-4 py-2 text-white" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>Retry</button>
+          <button className="ml-4 text-sm" onClick={() => supabase?.auth.signOut()}>Sign out</button>
+        </div>
+      </main>
+    )
+  }
+
+  if (isLoading || loadedUserId !== authSession.user.id || !currentTeacher || !currentTeacher.isActive) {
     // Either core data (including the teachers table) is still loading, or
     // the auth-blocked effect above is about to sign this session out.
     return <main className="min-h-screen bg-[#f8fafc]" />
@@ -2838,17 +3123,16 @@ function App() {
                         <h2 className="text-lg font-semibold text-slate-900">
                           Full Calendar Timetable Board
                         </h2>
-                        <p className="mt-1 text-sm text-slate-500">
-                          Blue = Regular Class. Orange = Replacement Class. Teachers
-                          tap a card to take attendance. Completed lessons fade and
-                          remain editable for 24 hours.
-                        </p>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex w-full flex-wrap items-center gap-3 xl:w-auto xl:shrink-0">
                         <div className="flex items-center gap-2 text-sm text-slate-600">
                           <span className="h-3 w-3 rounded-full bg-sky-500" />
                           <span>Regular Class</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                          <span className="h-3 w-3 rounded-full bg-violet-500" />
+                          <span>Trial Class</span>
                         </div>
                         <div className="flex items-center gap-2 text-sm text-slate-600">
                           <span className="h-3 w-3 rounded-full bg-orange-500" />
@@ -2858,17 +3142,44 @@ function App() {
                           <span className="h-3 w-3 rounded-full bg-red-500" />
                           <span>Public Holiday</span>
                         </div>
+                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                          <span className="h-3 w-3 rounded-full bg-slate-300" />
+                          <span>Cancelled Day</span>
+                        </div>
                         {isAdminView && (
                           <button
                             type="button"
                             onClick={() => openCreateSchedule()}
-                            className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
+                            className="ml-auto rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
                           >
-                            New Replacement Class
+                            Add Class
                           </button>
                         )}
                       </div>
                     </div>
+                  </div>
+
+                  <div
+                    className="flex flex-wrap gap-2 border-b border-slate-200 px-5 py-3 sm:px-6"
+                    role="group"
+                    aria-label="Filter calendar by class type"
+                  >
+                    {calendarClassFilterOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        aria-pressed={calendarClassFilter === option.value}
+                        onClick={() => setCalendarClassFilter(option.value)}
+                        className={cn(
+                          'rounded-xl border px-4 py-2 text-sm font-semibold',
+                          calendarClassFilter === option.value
+                            ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]'
+                            : 'border-slate-200 text-slate-600',
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
                   </div>
 
                   <div className="p-3 sm:p-4">
@@ -2928,8 +3239,15 @@ function App() {
                           ? getDateKeyFromDate(arg.event.start)
                           : todayString
 
+                        if (arg.event.extendedProps.isCancelledOccurrence) {
+                          if (isAdminView) {
+                            void handleRestoreOccurrence(scheduleId, occurrenceDate)
+                          }
+                          return
+                        }
+
                         if (isAdminView) {
-                          openEditSchedule(scheduleId)
+                          openEditSchedule(scheduleId, occurrenceDate)
                           return
                         }
 
@@ -2984,6 +3302,7 @@ function App() {
                 onDeactivateStudent={handleDeactivateStudent}
                 onEditStudent={openEditStudent}
                 onOpenCreateStudent={openCreateStudentModal}
+                onOpenBulkImportPreviewStudents={openBulkImportPreviewStudentsModal}
                 onOpenStudentDetail={openStudentDetail}
                 onOpenRenewal={openStudentRenewal}
                 onToggleFilter={(filter) =>
@@ -3014,6 +3333,7 @@ function App() {
                 onConvertLead={handleConvertLead}
                 onEditLead={openEditLeadModal}
                 onOpenCreateLead={openCreateLeadModal}
+                onOpenBulkImportLeads={openBulkImportLeadsModal}
                 onOpenFollowUp={openFollowUpModal}
                 onDeleteLead={handleDeleteLead}
                 deletingLeadId={deletingLeadId}
@@ -3057,6 +3377,15 @@ function App() {
         />
       )}
 
+      {isBulkImportPreviewStudentsOpen && (
+        <PreviewStudentBulkImportModal
+          isImporting={isImportingPreviewStudents}
+          importError={bulkImportPreviewStudentError}
+          onClose={closeBulkImportPreviewStudentsModal}
+          onImport={handleBulkImportPreviewStudents}
+        />
+      )}
+
       {(isCreatingClassroom || editingClassroom) && (
         <ClassroomModal
           isCreating={isCreatingClassroom}
@@ -3097,6 +3426,16 @@ function App() {
           onClose={closeLeadModal}
           onSubmit={handleLeadSubmit}
           onFieldChange={updateLeadForm}
+        />
+      )}
+
+      {isBulkImportLeadsOpen && (
+        <LeadBulkImportModal
+          todayString={todayString}
+          isImporting={isImportingLeads}
+          importError={bulkImportLeadError}
+          onClose={closeBulkImportLeadsModal}
+          onImport={handleBulkImportLeads}
         />
       )}
 
@@ -3159,6 +3498,13 @@ function App() {
           onFieldChange={updateScheduleForm}
           onToggleParticipant={toggleScheduleParticipant}
           onCancelSchedule={handleCancelSchedule}
+          occurrenceDate={editingOccurrenceDate}
+          isOccurrenceLogged={
+            editingSchedule !== null &&
+            editingOccurrenceDate !== null &&
+            latestLessonLogMap.has(`${editingSchedule.id}:${editingOccurrenceDate}`)
+          }
+          onCancelOccurrence={handleCancelOccurrence}
         />
       )}
 

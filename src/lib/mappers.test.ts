@@ -15,6 +15,7 @@ describe('mapStudentRow', () => {
       teacher_id: 2,
       classroom_id: 3,
       full_name: 'Olivia Tan',
+      phone: '+60 12-345 6789',
       remaining_hours: 8,
       lesson_expiry_date: '2026-09-01',
       account_fee_expiry_date: '2026-09-15',
@@ -29,6 +30,7 @@ describe('mapStudentRow', () => {
       teacherId: 2,
       classroomId: 3,
       name: 'Olivia Tan',
+      phone: '+60 12-345 6789',
       remainingHours: 8,
       lessonExpiryDate: '2026-09-01',
       accountFeeExpiryDate: '2026-09-15',
@@ -45,6 +47,7 @@ describe('mapClassroomRow', () => {
     const row: ClassroomRow = {
       id: 5,
       name: 'Tuesday Group A',
+      category: 'regular',
       age_group: '6-8 Years Old',
       program_level: 'Coder Foundation',
       teacher_id: null,
@@ -53,9 +56,12 @@ describe('mapClassroomRow', () => {
       archived_at: null,
     }
 
+    expect(mapClassroomRow({ ...row, category: 'trial', name: '周六 AI 体验班' })).toMatchObject({ category: 'trial', name: '周六 AI 体验班' })
+
     expect(mapClassroomRow(row)).toEqual({
       id: 5,
       name: 'Tuesday Group A',
+      category: 'regular',
       ageGroup: '6-8 Years Old',
       programLevel: 'Coder Foundation',
       teacherId: null,

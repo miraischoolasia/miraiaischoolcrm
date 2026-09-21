@@ -40,7 +40,7 @@ export function LeadModal({
     if (formState.children.length >= MAX_LEAD_CHILDREN) {
       return
     }
-    onFieldChange('children', [...formState.children, { name: '', age: '' }])
+    onFieldChange('children', [...formState.children, { name: '', age: '', phone: '' }])
   }
 
   function removeChild(index: number) {
@@ -194,6 +194,13 @@ export function LeadModal({
                 onChange={(event) => updateChild(index, { name: event.target.value })}
                 placeholder={`Child ${index + 1} name (optional)`}
                 className="w-full flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#fc0c97]"
+              />
+              <input
+                type="text"
+                value={child.phone}
+                onChange={(event) => updateChild(index, { phone: event.target.value })}
+                placeholder="Phone (optional)"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#fc0c97] sm:w-40"
               />
               <select
                 value={child.age}

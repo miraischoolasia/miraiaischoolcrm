@@ -1,7 +1,7 @@
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { ageGroupOptions, programLevelOptions } from '../../lib/constants'
-import type { AgeGroup, Classroom, ClassroomFormState, ProgramLevel, Teacher } from '../../types/domain'
+import type { AgeGroup, ClassroomCategory, Classroom, ClassroomFormState, ProgramLevel, Teacher } from '../../types/domain'
 
 type ClassroomModalProps = {
   isCreating: boolean
@@ -41,7 +41,7 @@ export function ClassroomModal({
               {isCreating ? 'Add Classroom' : editingClassroom?.name ?? 'Edit Classroom'}
             </h2>
             <p className="mt-2 text-sm text-slate-500">
-              Organize regular teaching by age group, level, assigned
+              Organize regular and trial classes by age group, level, assigned
               teacher, and weekly timetable ownership.
             </p>
           </div>
@@ -68,6 +68,13 @@ export function ClassroomModal({
         )}
 
         <div className="grid gap-5 sm:grid-cols-2">
+          <label className="space-y-2 sm:col-span-2">
+            <span className="text-sm font-semibold text-slate-700">Classroom Category</span>
+            <select value={formState.category} onChange={(event) => onFieldChange('category', event.target.value as ClassroomCategory)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900">
+              <option value="regular">Regular Class</option>
+              <option value="trial">Trial Class</option>
+            </select>
+          </label>
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-slate-700">
               Classroom Name
