@@ -122,6 +122,7 @@ vi.mock('./lib/api', async (importOriginal) => ({
       classroomId: null,
       name: 'Aiden',
       phone: '+60 12-222 2222',
+      age: 9,
       remainingHours: 0,
       lessonExpiryDate: '2026-09-26',
       accountFeeExpiryDate: '2026-09-26',
@@ -287,7 +288,12 @@ describe('trial slots on the calendar', () => {
     // with the booked child as the roster (via trial_bookings.student_id).
     expect(screen.queryByText('Trial slot')).not.toBeInTheDocument()
     expect(await screen.findByText('Attendance Submission')).toBeInTheDocument()
-    expect(within(screen.getByRole('dialog')).getByText('Aiden')).toBeInTheDocument()
+    const dialog = within(screen.getByRole('dialog'))
+    expect(dialog.getByText('Aiden')).toBeInTheDocument()
+    // Age and phone (known from the booking) replace the meaningless
+    // "Student ID #..." a teacher has no use for.
+    expect(dialog.getByText('9 yrs old · +60 12-222 2222')).toBeInTheDocument()
+    expect(dialog.queryByText(/Student ID/)).not.toBeInTheDocument()
     expect(mocks.latestLessonLog).toHaveBeenCalledWith(300, '2026-09-26')
   })
 

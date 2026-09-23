@@ -27,7 +27,7 @@ export async function fetchStudentsFromSupabase() {
   const { data, error } = await supabase
     .from('students')
     .select(
-      'id, teacher_id, classroom_id, full_name, phone, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date, notes, is_active, student_type',
+      'id, teacher_id, classroom_id, full_name, phone, age, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date, notes, is_active, student_type',
     )
     .order('full_name')
 

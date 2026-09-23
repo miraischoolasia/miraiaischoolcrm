@@ -33,6 +33,7 @@ export function mapStudentRow(row: StudentRow): Student {
     classroomId: row.classroom_id,
     name: row.full_name,
     phone: row.phone,
+    age: row.age,
     remainingHours: row.remaining_hours,
     lessonExpiryDate: row.lesson_expiry_date,
     accountFeeExpiryDate: row.account_fee_expiry_date,

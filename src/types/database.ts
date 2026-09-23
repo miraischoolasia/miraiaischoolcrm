@@ -179,6 +179,7 @@ export type Database = {
           classroom_id: number | null
           full_name: string
           phone: string | null
+          age: number | null
           remaining_hours: number
           lesson_expiry_date: string
           account_fee_expiry_date: string
@@ -195,6 +196,7 @@ export type Database = {
           classroom_id?: number | null
           full_name: string
           phone?: string | null
+          age?: number | null
           remaining_hours?: number
           lesson_expiry_date: string
           account_fee_expiry_date: string
@@ -211,6 +213,7 @@ export type Database = {
           classroom_id?: number | null
           full_name?: string
           phone?: string | null
+          age?: number | null
           remaining_hours?: number
           lesson_expiry_date?: string
           account_fee_expiry_date?: string

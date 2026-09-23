@@ -131,7 +131,12 @@ export function AttendanceModal({
                             {student.name}
                           </div>
                           <div className="text-sm text-slate-500">
-                            Student ID #{String(student.id).padStart(3, '0')}
+                            {[
+                              student.age !== null ? `${student.age} yrs old` : null,
+                              student.phone,
+                            ]
+                              .filter(Boolean)
+                              .join(' · ') || 'No contact info'}
                           </div>
                         </div>
 

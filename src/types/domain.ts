@@ -55,6 +55,9 @@ export type Student = {
   classroomId: number | null
   name: string
   phone: string | null
+  // Only ever populated for a trial-booking student (from the booking's
+  // child age) — never collected for a regular or preview student.
+  age: number | null
   remainingHours: number
   lessonExpiryDate: string
   accountFeeExpiryDate: string
@@ -336,6 +339,7 @@ export type StudentRow = Pick<
   | 'classroom_id'
   | 'full_name'
   | 'phone'
+  | 'age'
   | 'remaining_hours'
   | 'lesson_expiry_date'
   | 'account_fee_expiry_date'

@@ -92,6 +92,7 @@ describe('buildScheduleEvents', () => {
     classroomId: 1,
     name: 'Olivia Tan',
     phone: null,
+    age: null,
     remainingHours: 5,
     lessonExpiryDate: '2026-09-01',
     accountFeeExpiryDate: '2026-09-01',

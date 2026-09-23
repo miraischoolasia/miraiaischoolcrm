@@ -10,6 +10,7 @@ const student: Student = {
   teacherId: null,
   classroomId: null,
   phone: null,
+  age: null,
   remainingHours: 10,
   lessonExpiryDate: '2026-12-31',
   accountFeeExpiryDate: '2026-12-31',
