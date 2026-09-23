@@ -11,8 +11,13 @@ import {
   mapScheduleRow,
   mapStudentRow,
   mapTeacherRow,
+  mapTrialBookingRow,
 } from './mappers'
 import type { LessonLogStudent, LessonLogStudentReview, LessonLogSummary } from '../types/domain'
+
+function isMissingTableError(error: { code?: string }) {
+  return error.code === 'PGRST205' || error.code === '42P01'
+}
 
 export async function fetchStudentsFromSupabase() {
   if (!supabase) {
@@ -169,10 +174,42 @@ export async function fetchScheduleExceptionsFromSupabase() {
     .order('exception_date')
 
   if (error) {
+    // Skipped days are optional decoration on the calendar. If the frontend
+    // is deployed before the migration that creates the table, treat it as
+    // "nothing cancelled" instead of failing the whole workspace load. Every
+    // other error still surfaces.
+    if (isMissingTableError(error)) {
+      return []
+    }
+
     throw error
   }
 
   return data.map(mapScheduleExceptionRow)
+}
+
+export async function fetchTrialBookingsFromSupabase() {
+  if (!supabase) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('trial_bookings')
+    .select('id, schedule_id, booking_date, lead_id, student_id, child_name, child_age, phone, notes')
+    .order('booking_date')
+
+  if (error) {
+    // Same reasoning as skipped days: bookings are an overlay on the calendar,
+    // so a database that has not had the trial_bookings migration yet must
+    // not stop the workspace from loading.
+    if (isMissingTableError(error)) {
+      return []
+    }
+
+    throw error
+  }
+
+  return data.map(mapTrialBookingRow)
 }
 
 export async function fetchLessonLogSummariesFromSupabase() {

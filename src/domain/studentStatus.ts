@@ -73,6 +73,30 @@ export function getStudentStatus(
     }
   }
 
+  // A trial-slot booking creates one of these per session (0 hours, today's
+  // date on every expiry field) purely so attendance has a student row to
+  // record against — it is not an enrollment, so the usual hours/renewal
+  // alerts would be false alarms.
+  if (student.studentType === 'trial') {
+    const tags: StatusTag[] = student.isActive
+      ? [{ label: 'Trial', tone: 'healthy' }]
+      : [{ label: 'Deactivated', tone: 'critical' }]
+    const meta = { daysUntil: 0, expired: false, dueSoon: false }
+
+    return {
+      isDeactivated: !student.isActive,
+      hoursLow: false,
+      lessonExpired: false,
+      accountFeeNeedsAttention: false,
+      miraiClubNeedsAttention: false,
+      lessonExpiry: meta,
+      accountFeeExpiry: meta,
+      miraiClubExpiry: meta,
+      tags,
+      isNormal: student.isActive,
+    }
+  }
+
   const hoursLow = student.remainingHours <= 2
   const lessonExpiry = getDateMeta(student.lessonExpiryDate, todayString)
   const accountFeeExpiry = getDateMeta(student.accountFeeExpiryDate, todayString)

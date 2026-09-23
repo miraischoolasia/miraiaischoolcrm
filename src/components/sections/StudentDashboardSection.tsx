@@ -77,7 +77,11 @@ export function StudentDashboardSection({
     }
 
     if (activeFilter === 'normal') {
-      return status.isNormal && student.studentType !== 'preview'
+      return (
+        status.isNormal &&
+        student.studentType !== 'preview' &&
+        student.studentType !== 'trial'
+      )
     }
 
     return true
@@ -100,10 +104,6 @@ export function StudentDashboardSection({
   function getStudentTypeLabel(student: Student) {
     if (student.studentType === 'preview') {
       return 'Preview'
-    }
-
-    if (student.studentType === 'trial') {
-      return 'Trial'
     }
 
     return null
@@ -240,14 +240,16 @@ export function StudentDashboardSection({
                             : 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200',
                         )}
                       >
-                        {student.remainingHours}
+                        {student.studentType === 'trial' ? '—' : student.remainingHours}
                       </div>
                       <div className="mt-1 text-[11px] font-medium text-slate-500">
                         {status.isDeactivated
                           ? 'Deactivated'
-                          : status.hoursLow
-                            ? 'Needs attention'
-                            : 'Healthy'}
+                          : student.studentType === 'trial'
+                            ? 'Not billed'
+                            : status.hoursLow
+                              ? 'Needs attention'
+                              : 'Healthy'}
                       </div>
                     </div>
                   </div>
@@ -375,7 +377,7 @@ export function StudentDashboardSection({
                             <button
                               type="button"
                               onClick={() => onOpenStudentDetail(student.id)}
-                              className="text-left text-base font-semibold text-slate-900 transition hover:text-[#be185d]"
+                              className="table-cell-link text-left font-semibold text-slate-900 transition hover:text-[#be185d]"
                             >
                               {student.name}
                             </button>
@@ -385,7 +387,7 @@ export function StudentDashboardSection({
                               </span>
                             )}
                           </div>
-                          <div className="text-sm text-slate-500">
+                          <div className="text-xs text-slate-500">
                             Student ID #{student.id.toString().padStart(3, '0')}
                             {student.phone ? ` - ${student.phone}` : ''}
                           </div>
@@ -430,14 +432,16 @@ export function StudentDashboardSection({
                                 : 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200',
                             )}
                           >
-                            {student.remainingHours}
+                            {student.studentType === 'trial' ? '—' : student.remainingHours}
                           </div>
                           <div className="text-xs font-medium text-slate-500">
                             {status.isDeactivated
                               ? 'Student deactivated'
-                              : status.hoursLow
-                              ? 'Immediate action needed'
-                              : 'Healthy balance'}
+                              : student.studentType === 'trial'
+                                ? 'Not billed'
+                                : status.hoursLow
+                                  ? 'Immediate action needed'
+                                  : 'Healthy balance'}
                           </div>
                         </div>
                       </td>

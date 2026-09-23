@@ -30,6 +30,7 @@ vi.mock('./lib/api', async (importOriginal) => ({
   fetchSchedulesFromSupabase: async () => [],
   fetchScheduleParticipantsFromSupabase: async () => [],
   fetchScheduleExceptionsFromSupabase: async () => [],
+  fetchTrialBookingsFromSupabase: async () => [],
   fetchLessonLogSummariesFromSupabase: async () => [],
   fetchLessonLogStudentReviewsFromSupabase: async () => [],
   fetchAdminActivityFromSupabase: async () => [],
@@ -84,5 +85,27 @@ describe('login data loading', () => {
     await act(async () => resolveTeachers([{ ...teacher, authUserId: 'user-2' }]))
     await waitFor(() => expect(screen.getByText('Calendar ready')).toBeInTheDocument())
     expect(mocks.signOut).not.toHaveBeenCalled()
+  })
+
+  it('does not reload core data for the same user on a refreshed session object', async () => {
+    // Supabase's auto token refresh — including the proactive refresh it
+    // runs whenever this browser tab regains focus — hands
+    // onAuthStateChange a brand-new session object for the *same* signed-in
+    // user. That must not be treated like a fresh sign-in: doing so blanks
+    // the whole screen while data reloads, discarding whatever the admin was
+    // typing (e.g. a half-filled form in an open modal).
+    render(<App />)
+    await screen.findByText('Sign in to continue.')
+    await signIn()
+    await screen.findByText('Calendar ready')
+
+    expect(mocks.teachers).toHaveBeenCalledTimes(1)
+    expect(mocks.leads).toHaveBeenCalledTimes(1)
+
+    await act(async () => mocks.listener?.('TOKEN_REFRESHED', { user: { id: 'user-1' } }))
+
+    expect(screen.getByText('Calendar ready')).toBeInTheDocument()
+    expect(mocks.teachers).toHaveBeenCalledTimes(1)
+    expect(mocks.leads).toHaveBeenCalledTimes(1)
   })
 })

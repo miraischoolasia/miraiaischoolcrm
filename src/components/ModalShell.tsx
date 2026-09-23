@@ -5,10 +5,18 @@ export function ModalShell({
   children,
   maxWidth = '2xl',
   onClose,
+  layer = 'base',
 }: {
   children: ReactNode
   maxWidth?: '2xl' | '760' | 'sm'
   onClose: () => void
+  // A confirm() prompt can open while another ModalShell (e.g. ScheduleModal)
+  // is still mounted underneath it. Every ModalShell shares the same z-index
+  // by default, so with two open at once, plain DOM order decides which is on
+  // top — the later-mounted one wins, which is wrong for a prompt that must
+  // always sit above whatever asked for it. 'overlay' bumps a shell above the
+  // 'base' layer regardless of mount order.
+  layer?: 'base' | 'overlay'
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const onCloseRef = useRef(onClose)
@@ -39,7 +47,10 @@ export function ModalShell({
 
   return (
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/30 px-4 py-6"
+      className={cn(
+        'fixed inset-0 overflow-y-auto bg-slate-900/30 px-4 py-6',
+        layer === 'overlay' ? 'z-[60]' : 'z-50',
+      )}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           onClose()

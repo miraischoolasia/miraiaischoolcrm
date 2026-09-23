@@ -171,6 +171,13 @@ h3 {
   white-space: nowrap;
 }
 
+.compact-admin [data-compact-table] button.table-cell-link {
+  min-height: 0;
+  padding: 0;
+  font-size: inherit;
+  white-space: normal;
+}
+
 .compact-admin [data-modal-shell] {
   display: flex;
   max-height: calc(100vh - 32px);

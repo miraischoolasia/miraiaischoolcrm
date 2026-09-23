@@ -7,6 +7,7 @@ import type {
   ScheduleFormState,
   Student,
   Teacher,
+  TrialBooking,
 } from '../types/domain'
 
 export const weekdayLabels = [
@@ -57,6 +58,25 @@ export function filterSchedulesByClassKind(
   )
 }
 
+export function getTrialSlotKey(scheduleId: number, dateKey: string) {
+  return `${scheduleId}:${dateKey}`
+}
+
+// Bookings grouped by trial slot and day, so the calendar can tell an empty
+// (available) occurrence from one with children booked.
+export function buildTrialBookingMap(bookings: TrialBooking[]) {
+  const bookingMap = new Map<string, TrialBooking[]>()
+
+  for (const booking of bookings) {
+    const key = getTrialSlotKey(booking.scheduleId, booking.bookingDate)
+    const existing = bookingMap.get(key) ?? []
+    existing.push(booking)
+    bookingMap.set(key, existing)
+  }
+
+  return bookingMap
+}
+
 export function getDateKeyFromDate(date: Date) {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -102,6 +122,19 @@ export function buildScheduleFormState(
     notes: schedule.notes ?? '',
     participantIds,
   }
+}
+
+// An exception only counts while it still lines up with the weekly series.
+// Editing the weekday or the start/end dates can leave old rows pointing at
+// days the class no longer runs; those must not render as cancelled cards.
+function isExceptionOnSchedule(schedule: Schedule, exception: ScheduleException) {
+  const date = exception.exceptionDate
+
+  return (
+    parseLocalDate(date).getDay() === schedule.dayOfWeek &&
+    (!schedule.startRecur || date >= schedule.startRecur) &&
+    (!schedule.endRecur || date <= schedule.endRecur)
+  )
 }
 
 export function calculateDuration(startTime: string, endTime: string) {
@@ -169,7 +202,9 @@ export function buildScheduleEvents(
         const dtstart = `${schedule.startRecur}T${schedule.startTime}`
         const until = schedule.endRecur ? `${schedule.endRecur}T23:59:59` : undefined
 
-        const exceptions = exceptionsByScheduleId.get(schedule.id) ?? []
+        const exceptions = (exceptionsByScheduleId.get(schedule.id) ?? []).filter(
+          (exception) => isExceptionOnSchedule(schedule, exception),
+        )
 
         // A single skipped day is an rrule `exdate` on the weekly series, which
         // must carry the same time-of-day as dtstart to match an occurrence.
@@ -194,13 +229,18 @@ export function buildScheduleEvents(
           // Every regular class only meets 4 times a month: the 5th weekly
           // occurrence in a month (when it exists) always lands on the 29th,
           // 30th, or 31st, so excluding those calendar dates caps every
-          // weekly schedule at exactly 4 classes per month.
-          exrule: {
-            freq: 'daily',
-            bymonthday: [29, 30, 31],
-            dtstart,
-            ...(until ? { until } : {}),
-          },
+          // weekly schedule at exactly 4 classes per month. Trial slots are
+          // offered every week, so they are not capped.
+          ...(getScheduleClassKind(schedule, classroomMap) === 'trial'
+            ? {}
+            : {
+                exrule: {
+                  freq: 'daily',
+                  bymonthday: [29, 30, 31],
+                  dtstart,
+                  ...(until ? { until } : {}),
+                },
+              }),
         }
 
         // Skipped days stay visible as a struck-through card so an admin can

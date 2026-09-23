@@ -49,6 +49,8 @@ import type {
   Student,
   StudentDetailsFormState,
   Teacher,
+  TrialBooking,
+  TrialBookingFormState,
   UserSession,
 } from './types/domain'
 import {
@@ -74,18 +76,22 @@ import {
   fetchSchedulesFromSupabase,
   fetchStudentsFromSupabase,
   fetchTeachersFromSupabase,
+  fetchTrialBookingsFromSupabase,
   getSupabaseLoadErrorMessage,
 } from './lib/api'
 import {
   buildScheduleEvents,
   buildScheduleFormState,
+  buildTrialBookingMap,
   calendarClassFilterOptions,
   filterSchedulesByClassKind,
   getDateKeyFromDate,
+  getTrialSlotKey,
   type CalendarClassFilter,
 } from './lib/schedule'
 import { MAX_LEAD_FOLLOW_UPS, ageGroupOptions, programLevelOptions } from './lib/constants'
 import { cn } from './lib/cn'
+import { getErrorMessage } from './lib/errors'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useConfirm } from './hooks/useConfirm'
 import { useToast } from './hooks/useToast'
@@ -107,6 +113,7 @@ import { PreviewStudentBulkImportModal } from './components/modals/PreviewStuden
 import { LeadFollowUpModal } from './components/modals/LeadFollowUpModal'
 import { StudentRenewalModal } from './components/modals/StudentRenewalModal'
 import { ScheduleModal } from './components/modals/ScheduleModal'
+import { TrialBookingModal } from './components/modals/TrialBookingModal'
 import { AttendanceModal } from './components/modals/AttendanceModal'
 
 function App() {
@@ -124,6 +131,14 @@ function App() {
     ScheduleParticipant[]
   >([])
   const [scheduleExceptions, setScheduleExceptions] = useState<ScheduleException[]>([])
+  const [trialBookings, setTrialBookings] = useState<TrialBooking[]>([])
+  // The trial slot (schedule + day) whose bookings are open in the modal.
+  const [trialBookingSlot, setTrialBookingSlot] = useState<{
+    scheduleId: number
+    dateKey: string
+  } | null>(null)
+  const [isSavingTrialBooking, setIsSavingTrialBooking] = useState(false)
+  const [trialBookingError, setTrialBookingError] = useState<string | null>(null)
   const [lessonLogs, setLessonLogs] = useState<LessonLogSummary[]>([])
   const [lessonReviews, setLessonReviews] = useState<LessonLogStudentReview[]>([])
   const [adminActivities, setAdminActivities] = useState<AdminActivity[]>([])
@@ -156,6 +171,14 @@ function App() {
   const [studentFilter, setStudentFilter] = useState<FilterKey>('all')
   const [activeSection, setActiveSection] = useState<AppSection>('calendar')
   const [authSession, setAuthSession] = useState<Session | null>(null)
+  // supabase-js hands onAuthStateChange a brand-new session object on every
+  // TOKEN_REFRESHED event, including the proactive refresh it runs whenever
+  // this tab regains focus (its visibilitychange listener) — even though the
+  // signed-in user hasn't changed. Effects that only care about *which user*
+  // is signed in must depend on this stable id, not on `authSession` itself,
+  // or every alt-tab-and-back would look like a fresh login and re-trigger a
+  // full data reload (see the effect below).
+  const authUserId = authSession?.user.id ?? null
   const [authInitializing, setAuthInitializing] = useState(true)
   const [authBlockedMessage, setAuthBlockedMessage] = useState<string | null>(null)
   const [viewAsTeacherId, setViewAsTeacherId] = useState<number | null>(null)
@@ -330,6 +353,7 @@ function App() {
 
     return nextMap
   }, [scheduleParticipants])
+  const trialBookingMap = useMemo(() => buildTrialBookingMap(trialBookings), [trialBookings])
   const latestLessonLogMap = useMemo(
     () => getLatestLessonLogMap(lessonLogs),
     [lessonLogs],
@@ -528,7 +552,7 @@ function App() {
         return
       }
 
-      if (!authSession) {
+      if (!authUserId) {
         return
       }
 
@@ -544,6 +568,7 @@ function App() {
           nextSchedules,
           nextParticipants,
           nextScheduleExceptions,
+          nextTrialBookings,
           nextLessonLogs,
           nextLessonReviews,
           nextAdminActivities,
@@ -555,6 +580,7 @@ function App() {
           fetchSchedulesFromSupabase(),
           fetchScheduleParticipantsFromSupabase(),
           fetchScheduleExceptionsFromSupabase(),
+          fetchTrialBookingsFromSupabase(),
           fetchLessonLogSummariesFromSupabase(),
           fetchLessonLogStudentReviewsFromSupabase(),
           fetchAdminActivityFromSupabase(),
@@ -568,11 +594,12 @@ function App() {
           setSchedules(nextSchedules)
           setScheduleParticipants(nextParticipants)
           setScheduleExceptions(nextScheduleExceptions)
+          setTrialBookings(nextTrialBookings)
           setLessonLogs(nextLessonLogs)
           setLessonReviews(nextLessonReviews)
           setAdminActivities(nextAdminActivities)
           setLeads(nextLeads)
-          setLoadedUserId(authSession.user.id)
+          setLoadedUserId(authUserId)
         }
       } catch (error) {
         if (!cancelled) {
@@ -590,7 +617,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [authSession, loadAttempt])
+  }, [authUserId, loadAttempt])
 
   const visibleSchedules = useMemo(() => {
     if (!currentSession) {
@@ -1091,9 +1118,15 @@ function App() {
         throw error
       }
 
-      await recordAdminActivity('lead_bulk_imported', 'lead', null, `${rows.length} leads`, {
-        count: rows.length,
-      })
+      // The rows are already saved. A failed audit entry must not be reported
+      // as a failed import, or a retry would insert every row a second time.
+      try {
+        await recordAdminActivity('lead_bulk_imported', 'lead', null, `${rows.length} leads`, {
+          count: rows.length,
+        })
+      } catch {
+        showToast('Leads imported, but the activity log entry could not be saved.')
+      }
 
       await Promise.all([refreshLeads(), refreshAdminActivities()])
       closeBulkImportLeadsModal()
@@ -1141,6 +1174,99 @@ function App() {
     setEditingClassroomId(null)
     setIsCreatingClassroom(false)
     setClassroomSaveError(null)
+  }
+
+  function openTrialBooking(scheduleId: number, dateKey: string) {
+    setTrialBookingError(null)
+    setTrialBookingSlot({ scheduleId, dateKey })
+  }
+
+  function closeTrialBooking() {
+    setTrialBookingSlot(null)
+    setTrialBookingError(null)
+  }
+
+  async function refreshTrialBookings() {
+    const nextTrialBookings = await fetchTrialBookingsFromSupabase()
+    setTrialBookings(nextTrialBookings)
+  }
+
+  // Resolves true when the booking was saved, so the modal can reset its form.
+  async function handleBookTrial(form: TrialBookingFormState) {
+    if (!trialBookingSlot || !supabase) {
+      return false
+    }
+
+    try {
+      setIsSavingTrialBooking(true)
+      setTrialBookingError(null)
+
+      // The RPC also creates or updates the lead and writes the activity log.
+      const { error } = await supabase.rpc('book_trial_slot', {
+        p_schedule_id: trialBookingSlot.scheduleId,
+        p_booking_date: trialBookingSlot.dateKey,
+        p_child_name: form.childName.trim(),
+        p_child_age: form.childAge.trim() ? Number(form.childAge) : null,
+        p_phone: form.phone.trim() || null,
+        p_lead_id: form.leadId,
+        p_notes: form.notes.trim() || null,
+      })
+
+      if (error) {
+        throw error
+      }
+
+      // Booking creates a lightweight trial-type student behind the scenes
+      // (see 20260922010000_trial_attendance.sql) so attendance can be taken
+      // against it — refresh students too, or it won't show up yet.
+      await Promise.all([
+        refreshTrialBookings(),
+        refreshLeads(),
+        refreshAdminActivities(),
+        refreshStudentsAndLogs(),
+      ])
+      return true
+    } catch (error) {
+      setTrialBookingError(getErrorMessage(error, 'Failed to book this trial.'))
+      return false
+    } finally {
+      setIsSavingTrialBooking(false)
+    }
+  }
+
+  async function handleCancelTrialBooking(booking: TrialBooking) {
+    if (!supabase) {
+      return
+    }
+
+    if (!(await confirm(`Remove ${booking.childName} from this trial slot?`))) {
+      return
+    }
+
+    try {
+      setIsSavingTrialBooking(true)
+      setTrialBookingError(null)
+
+      const { error } = await supabase.rpc('cancel_trial_booking', {
+        p_booking_id: booking.id,
+      })
+
+      if (error) {
+        throw error
+      }
+
+      // Cancelling with no attendance recorded also removes the linked
+      // trial-type student on the server — refresh students to match.
+      await Promise.all([
+        refreshTrialBookings(),
+        refreshAdminActivities(),
+        refreshStudentsAndLogs(),
+      ])
+    } catch (error) {
+      setTrialBookingError(getErrorMessage(error, 'Failed to remove this booking.'))
+    } finally {
+      setIsSavingTrialBooking(false)
+    }
   }
 
   function openCreateSchedule(prefillDate?: string, classroomId?: number) {
@@ -1493,13 +1619,20 @@ function App() {
         throw error
       }
 
-      await recordAdminActivity(
-        'preview_students_bulk_imported',
-        'student',
-        null,
-        `${rows.length} preview students`,
-        { count: rows.length },
-      )
+      // The students are already saved. A failed audit entry must not be
+      // reported as a failed import, or a retry would create every student
+      // a second time.
+      try {
+        await recordAdminActivity(
+          'preview_students_bulk_imported',
+          'student',
+          null,
+          `${rows.length} preview students`,
+          { count: rows.length },
+        )
+      } catch {
+        showToast('Students imported, but the activity log entry could not be saved.')
+      }
 
       await Promise.all([refreshStudentsAndLogs(), refreshAdminActivities()])
       closeBulkImportPreviewStudentsModal()
@@ -2534,9 +2667,7 @@ function App() {
       closeScheduleModal()
       showToast(`Class on ${occurrenceDate} cancelled.`)
     } catch (error) {
-      setScheduleSaveError(
-        error instanceof Error ? error.message : 'Failed to cancel this class day.',
-      )
+      setScheduleSaveError(getErrorMessage(error, 'Failed to cancel this class day.'))
     } finally {
       setIsSavingSchedule(false)
     }
@@ -2568,7 +2699,7 @@ function App() {
       await Promise.all([refreshSchedulesAndParticipants(), refreshAdminActivities()])
       showToast(`Class on ${occurrenceDate} restored.`)
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Failed to restore this class day.')
+      showToast(getErrorMessage(error, 'Failed to restore this class day.'))
     }
   }
 
@@ -2623,13 +2754,24 @@ function App() {
     }
   }
 
-  function getScheduleRosterStudentIds(scheduleId: number) {
+  function getScheduleRosterStudentIds(scheduleId: number, occurrenceDate: string) {
     const schedule = schedules.find((entry) => entry.id === scheduleId)
     if (!schedule) {
       return []
     }
 
     if (schedule.eventType === 'regular') {
+      const classroom = schedule.classroomId ? classroomMap.get(schedule.classroomId) : null
+
+      // A trial classroom never has students assigned to it directly — the
+      // roster for one occurrence is whoever is trial_booked for that exact
+      // day, not the (always empty) classroom roster.
+      if (classroom?.category === 'trial') {
+        return (trialBookingMap.get(getTrialSlotKey(scheduleId, occurrenceDate)) ?? [])
+          .map((booking) => booking.studentId)
+          .filter((studentId): studentId is number => studentId !== null)
+      }
+
       return schedule.classroomId
         ? (classroomStudentMap.get(schedule.classroomId) ?? []).map(
             (student) => student.id,
@@ -2665,7 +2807,7 @@ function App() {
 
       const rosterIds = summary
         ? latestAttendanceRows.map((row) => row.studentId)
-        : getScheduleRosterStudentIds(scheduleId)
+        : getScheduleRosterStudentIds(scheduleId, occurrenceDate)
       const nextStatuses: Record<number, AttendanceStatus> = {}
       const nextReviews: Record<number, AttendanceReviewFormState> = {}
 
@@ -2833,6 +2975,80 @@ function App() {
       | 'regular'
       | 'trial'
       | 'replacement'
+
+    if (classKind === 'trial') {
+      const trialScheduleId = Number(eventInfo.event.extendedProps.scheduleId)
+      const trialOccurrenceDate = eventInfo.event.start
+        ? getDateKeyFromDate(eventInfo.event.start)
+        : ''
+      const slotBookings =
+        trialBookingMap.get(getTrialSlotKey(trialScheduleId, trialOccurrenceDate)) ?? []
+      const isBooked = slotBookings.length > 0
+      const completed = latestLessonLogMap.has(`${trialScheduleId}:${trialOccurrenceDate}`)
+
+      return (
+        <div
+          className={cn(
+            'rounded-lg border px-2 py-1.5 shadow-sm',
+            isBooked && !completed && 'border-teal-200 bg-teal-500 text-white',
+            isBooked && completed && 'border-teal-200 bg-teal-100 text-teal-700 opacity-75',
+            !isBooked && 'border-dashed border-slate-300 bg-slate-50 text-slate-500',
+          )}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span
+              className={cn(
+                'rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em]',
+                isBooked && !completed && 'bg-teal-100 text-teal-800',
+                isBooked && completed && 'bg-white/80 text-slate-600',
+                !isBooked && 'bg-slate-200 text-slate-600',
+              )}
+            >
+              {completed
+                ? 'Completed'
+                : isBooked
+                  ? `${slotBookings.length} booked`
+                  : 'Available'}
+            </span>
+            <span
+              className={cn(
+                'text-[10px] font-medium',
+                isBooked && !completed ? 'text-white/90' : 'text-slate-500',
+              )}
+            >
+              {eventInfo.timeText}
+            </span>
+          </div>
+          <div
+            className={cn(
+              'mt-1 text-[11px] font-semibold leading-snug',
+              isBooked && !completed ? 'text-white' : 'text-slate-600',
+            )}
+          >
+            {eventInfo.event.title}
+          </div>
+          <div
+            className={cn(
+              'mt-0.5 text-[10px]',
+              isBooked && !completed ? 'text-white/90' : 'text-slate-500',
+            )}
+          >
+            {eventInfo.event.extendedProps.teacherName as string}
+          </div>
+          {isBooked && (
+            <div
+              className={cn(
+                'mt-0.5 truncate text-[10px]',
+                completed ? 'text-slate-500' : 'text-white/80',
+              )}
+            >
+              {slotBookings.map((booking) => booking.childName).join(', ')}
+            </div>
+          )}
+        </div>
+      )
+    }
+
     const teacherName = eventInfo.event.extendedProps.teacherName as string
     const participantNames = eventInfo.event.extendedProps.participantNames as string
     const scheduleId = Number(eventInfo.event.extendedProps.scheduleId)
@@ -2846,16 +3062,12 @@ function App() {
         className={cn(
           'rounded-lg border px-2 py-1.5 shadow-sm',
           classKind === 'regular' && !completed && 'border-sky-200 bg-sky-500 text-white',
-          classKind === 'trial' && !completed && 'border-violet-200 bg-violet-500 text-white',
           classKind === 'replacement' &&
             !completed &&
             'border-orange-200 bg-orange-500 text-white',
           classKind === 'regular' &&
             completed &&
             'border-sky-200 bg-sky-100 text-sky-700 opacity-75',
-          classKind === 'trial' &&
-            completed &&
-            'border-violet-200 bg-violet-100 text-violet-700 opacity-75',
           classKind === 'replacement' &&
             completed &&
             'border-orange-200 bg-orange-100 text-orange-700 opacity-75',
@@ -2866,7 +3078,6 @@ function App() {
             className={cn(
               'rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em]',
               classKind === 'regular' && !completed && 'bg-sky-100 text-sky-700',
-              classKind === 'trial' && !completed && 'bg-violet-100 text-violet-700',
               classKind === 'replacement' &&
                 !completed &&
                 'bg-orange-100 text-orange-700',
@@ -2877,9 +3088,7 @@ function App() {
               ? 'Completed'
               : classKind === 'regular'
                 ? 'Regular'
-                : classKind === 'trial'
-                  ? 'Trial'
-                  : 'Replacement'}
+                : 'Replacement'}
           </span>
           <span
             className={cn(
@@ -3131,8 +3340,12 @@ function App() {
                           <span>Regular Class</span>
                         </div>
                         <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <span className="h-3 w-3 rounded-full bg-violet-500" />
-                          <span>Trial Class</span>
+                          <span className="h-3 w-3 rounded-full border border-dashed border-slate-400 bg-slate-50" />
+                          <span>Trial - Available</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                          <span className="h-3 w-3 rounded-full bg-teal-500" />
+                          <span>Trial - Booked</span>
                         </div>
                         <div className="flex items-center gap-2 text-sm text-slate-600">
                           <span className="h-3 w-3 rounded-full bg-orange-500" />
@@ -3242,6 +3455,21 @@ function App() {
                         if (arg.event.extendedProps.isCancelledOccurrence) {
                           if (isAdminView) {
                             void handleRestoreOccurrence(scheduleId, occurrenceDate)
+                          }
+                          return
+                        }
+
+                        if (arg.event.extendedProps.classKind === 'trial') {
+                          // Admins manage who's booked; teachers go straight
+                          // to attendance, same as every other class type.
+                          if (isAdminView) {
+                            openTrialBooking(scheduleId, occurrenceDate)
+                          } else {
+                            void openAttendanceForEvent(
+                              scheduleId,
+                              occurrenceDate,
+                              arg.event.title,
+                            )
                           }
                           return
                         }
@@ -3478,6 +3706,48 @@ function App() {
           onFieldChange={updateStudentForm}
         />
       )}
+
+      {trialBookingSlot && (() => {
+        const slotSchedule = schedules.find((schedule) => schedule.id === trialBookingSlot.scheduleId)
+
+        if (!slotSchedule) {
+          return null
+        }
+
+        const slotClassroom = slotSchedule.classroomId
+          ? classroomMap.get(slotSchedule.classroomId)
+          : undefined
+
+        return (
+          <TrialBookingModal
+            slotTitle={slotClassroom?.name ?? slotSchedule.title}
+            teacherName={teacherMap.get(slotSchedule.teacherId)?.fullName ?? 'Unknown Teacher'}
+            dateKey={trialBookingSlot.dateKey}
+            startTime={slotSchedule.startTime}
+            endTime={slotSchedule.endTime}
+            bookings={
+              trialBookingMap.get(getTrialSlotKey(slotSchedule.id, trialBookingSlot.dateKey)) ?? []
+            }
+            leads={leads}
+            canManage={isAdminView}
+            isSaving={isSavingTrialBooking}
+            error={trialBookingError}
+            onClose={closeTrialBooking}
+            onBook={handleBookTrial}
+            onCancelBooking={handleCancelTrialBooking}
+            onEditSlot={() => {
+              const { scheduleId, dateKey } = trialBookingSlot
+              closeTrialBooking()
+              openEditSchedule(scheduleId, dateKey)
+            }}
+            onTakeAttendance={() => {
+              const { scheduleId, dateKey } = trialBookingSlot
+              closeTrialBooking()
+              void openAttendanceForEvent(scheduleId, dateKey, slotClassroom?.name ?? slotSchedule.title)
+            }}
+          />
+        )
+      })()}
 
       {(isCreatingSchedule || editingSchedule) && (
         <ScheduleModal

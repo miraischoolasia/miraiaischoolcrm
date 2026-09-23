@@ -158,6 +158,29 @@ export type ScheduleParticipant = {
   isActive: boolean
 }
 
+export type TrialBooking = {
+  id: number
+  scheduleId: number
+  bookingDate: string
+  leadId: number | null
+  // The lightweight `student_type: 'trial'` student this booking's
+  // attendance is recorded against (see the 20260922010000 migration). Null
+  // only for a booking made before that migration and not yet backfilled.
+  studentId: number | null
+  childName: string
+  childAge: number | null
+  phone: string | null
+  notes: string | null
+}
+
+export type TrialBookingFormState = {
+  leadId: number | null
+  childName: string
+  childAge: string
+  phone: string
+  notes: string
+}
+
 export type ScheduleException = {
   id: number
   scheduleId: number
@@ -397,6 +420,19 @@ export type ScheduleRow = Pick<
 export type ScheduleParticipantRow = Pick<
   Database['public']['Tables']['schedule_students']['Row'],
   'id' | 'schedule_id' | 'student_id' | 'is_active'
+>
+
+export type TrialBookingRow = Pick<
+  Database['public']['Tables']['trial_bookings']['Row'],
+  | 'id'
+  | 'schedule_id'
+  | 'booking_date'
+  | 'lead_id'
+  | 'student_id'
+  | 'child_name'
+  | 'child_age'
+  | 'phone'
+  | 'notes'
 >
 
 export type ScheduleExceptionRow = Pick<

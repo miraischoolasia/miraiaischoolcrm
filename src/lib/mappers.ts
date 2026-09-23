@@ -22,6 +22,8 @@ import type {
   StudentRow,
   Teacher,
   TeacherRow,
+  TrialBooking,
+  TrialBookingRow,
 } from '../types/domain'
 
 export function mapStudentRow(row: StudentRow): Student {
@@ -137,6 +139,20 @@ export function mapScheduleExceptionRow(row: ScheduleExceptionRow): ScheduleExce
     scheduleId: row.schedule_id,
     exceptionDate: row.exception_date,
     reason: row.reason,
+  }
+}
+
+export function mapTrialBookingRow(row: TrialBookingRow): TrialBooking {
+  return {
+    id: row.id,
+    scheduleId: row.schedule_id,
+    bookingDate: row.booking_date,
+    leadId: row.lead_id,
+    studentId: row.student_id,
+    childName: row.child_name,
+    childAge: row.child_age,
+    phone: row.phone,
+    notes: row.notes,
   }
 }
 

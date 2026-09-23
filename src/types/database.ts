@@ -468,6 +468,63 @@ export type Database = {
           },
         ]
       }
+      trial_bookings: {
+        Row: {
+          id: number
+          schedule_id: number
+          booking_date: string
+          lead_id: number | null
+          student_id: number | null
+          child_name: string
+          child_age: number | null
+          phone: string | null
+          notes: string | null
+          created_by: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          schedule_id: number
+          booking_date: string
+          lead_id?: number | null
+          student_id?: number | null
+          child_name: string
+          child_age?: number | null
+          phone?: string | null
+          notes?: string | null
+          created_by?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          schedule_id?: number
+          booking_date?: string
+          lead_id?: number | null
+          student_id?: number | null
+          child_name?: string
+          child_age?: number | null
+          phone?: string | null
+          notes?: string | null
+          created_by?: number | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'trial_bookings_schedule_id_fkey'
+            columns: ['schedule_id']
+            isOneToOne: false
+            referencedRelation: 'schedules'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'trial_bookings_student_id_fkey'
+            columns: ['student_id']
+            isOneToOne: false
+            referencedRelation: 'students'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       lesson_logs: {
         Row: {
           id: number
@@ -742,6 +799,24 @@ export type Database = {
     }
     Views: Record<string, never>
     Functions: {
+      book_trial_slot: {
+        Args: {
+          p_schedule_id: number
+          p_booking_date: string
+          p_child_name: string
+          p_child_age?: number | null
+          p_phone?: string | null
+          p_lead_id?: number | null
+          p_notes?: string | null
+        }
+        Returns: number
+      }
+      cancel_trial_booking: {
+        Args: {
+          p_booking_id: number
+        }
+        Returns: undefined
+      }
       cancel_schedule_occurrence: {
         Args: {
           p_schedule_id: number

@@ -21,7 +21,7 @@ export function useConfirm() {
   }
 
   const dialog = state ? (
-    <ModalShell maxWidth="sm" onClose={() => respond(false)}>
+    <ModalShell maxWidth="sm" onClose={() => respond(false)} layer="overlay">
       <div className="px-6 py-6">
         <p className="text-sm leading-relaxed text-slate-700">{state.message}</p>
         <div className="mt-6 flex justify-end gap-2">

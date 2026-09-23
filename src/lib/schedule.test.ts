@@ -6,9 +6,18 @@ import {
   calculateDuration,
   filterSchedulesByClassKind,
   getDateKeyFromDate,
+  buildTrialBookingMap,
   getScheduleClassKind,
+  getTrialSlotKey,
 } from './schedule'
-import type { Classroom, Schedule, ScheduleException, Student, Teacher } from '../types/domain'
+import type {
+  Classroom,
+  Schedule,
+  ScheduleException,
+  Student,
+  Teacher,
+  TrialBooking,
+} from '../types/domain'
 
 const weekdayConstants: Record<string, Weekday> = {
   su: RRule.SU,
@@ -247,6 +256,82 @@ describe('buildScheduleEvents', () => {
     })
   })
 
+  describe('trial slots', () => {
+    const trialClassroom: Classroom = { ...classroom, id: 2, name: 'Trial Sat', category: 'trial' }
+    const trialSchedule: Schedule = {
+      id: 300,
+      teacherId: 1,
+      classroomId: 2,
+      title: 'Trial Sat',
+      eventType: 'regular',
+      recurrenceType: 'weekly',
+      dayOfWeek: 6, // Saturday
+      scheduledDate: null,
+      startTime: '10:00',
+      endTime: '11:00',
+      startRecur: '2026-09-01',
+      endRecur: null,
+      status: 'active',
+      notes: null,
+    }
+
+    it('does not cap a trial slot at 4 a month, so the 5th weekly slot stays offered', () => {
+      const [event] = buildScheduleEvents(
+        [trialSchedule],
+        new Map([[trialClassroom.id, trialClassroom]]),
+        new Map(),
+        teacherMap,
+        new Map(),
+        studentMap,
+      )
+
+      expect(event.exrule).toBeUndefined()
+
+      const set = new RRuleSet()
+      set.rrule(toRRule(event.rrule as Parameters<typeof toRRule>[0]))
+      // October 2026 has 5 Saturdays (3, 10, 17, 24, 31).
+      const october = set.between(new Date(2026, 9, 1), new Date(2026, 10, 1), true)
+      expect(october.map((day) => day.getDate())).toEqual([3, 10, 17, 24, 31])
+    })
+
+    it('still caps a regular class at 4 a month', () => {
+      const [event] = buildScheduleEvents(
+        [{ ...trialSchedule, id: 301, classroomId: 1 }],
+        classroomMap,
+        classroomStudentMap,
+        teacherMap,
+        new Map(),
+        studentMap,
+      )
+
+      expect(event.exrule).toMatchObject({ freq: 'daily', bymonthday: [29, 30, 31] })
+    })
+
+    it('groups bookings by slot and day', () => {
+      const booking = (id: number, scheduleId: number, bookingDate: string): TrialBooking => ({
+        id,
+        scheduleId,
+        bookingDate,
+        leadId: null,
+        studentId: null,
+        childName: `Child ${id}`,
+        childAge: 8,
+        phone: null,
+        notes: null,
+      })
+      const map = buildTrialBookingMap([
+        booking(1, 300, '2026-09-26'),
+        booking(2, 300, '2026-09-26'),
+        booking(3, 300, '2026-10-03'),
+        booking(4, 301, '2026-09-26'),
+      ])
+
+      expect(map.get(getTrialSlotKey(300, '2026-09-26'))?.map((entry) => entry.id)).toEqual([1, 2])
+      expect(map.get(getTrialSlotKey(300, '2026-10-03'))).toHaveLength(1)
+      expect(map.get(getTrialSlotKey(300, '2026-10-10'))).toBeUndefined()
+    })
+  })
+
   describe('single-day cancellation', () => {
     const weeklySchedule: Schedule = {
       id: 104,
@@ -325,6 +410,40 @@ describe('buildScheduleEvents', () => {
           cancelReason: 'Teacher on leave',
         },
       })
+    })
+
+    it.each([
+      ['a different weekday than the class runs on', '2026-09-09'], // Wednesday
+      ['before the recurrence start date', '2026-08-25'], // Tuesday before 2026-09-01
+    ])('drops an exception on %s so no ghost cancelled card appears', (_label, date) => {
+      const events = buildWithExceptions([
+        { id: 3, scheduleId: 104, exceptionDate: date, reason: 'stale' },
+      ])
+
+      expect(events).toHaveLength(1)
+      expect(events[0].exdate).toBeUndefined()
+    })
+
+    it('drops an exception after the recurrence end date but keeps one inside the range', () => {
+      const bounded: Schedule = { ...weeklySchedule, endRecur: '2026-09-15' }
+      const events = buildScheduleEvents(
+        [bounded],
+        classroomMap,
+        classroomStudentMap,
+        teacherMap,
+        new Map(),
+        studentMap,
+        [
+          { id: 4, scheduleId: 104, exceptionDate: '2026-09-08', reason: null }, // in range
+          { id: 5, scheduleId: 104, exceptionDate: '2026-09-22', reason: null }, // after end
+        ],
+      )
+
+      expect(events[0].exdate).toEqual(['2026-09-08T19:30'])
+      expect(events.map((event) => event.id)).toEqual([
+        'schedule-104',
+        'schedule-104-cancelled-2026-09-08',
+      ])
     })
 
     it('ignores exceptions that belong to a different schedule', () => {

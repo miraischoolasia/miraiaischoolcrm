@@ -84,4 +84,39 @@ describe('getStudentStatus', () => {
     expect(status.accountFeeNeedsAttention).toBe(false)
     expect(status.tags).toEqual([{ label: 'Preview', tone: 'healthy' }])
   })
+
+  it('keeps trial-booking students out of expiry and class balance warnings', () => {
+    // A trial booking's auto-created student has 0 remaining_hours and
+    // every expiry field set to the day it was created (see
+    // 20260922010000_trial_attendance.sql) - none of that should read as a
+    // real enrollment running low or overdue for renewal.
+    const status = getStudentStatus(
+      {
+        ...healthyStudent,
+        remainingHours: 0,
+        lessonExpiryDate: '2026-07-01',
+        accountFeeExpiryDate: '2026-07-01',
+        miraiClubExpiryDate: '2026-07-01',
+        studentType: 'trial',
+      },
+      today,
+    )
+
+    expect(status.hoursLow).toBe(false)
+    expect(status.lessonExpired).toBe(false)
+    expect(status.accountFeeNeedsAttention).toBe(false)
+    expect(status.miraiClubNeedsAttention).toBe(false)
+    expect(status.tags).toEqual([{ label: 'Trial', tone: 'healthy' }])
+    expect(status.isNormal).toBe(true)
+  })
+
+  it('flags a deactivated trial-booking student', () => {
+    const status = getStudentStatus(
+      { ...healthyStudent, studentType: 'trial', isActive: false },
+      today,
+    )
+
+    expect(status.tags).toEqual([{ label: 'Deactivated', tone: 'critical' }])
+    expect(status.isNormal).toBe(false)
+  })
 })
