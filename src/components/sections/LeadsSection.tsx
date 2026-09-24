@@ -310,6 +310,7 @@ export function LeadsSection({
           <LeadKanbanBoard
             leads={searchedLeads}
             onChangeStatus={onChangeStatus}
+            onConvertLead={onConvertLead}
             onEditLead={onEditLead}
             onOpenFollowUp={onOpenFollowUp}
           />
@@ -479,7 +480,6 @@ export function LeadsSection({
                   <tr>
                     <th className="px-6 py-4">Date</th>
                     <th className="px-6 py-4">Contact</th>
-                    <th className="px-6 py-4">Name</th>
                     <th className="px-6 py-4">Children</th>
                     <th className="px-6 py-4">Source</th>
                     <th className="px-6 py-4">Stage</th>
@@ -495,11 +495,6 @@ export function LeadsSection({
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
                         {lead.phone || '-'}
-                      </td>
-                      <td className="px-6 py-5">
-                        <div className="font-semibold text-slate-900">
-                          {lead.fullName || 'Unnamed Lead'}
-                        </div>
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
                         {formatChildren(lead.children)}

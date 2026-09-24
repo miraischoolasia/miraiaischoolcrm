@@ -3,7 +3,16 @@ import { PencilSimple, Phone } from '@phosphor-icons/react'
 import { cn } from '../lib/cn'
 import { getTodayString } from '../domain/studentStatus'
 import { leadStatusOptions } from '../lib/constants'
-import type { Lead, LeadStatus } from '../types/domain'
+import type { Lead, LeadChild, LeadStatus } from '../types/domain'
+
+function formatChildren(children: LeadChild[]) {
+  if (children.length === 0) {
+    return null
+  }
+  return children
+    .map((child) => (child.name ? `${child.name} (${child.age})` : `${child.age} yrs`))
+    .join(', ')
+}
 
 const columnAccentClass: Record<LeadStatus, string> = {
   new: 'border-t-slate-400',
@@ -38,6 +47,7 @@ function getReminderBadge(lead: Lead, todayString: string) {
 type LeadKanbanBoardProps = {
   leads: Lead[]
   onChangeStatus: (leadId: number, status: LeadStatus) => void
+  onConvertLead: (leadId: number) => void
   onEditLead: (leadId: number) => void
   onOpenFollowUp: (leadId: number) => void
 }
@@ -45,6 +55,7 @@ type LeadKanbanBoardProps = {
 export function LeadKanbanBoard({
   leads,
   onChangeStatus,
+  onConvertLead,
   onEditLead,
   onOpenFollowUp,
 }: LeadKanbanBoardProps) {
@@ -69,9 +80,17 @@ export function LeadKanbanBoard({
               event.preventDefault()
               setDragOverStage(null)
               const leadId = Number(event.dataTransfer.getData('text/plain'))
-              if (Number.isFinite(leadId)) {
-                onChangeStatus(leadId, stage.key)
+              if (!Number.isFinite(leadId)) {
+                return
               }
+              const lead = leads.find((entry) => entry.id === leadId)
+              if (stage.key === 'converted') {
+                if (lead && lead.status !== 'converted') {
+                  onConvertLead(leadId)
+                }
+                return
+              }
+              onChangeStatus(leadId, stage.key)
             }}
             className={cn(
               'flex w-72 shrink-0 flex-col rounded-2xl border-t-4 bg-slate-50 transition',
@@ -95,6 +114,7 @@ export function LeadKanbanBoard({
 
               {stageLeads.map((lead) => {
                 const reminder = getReminderBadge(lead, todayString)
+                const childSummary = formatChildren(lead.children)
 
                 return (
                   <div
@@ -113,7 +133,7 @@ export function LeadKanbanBoard({
                   >
                     <div className="flex items-start justify-between gap-2">
                       <span className="text-sm font-semibold text-slate-900">
-                        {lead.fullName || 'Unnamed Lead'}
+                        {lead.phone || lead.fullName || 'No phone'}
                       </span>
                       {reminder && (
                         <span
@@ -128,7 +148,9 @@ export function LeadKanbanBoard({
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-slate-500">{lead.phone || 'No phone'}</div>
+                    <div className="text-xs text-slate-500">
+                      {childSummary || 'No children listed'}
+                    </div>
                     <div className="flex items-center justify-end gap-1.5">
                       <button
                         type="button"
