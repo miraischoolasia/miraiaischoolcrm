@@ -114,6 +114,7 @@ import { LeadFollowUpModal } from './components/modals/LeadFollowUpModal'
 import { StudentRenewalModal } from './components/modals/StudentRenewalModal'
 import { ScheduleModal } from './components/modals/ScheduleModal'
 import { TrialBookingModal } from './components/modals/TrialBookingModal'
+import { CancelledOccurrenceModal } from './components/modals/CancelledOccurrenceModal'
 import { AttendanceModal } from './components/modals/AttendanceModal'
 
 function App() {
@@ -139,6 +140,12 @@ function App() {
   } | null>(null)
   const [isSavingTrialBooking, setIsSavingTrialBooking] = useState(false)
   const [trialBookingError, setTrialBookingError] = useState<string | null>(null)
+  // The cancelled day (schedule + date) whose Restore/Add Replacement
+  // options are open.
+  const [cancelledOccurrenceModal, setCancelledOccurrenceModal] = useState<{
+    scheduleId: number
+    occurrenceDate: string
+  } | null>(null)
   const [lessonLogs, setLessonLogs] = useState<LessonLogSummary[]>([])
   const [lessonReviews, setLessonReviews] = useState<LessonLogStudentReview[]>([])
   const [adminActivities, setAdminActivities] = useState<AdminActivity[]>([])
@@ -512,12 +519,19 @@ function App() {
   }, [editingClassroom, isCreatingClassroom, selectedAgeGroup])
 
   useEffect(() => {
-    if (!isCreatingSchedule && !editingSchedule) {
+    // Only reacts to opening/loading an EXISTING schedule for edit — it
+    // re-derives currentParticipantIds once scheduleParticipantMap catches
+    // up asynchronously (openEditSchedule itself sets nothing but the id).
+    // A *new* schedule's form state is fully set by whichever opener created
+    // it (openCreateSchedule, openReplacementForCancelledDay, ...) — this
+    // must not also run then, or it clobbers that prefill a moment later
+    // with buildScheduleFormState(null, ...), which always resets back to
+    // eventType 'regular' regardless of what was actually being created.
+    if (!editingSchedule) {
       return
     }
 
     const currentParticipantIds =
-      editingSchedule &&
       editingSchedule.eventType === 'replacement' &&
       scheduleParticipantMap.has(editingSchedule.id)
         ? (scheduleParticipantMap.get(editingSchedule.id) ?? []).map(String)
@@ -531,14 +545,7 @@ function App() {
         currentParticipantIds,
       ),
     )
-  }, [
-    currentSession,
-    editingSchedule,
-    isCreatingSchedule,
-    scheduleParticipantMap,
-    teachers,
-    todayString,
-  ])
+  }, [currentSession, editingSchedule, scheduleParticipantMap, teachers, todayString])
 
   useEffect(() => {
     let cancelled = false
@@ -1186,6 +1193,14 @@ function App() {
     setTrialBookingError(null)
   }
 
+  function openCancelledOccurrenceOptions(scheduleId: number, occurrenceDate: string) {
+    setCancelledOccurrenceModal({ scheduleId, occurrenceDate })
+  }
+
+  function closeCancelledOccurrenceOptions() {
+    setCancelledOccurrenceModal(null)
+  }
+
   async function refreshTrialBookings() {
     const nextTrialBookings = await fetchTrialBookingsFromSupabase()
     setTrialBookings(nextTrialBookings)
@@ -1309,6 +1324,45 @@ function App() {
     setIsCreatingSchedule(false)
     setEditingScheduleId(scheduleId)
     setEditingOccurrenceDate(occurrenceDate ?? null)
+  }
+
+  // Prefills a new Replacement Class from a cancelled day of a regular class:
+  // same teacher/time slot and the classroom's active roster already
+  // checked, with the title/notes naming which day it makes up for. The
+  // admin still picks the actual makeup date and can adjust anything.
+  function openReplacementForCancelledDay(scheduleId: number, occurrenceDate: string) {
+    const schedule = schedules.find((entry) => entry.id === scheduleId)
+    if (!schedule) {
+      return
+    }
+
+    const classroom = schedule.classroomId ? classroomMap.get(schedule.classroomId) : null
+    const label = classroom?.name ?? schedule.title
+    const rosterIds = (
+      schedule.classroomId ? classroomStudentMap.get(schedule.classroomId) ?? [] : []
+    )
+      .filter((student) => student.isActive)
+      .map((student) => String(student.id))
+
+    setScheduleSaveError(null)
+    setEditingScheduleId(null)
+    setEditingOccurrenceDate(null)
+    setIsCreatingSchedule(true)
+
+    setScheduleFormState({
+      title: `${label} Makeup`,
+      teacherId: String(schedule.teacherId),
+      classroomId: '',
+      eventType: 'replacement',
+      dayOfWeek: String(parseLocalDate(todayString).getDay()),
+      scheduledDate: todayString,
+      startTime: schedule.startTime,
+      endTime: schedule.endTime,
+      startRecur: todayString,
+      endRecur: '',
+      notes: `Makeup for ${label} (cancelled ${occurrenceDate}).`,
+      participantIds: rosterIds,
+    })
   }
 
   function closeScheduleModal() {
@@ -3454,7 +3508,7 @@ function App() {
 
                         if (arg.event.extendedProps.isCancelledOccurrence) {
                           if (isAdminView) {
-                            void handleRestoreOccurrence(scheduleId, occurrenceDate)
+                            openCancelledOccurrenceOptions(scheduleId, occurrenceDate)
                           }
                           return
                         }
@@ -3706,6 +3760,45 @@ function App() {
           onFieldChange={updateStudentForm}
         />
       )}
+
+      {cancelledOccurrenceModal && (() => {
+        const cancelledSchedule = schedules.find(
+          (schedule) => schedule.id === cancelledOccurrenceModal.scheduleId,
+        )
+
+        if (!cancelledSchedule) {
+          return null
+        }
+
+        const cancelledClassroom = cancelledSchedule.classroomId
+          ? classroomMap.get(cancelledSchedule.classroomId)
+          : undefined
+        const exception = scheduleExceptions.find(
+          (entry) =>
+            entry.scheduleId === cancelledSchedule.id &&
+            entry.exceptionDate === cancelledOccurrenceModal.occurrenceDate,
+        )
+
+        return (
+          <CancelledOccurrenceModal
+            classroomName={cancelledClassroom?.name ?? cancelledSchedule.title}
+            teacherName={teacherMap.get(cancelledSchedule.teacherId)?.fullName ?? 'Unknown Teacher'}
+            occurrenceDate={cancelledOccurrenceModal.occurrenceDate}
+            cancelReason={exception?.reason ?? null}
+            onClose={closeCancelledOccurrenceOptions}
+            onRestore={() => {
+              const { scheduleId, occurrenceDate } = cancelledOccurrenceModal
+              closeCancelledOccurrenceOptions()
+              void handleRestoreOccurrence(scheduleId, occurrenceDate)
+            }}
+            onAddReplacement={() => {
+              const { scheduleId, occurrenceDate } = cancelledOccurrenceModal
+              closeCancelledOccurrenceOptions()
+              openReplacementForCancelledDay(scheduleId, occurrenceDate)
+            }}
+          />
+        )
+      })()}
 
       {trialBookingSlot && (() => {
         const slotSchedule = schedules.find((schedule) => schedule.id === trialBookingSlot.scheduleId)

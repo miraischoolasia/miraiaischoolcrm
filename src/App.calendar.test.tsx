@@ -100,7 +100,39 @@ vi.mock('./lib/api', async (importOriginal) => ({
     classroom,
     { ...classroom, id: 2, name: 'Trial Coding', category: 'trial' },
   ],
-  fetchStudentsFromSupabase: async () => [],
+  fetchStudentsFromSupabase: async () => [
+    {
+      id: 501,
+      teacherId: 1,
+      classroomId: 1,
+      name: 'Ada Lovelace',
+      phone: null,
+      age: null,
+      remainingHours: 10,
+      lessonExpiryDate: '2026-12-31',
+      accountFeeExpiryDate: '2026-12-31',
+      miraiClubExpiryDate: '2026-12-31',
+      notes: null,
+      isActive: true,
+      studentType: 'regular',
+    },
+    // Deactivated roster members must not be pre-checked on a new makeup class.
+    {
+      id: 502,
+      teacherId: 1,
+      classroomId: 1,
+      name: 'Inactive Kid',
+      phone: null,
+      age: null,
+      remainingHours: 0,
+      lessonExpiryDate: '2026-12-31',
+      accountFeeExpiryDate: '2026-12-31',
+      miraiClubExpiryDate: '2026-12-31',
+      notes: null,
+      isActive: false,
+      studentType: 'regular',
+    },
+  ],
   fetchSchedulesFromSupabase: async () => [
     weekly,
     { ...weekly, id: 11, classroomId: 2, title: 'Trial Coding' },
@@ -162,6 +194,38 @@ describe('calendar class-type filter', () => {
   })
 })
 
+describe('adding a class', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.exceptions.mockResolvedValue([])
+  })
+
+  it('opens Add Class in Replacement mode, not Regular', async () => {
+    // Regression: a useEffect keyed to isCreatingSchedule used to re-derive
+    // the form from scratch right after Add Class opened it, always
+    // resetting eventType back to 'regular' and silently turning every
+    // replacement-class attempt into the wrong (classroom-linked) form.
+    await signInAsAdmin()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add Class' }))
+
+    expect(await screen.findByText('New Replacement Class')).toBeInTheDocument()
+    expect(screen.queryByText('New Weekly Timetable')).not.toBeInTheDocument()
+  })
+
+  it('still populates the form when editing an existing regular schedule', async () => {
+    // The same effect also drives openEditSchedule (which sets nothing but
+    // the id) - confirms narrowing its guard to editingSchedule only did not
+    // break that path.
+    await signInAsAdmin()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Regular Coding' }))
+
+    expect(await screen.findByText('Edit timetable entry')).toBeInTheDocument()
+    expect(screen.getByLabelText('Recurrence Start Date')).toHaveValue('2026-09-01')
+  })
+})
+
 describe('cancelling a single class day', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -199,13 +263,29 @@ describe('cancelling a single class day', () => {
     expect(mocks.rpc).not.toHaveBeenCalled()
   })
 
-  it('restores a cancelled day when the cancelled card is clicked', async () => {
+  it('offers Restore or Add Replacement Class when the cancelled card is clicked', async () => {
+    mocks.exceptions.mockResolvedValue([
+      { id: 1, scheduleId: 10, exceptionDate: '2026-09-08', reason: 'Public holiday' },
+    ])
+    await signInAsAdmin()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Regular Coding (cancelled)' }))
+
+    const dialog = within(await screen.findByRole('dialog'))
+    expect(dialog.getByText('Regular Coding')).toBeInTheDocument()
+    expect(dialog.getByText(/Reason: Public holiday/)).toBeInTheDocument()
+    expect(dialog.getByRole('button', { name: 'Restore This Day' })).toBeInTheDocument()
+    expect(dialog.getByRole('button', { name: 'Add Replacement Class' })).toBeInTheDocument()
+  })
+
+  it('restores a cancelled day via Restore This Day', async () => {
     mocks.exceptions.mockResolvedValue([
       { id: 1, scheduleId: 10, exceptionDate: '2026-09-08', reason: null },
     ])
     await signInAsAdmin()
 
     await userEvent.click(screen.getByRole('button', { name: 'Regular Coding (cancelled)' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Restore This Day' }))
     await userEvent.click(await screen.findByRole('button', { name: 'Confirm' }))
 
     await waitFor(() =>
@@ -214,5 +294,27 @@ describe('cancelling a single class day', () => {
         p_occurrence_date: '2026-09-08',
       }),
     )
+  })
+
+  it('prefills a replacement class from the cancelled day, with the active roster pre-checked', async () => {
+    mocks.exceptions.mockResolvedValue([
+      { id: 1, scheduleId: 10, exceptionDate: '2026-09-08', reason: null },
+    ])
+    await signInAsAdmin()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Regular Coding (cancelled)' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Add Replacement Class' }))
+
+    // The options modal is gone, replaced by the schedule modal.
+    expect(screen.queryByText('Cancelled class')).not.toBeInTheDocument()
+    expect(await screen.findByText('New Replacement Class')).toBeInTheDocument()
+    expect(screen.getByLabelText('Class Title')).toHaveValue('Regular Coding Makeup')
+    expect(screen.getByLabelText('Notes')).toHaveValue(
+      'Makeup for Regular Coding (cancelled 2026-09-08).',
+    )
+    expect(screen.getByLabelText('Start Time')).toHaveValue('19:30')
+    expect(screen.getByLabelText('End Time')).toHaveValue('21:30')
+    expect(screen.getByRole('checkbox', { name: /Ada Lovelace/ })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: /Inactive Kid/ })).not.toBeChecked()
   })
 })
