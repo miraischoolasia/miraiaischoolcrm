@@ -29,6 +29,12 @@ export function ClassroomModal({
   onSubmit,
   onFieldChange,
 }: ClassroomModalProps) {
+  const isTeacherChanging =
+    !isCreating &&
+    editingClassroom !== null &&
+    formState.teacherId !== '' &&
+    formState.teacherId !== String(editingClassroom.teacherId ?? '')
+
   return (
     <ModalShell maxWidth="2xl" onClose={onClose}>
       <div className="border-b border-slate-200 bg-white px-6 py-5 sm:px-8">
@@ -159,6 +165,28 @@ export function ClassroomModal({
               </div>
             )}
           </label>
+
+          {isTeacherChanging && (
+            <label className="space-y-2 sm:col-span-2">
+              <span className="text-sm font-semibold text-slate-700">
+                New teacher starts from
+              </span>
+              <input
+                type="date"
+                required
+                value={formState.teacherEffectiveDate}
+                onChange={(event) =>
+                  onFieldChange('teacherEffectiveDate', event.target.value)
+                }
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+              />
+              <p className="text-xs text-slate-500">
+                Classes before this date stay with the current teacher on the
+                calendar and in attendance history. From this date on, the class
+                and its students move to the new teacher.
+              </p>
+            </label>
+          )}
 
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-slate-700">

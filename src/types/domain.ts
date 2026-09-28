@@ -311,6 +311,9 @@ export type ClassroomFormState = {
   ageGroup: AgeGroup
   programLevel: ProgramLevel
   teacherId: string
+  // When editing and the teacher changes: the first day the new teacher
+  // takes the class (earlier classes stay with the previous teacher).
+  teacherEffectiveDate: string
   notes: string
 }
 

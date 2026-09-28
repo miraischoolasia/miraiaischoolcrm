@@ -81,7 +81,7 @@ describe('bulk lead import', () => {
     // cannot re-submit the same rows.
     await waitFor(() => expect(screen.queryByText('Bulk Import Leads')).not.toBeInTheDocument())
     expect(
-      await screen.findByText('Leads imported, but the activity log entry could not be saved.'),
+      await screen.findByText('Saved, but the activity log entry could not be written.'),
     ).toBeInTheDocument()
     expect(mocks.insert).toHaveBeenCalledTimes(1)
   })
@@ -93,7 +93,7 @@ describe('bulk lead import', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Import 1 Lead' }))
 
     await waitFor(() => expect(screen.queryByText('Bulk Import Leads')).not.toBeInTheDocument())
-    expect(screen.queryByText(/activity log entry could not be saved/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/activity log entry could not be written/)).not.toBeInTheDocument()
     expect(mocks.rpc).toHaveBeenCalledWith(
       'record_admin_activity',
       expect.objectContaining({ p_action_type: 'lead_bulk_imported' }),

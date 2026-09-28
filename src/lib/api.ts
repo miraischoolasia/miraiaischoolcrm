@@ -57,6 +57,9 @@ export async function fetchClassroomsFromSupabase() {
   return data.map(mapClassroomRow)
 }
 
+// Includes archived (inactive) teachers so history still shows their names
+// and a deactivated login gets the right message. Lists that offer teachers
+// for assignment filter on isActive themselves.
 export async function fetchTeachersFromSupabase() {
   if (!supabase) {
     return []
@@ -65,7 +68,6 @@ export async function fetchTeachersFromSupabase() {
   const { data, error } = await supabase
     .from('teachers')
     .select('id, auth_user_id, username, full_name, email, phone, role, is_active')
-    .eq('is_active', true)
     .order('role', { ascending: true })
     .order('full_name')
 

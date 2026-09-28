@@ -107,6 +107,7 @@ import { EditStudentModal } from './components/modals/EditStudentModal'
 import { CreateStudentModal } from './components/modals/CreateStudentModal'
 import { ClassroomModal } from './components/modals/ClassroomModal'
 import { TeacherModal } from './components/modals/TeacherModal'
+import { DeleteTeacherModal } from './components/modals/DeleteTeacherModal'
 import { LeadModal } from './components/modals/LeadModal'
 import { LeadBulkImportModal } from './components/modals/LeadBulkImportModal'
 import { PreviewStudentBulkImportModal } from './components/modals/PreviewStudentBulkImportModal'
@@ -158,6 +159,8 @@ function App() {
   const [isSavingStudent, setIsSavingStudent] = useState(false)
   const [deactivatingStudentId, setDeactivatingStudentId] = useState<number | null>(null)
   const [deletingTeacherId, setDeletingTeacherId] = useState<number | null>(null)
+  // The teacher whose remove dialog (with successor picker) is open.
+  const [deleteTeacherTargetId, setDeleteTeacherTargetId] = useState<number | null>(null)
   const [deletingClassroomId, setDeletingClassroomId] = useState<number | null>(null)
   const [restoringClassroomId, setRestoringClassroomId] = useState<number | null>(null)
   const [studentSaveError, setStudentSaveError] = useState<string | null>(null)
@@ -259,6 +262,7 @@ function App() {
     ageGroup: ageGroupOptions[0],
     programLevel: programLevelOptions[0],
     teacherId: '',
+    teacherEffectiveDate: todayString,
     notes: '',
   })
   const [createTeacherFormState, setCreateTeacherFormState] =
@@ -341,8 +345,12 @@ function App() {
 
     return nextMap
   }, [students])
+  const activeTeachers = useMemo(
+    () => teachers.filter((teacher) => teacher.isActive),
+    [teachers],
+  )
   const assignableTeachers = useMemo(
-    () => teachers.filter((teacher) => teacher.role === 'teacher'),
+    () => teachers.filter((teacher) => teacher.role === 'teacher' && teacher.isActive),
     [teachers],
   )
   const scheduleParticipantMap = useMemo(() => {
@@ -417,10 +425,29 @@ function App() {
     students.find((student) => student.id === selectedStudentId) ?? null
   const selectedStudentDetail =
     students.find((student) => student.id === selectedStudentDetailId) ?? null
+  // A student converted from a lead keeps the trial-type rows its trial
+  // bookings created; their attendance/reviews belong to this student too.
+  const selectedStudentTrialIds = useMemo(() => {
+    if (!selectedStudentDetailId) {
+      return []
+    }
+
+    const sourceLead = leads.find((lead) => lead.convertedStudentId === selectedStudentDetailId)
+    if (!sourceLead) {
+      return []
+    }
+
+    return trialBookings
+      .filter((booking) => booking.leadId === sourceLead.id)
+      .map((booking) => booking.studentId)
+      .filter((studentId): studentId is number => studentId !== null)
+  }, [leads, selectedStudentDetailId, trialBookings])
   const editingStudent =
     students.find((student) => student.id === editingStudentId) ?? null
   const editingTeacher =
     teachers.find((teacher) => teacher.id === editingTeacherId) ?? null
+  const deleteTeacherTarget =
+    teachers.find((teacher) => teacher.id === deleteTeacherTargetId) ?? null
   const editingLead = leads.find((lead) => lead.id === editingLeadId) ?? null
   const followUpLead = leads.find((lead) => lead.id === followUpLeadId) ?? null
   const editingClassroom =
@@ -514,9 +541,10 @@ function App() {
       ageGroup: editingClassroom?.ageGroup ?? selectedAgeGroup,
       programLevel: editingClassroom?.programLevel ?? programLevelOptions[0],
       teacherId: editingClassroom?.teacherId ? String(editingClassroom.teacherId) : '',
+      teacherEffectiveDate: todayString,
       notes: editingClassroom?.notes ?? '',
     })
-  }, [editingClassroom, isCreatingClassroom, selectedAgeGroup])
+  }, [editingClassroom, isCreatingClassroom, selectedAgeGroup, todayString])
 
   useEffect(() => {
     // Only reacts to opening/loading an EXISTING schedule for edit — it
@@ -1125,15 +1153,9 @@ function App() {
         throw error
       }
 
-      // The rows are already saved. A failed audit entry must not be reported
-      // as a failed import, or a retry would insert every row a second time.
-      try {
-        await recordAdminActivity('lead_bulk_imported', 'lead', null, `${rows.length} leads`, {
-          count: rows.length,
-        })
-      } catch {
-        showToast('Leads imported, but the activity log entry could not be saved.')
-      }
+      await recordAdminActivity('lead_bulk_imported', 'lead', null, `${rows.length} leads`, {
+        count: rows.length,
+      })
 
       await Promise.all([refreshLeads(), refreshAdminActivities()])
       closeBulkImportLeadsModal()
@@ -1167,6 +1189,7 @@ function App() {
       ageGroup: selectedAgeGroup,
       programLevel: programLevelOptions[0],
       teacherId: '',
+      teacherEffectiveDate: todayString,
       notes: '',
     })
   }
@@ -1425,6 +1448,9 @@ function App() {
       return
     }
 
+    // Always called after the real change is saved. A failed audit entry
+    // must not surface as a failed save, or a retry would repeat the change
+    // (a second lead, a second renewal...), so it only warns.
     const { error } = await supabase.rpc('record_admin_activity', {
       p_action_type: actionType,
       p_entity_type: entityType,
@@ -1434,46 +1460,22 @@ function App() {
     })
 
     if (error) {
-      throw error
+      showToast('Saved, but the activity log entry could not be written.')
     }
   }
 
-  async function syncRegularSchedulesWithClassroom(
-    classroomId: number,
-    classroomName: string,
-    teacherId: number | null,
-  ) {
+  // Title only: a teacher change goes through reassign_classroom_teacher,
+  // which splits each weekly series at the effective date.
+  async function syncRegularScheduleTitles(classroomId: number, classroomName: string) {
     if (!supabase) {
       return
-    }
-
-    const payload: Database['public']['Tables']['schedules']['Update'] = {
-      title: classroomName,
-      ...(teacherId ? { teacher_id: teacherId } : {}),
     }
 
     const { error } = await supabase
       .from('schedules')
-      .update(payload)
+      .update({ title: classroomName })
       .eq('classroom_id', classroomId)
       .eq('event_type', 'regular')
-
-    if (error) {
-      throw error
-    }
-  }
-
-  async function assignStudentToClassroom(studentId: number, classroomId: number | null) {
-    if (!supabase) {
-      return
-    }
-
-    const teacherId = classroomId ? classroomMap.get(classroomId)?.teacherId ?? null : null
-
-    const { error } = await supabase
-      .from('students')
-      .update({ classroom_id: classroomId, teacher_id: teacherId })
-      .eq('id', studentId)
 
     if (error) {
       throw error
@@ -1584,10 +1586,17 @@ function App() {
       setIsCreatingStudentRecord(true)
       setCreateStudentSaveError(null)
 
-      const { data, error } = await supabase.rpc('create_student_record', {
+      // One call does it all atomically: create, assign the classroom, log
+      // the activity, and convert the lead (when converting from Leads).
+      const { error } = await supabase.rpc('create_student_record', {
         p_full_name: fullName,
         p_phone: phone || null,
         p_teacher_id: null,
+        p_classroom_id:
+          !isPreviewStudent && createStudentFormState.classroomId
+            ? Number(createStudentFormState.classroomId)
+            : null,
+        p_lead_id: convertingLeadId,
         p_initial_hours:
           !isPreviewStudent && Number.isFinite(initialHours) && initialHours > 0
             ? initialHours
@@ -1609,42 +1618,11 @@ function App() {
         throw error
       }
 
-      const createdStudentId = data?.[0]?.student_id
-      if (createdStudentId) {
-        await assignStudentToClassroom(
-          createdStudentId,
-          !isPreviewStudent && createStudentFormState.classroomId
-            ? Number(createStudentFormState.classroomId)
-            : null,
-        )
-        await recordAdminActivity('student_created', 'student', createdStudentId, fullName, {
-          classroom_id: !isPreviewStudent && createStudentFormState.classroomId
-            ? Number(createStudentFormState.classroomId)
-            : null,
-          student_type: createStudentFormState.studentType,
-        })
-
-        if (convertingLeadId) {
-          const { error: convertError } = await supabase
-            .from('leads')
-            .update({ status: 'converted', converted_student_id: createdStudentId })
-            .eq('id', convertingLeadId)
-
-          if (!convertError) {
-            await recordAdminActivity('lead_converted', 'lead', convertingLeadId, fullName, {
-              student_id: createdStudentId,
-            })
-          }
-
-          setConvertingLeadId(null)
-          await refreshLeads()
-        }
-      }
-
       await Promise.all([
         refreshStudentsAndLogs(),
         refreshClassrooms(),
         refreshAdminActivities(),
+        ...(convertingLeadId ? [refreshLeads()] : []),
       ])
       closeCreateStudentModal()
     } catch (error) {
@@ -1673,20 +1651,13 @@ function App() {
         throw error
       }
 
-      // The students are already saved. A failed audit entry must not be
-      // reported as a failed import, or a retry would create every student
-      // a second time.
-      try {
-        await recordAdminActivity(
-          'preview_students_bulk_imported',
-          'student',
-          null,
-          `${rows.length} preview students`,
-          { count: rows.length },
-        )
-      } catch {
-        showToast('Students imported, but the activity log entry could not be saved.')
-      }
+      await recordAdminActivity(
+        'preview_students_bulk_imported',
+        'student',
+        null,
+        `${rows.length} preview students`,
+        { count: rows.length },
+      )
 
       await Promise.all([refreshStudentsAndLogs(), refreshAdminActivities()])
       closeBulkImportPreviewStudentsModal()
@@ -1901,7 +1872,7 @@ function App() {
       accountFeeExpiryDate: todayString,
       miraiClubExpiryDate: todayString,
       notes: lead.notes ?? '',
-      studentType: 'trial',
+      studentType: 'regular',
     })
   }
 
@@ -2068,11 +2039,7 @@ function App() {
     }
   }
 
-  async function handleDeleteTeacher(teacherId: number) {
-    if (!supabase) {
-      return
-    }
-
+  function handleDeleteTeacher(teacherId: number) {
     const teacher = teachers.find((entry) => entry.id === teacherId)
     if (!teacher) {
       return
@@ -2083,144 +2050,40 @@ function App() {
       return
     }
 
-    if (
-      !(await confirm(
-        `Delete teacher account "${teacher.fullName}"? This only works when no classroom, schedule, or history still references the account.`,
-      ))
-    ) {
+    setDeleteTeacherTargetId(teacherId)
+  }
+
+  async function confirmDeleteTeacher(successorTeacherId: number | null) {
+    if (!supabase || deleteTeacherTargetId === null) {
       return
     }
+
+    const teacherId = deleteTeacherTargetId
 
     try {
       setDeletingTeacherId(teacherId)
 
-      const [
-        { count: classroomCount, error: classroomError },
-        { data: linkedSchedules, error: scheduleError },
-        { count: lessonLogCount, error: lessonLogError },
-        { count: adminLedgerCount, error: adminLedgerError },
-      ] = await Promise.all([
-        supabase
-          .from('classrooms')
-          .select('id', { head: true, count: 'exact' })
-          .eq('teacher_id', teacherId),
-        supabase
-          .from('schedules')
-          .select('id')
-          .eq('teacher_id', teacherId),
-        supabase
-          .from('lesson_logs')
-          .select('id', { head: true, count: 'exact' })
-          .eq('teacher_id', teacherId),
-        supabase
-          .from('student_admin_ledger')
-          .select('id', { head: true, count: 'exact' })
-          .eq('actor_teacher_id', teacherId),
-      ])
+      // Server-side and atomic: hands classrooms and upcoming classes to the
+      // successor (if any), ends the rest of the teacher's schedules while
+      // keeping their history, then deletes the teacher (or deactivates it
+      // when history still references it) and writes the activity log.
+      const { error } = await supabase.rpc('delete_teacher_account', {
+        p_teacher_id: teacherId,
+        p_successor_teacher_id: successorTeacherId,
+      })
 
-      if (classroomError) throw classroomError
-      if (scheduleError) throw scheduleError
-      if (lessonLogError) throw lessonLogError
-      if (adminLedgerError) throw adminLedgerError
-
-      if ((classroomCount ?? 0) > 0) {
-        const { error: unassignClassroomError } = await supabase
-          .from('classrooms')
-          .update({ teacher_id: null })
-          .eq('teacher_id', teacherId)
-
-        if (unassignClassroomError) {
-          throw unassignClassroomError
-        }
+      if (error) {
+        throw error
       }
 
-      const linkedScheduleIds = (linkedSchedules ?? []).map((schedule) => schedule.id)
-
-      if (linkedScheduleIds.length > 0) {
-        const { data: linkedLessonLogs, error: linkedLessonLogsError } = await supabase
-          .from('lesson_logs')
-          .select('schedule_id')
-          .in('schedule_id', linkedScheduleIds)
-
-        if (linkedLessonLogsError) {
-          throw linkedLessonLogsError
-        }
-
-        const scheduleIdsWithHistory = new Set(
-          (linkedLessonLogs ?? []).map((entry) => entry.schedule_id),
-        )
-        const removableScheduleIds = linkedScheduleIds.filter(
-          (scheduleId) => !scheduleIdsWithHistory.has(scheduleId),
-        )
-        const historicalScheduleIds = linkedScheduleIds.filter((scheduleId) =>
-          scheduleIdsWithHistory.has(scheduleId),
-        )
-
-        if (removableScheduleIds.length > 0) {
-          const { error: scheduleMembershipError } = await supabase
-            .from('schedule_students')
-            .delete()
-            .in('schedule_id', removableScheduleIds)
-
-          if (scheduleMembershipError) {
-            throw scheduleMembershipError
-          }
-
-          const { error: scheduleDeleteError } = await supabase
-            .from('schedules')
-            .delete()
-            .in('id', removableScheduleIds)
-
-          if (scheduleDeleteError) {
-            throw scheduleDeleteError
-          }
-        }
-
-        if (historicalScheduleIds.length > 0) {
-          const { error: scheduleCancelError } = await supabase
-            .from('schedules')
-            .update({ status: 'cancelled' })
-            .in('id', historicalScheduleIds)
-
-          if (scheduleCancelError) {
-            throw scheduleCancelError
-          }
-        }
-      }
-
-      if ((lessonLogCount ?? 0) > 0 || (adminLedgerCount ?? 0) > 0) {
-        const { error: archiveError } = await supabase
-          .from('teachers')
-          .update({
-            is_active: false,
-            email: null,
-            phone: null,
-          })
-          .eq('id', teacherId)
-
-        if (archiveError) {
-          throw archiveError
-        }
-      } else {
-        const { error } = await supabase.from('teachers').delete().eq('id', teacherId)
-        if (error) {
-          throw error
-        }
-      }
-
-      await recordAdminActivity(
-        'teacher_deleted',
-        'teacher',
-        teacherId,
-        teacher.fullName,
-        { retained_for_history: (lessonLogCount ?? 0) > 0 || (adminLedgerCount ?? 0) > 0 },
-      )
+      setDeleteTeacherTargetId(null)
 
       await Promise.all([
         refreshTeachers(),
         refreshClassrooms(),
         refreshSchedulesAndParticipants(),
         refreshStudentsAndLogs(),
+        refreshTrialBookings(),
         refreshAdminActivities(),
       ])
     } catch (error) {
@@ -2291,6 +2154,24 @@ function App() {
           },
         )
       } else if (editingClassroom) {
+        // Teacher change first: the RPC is a no-op once the classroom already
+        // has this teacher, so a retry after a later failure is safe.
+        if (editingClassroom.teacherId !== teacherId) {
+          if (!classroomFormState.teacherEffectiveDate) {
+            throw new Error('Please pick the date the new teacher starts.')
+          }
+
+          const { error: reassignError } = await supabase.rpc('reassign_classroom_teacher', {
+            p_classroom_id: editingClassroom.id,
+            p_new_teacher_id: teacherId,
+            p_effective_date: classroomFormState.teacherEffectiveDate,
+          })
+
+          if (reassignError) {
+            throw reassignError
+          }
+        }
+
         const { error } = await supabase
           .from('classrooms')
           .update(payload)
@@ -2300,7 +2181,7 @@ function App() {
           throw error
         }
 
-        await syncRegularSchedulesWithClassroom(editingClassroom.id, name, teacherId)
+        await syncRegularScheduleTitles(editingClassroom.id, name)
         await recordAdminActivity(
           'classroom_updated',
           'classroom',
@@ -2317,6 +2198,8 @@ function App() {
       await Promise.all([
         refreshClassrooms(),
         refreshSchedulesAndParticipants(),
+        refreshStudentsAndLogs(),
+        refreshTrialBookings(),
         refreshAdminActivities(),
       ])
       closeClassroomModal()
@@ -2415,6 +2298,19 @@ function App() {
       setIsSavingStudent(true)
       setStudentSaveError(null)
 
+      // Reactivate first: it is safe to repeat, whereas renewing adds
+      // classes. If the renewal then fails, a retry won't add them twice.
+      if (!selectedStudent.isActive) {
+        const { error: reactivateError } = await supabase
+          .from('students')
+          .update({ is_active: true })
+          .eq('id', selectedStudent.id)
+
+        if (reactivateError) {
+          throw reactivateError
+        }
+      }
+
       const { error } = await supabase.rpc('renew_student_record', {
         p_student_id: selectedStudent.id,
         p_add_hours: hoursToAdd,
@@ -2431,17 +2327,6 @@ function App() {
 
       if (error) {
         throw error
-      }
-
-      if (!selectedStudent.isActive) {
-        const { error: reactivateError } = await supabase
-          .from('students')
-          .update({ is_active: true })
-          .eq('id', selectedStudent.id)
-
-        if (reactivateError) {
-          throw reactivateError
-        }
       }
 
       await recordAdminActivity(
@@ -2841,6 +2726,12 @@ function App() {
     occurrenceDate: string,
     title: string,
   ) {
+    // Mirrors submit_lesson_attendance: no attendance ahead of the class day.
+    if (occurrenceDate > todayString) {
+      showToast('Attendance opens on the day of the class.')
+      return
+    }
+
     setAttendanceSaveError(null)
     setAttendanceModal({
       scheduleId,
@@ -3314,7 +3205,9 @@ function App() {
                     >
                       <option value="">{currentTeacher.fullName} (Me)</option>
                       {teachers
-                        .filter((teacher) => teacher.id !== currentTeacher.id)
+                        .filter(
+                          (teacher) => teacher.isActive && teacher.id !== currentTeacher.id,
+                        )
                         .map((teacher) => (
                           <option key={teacher.id} value={teacher.id}>
                             {teacher.fullName} ({teacher.role === 'admin' ? 'Admin' : 'Teacher'})
@@ -3599,7 +3492,7 @@ function App() {
               <TeacherManagementSection
                 deletingTeacherId={deletingTeacherId}
                 isLoading={isLoading}
-                teachers={teachers}
+                teachers={activeTeachers}
                 onDeleteTeacher={handleDeleteTeacher}
                 onEditTeacher={openEditTeacherModal}
                 onOpenCreateTeacher={openCreateTeacherModal}
@@ -3699,6 +3592,25 @@ function App() {
         />
       )}
 
+      {deleteTeacherTarget && (
+        <DeleteTeacherModal
+          teacher={deleteTeacherTarget}
+          classroomNames={classrooms
+            .filter(
+              (classroom) =>
+                classroom.status === 'active' &&
+                classroom.teacherId === deleteTeacherTarget.id,
+            )
+            .map((classroom) => classroom.name)}
+          successorOptions={assignableTeachers.filter(
+            (teacher) => teacher.id !== deleteTeacherTarget.id,
+          )}
+          isDeleting={deletingTeacherId === deleteTeacherTarget.id}
+          onClose={() => setDeleteTeacherTargetId(null)}
+          onConfirm={(successorTeacherId) => void confirmDeleteTeacher(successorTeacherId)}
+        />
+      )}
+
       {isCreateLeadOpen && (
         <LeadModal
           editingLead={editingLead}
@@ -3745,6 +3657,7 @@ function App() {
           onClose={closeStudentDetail}
           schedules={schedules}
           teacherMap={teacherMap}
+          trialStudentIds={selectedStudentTrialIds}
         />
       )}
 
@@ -3833,11 +3746,19 @@ function App() {
               closeTrialBooking()
               openEditSchedule(scheduleId, dateKey)
             }}
-            onTakeAttendance={() => {
-              const { scheduleId, dateKey } = trialBookingSlot
-              closeTrialBooking()
-              void openAttendanceForEvent(scheduleId, dateKey, slotClassroom?.name ?? slotSchedule.title)
-            }}
+            onTakeAttendance={
+              trialBookingSlot.dateKey > todayString
+                ? undefined
+                : () => {
+                    const { scheduleId, dateKey } = trialBookingSlot
+                    closeTrialBooking()
+                    void openAttendanceForEvent(
+                      scheduleId,
+                      dateKey,
+                      slotClassroom?.name ?? slotSchedule.title,
+                    )
+                  }
+            }
           />
         )
       })()}

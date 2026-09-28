@@ -24,6 +24,9 @@ type StudentDetailModalProps = {
   onClose: () => void
   schedules: Schedule[]
   teacherMap: Map<number, Teacher>
+  // Trial-type student rows from this student's trial bookings (linked via
+  // the lead they were converted from), so the trial reviews show here too.
+  trialStudentIds?: number[]
 }
 
 export function StudentDetailModal({
@@ -34,6 +37,7 @@ export function StudentDetailModal({
   onClose,
   schedules,
   teacherMap,
+  trialStudentIds = [],
 }: StudentDetailModalProps) {
   const isPreviewStudent = student.studentType === 'preview'
   const latestLessonLogIds = useMemo(() => {
@@ -44,11 +48,13 @@ export function StudentDetailModal({
 
   const latestReviewEntries = useMemo(() => {
     const scheduleMap = new Map(schedules.map((schedule) => [schedule.id, schedule]))
+    const trialIds = new Set(trialStudentIds)
 
     return lessonReviews
       .filter(
         (review) =>
-          review.studentId === student.id && latestLessonLogIds.has(review.lessonLogId),
+          (review.studentId === student.id || trialIds.has(review.studentId)) &&
+          latestLessonLogIds.has(review.lessonLogId),
       )
       .map((review) => {
         const log = lessonLogs.find((entry) => entry.id === review.lessonLogId)
@@ -57,6 +63,7 @@ export function StudentDetailModal({
           review,
           log,
           schedule,
+          isTrial: trialIds.has(review.studentId),
         }
       })
       .filter(
@@ -64,6 +71,7 @@ export function StudentDetailModal({
           review: LessonLogStudentReview
           log: LessonLogSummary
           schedule: Schedule | null
+          isTrial: boolean
         } => Boolean(entry.log),
       )
       .sort((left, right) => {
@@ -71,7 +79,7 @@ export function StudentDetailModal({
         const leftDate = `${left.log.lessonDate}-${left.log.revisionNumber}`
         return rightDate.localeCompare(leftDate)
       })
-  }, [latestLessonLogIds, lessonLogs, lessonReviews, schedules, student.id])
+  }, [latestLessonLogIds, lessonLogs, lessonReviews, schedules, student.id, trialStudentIds])
 
   const metricAverages = useMemo(() => {
     const result = {
@@ -263,15 +271,20 @@ export function StudentDetailModal({
           </div>
 
           <div className="space-y-4 p-5">
-            {latestReviewEntries.map(({ review, log, schedule }) => (
+            {latestReviewEntries.map(({ review, log, schedule, isTrial }) => (
               <div
                 key={review.id}
                 className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
               >
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <div className="text-base font-semibold text-slate-900">
+                    <div className="flex items-center gap-2 text-base font-semibold text-slate-900">
                       {schedule?.title ?? 'Unknown Class'}
+                      {isTrial && (
+                        <span className="rounded-full bg-teal-100 px-2 py-0.5 text-xs font-semibold text-teal-700">
+                          Trial Class
+                        </span>
+                      )}
                     </div>
                     <div className="mt-1 text-sm text-slate-500">
                       {formatDate(log.lessonDate)} -{' '}

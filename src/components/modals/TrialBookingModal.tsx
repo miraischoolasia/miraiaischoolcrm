@@ -20,7 +20,8 @@ type TrialBookingModalProps = {
   onBook: (form: TrialBookingFormState) => Promise<boolean>
   onCancelBooking: (booking: TrialBooking) => void
   onEditSlot: () => void
-  onTakeAttendance: () => void
+  // Omitted for a future day: attendance opens on the day of the class.
+  onTakeAttendance?: () => void
 }
 
 const emptyForm: TrialBookingFormState = {
@@ -352,7 +353,7 @@ export function TrialBookingModal({
                 Edit Slot / Cancel This Day
               </button>
             )}
-            {canManage && bookings.length > 0 && (
+            {canManage && bookings.length > 0 && onTakeAttendance && (
               <button
                 type="button"
                 onClick={onTakeAttendance}

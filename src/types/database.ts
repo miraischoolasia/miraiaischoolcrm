@@ -846,10 +846,27 @@ export type Database = {
           p_mirai_club_expiry_date: string
           p_notes: string | null
           p_student_type?: 'trial' | 'preview' | 'regular'
+          p_classroom_id?: number | null
+          p_lead_id?: number | null
         }
         Returns: {
           student_id: number
         }[]
+      }
+      delete_teacher_account: {
+        Args: {
+          p_teacher_id: number
+          p_successor_teacher_id?: number | null
+        }
+        Returns: boolean
+      }
+      reassign_classroom_teacher: {
+        Args: {
+          p_classroom_id: number
+          p_new_teacher_id: number
+          p_effective_date?: string | null
+        }
+        Returns: undefined
       }
       create_preview_student_records: {
         Args: {
