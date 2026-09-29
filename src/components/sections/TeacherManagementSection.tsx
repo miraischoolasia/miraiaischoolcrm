@@ -46,7 +46,7 @@ export function TeacherManagementSection({
         metrics={[
           {
             label: 'Total Teachers',
-            value: teachers.filter((teacher) => teacher.role === 'teacher').length,
+            value: teachers.length,
           },
           {
             label: 'Admin Accounts',

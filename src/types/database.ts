@@ -436,6 +436,71 @@ export type Database = {
           },
         ]
       }
+      makeup_plans: {
+        Row: {
+          id: number
+          classroom_id: number
+          missed_date: string
+          student_id: number | null
+          missed_minutes: number
+          notes: string | null
+          created_by: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          classroom_id: number
+          missed_date: string
+          student_id?: number | null
+          missed_minutes: number
+          notes?: string | null
+          created_by?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          classroom_id?: number
+          missed_date?: string
+          student_id?: number | null
+          missed_minutes?: number
+          notes?: string | null
+          created_by?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      makeup_sessions: {
+        Row: {
+          id: number
+          plan_id: number
+          session_date: string
+          extra_minutes: number
+        }
+        Insert: {
+          id?: number
+          plan_id: number
+          session_date: string
+          extra_minutes: number
+        }
+        Update: {
+          id?: number
+          plan_id?: number
+          session_date?: string
+          extra_minutes?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'makeup_sessions_plan_id_fkey'
+            columns: ['plan_id']
+            isOneToOne: false
+            referencedRelation: 'makeup_plans'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       schedule_exceptions: {
         Row: {
           id: number
@@ -859,6 +924,24 @@ export type Database = {
           p_successor_teacher_id?: number | null
         }
         Returns: boolean
+      }
+      save_makeup_plan: {
+        Args: {
+          p_plan_id: number | null
+          p_classroom_id: number
+          p_missed_date: string
+          p_student_id: number | null
+          p_missed_minutes: number
+          p_notes: string | null
+          p_sessions: { session_date: string; extra_minutes: number }[]
+        }
+        Returns: number
+      }
+      delete_makeup_plan: {
+        Args: {
+          p_plan_id: number
+        }
+        Returns: undefined
       }
       reassign_classroom_teacher: {
         Args: {

@@ -150,6 +150,7 @@ vi.mock('./lib/api', async (importOriginal) => ({
   ],
   fetchScheduleParticipantsFromSupabase: async () => [],
   fetchScheduleExceptionsFromSupabase: () => mocks.exceptions(),
+  fetchMakeupPlansFromSupabase: async () => [],
   fetchTrialBookingsFromSupabase: async () => [],
   fetchLessonLogSummariesFromSupabase: async () => [],
   fetchLessonLogStudentReviewsFromSupabase: async () => [],
@@ -316,5 +317,52 @@ describe('cancelling a single class day', () => {
     expect(screen.getByLabelText('End Time')).toHaveValue('21:30')
     expect(screen.getByRole('checkbox', { name: /Ada Lovelace/ })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: /Inactive Kid/ })).not.toBeChecked()
+  })
+
+  it('makes up a cancelled day by extending the next two classes', async () => {
+    mocks.exceptions.mockResolvedValue([
+      { id: 1, scheduleId: 10, exceptionDate: '2026-09-08', reason: 'Teacher leave' },
+    ])
+    await signInAsAdmin()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Regular Coding (cancelled)' }))
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Make Up by Extending Classes' }),
+    )
+
+    // Tuesdays after the 8th are the 15th and 22nd (the 29th is never a
+    // normal class day), each +30 min by default.
+    expect(await screen.findByText('Planned 60 / 60 min')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Save Make-up Plan' }))
+
+    await waitFor(() =>
+      expect(mocks.rpc).toHaveBeenCalledWith('save_makeup_plan', {
+        p_plan_id: null,
+        p_classroom_id: 1,
+        p_missed_date: '2026-09-08',
+        p_student_id: null,
+        p_missed_minutes: 60,
+        p_notes: null,
+        p_sessions: [
+          { session_date: '2026-09-15', extra_minutes: 30 },
+          { session_date: '2026-09-22', extra_minutes: 30 },
+        ],
+      }),
+    )
+  })
+
+  it('does not offer a make-up on a cancelled trial slot', async () => {
+    mocks.exceptions.mockResolvedValue([
+      { id: 1, scheduleId: 11, exceptionDate: '2026-09-08', reason: null },
+    ])
+    await signInAsAdmin()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Trial Coding (cancelled)' }))
+
+    const dialog = within(await screen.findByRole('dialog'))
+    expect(dialog.getByRole('button', { name: 'Restore This Day' })).toBeInTheDocument()
+    expect(
+      dialog.queryByRole('button', { name: 'Make Up by Extending Classes' }),
+    ).not.toBeInTheDocument()
   })
 })

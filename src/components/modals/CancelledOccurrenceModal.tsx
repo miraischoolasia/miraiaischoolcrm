@@ -10,6 +10,10 @@ type CancelledOccurrenceModalProps = {
   onClose: () => void
   onRestore: () => void
   onAddReplacement: () => void
+  // Summary of the whole-class make-up plan for this day, if one exists.
+  makeupSummary: string | null
+  // Omitted for a trial slot: make-ups are for regular classes only.
+  onArrangeMakeup?: () => void
 }
 
 export function CancelledOccurrenceModal({
@@ -20,6 +24,8 @@ export function CancelledOccurrenceModal({
   onClose,
   onRestore,
   onAddReplacement,
+  makeupSummary,
+  onArrangeMakeup,
 }: CancelledOccurrenceModalProps) {
   return (
     <ModalShell maxWidth="sm" onClose={onClose}>
@@ -47,6 +53,20 @@ export function CancelledOccurrenceModal({
       </div>
 
       <div className="space-y-3 px-6 py-6">
+        {makeupSummary && (
+          <div className="rounded-xl bg-violet-50 px-4 py-3 text-sm text-violet-800">
+            Make-up planned: {makeupSummary}
+          </div>
+        )}
+        {onArrangeMakeup && (
+        <button
+          type="button"
+          onClick={onArrangeMakeup}
+          className="w-full rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-violet-700"
+        >
+          {makeupSummary ? 'Edit Make-up Plan' : 'Make Up by Extending Classes'}
+        </button>
+        )}
         <button
           type="button"
           onClick={onAddReplacement}

@@ -12,6 +12,8 @@ import type {
   LessonLogStudentReviewRow,
   LessonLogSummary,
   LessonLogSummaryRow,
+  MakeupPlan,
+  MakeupPlanRow,
   Schedule,
   ScheduleException,
   ScheduleExceptionRow,
@@ -140,6 +142,23 @@ export function mapScheduleExceptionRow(row: ScheduleExceptionRow): ScheduleExce
     scheduleId: row.schedule_id,
     exceptionDate: row.exception_date,
     reason: row.reason,
+  }
+}
+
+export function mapMakeupPlanRow(row: MakeupPlanRow): MakeupPlan {
+  return {
+    id: row.id,
+    classroomId: row.classroom_id,
+    missedDate: row.missed_date,
+    studentId: row.student_id,
+    missedMinutes: row.missed_minutes,
+    notes: row.notes,
+    sessions: row.makeup_sessions
+      .map((session) => ({
+        sessionDate: session.session_date,
+        extraMinutes: session.extra_minutes,
+      }))
+      .sort((left, right) => left.sessionDate.localeCompare(right.sessionDate)),
   }
 }
 

@@ -3,6 +3,7 @@ import {
   mapAdminActivityRow,
   mapClassroomRow,
   mapLeadRow,
+  mapMakeupPlanRow,
   mapLessonLogStudentReviewRow,
   mapLessonLogStudentRow,
   mapLessonLogSummaryRow,
@@ -212,6 +213,52 @@ export async function fetchTrialBookingsFromSupabase() {
   }
 
   return data.map(mapTrialBookingRow)
+}
+
+export async function fetchMakeupPlansFromSupabase() {
+  if (!supabase) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('makeup_plans')
+    .select(
+      'id, classroom_id, missed_date, student_id, missed_minutes, notes, makeup_sessions(session_date, extra_minutes)',
+    )
+    .order('missed_date')
+
+  if (error) {
+    // Same as trial bookings: an overlay, so a database without the
+    // migration yet must not block the workspace.
+    if (isMissingTableError(error)) {
+      return []
+    }
+
+    throw error
+  }
+
+  return data.map(mapMakeupPlanRow)
+}
+
+// Every attendance row of one student, to find the classes they missed.
+export async function fetchStudentAttendanceRows(studentId: number) {
+  if (!supabase) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('lesson_log_students')
+    .select('lesson_log_id, attendance_status')
+    .eq('student_id', studentId)
+
+  if (error) {
+    throw error
+  }
+
+  return data.map((row) => ({
+    lessonLogId: row.lesson_log_id,
+    status: row.attendance_status as 'present' | 'absent' | 'leave',
+  }))
 }
 
 export async function fetchLessonLogSummariesFromSupabase() {

@@ -16,6 +16,8 @@ import type {
 } from '../../types/domain'
 
 type AttendanceModalProps = {
+  // Make-up extensions on this class day, e.g. "Whole class +30 min (makes up Sep 23)".
+  makeupNotes?: string[]
   attendanceModal: AttendanceModalState
   attendanceExistingLog: LessonLogSummary | null
   attendanceLocked: boolean
@@ -60,6 +62,7 @@ export function AttendanceModal({
   onUpdateReviewScore,
   onUpdateReviewRemark,
   onRemarkChange,
+  makeupNotes = [],
 }: AttendanceModalProps) {
   return (
     <ModalShell maxWidth="760" onClose={onClose}>
@@ -80,6 +83,13 @@ export function AttendanceModal({
                   : `Editing revision ${attendanceExistingLog.revisionNumber} within 24 hours`
                 : 'New lesson attendance submission'}
             </p>
+            {makeupNotes.length > 0 && (
+              <div className="mt-3 space-y-1 rounded-xl bg-violet-50 px-3 py-2 text-sm text-violet-800">
+                {makeupNotes.map((note) => (
+                  <div key={note}>{note}</div>
+                ))}
+              </div>
+            )}
           </div>
           <button
             type="button"

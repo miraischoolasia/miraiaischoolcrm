@@ -39,6 +39,7 @@ import type {
   LeadStatus,
   LessonLogStudentReview,
   LessonLogSummary,
+  MakeupPlan,
   RenewalFormState,
   ReviewRemarkField,
   ReviewScoreField,
@@ -69,6 +70,8 @@ import {
   fetchClassroomsFromSupabase,
   fetchLatestLessonLogStudents,
   fetchLeadsFromSupabase,
+  fetchMakeupPlansFromSupabase,
+  fetchStudentAttendanceRows,
   fetchLessonLogStudentReviewsFromSupabase,
   fetchLessonLogSummariesFromSupabase,
   fetchScheduleExceptionsFromSupabase,
@@ -117,6 +120,15 @@ import { ScheduleModal } from './components/modals/ScheduleModal'
 import { TrialBookingModal } from './components/modals/TrialBookingModal'
 import { CancelledOccurrenceModal } from './components/modals/CancelledOccurrenceModal'
 import { AttendanceModal } from './components/modals/AttendanceModal'
+import { MakeupPlanModal, type MakeupPlanInput } from './components/modals/MakeupPlanModal'
+import {
+  buildMakeupMap,
+  flattenMakeupPlans,
+  getUpcomingClassDates,
+  makeupKey,
+  sumMakeupMinutes,
+  type MakeupEntry,
+} from './lib/makeup'
 
 function App() {
   const isMobile = useIsMobile()
@@ -147,6 +159,24 @@ function App() {
     scheduleId: number
     occurrenceDate: string
   } | null>(null)
+  const [makeupPlans, setMakeupPlans] = useState<MakeupPlan[]>([])
+  // The make-up plan being created or edited (planId null = new).
+  const [makeupEditor, setMakeupEditor] = useState<{
+    classroomId: number
+    planId: number | null
+    missedDate: string
+    studentId: number | null
+    // Recently missed classes offered as one-click choices (student make-ups).
+    missedOptions?: { date: string; label: string }[]
+  } | null>(null)
+  // Attendance rows of the student whose detail is open (admin only), so
+  // "Arrange Make-up" can suggest their missed classes without a wait.
+  const [prefetchedAttendance, setPrefetchedAttendance] = useState<{
+    studentId: number
+    rows: Awaited<ReturnType<typeof fetchStudentAttendanceRows>>
+  } | null>(null)
+  const [isSavingMakeup, setIsSavingMakeup] = useState(false)
+  const [makeupError, setMakeupError] = useState<string | null>(null)
   const [lessonLogs, setLessonLogs] = useState<LessonLogSummary[]>([])
   const [lessonReviews, setLessonReviews] = useState<LessonLogStudentReview[]>([])
   const [adminActivities, setAdminActivities] = useState<AdminActivity[]>([])
@@ -369,6 +399,8 @@ function App() {
     return nextMap
   }, [scheduleParticipants])
   const trialBookingMap = useMemo(() => buildTrialBookingMap(trialBookings), [trialBookings])
+  const makeupEntries = useMemo(() => flattenMakeupPlans(makeupPlans), [makeupPlans])
+  const makeupMap = useMemo(() => buildMakeupMap(makeupEntries), [makeupEntries])
   const latestLessonLogMap = useMemo(
     () => getLatestLessonLogMap(lessonLogs),
     [lessonLogs],
@@ -517,6 +549,27 @@ function App() {
   }, [activeSection, currentSession])
 
   useEffect(() => {
+    if (!selectedStudentDetailId || !isAdminView) {
+      return
+    }
+
+    let cancelled = false
+    fetchStudentAttendanceRows(selectedStudentDetailId)
+      .then((rows) => {
+        if (!cancelled) {
+          setPrefetchedAttendance({ studentId: selectedStudentDetailId, rows })
+        }
+      })
+      .catch(() => {
+        // Only a speed-up: openStudentMakeup fetches again if this is missing.
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isAdminView, selectedStudentDetailId])
+
+  useEffect(() => {
     if (!selectedStudent) {
       return
     }
@@ -608,6 +661,7 @@ function App() {
           nextLessonReviews,
           nextAdminActivities,
           nextLeads,
+          nextMakeupPlans,
         ] = await Promise.all([
           fetchClassroomsFromSupabase(),
           fetchTeachersFromSupabase(),
@@ -620,6 +674,7 @@ function App() {
           fetchLessonLogStudentReviewsFromSupabase(),
           fetchAdminActivityFromSupabase(),
           fetchLeadsFromSupabase(),
+          fetchMakeupPlansFromSupabase(),
         ])
 
         if (!cancelled) {
@@ -634,6 +689,7 @@ function App() {
           setLessonReviews(nextLessonReviews)
           setAdminActivities(nextAdminActivities)
           setLeads(nextLeads)
+          setMakeupPlans(nextMakeupPlans)
           setLoadedUserId(authUserId)
         }
       } catch (error) {
@@ -700,6 +756,7 @@ function App() {
         scheduleParticipantMap,
         studentMap,
         scheduleExceptions,
+        makeupEntries,
       ),
       ...malaysiaHolidayEvents,
     ],
@@ -707,6 +764,7 @@ function App() {
       calendarClassFilter,
       classroomMap,
       classroomStudentMap,
+      makeupEntries,
       scheduleExceptions,
       scheduleParticipantMap,
       studentMap,
@@ -1227,6 +1285,183 @@ function App() {
   async function refreshTrialBookings() {
     const nextTrialBookings = await fetchTrialBookingsFromSupabase()
     setTrialBookings(nextTrialBookings)
+  }
+
+  async function refreshMakeupPlans() {
+    const nextMakeupPlans = await fetchMakeupPlansFromSupabase()
+    setMakeupPlans(nextMakeupPlans)
+  }
+
+  // e.g. "Whole class +30 min (makes up Sep 23)" / "Ali +30 min (makes up Sep 16)"
+  function describeMakeupEntries(entries: MakeupEntry[]) {
+    return entries.map((entry) => {
+      const who =
+        entry.studentId === null
+          ? 'Whole class'
+          : (studentMap.get(entry.studentId)?.name ?? 'A student')
+      return `${who} +${entry.extraMinutes} min (makes up ${formatDate(entry.missedDate)})`
+    })
+  }
+
+  function getClassroomMakeupNotes(classroomId: number | null, date: string) {
+    return classroomId === null
+      ? []
+      : describeMakeupEntries(makeupMap.get(makeupKey(classroomId, date)) ?? [])
+  }
+
+  function openMakeupEditor(editor: {
+    classroomId: number
+    planId: number | null
+    missedDate: string
+    studentId: number | null
+    missedOptions?: { date: string; label: string }[]
+  }) {
+    setMakeupError(null)
+    setMakeupEditor(editor)
+  }
+
+  // Student make-up: offer the classes they recently missed (latest
+  // attendance revision says absent/leave, no plan yet), newest first, and
+  // preselect the newest so the usual case is one click to save.
+  async function openStudentMakeup(student: Student) {
+    if (student.classroomId === null) {
+      return
+    }
+
+    let missedOptions: { date: string; label: string }[] = []
+
+    try {
+      // Usually already fetched when the student's detail opened, so the
+      // dialog opens instantly.
+      const rows =
+        prefetchedAttendance?.studentId === student.id
+          ? prefetchedAttendance.rows
+          : await fetchStudentAttendanceRows(student.id)
+      const latestLogs = new Map(
+        Array.from(latestLessonLogMap.values()).map((log) => [log.id, log]),
+      )
+      const plannedDates = new Set(
+        makeupPlans
+          .filter((plan) => plan.studentId === student.id)
+          .map((plan) => plan.missedDate),
+      )
+      const seen = new Set<string>()
+
+      missedOptions = rows
+        .filter((row) => row.status !== 'present' && latestLogs.has(row.lessonLogId))
+        .map((row) => ({ date: latestLogs.get(row.lessonLogId)!.lessonDate, status: row.status }))
+        .filter((entry) => !plannedDates.has(entry.date))
+        .sort((left, right) => right.date.localeCompare(left.date))
+        .filter((entry) => (seen.has(entry.date) ? false : (seen.add(entry.date), true)))
+        .slice(0, 6)
+        .map((entry) => ({
+          date: entry.date,
+          label: `${formatDate(entry.date)} · ${entry.status === 'leave' ? 'Leave' : 'Absent'}`,
+        }))
+    } catch {
+      // Suggestions are a convenience; the date can still be picked by hand.
+    }
+
+    openMakeupEditor({
+      classroomId: student.classroomId,
+      planId: null,
+      missedDate: missedOptions[0]?.date ?? todayString,
+      studentId: student.id,
+      missedOptions,
+    })
+  }
+
+  function openMakeupPlan(planId: number) {
+    const plan = makeupPlans.find((entry) => entry.id === planId)
+    if (plan) {
+      openMakeupEditor({
+        classroomId: plan.classroomId,
+        planId: plan.id,
+        missedDate: plan.missedDate,
+        studentId: plan.studentId,
+      })
+    }
+  }
+
+  function closeMakeupEditor() {
+    setMakeupEditor(null)
+    setMakeupError(null)
+  }
+
+  // Next normal class days of a classroom, for the make-up presets.
+  function suggestMakeupDates(classroomId: number, afterDate: string, count: number) {
+    return getUpcomingClassDates(
+      schedules.filter((schedule) => schedule.classroomId === classroomId),
+      scheduleExceptions,
+      afterDate,
+      count,
+    )
+  }
+
+  async function handleSaveMakeup(input: MakeupPlanInput) {
+    if (!supabase || !makeupEditor) {
+      return
+    }
+
+    try {
+      setIsSavingMakeup(true)
+      setMakeupError(null)
+
+      // The RPC validates every date and writes the activity log itself.
+      const { error } = await supabase.rpc('save_makeup_plan', {
+        p_plan_id: input.planId,
+        p_classroom_id: makeupEditor.classroomId,
+        p_missed_date: input.missedDate,
+        p_student_id: input.studentId,
+        p_missed_minutes: input.missedMinutes,
+        p_notes: input.notes,
+        p_sessions: input.sessions.map((session) => ({
+          session_date: session.sessionDate,
+          extra_minutes: session.extraMinutes,
+        })),
+      })
+
+      if (error) {
+        throw error
+      }
+
+      await Promise.all([refreshMakeupPlans(), refreshAdminActivities()])
+      closeMakeupEditor()
+      showToast('Make-up plan saved.')
+    } catch (error) {
+      setMakeupError(getErrorMessage(error, 'Failed to save the make-up plan.'))
+    } finally {
+      setIsSavingMakeup(false)
+    }
+  }
+
+  async function handleDeleteMakeup(planId: number) {
+    if (!supabase) {
+      return
+    }
+
+    if (!(await confirm('Delete this make-up plan? The extra minutes will be removed from the calendar.'))) {
+      return
+    }
+
+    try {
+      setIsSavingMakeup(true)
+      setMakeupError(null)
+
+      const { error } = await supabase.rpc('delete_makeup_plan', { p_plan_id: planId })
+
+      if (error) {
+        throw error
+      }
+
+      await Promise.all([refreshMakeupPlans(), refreshAdminActivities()])
+      closeMakeupEditor()
+      showToast('Make-up plan deleted.')
+    } catch (error) {
+      setMakeupError(getErrorMessage(error, 'Failed to delete the make-up plan.'))
+    } finally {
+      setIsSavingMakeup(false)
+    }
   }
 
   // Resolves true when the booking was saved, so the modal can reset its form.
@@ -2916,6 +3151,31 @@ function App() {
       )
     }
 
+    const eventOccurrenceDate = eventInfo.event.start
+      ? getDateKeyFromDate(eventInfo.event.start)
+      : ''
+    const eventClassroomId = (eventInfo.event.extendedProps.classroomId as number | null) ?? null
+    const makeupNotes = getClassroomMakeupNotes(eventClassroomId, eventOccurrenceDate)
+
+    // A make-up slot on the 29th-31st, when the class doesn't normally meet.
+    if (eventInfo.event.extendedProps.isMakeupOnly) {
+      return (
+        <div className="rounded-lg border border-violet-200 bg-violet-500 px-2 py-1.5 text-white shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-violet-800">
+              Make-up
+            </span>
+            <span className="text-[10px] font-medium text-white/90">{eventInfo.timeText}</span>
+          </div>
+          <div className="mt-1 text-[11px] font-semibold leading-snug">{eventInfo.event.title}</div>
+          <div className="mt-0.5 text-[10px] text-white/90">
+            {eventInfo.event.extendedProps.teacherName as string}
+          </div>
+          <div className="mt-0.5 truncate text-[10px] text-white/80">{makeupNotes.join(' · ')}</div>
+        </div>
+      )
+    }
+
     const classKind = eventInfo.event.extendedProps.classKind as
       | 'regular'
       | 'trial'
@@ -3068,6 +3328,14 @@ function App() {
         >
           {participantNames}
         </div>
+        {makeupNotes.length > 0 && (
+          <div
+            className="mt-1 truncate rounded bg-violet-600 px-1 py-0.5 text-[10px] font-semibold text-white"
+            title={makeupNotes.join('\n')}
+          >
+            Make-up: {makeupNotes.join(' · ')}
+          </div>
+        )}
       </div>
     )
   }
@@ -3306,6 +3574,10 @@ function App() {
                           <span className="h-3 w-3 rounded-full bg-slate-300" />
                           <span>Cancelled Day</span>
                         </div>
+                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                          <span className="h-3 w-3 rounded-full bg-violet-500" />
+                          <span>Make-up</span>
+                        </div>
                         {isAdminView && (
                           <button
                             type="button"
@@ -3398,6 +3670,22 @@ function App() {
                         const occurrenceDate = arg.event.start
                           ? getDateKeyFromDate(arg.event.start)
                           : todayString
+
+                        if (arg.event.extendedProps.isMakeupOnly) {
+                          const entries =
+                            makeupMap.get(
+                              makeupKey(
+                                Number(arg.event.extendedProps.classroomId),
+                                occurrenceDate,
+                              ),
+                            ) ?? []
+                          if (isAdminView && entries[0]) {
+                            openMakeupPlan(entries[0].planId)
+                          } else {
+                            showToast(describeMakeupEntries(entries).join(' · ') || 'Make-up slot')
+                          }
+                          return
+                        }
 
                         if (arg.event.extendedProps.isCancelledOccurrence) {
                           if (isAdminView) {
@@ -3658,6 +3946,20 @@ function App() {
           schedules={schedules}
           teacherMap={teacherMap}
           trialStudentIds={selectedStudentTrialIds}
+          makeupPlans={makeupPlans.filter(
+            (plan) =>
+              plan.studentId === selectedStudentDetail.id ||
+              (plan.studentId === null && plan.classroomId === selectedStudentDetail.classroomId),
+          )}
+          onArrangeMakeup={
+            isAdminView &&
+            selectedStudentDetail.studentType === 'regular' &&
+            selectedStudentDetail.classroomId !== null &&
+            classroomMap.get(selectedStudentDetail.classroomId)?.category === 'regular'
+              ? () => void openStudentMakeup(selectedStudentDetail)
+              : undefined
+          }
+          onEditMakeup={isAdminView ? openMakeupPlan : undefined}
         />
       )}
 
@@ -3691,6 +3993,12 @@ function App() {
             entry.scheduleId === cancelledSchedule.id &&
             entry.exceptionDate === cancelledOccurrenceModal.occurrenceDate,
         )
+        const classMakeupPlan = makeupPlans.find(
+          (plan) =>
+            plan.classroomId === cancelledSchedule.classroomId &&
+            plan.missedDate === cancelledOccurrenceModal.occurrenceDate &&
+            plan.studentId === null,
+        )
 
         return (
           <CancelledOccurrenceModal
@@ -3709,6 +4017,34 @@ function App() {
               closeCancelledOccurrenceOptions()
               openReplacementForCancelledDay(scheduleId, occurrenceDate)
             }}
+            makeupSummary={
+              classMakeupPlan
+                ? `${classMakeupPlan.sessions
+                    .map(
+                      (session) =>
+                        `${formatDate(session.sessionDate)} +${session.extraMinutes} min`,
+                    )
+                    .join(', ')} (${sumMakeupMinutes(classMakeupPlan.sessions)} / ${classMakeupPlan.missedMinutes} min)`
+                : null
+            }
+            onArrangeMakeup={
+              cancelledClassroom?.category === 'regular'
+                ? () => {
+                    const { occurrenceDate } = cancelledOccurrenceModal
+                    closeCancelledOccurrenceOptions()
+                    if (classMakeupPlan) {
+                      openMakeupPlan(classMakeupPlan.id)
+                    } else {
+                      openMakeupEditor({
+                        classroomId: cancelledClassroom.id,
+                        planId: null,
+                        missedDate: occurrenceDate,
+                        studentId: null,
+                      })
+                    }
+                  }
+                : undefined
+            }
           />
         )
       })()}
@@ -3815,8 +4151,45 @@ function App() {
           onUpdateReviewScore={updateAttendanceReviewScore}
           onUpdateReviewRemark={updateAttendanceReviewRemark}
           onRemarkChange={setAttendanceRemark}
+          makeupNotes={getClassroomMakeupNotes(
+            schedules.find((schedule) => schedule.id === attendanceModal.scheduleId)
+              ?.classroomId ?? null,
+            attendanceModal.occurrenceDate,
+          )}
         />
       )}
+
+      {makeupEditor && (() => {
+        const makeupClassroom = classroomMap.get(makeupEditor.classroomId)
+        const editingPlan =
+          makeupEditor.planId !== null
+            ? makeupPlans.find((plan) => plan.id === makeupEditor.planId) ?? null
+            : null
+
+        return (
+          <MakeupPlanModal
+            key={`${makeupEditor.classroomId}-${makeupEditor.planId ?? 'new'}-${makeupEditor.studentId ?? 'class'}`}
+            classroomName={makeupClassroom?.name ?? 'Classroom'}
+            roster={(classroomStudentMap.get(makeupEditor.classroomId) ?? []).filter(
+              (student) =>
+                (student.isActive && student.studentType === 'regular') ||
+                student.id === makeupEditor.studentId,
+            )}
+            plan={editingPlan}
+            initialMissedDate={makeupEditor.missedDate}
+            initialStudentId={makeupEditor.studentId}
+            missedDateOptions={makeupEditor.missedOptions ?? []}
+            suggestDates={(afterDate, count) =>
+              suggestMakeupDates(makeupEditor.classroomId, afterDate, count)
+            }
+            isSaving={isSavingMakeup}
+            error={makeupError}
+            onClose={closeMakeupEditor}
+            onSave={(input) => void handleSaveMakeup(input)}
+            onDelete={editingPlan ? () => void handleDeleteMakeup(editingPlan.id) : undefined}
+          />
+        )
+      })()}
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-2 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur lg:hidden">
         <div className="mx-auto flex max-w-xl gap-1 overflow-x-auto">

@@ -1,5 +1,6 @@
 import type { EventInput } from '@fullcalendar/core'
 import { parseLocalDate } from '../domain/studentStatus'
+import { addMinutesToTime, isScheduleMeetingDate, type MakeupEntry } from './makeup'
 import type {
   Classroom,
   Schedule,
@@ -154,6 +155,7 @@ export function buildScheduleEvents(
   scheduleParticipantMap: Map<number, number[]>,
   studentMap: Map<number, Student>,
   scheduleExceptions: ScheduleException[] = [],
+  makeupEntries: MakeupEntry[] = [],
 ): EventInput[] {
   const exceptionsByScheduleId = new Map<number, ScheduleException[]>()
 
@@ -205,16 +207,84 @@ export function buildScheduleEvents(
         const exceptions = (exceptionsByScheduleId.get(schedule.id) ?? []).filter(
           (exception) => isExceptionOnSchedule(schedule, exception),
         )
+        const isTrial = getScheduleClassKind(schedule, classroomMap) === 'trial'
+
+        // Make-up minutes on this series' days. A whole-class extension
+        // lengthens that day's card (the day is pulled out of the rrule and
+        // re-added as a single longer event); on the 29th-31st, where the
+        // class never normally meets, the make-up is its own card.
+        // Per-student extensions don't change the card, only its label.
+        const makeupsByDate = new Map<string, MakeupEntry[]>()
+        if (!isTrial && schedule.classroomId !== null) {
+          for (const entry of makeupEntries) {
+            if (
+              entry.classroomId === schedule.classroomId &&
+              isScheduleMeetingDate(schedule, entry.sessionDate, exceptions, true)
+            ) {
+              const existing = makeupsByDate.get(entry.sessionDate) ?? []
+              existing.push(entry)
+              makeupsByDate.set(entry.sessionDate, existing)
+            }
+          }
+        }
+
+        const extendedEvents: EventInput[] = []
+        const makeupOnlyEvents: EventInput[] = []
+
+        for (const [date, entries] of makeupsByDate) {
+          const classMinutes = entries
+            .filter((entry) => entry.studentId === null)
+            .reduce((total, entry) => total + entry.extraMinutes, 0)
+
+          if (parseLocalDate(date).getDate() >= 29) {
+            const studentMinutes = new Map<number, number>()
+            for (const entry of entries) {
+              if (entry.studentId !== null) {
+                studentMinutes.set(
+                  entry.studentId,
+                  (studentMinutes.get(entry.studentId) ?? 0) + entry.extraMinutes,
+                )
+              }
+            }
+            const minutes = Math.max(classMinutes, ...studentMinutes.values())
+
+            makeupOnlyEvents.push({
+              id: `schedule-${schedule.id}-makeup-${date}`,
+              title: shared.title,
+              start: `${date}T${schedule.startTime}`,
+              end: `${date}T${addMinutesToTime(schedule.startTime, minutes)}`,
+              extendedProps: {
+                ...shared.extendedProps,
+                isMakeupOnly: true,
+                occurrenceDate: date,
+              },
+            })
+          } else if (classMinutes > 0) {
+            extendedEvents.push({
+              id: `schedule-${schedule.id}-extended-${date}`,
+              title: shared.title,
+              start: `${date}T${schedule.startTime}`,
+              end: `${date}T${addMinutesToTime(schedule.endTime, classMinutes)}`,
+              extendedProps: {
+                ...shared.extendedProps,
+                occurrenceDate: date,
+              },
+            })
+          }
+        }
+
+        const excludedDates = [
+          ...exceptions.map((exception) => exception.exceptionDate),
+          ...extendedEvents.map((event) => String(event.extendedProps?.occurrenceDate)),
+        ]
 
         // A single skipped day is an rrule `exdate` on the weekly series, which
         // must carry the same time-of-day as dtstart to match an occurrence.
         const recurringEvent: EventInput = {
           ...shared,
-          ...(exceptions.length > 0
+          ...(excludedDates.length > 0
             ? {
-                exdate: exceptions.map(
-                  (exception) => `${exception.exceptionDate}T${schedule.startTime}`,
-                ),
+                exdate: excludedDates.map((date) => `${date}T${schedule.startTime}`),
               }
             : {}),
           rrule: {
@@ -231,7 +301,7 @@ export function buildScheduleEvents(
           // 30th, or 31st, so excluding those calendar dates caps every
           // weekly schedule at exactly 4 classes per month. Trial slots are
           // offered every week, so they are not capped.
-          ...(getScheduleClassKind(schedule, classroomMap) === 'trial'
+          ...(isTrial
             ? {}
             : {
                 exrule: {
@@ -258,7 +328,7 @@ export function buildScheduleEvents(
           },
         }))
 
-        return [recurringEvent, ...cancelledEvents]
+        return [recurringEvent, ...cancelledEvents, ...extendedEvents, ...makeupOnlyEvents]
       }
 
       return [

@@ -191,6 +191,24 @@ export type ScheduleException = {
   reason: string | null
 }
 
+// A missed class (whole class, or one student) made up by adding minutes
+// to later classes. A record only: it never changes remaining classes.
+export type MakeupSession = {
+  sessionDate: string
+  extraMinutes: number
+}
+
+export type MakeupPlan = {
+  id: number
+  classroomId: number
+  missedDate: string
+  // null = the whole class
+  studentId: number | null
+  missedMinutes: number
+  notes: string | null
+  sessions: MakeupSession[]
+}
+
 export type LessonLogSummary = {
   id: number
   scheduleId: number
@@ -446,6 +464,16 @@ export type ScheduleExceptionRow = Pick<
   Database['public']['Tables']['schedule_exceptions']['Row'],
   'id' | 'schedule_id' | 'exception_date' | 'reason'
 >
+
+export type MakeupPlanRow = Pick<
+  Database['public']['Tables']['makeup_plans']['Row'],
+  'id' | 'classroom_id' | 'missed_date' | 'student_id' | 'missed_minutes' | 'notes'
+> & {
+  makeup_sessions: Pick<
+    Database['public']['Tables']['makeup_sessions']['Row'],
+    'session_date' | 'extra_minutes'
+  >[]
+}
 
 export type LessonLogSummaryRow = Pick<
   Database['public']['Tables']['lesson_logs']['Row'],

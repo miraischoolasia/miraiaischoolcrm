@@ -10,6 +10,7 @@ import type {
   Classroom,
   LessonLogStudentReview,
   LessonLogSummary,
+  MakeupPlan,
   ReviewScoreField,
   Schedule,
   Student,
@@ -27,6 +28,10 @@ type StudentDetailModalProps = {
   // Trial-type student rows from this student's trial bookings (linked via
   // the lead they were converted from), so the trial reviews show here too.
   trialStudentIds?: number[]
+  // This student's make-up plans plus whole-class ones for their classroom.
+  makeupPlans?: MakeupPlan[]
+  onArrangeMakeup?: () => void
+  onEditMakeup?: (planId: number) => void
 }
 
 export function StudentDetailModal({
@@ -38,6 +43,9 @@ export function StudentDetailModal({
   schedules,
   teacherMap,
   trialStudentIds = [],
+  makeupPlans = [],
+  onArrangeMakeup,
+  onEditMakeup,
 }: StudentDetailModalProps) {
   const isPreviewStudent = student.studentType === 'preview'
   const latestLessonLogIds = useMemo(() => {
@@ -258,6 +266,65 @@ export function StudentDetailModal({
           </div>
           )}
         </section>
+
+        {(makeupPlans.length > 0 || onArrangeMakeup) && (
+          <section className="rounded-2xl border border-slate-200 bg-white">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Make-up Records</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Missed classes made up with extra minutes. Records only - classes
+                  remaining are not changed.
+                </p>
+              </div>
+              {onArrangeMakeup && (
+                <button
+                  type="button"
+                  onClick={onArrangeMakeup}
+                  className="shrink-0 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
+                >
+                  Arrange Make-up
+                </button>
+              )}
+            </div>
+            <div className="space-y-3 p-5">
+              {makeupPlans.length === 0 && (
+                <div className="text-sm text-slate-500">No make-ups recorded.</div>
+              )}
+              {makeupPlans.map((plan) => (
+                <div
+                  key={plan.id}
+                  className="flex items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                >
+                  <div className="text-sm text-slate-600">
+                    <div className="font-semibold text-slate-900">
+                      Missed {formatDate(plan.missedDate)} · {plan.missedMinutes} min ·{' '}
+                      {plan.studentId === null ? 'Whole class' : 'This student'}
+                    </div>
+                    <div className="mt-1">
+                      {plan.sessions
+                        .map(
+                          (session) =>
+                            `${formatDate(session.sessionDate)} +${session.extraMinutes} min`,
+                        )
+                        .join(', ')}
+                    </div>
+                    {plan.notes && <div className="mt-1 text-slate-500">{plan.notes}</div>}
+                  </div>
+                  {onEditMakeup && (
+                    <button
+                      type="button"
+                      onClick={() => onEditMakeup(plan.id)}
+                      className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-white"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {!isPreviewStudent && (
         <section className="rounded-2xl border border-slate-200 bg-white">
