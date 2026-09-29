@@ -35,12 +35,12 @@ export type DragCheck = {
   droppedAllDay: boolean
   hasAttendance: boolean
   trialBookingCount: number
-  trialSlotsOnTarget: number
 }
 
 // Why a class card cannot be dropped there, or null when it can. Mirrors
-// move_class_occurrence / move_trial_bookings so a bad drop never reaches
-// the confirm step.
+// move_class_occurrence / reschedule_trial_bookings so a bad drop never
+// reaches the confirm step. A trial may go to any later day: without a slot
+// at that time, a one-off slot is made for it.
 export function getDragBlockReason(check: DragCheck) {
   if (check.droppedAllDay) {
     return 'Drop the class on a time, not the all-day row.'
@@ -54,14 +54,8 @@ export function getDragBlockReason(check: DragCheck) {
     return 'Classes can only be moved to a date after today.'
   }
 
-  if (check.classKind === 'trial') {
-    if (check.trialBookingCount === 0) {
-      return 'Nobody is booked on this trial slot yet, so there is nothing to move.'
-    }
-
-    if (check.trialSlotsOnTarget === 0) {
-      return 'There is no trial slot on that day.'
-    }
+  if (check.classKind === 'trial' && check.trialBookingCount === 0) {
+    return 'Nobody is booked on this trial slot yet, so there is nothing to move.'
   }
 
   return null

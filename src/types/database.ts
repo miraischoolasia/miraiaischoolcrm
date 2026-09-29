@@ -914,6 +914,16 @@ export type Database = {
         }
         Returns: number
       }
+      reschedule_trial_bookings: {
+        Args: {
+          p_from_schedule_id: number
+          p_from_date: string
+          p_to_date: string
+          p_start_time: string
+          p_end_time: string
+        }
+        Returns: number
+      }
       move_trial_bookings: {
         Args: {
           p_from_schedule_id: number

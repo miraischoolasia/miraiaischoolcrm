@@ -10,7 +10,6 @@ const base: DragCheck = {
   droppedAllDay: false,
   hasAttendance: false,
   trialBookingCount: 0,
-  trialSlotsOnTarget: 0,
 }
 
 describe('getDragBlockReason', () => {
@@ -28,13 +27,10 @@ describe('getDragBlockReason', () => {
     expect(getDragBlockReason({ ...base, droppedAllDay: true })).toMatch(/all-day/)
   })
 
-  it('needs bookings and a target slot for a trial', () => {
+  it('needs someone booked to move a trial, to any later day', () => {
     const trial = { ...base, classKind: 'trial' as const }
     expect(getDragBlockReason(trial)).toMatch(/Nobody is booked/)
-    expect(getDragBlockReason({ ...trial, trialBookingCount: 2 })).toMatch(/no trial slot/)
-    expect(
-      getDragBlockReason({ ...trial, trialBookingCount: 2, trialSlotsOnTarget: 1 }),
-    ).toBeNull()
+    expect(getDragBlockReason({ ...trial, trialBookingCount: 2 })).toBeNull()
   })
 })
 

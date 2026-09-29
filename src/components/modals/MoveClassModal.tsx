@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ArrowRight, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { formatDate } from '../../domain/studentStatus'
+import { cn } from '../../lib/cn'
 
 export type MoveClassDraft = {
   kind: 'regular' | 'replacement' | 'trial'
@@ -14,15 +15,14 @@ export type MoveClassDraft = {
   endTime: string
   // Students of the class, or the children booked on the trial.
   names: string[]
-  // Trial only: the slots on the target day, first one preselected.
-  trialSlotOptions: { scheduleId: number; label: string }[]
+  // Trial only: slots of the same trial classroom already running that day.
+  trialSlotOptions: { startTime: string; endTime: string; teacherName: string }[]
 }
 
 export type MoveClassInput = {
   startTime: string
   endTime: string
   reason: string | null
-  targetScheduleId: number | null
 }
 
 type MoveClassModalProps = {
@@ -52,16 +52,13 @@ export function MoveClassModal({
   const [startTime, setStartTime] = useState(draft.startTime)
   const [endTime, setEndTime] = useState(draft.endTime)
   const [reason, setReason] = useState('')
-  const [targetScheduleId, setTargetScheduleId] = useState(
-    draft.trialSlotOptions[0]?.scheduleId ?? null,
-  )
   const [validationError, setValidationError] = useState<string | null>(null)
   const isTrial = draft.kind === 'trial'
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    if (!isTrial && (!startTime || !endTime || endTime <= startTime)) {
+    if (!startTime || !endTime || endTime <= startTime) {
       setValidationError('The class must end after it starts.')
       return
     }
@@ -71,7 +68,6 @@ export function MoveClassModal({
       startTime,
       endTime,
       reason: reason.trim() || null,
-      targetScheduleId: isTrial ? targetScheduleId : null,
     })
   }
 
@@ -113,48 +109,65 @@ export function MoveClassModal({
           </div>
         </div>
 
-        {isTrial ? (
-          draft.trialSlotOptions.length > 1 ? (
-            <label className="block space-y-2">
-              <span className="text-sm font-semibold text-slate-700">Trial slot</span>
-              <select
-                value={targetScheduleId ?? ''}
-                onChange={(event) => setTargetScheduleId(Number(event.target.value))}
-                className={inputClassName}
-              >
-                {draft.trialSlotOptions.map((option) => (
-                  <option key={option.scheduleId} value={option.scheduleId}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <p className="text-sm text-slate-600">
-              Slot: {draft.trialSlotOptions[0]?.label}
-            </p>
-          )
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            <label className="space-y-1">
-              <span className="text-sm font-semibold text-slate-700">Start</span>
-              <input
-                type="time"
-                value={startTime}
-                onChange={(event) => setStartTime(event.target.value)}
-                className={inputClassName}
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-sm font-semibold text-slate-700">End</span>
-              <input
-                type="time"
-                value={endTime}
-                onChange={(event) => setEndTime(event.target.value)}
-                className={inputClassName}
-              />
-            </label>
+        {isTrial && draft.trialSlotOptions.length > 0 && (
+          <div className="space-y-2">
+            <span className="text-sm font-semibold text-slate-700">Trial slots that day</span>
+            <div className="flex flex-wrap gap-1.5">
+              {draft.trialSlotOptions.map((option) => {
+                const isPicked = option.startTime === startTime && option.endTime === endTime
+                return (
+                  <button
+                    key={`${option.startTime}-${option.endTime}-${option.teacherName}`}
+                    type="button"
+                    aria-pressed={isPicked}
+                    onClick={() => {
+                      setStartTime(option.startTime)
+                      setEndTime(option.endTime)
+                    }}
+                    className={cn(
+                      'rounded-lg border px-2.5 py-1 text-xs font-semibold transition',
+                      isPicked
+                        ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]'
+                        : 'border-slate-200 text-slate-600 hover:border-[#fc0c97]',
+                    )}
+                  >
+                    {formatTime(option.startTime)}-{formatTime(option.endTime)} · {option.teacherName}
+                  </button>
+                )
+              })}
+            </div>
           </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <label className="space-y-1">
+            <span className="text-sm font-semibold text-slate-700">Start</span>
+            <input
+              type="time"
+              value={startTime}
+              onChange={(event) => setStartTime(event.target.value)}
+              className={inputClassName}
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="text-sm font-semibold text-slate-700">End</span>
+            <input
+              type="time"
+              value={endTime}
+              onChange={(event) => setEndTime(event.target.value)}
+              className={inputClassName}
+            />
+          </label>
+        </div>
+
+        {isTrial && (
+          <p className="text-sm text-slate-600">
+            {draft.trialSlotOptions.some(
+              (option) => option.startTime === startTime && option.endTime === endTime,
+            )
+              ? 'Joins the existing trial slot at this time.'
+              : 'A one-off trial slot is created at this time.'}
+          </p>
         )}
 
         <p className="text-sm text-slate-600">

@@ -30,7 +30,6 @@ describe('MoveClassModal', () => {
       startTime: '20:30',
       endTime: '21:30',
       reason: null,
-      targetScheduleId: null,
     })
   })
 
@@ -46,18 +45,17 @@ describe('MoveClassModal', () => {
     expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ reason: 'Teacher sick' }))
   })
 
-  it('lets the admin pick between trial slots on the target day', async () => {
+  it('moves a trial into an existing slot with one tap, or at a custom time', async () => {
     const onConfirm = vi.fn()
     render(
       <MoveClassModal
         draft={{
           ...regular,
           kind: 'trial',
+          startTime: '17:00',
+          endTime: '19:00',
           names: ['Kid A'],
-          trialSlotOptions: [
-            { scheduleId: 120, label: '10:00-11:00 · Trial · T2' },
-            { scheduleId: 121, label: '14:00-15:00 · Trial · T3' },
-          ],
+          trialSlotOptions: [{ startTime: '14:00', endTime: '16:00', teacherName: 'T2' }],
         }}
         isSaving={false}
         error={null}
@@ -67,9 +65,12 @@ describe('MoveClassModal', () => {
     )
 
     expect(screen.queryByPlaceholderText('e.g. Teacher on leave')).not.toBeInTheDocument()
-    await userEvent.selectOptions(screen.getByRole('combobox'), '121')
+    expect(screen.getByText('A one-off trial slot is created at this time.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /2:00pm-4:00pm · T2/ }))
+    expect(screen.getByText('Joins the existing trial slot at this time.')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Confirm Move' }))
 
-    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ targetScheduleId: 121 }))
+    expect(onConfirm).toHaveBeenCalledWith({ startTime: '14:00', endTime: '16:00', reason: null })
   })
 })

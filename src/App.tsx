@@ -2896,12 +2896,6 @@ function App() {
         classKind === 'trial'
           ? (trialBookingMap.get(getTrialSlotKey(scheduleId, fromDate)) ?? []).length
           : 0,
-      trialSlotsOnTarget:
-        classKind === 'trial'
-          ? getTrialSlotsOnDate(schedules, classroomMap, scheduleExceptions, toDate).filter(
-              (slot) => !(slot.id === scheduleId && toDate === fromDate),
-            ).length
-          : 0,
     })
   }
 
@@ -2933,17 +2927,18 @@ function App() {
       names = (trialBookingMap.get(getTrialSlotKey(scheduleId, fromDate)) ?? []).map(
         (booking) => booking.childName,
       )
+      // Slots of the same trial classroom already running that day: one tap
+      // sets the time to join one. Any other time makes a one-off slot.
       trialSlotOptions = getTrialSlotsOnDate(schedules, classroomMap, scheduleExceptions, toDate)
-        .filter((slot) => !(slot.id === scheduleId && toDate === fromDate))
-        // In the week view the drop time picks the slot; otherwise the earliest.
-        .sort((left, right) =>
-          left.startTime === startTime ? -1 : right.startTime === startTime ? 1 : 0,
+        .filter(
+          (slot) =>
+            slot.classroomId === schedule.classroomId &&
+            !(slot.id === scheduleId && toDate === fromDate),
         )
         .map((slot) => ({
-          scheduleId: slot.id,
-          label: `${slot.startTime.slice(0, 5)}-${slot.endTime.slice(0, 5)} · ${
-            classroomMap.get(slot.classroomId ?? 0)?.name ?? slot.title
-          } · ${teacherMap.get(slot.teacherId)?.fullName ?? 'Unknown Teacher'}`,
+          startTime: slot.startTime.slice(0, 5),
+          endTime: slot.endTime.slice(0, 5),
+          teacherName: teacherMap.get(slot.teacherId)?.fullName ?? 'Unknown Teacher',
         }))
     } else if (classKind === 'replacement') {
       names = (scheduleParticipantMap.get(scheduleId) ?? [])
@@ -2980,24 +2975,22 @@ function App() {
       setMoveError(null)
 
       if (moveDraft.kind === 'trial') {
-        if (input.targetScheduleId === null) {
-          setMoveError('Pick a trial slot.')
-          return
-        }
-
-        const { error } = await supabase.rpc('move_trial_bookings', {
+        const { error } = await supabase.rpc('reschedule_trial_bookings', {
           p_from_schedule_id: moveDraft.scheduleId,
           p_from_date: moveDraft.fromDate,
-          p_to_schedule_id: input.targetScheduleId,
           p_to_date: moveDraft.toDate,
+          p_start_time: input.startTime,
+          p_end_time: input.endTime,
         })
 
         if (error) {
           throw error
         }
 
-        // The trial students follow the new slot's teacher.
+        // A one-off slot may have been created or removed, and the trial
+        // students follow the new slot's teacher.
         await Promise.all([
+          refreshSchedulesAndParticipants(),
           refreshTrialBookings(),
           refreshStudentsAndLogs(),
           refreshAdminActivities(),
