@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import type { EventClickArg, EventContentArg } from '@fullcalendar/core'
+import type {
+  EventApi,
+  EventClickArg,
+  EventContentArg,
+  EventDropArg,
+} from '@fullcalendar/core'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import FullCalendar from '@fullcalendar/react'
 import interactionPlugin, { type DateClickArg } from '@fullcalendar/interaction'
@@ -122,6 +127,13 @@ import { CancelledOccurrenceModal } from './components/modals/CancelledOccurrenc
 import { AttendanceModal } from './components/modals/AttendanceModal'
 import { MakeupPlanModal, type MakeupPlanInput } from './components/modals/MakeupPlanModal'
 import {
+  MoveClassModal,
+  type MoveClassDraft,
+  type MoveClassInput,
+} from './components/modals/MoveClassModal'
+import { getDragBlockReason, getTimeFromDate, getTrialSlotsOnDate } from './lib/move'
+import {
+  addMinutesToTime,
   buildMakeupMap,
   flattenMakeupPlans,
   getUpcomingClassDates,
@@ -177,6 +189,12 @@ function App() {
   } | null>(null)
   const [isSavingMakeup, setIsSavingMakeup] = useState(false)
   const [makeupError, setMakeupError] = useState<string | null>(null)
+  // A class dragged to another day, waiting for the admin to confirm.
+  const [moveDraft, setMoveDraft] = useState<MoveClassDraft | null>(null)
+  const [isSavingMove, setIsSavingMove] = useState(false)
+  const [moveError, setMoveError] = useState<string | null>(null)
+  // Why the spot under the dragged card was refused, shown when the drag ends.
+  const dragBlockReasonRef = useRef<string | null>(null)
   const [lessonLogs, setLessonLogs] = useState<LessonLogSummary[]>([])
   const [lessonReviews, setLessonReviews] = useState<LessonLogStudentReview[]>([])
   const [adminActivities, setAdminActivities] = useState<AdminActivity[]>([])
@@ -1272,6 +1290,16 @@ function App() {
   function closeTrialBooking() {
     setTrialBookingSlot(null)
     setTrialBookingError(null)
+  }
+
+  // The replacement class a dragged day was moved to, if any.
+  function getMovedToSchedule(scheduleId: number, occurrenceDate: string) {
+    const exception = scheduleExceptions.find(
+      (entry) => entry.scheduleId === scheduleId && entry.exceptionDate === occurrenceDate,
+    )
+    return exception?.movedToScheduleId
+      ? schedules.find((entry) => entry.id === exception.movedToScheduleId) ?? null
+      : null
   }
 
   function openCancelledOccurrenceOptions(scheduleId: number, occurrenceDate: string) {
@@ -2847,14 +2875,169 @@ function App() {
     }
   }
 
+  // Whether a dragged card may land on a day; null means yes. The same
+  // rules the move RPCs enforce, so a bad drop never reaches the confirm step.
+  function checkClassDrop(event: EventApi, dropStart: Date, droppedAllDay: boolean) {
+    const scheduleId = Number(event.extendedProps.scheduleId)
+    const classKind = event.extendedProps.classKind as 'regular' | 'trial' | 'replacement'
+    const fromDate = event.start ? getDateKeyFromDate(event.start) : ''
+    const toDate = getDateKeyFromDate(dropStart)
+
+    return getDragBlockReason({
+      classKind,
+      fromDate,
+      toDate,
+      todayString,
+      droppedAllDay,
+      hasAttendance: latestLessonLogMap.has(`${scheduleId}:${fromDate}`),
+      trialBookingCount:
+        classKind === 'trial'
+          ? (trialBookingMap.get(getTrialSlotKey(scheduleId, fromDate)) ?? []).length
+          : 0,
+      trialSlotsOnTarget:
+        classKind === 'trial'
+          ? getTrialSlotsOnDate(schedules, classroomMap, scheduleExceptions, toDate).filter(
+              (slot) => !(slot.id === scheduleId && toDate === fromDate),
+            ).length
+          : 0,
+    })
+  }
+
+  // A card was dropped on another day: show what will happen and wait for
+  // Confirm. The calendar itself only changes once the server has saved it.
+  function openMoveDraft(oldEvent: EventApi, newEvent: EventApi) {
+    if (!oldEvent.start || !newEvent.start) {
+      return
+    }
+
+    const scheduleId = Number(oldEvent.extendedProps.scheduleId)
+    const schedule = schedules.find((entry) => entry.id === scheduleId)
+    if (!schedule) {
+      return
+    }
+
+    const classKind = oldEvent.extendedProps.classKind as 'regular' | 'trial' | 'replacement'
+    const fromDate = getDateKeyFromDate(oldEvent.start)
+    const toDate = getDateKeyFromDate(newEvent.start)
+    const startTime = getTimeFromDate(newEvent.start)
+    const [startHour, startMinute] = schedule.startTime.split(':').map(Number)
+    const [endHour, endMinute] = schedule.endTime.split(':').map(Number)
+    const durationMinutes = endHour * 60 + endMinute - (startHour * 60 + startMinute)
+
+    let names: string[] = []
+    let trialSlotOptions: MoveClassDraft['trialSlotOptions'] = []
+
+    if (classKind === 'trial') {
+      names = (trialBookingMap.get(getTrialSlotKey(scheduleId, fromDate)) ?? []).map(
+        (booking) => booking.childName,
+      )
+      trialSlotOptions = getTrialSlotsOnDate(schedules, classroomMap, scheduleExceptions, toDate)
+        .filter((slot) => !(slot.id === scheduleId && toDate === fromDate))
+        // In the week view the drop time picks the slot; otherwise the earliest.
+        .sort((left, right) =>
+          left.startTime === startTime ? -1 : right.startTime === startTime ? 1 : 0,
+        )
+        .map((slot) => ({
+          scheduleId: slot.id,
+          label: `${slot.startTime.slice(0, 5)}-${slot.endTime.slice(0, 5)} · ${
+            classroomMap.get(slot.classroomId ?? 0)?.name ?? slot.title
+          } · ${teacherMap.get(slot.teacherId)?.fullName ?? 'Unknown Teacher'}`,
+        }))
+    } else if (classKind === 'replacement') {
+      names = (scheduleParticipantMap.get(scheduleId) ?? [])
+        .map((studentId) => studentMap.get(studentId)?.name)
+        .filter((name): name is string => Boolean(name))
+    } else {
+      names = (classroomStudentMap.get(schedule.classroomId ?? 0) ?? [])
+        .filter((student) => student.isActive)
+        .map((student) => student.name)
+    }
+
+    setMoveError(null)
+    setMoveDraft({
+      kind: classKind,
+      scheduleId,
+      title: oldEvent.title,
+      fromDate,
+      fromStartTime: getTimeFromDate(oldEvent.start),
+      toDate,
+      startTime,
+      endTime: addMinutesToTime(startTime, durationMinutes),
+      names,
+      trialSlotOptions,
+    })
+  }
+
+  async function handleConfirmMove(input: MoveClassInput) {
+    if (!moveDraft || !supabase) {
+      return
+    }
+
+    try {
+      setIsSavingMove(true)
+      setMoveError(null)
+
+      if (moveDraft.kind === 'trial') {
+        if (input.targetScheduleId === null) {
+          setMoveError('Pick a trial slot.')
+          return
+        }
+
+        const { error } = await supabase.rpc('move_trial_bookings', {
+          p_from_schedule_id: moveDraft.scheduleId,
+          p_from_date: moveDraft.fromDate,
+          p_to_schedule_id: input.targetScheduleId,
+          p_to_date: moveDraft.toDate,
+        })
+
+        if (error) {
+          throw error
+        }
+
+        // The trial students follow the new slot's teacher.
+        await Promise.all([
+          refreshTrialBookings(),
+          refreshStudentsAndLogs(),
+          refreshAdminActivities(),
+        ])
+      } else {
+        const { error } = await supabase.rpc('move_class_occurrence', {
+          p_schedule_id: moveDraft.scheduleId,
+          p_from_date: moveDraft.fromDate,
+          p_to_date: moveDraft.toDate,
+          p_start_time: input.startTime,
+          p_end_time: input.endTime,
+          p_reason: input.reason,
+        })
+
+        if (error) {
+          throw error
+        }
+
+        await Promise.all([refreshSchedulesAndParticipants(), refreshAdminActivities()])
+      }
+
+      showToast(`${moveDraft.title} moved to ${formatDate(moveDraft.toDate)}.`)
+      setMoveDraft(null)
+    } catch (error) {
+      setMoveError(getErrorMessage(error, 'Failed to move this class.'))
+    } finally {
+      setIsSavingMove(false)
+    }
+  }
+
   async function handleRestoreOccurrence(scheduleId: number, occurrenceDate: string) {
     if (!supabase) {
       return
     }
 
+    const movedTo = getMovedToSchedule(scheduleId, occurrenceDate)
+
     if (
       !(await confirm(
-        `Restore the class on ${occurrenceDate}? It will appear on the calendar again.`,
+        movedTo?.scheduledDate
+          ? `Undo the move? The class goes back to ${formatDate(occurrenceDate)} and the replacement on ${formatDate(movedTo.scheduledDate)} is removed.`
+          : `Restore the class on ${occurrenceDate}? It will appear on the calendar again.`,
       ))
     ) {
       return
@@ -3656,6 +3839,33 @@ function App() {
                         minute: '2-digit',
                         meridiem: 'short',
                       }}
+                      editable={isAdminView && !isMobile}
+                      eventDurationEditable={false}
+                      // Snap a refused drop back quickly so its reason shows sooner.
+                      dragRevertDuration={200}
+                      eventAllow={(span, movingEvent) => {
+                        if (!movingEvent) {
+                          return false
+                        }
+                        const reason = checkClassDrop(movingEvent, span.start, span.allDay)
+                        dragBlockReasonRef.current = reason
+                        return reason === null
+                      }}
+                      eventDragStart={() => {
+                        dragBlockReasonRef.current = null
+                      }}
+                      eventDragStop={() => {
+                        const reason = dragBlockReasonRef.current
+                        dragBlockReasonRef.current = null
+                        if (reason) {
+                          showToast(reason)
+                        }
+                      }}
+                      eventDrop={(info: EventDropArg) => {
+                        // Nothing moves until the admin confirms and it saves.
+                        info.revert()
+                        openMoveDraft(info.oldEvent, info.event)
+                      }}
                       dateClick={(arg: DateClickArg) => {
                         if (isAdminView) {
                           openCreateSchedule(arg.dateStr)
@@ -3999,6 +4209,10 @@ function App() {
             plan.missedDate === cancelledOccurrenceModal.occurrenceDate &&
             plan.studentId === null,
         )
+        const movedToSchedule = getMovedToSchedule(
+          cancelledSchedule.id,
+          cancelledOccurrenceModal.occurrenceDate,
+        )
 
         return (
           <CancelledOccurrenceModal
@@ -4006,6 +4220,7 @@ function App() {
             teacherName={teacherMap.get(cancelledSchedule.teacherId)?.fullName ?? 'Unknown Teacher'}
             occurrenceDate={cancelledOccurrenceModal.occurrenceDate}
             cancelReason={exception?.reason ?? null}
+            movedToDate={movedToSchedule?.scheduledDate ?? null}
             onClose={closeCancelledOccurrenceOptions}
             onRestore={() => {
               const { scheduleId, occurrenceDate } = cancelledOccurrenceModal
@@ -4156,6 +4371,20 @@ function App() {
               ?.classroomId ?? null,
             attendanceModal.occurrenceDate,
           )}
+        />
+      )}
+
+      {moveDraft && (
+        <MoveClassModal
+          key={`${moveDraft.scheduleId}-${moveDraft.fromDate}-${moveDraft.toDate}`}
+          draft={moveDraft}
+          isSaving={isSavingMove}
+          error={moveError}
+          onClose={() => {
+            setMoveDraft(null)
+            setMoveError(null)
+          }}
+          onConfirm={(input) => void handleConfirmMove(input)}
         />
       )}
 

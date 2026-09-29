@@ -258,6 +258,7 @@ export function buildScheduleEvents(
                 isMakeupOnly: true,
                 occurrenceDate: date,
               },
+              startEditable: false,
             })
           } else if (classMinutes > 0) {
             extendedEvents.push({
@@ -269,6 +270,8 @@ export function buildScheduleEvents(
                 ...shared.extendedProps,
                 occurrenceDate: date,
               },
+              // Carries make-up minutes: change the plan, not the card.
+              startEditable: false,
             })
           }
         }
@@ -326,6 +329,7 @@ export function buildScheduleEvents(
             occurrenceDate: exception.exceptionDate,
             cancelReason: exception.reason ?? '',
           },
+          startEditable: false,
         }))
 
         return [recurringEvent, ...cancelledEvents, ...extendedEvents, ...makeupOnlyEvents]

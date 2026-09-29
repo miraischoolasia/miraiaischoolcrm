@@ -54,6 +54,7 @@ export function buildHolidayEvents(holidays: PublicHoliday[]): EventInput[] {
     extendedProps: {
       isHoliday: true,
     },
+    startEditable: false,
   }))
 }
 

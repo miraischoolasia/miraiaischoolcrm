@@ -142,6 +142,7 @@ export function mapScheduleExceptionRow(row: ScheduleExceptionRow): ScheduleExce
     scheduleId: row.schedule_id,
     exceptionDate: row.exception_date,
     reason: row.reason,
+    movedToScheduleId: row.moved_to_schedule_id ?? null,
   }
 }
 

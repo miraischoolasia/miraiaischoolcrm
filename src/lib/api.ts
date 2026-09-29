@@ -14,7 +14,12 @@ import {
   mapTeacherRow,
   mapTrialBookingRow,
 } from './mappers'
-import type { LessonLogStudent, LessonLogStudentReview, LessonLogSummary } from '../types/domain'
+import type {
+  LessonLogStudent,
+  LessonLogStudentReview,
+  LessonLogSummary,
+  ScheduleExceptionRow,
+} from '../types/domain'
 
 function isMissingTableError(error: { code?: string }) {
   return error.code === 'PGRST205' || error.code === '42P01'
@@ -171,10 +176,26 @@ export async function fetchScheduleExceptionsFromSupabase() {
     return []
   }
 
-  const { data, error } = await supabase
-    .from('schedule_exceptions')
-    .select('id, schedule_id, exception_date, reason')
-    .order('exception_date')
+  const select = async (columns: string) => {
+    const result = await supabase!
+      .from('schedule_exceptions')
+      .select(columns)
+      .order('exception_date')
+    return {
+      data: result.data as unknown as ScheduleExceptionRow[] | null,
+      error: result.error,
+    }
+  }
+
+  let { data, error } = await select(
+    'id, schedule_id, exception_date, reason, moved_to_schedule_id',
+  )
+
+  // Before the drag-to-move migration the moved_to_schedule_id column does
+  // not exist yet: load without it rather than failing the workspace.
+  if (error?.code === '42703') {
+    ;({ data, error } = await select('id, schedule_id, exception_date, reason'))
+  }
 
   if (error) {
     // Skipped days are optional decoration on the calendar. If the frontend
@@ -188,7 +209,7 @@ export async function fetchScheduleExceptionsFromSupabase() {
     throw error
   }
 
-  return data.map(mapScheduleExceptionRow)
+  return (data ?? []).map(mapScheduleExceptionRow)
 }
 
 export async function fetchTrialBookingsFromSupabase() {

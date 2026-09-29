@@ -507,6 +507,7 @@ export type Database = {
           schedule_id: number
           exception_date: string
           reason: string | null
+          moved_to_schedule_id: number | null
           created_by: number | null
           created_at: string
         }
@@ -515,6 +516,7 @@ export type Database = {
           schedule_id: number
           exception_date: string
           reason?: string | null
+          moved_to_schedule_id?: number | null
           created_by?: number | null
           created_at?: string
         }
@@ -523,6 +525,7 @@ export type Database = {
           schedule_id?: number
           exception_date?: string
           reason?: string | null
+          moved_to_schedule_id?: number | null
           created_by?: number | null
           created_at?: string
         }
@@ -899,6 +902,26 @@ export type Database = {
           p_occurrence_date: string
         }
         Returns: undefined
+      }
+      move_class_occurrence: {
+        Args: {
+          p_schedule_id: number
+          p_from_date: string
+          p_to_date: string
+          p_start_time: string
+          p_end_time: string
+          p_reason?: string | null
+        }
+        Returns: number
+      }
+      move_trial_bookings: {
+        Args: {
+          p_from_schedule_id: number
+          p_from_date: string
+          p_to_schedule_id: number
+          p_to_date: string
+        }
+        Returns: number
       }
       create_student_record: {
         Args: {

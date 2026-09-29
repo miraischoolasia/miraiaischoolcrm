@@ -7,6 +7,8 @@ type CancelledOccurrenceModalProps = {
   teacherName: string
   occurrenceDate: string
   cancelReason: string | null
+  // Set when this day was dragged to another date: the replacement's date.
+  movedToDate?: string | null
   onClose: () => void
   onRestore: () => void
   onAddReplacement: () => void
@@ -21,6 +23,7 @@ export function CancelledOccurrenceModal({
   teacherName,
   occurrenceDate,
   cancelReason,
+  movedToDate = null,
   onClose,
   onRestore,
   onAddReplacement,
@@ -58,7 +61,7 @@ export function CancelledOccurrenceModal({
             Make-up planned: {makeupSummary}
           </div>
         )}
-        {onArrangeMakeup && (
+        {!movedToDate && onArrangeMakeup && (
         <button
           type="button"
           onClick={onArrangeMakeup}
@@ -67,6 +70,7 @@ export function CancelledOccurrenceModal({
           {makeupSummary ? 'Edit Make-up Plan' : 'Make Up by Extending Classes'}
         </button>
         )}
+        {!movedToDate && (
         <button
           type="button"
           onClick={onAddReplacement}
@@ -74,12 +78,13 @@ export function CancelledOccurrenceModal({
         >
           Add Replacement Class
         </button>
+        )}
         <button
           type="button"
           onClick={onRestore}
           className="w-full rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
         >
-          Restore This Day
+          {movedToDate ? `Undo Move (back to ${formatDate(occurrenceDate)})` : 'Restore This Day'}
         </button>
       </div>
     </ModalShell>

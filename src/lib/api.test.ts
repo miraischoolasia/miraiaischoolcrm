@@ -2,13 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   result: { data: null as unknown, error: null as null | { code: string; message: string } },
+  // Results handed out before falling back to `result`, one per query.
+  queue: [] as { data: unknown; error: null | { code: string; message: string } }[],
 }))
 
 vi.mock('./supabase', () => ({
   supabase: {
     from: () => ({
       select: () => ({
-        order: async () => mocks.result,
+        order: async () => mocks.queue.shift() ?? mocks.result,
       }),
     }),
   },
@@ -19,6 +21,7 @@ import { fetchScheduleExceptionsFromSupabase, fetchTrialBookingsFromSupabase } f
 describe('fetchScheduleExceptionsFromSupabase', () => {
   beforeEach(() => {
     mocks.result = { data: null, error: null }
+    mocks.queue = []
   })
 
   it('maps rows from the schedule_exceptions table', async () => {
@@ -28,7 +31,7 @@ describe('fetchScheduleExceptionsFromSupabase', () => {
     }
 
     await expect(fetchScheduleExceptionsFromSupabase()).resolves.toEqual([
-      { id: 1, scheduleId: 10, exceptionDate: '2026-12-01', reason: 'Leave' },
+      { id: 1, scheduleId: 10, exceptionDate: '2026-12-01', reason: 'Leave', movedToScheduleId: null },
     ])
   })
 
@@ -40,6 +43,18 @@ describe('fetchScheduleExceptionsFromSupabase', () => {
       await expect(fetchScheduleExceptionsFromSupabase()).resolves.toEqual([])
     },
   )
+
+  it('loads without moved_to_schedule_id before that column exists', async () => {
+    mocks.queue = [{ data: null, error: { code: '42703', message: 'column does not exist' } }]
+    mocks.result = {
+      data: [{ id: 1, schedule_id: 10, exception_date: '2026-12-01', reason: null }],
+      error: null,
+    }
+
+    await expect(fetchScheduleExceptionsFromSupabase()).resolves.toEqual([
+      { id: 1, scheduleId: 10, exceptionDate: '2026-12-01', reason: null, movedToScheduleId: null },
+    ])
+  })
 
   it('still surfaces any other database error', async () => {
     const error = { code: '42501', message: 'permission denied' }

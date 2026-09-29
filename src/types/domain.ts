@@ -189,6 +189,9 @@ export type ScheduleException = {
   scheduleId: number
   exceptionDate: string
   reason: string | null
+  // Set when the day was dragged to another date: the replacement class
+  // created for it. Restoring the day removes that replacement.
+  movedToScheduleId?: number | null
 }
 
 // A missed class (whole class, or one student) made up by adding minutes
@@ -463,7 +466,10 @@ export type TrialBookingRow = Pick<
 export type ScheduleExceptionRow = Pick<
   Database['public']['Tables']['schedule_exceptions']['Row'],
   'id' | 'schedule_id' | 'exception_date' | 'reason'
->
+> &
+  Partial<
+    Pick<Database['public']['Tables']['schedule_exceptions']['Row'], 'moved_to_schedule_id'>
+  >
 
 export type MakeupPlanRow = Pick<
   Database['public']['Tables']['makeup_plans']['Row'],
