@@ -186,13 +186,16 @@ export function MoveClassModal({
           </p>
         )}
 
-        <button
-          type="submit"
-          disabled={isSaving}
-          className="w-full rounded-xl bg-[#fc0c97] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#de0a84] disabled:opacity-60"
-        >
-          {isSaving ? 'Moving...' : 'Confirm Move'}
-        </button>
+        {/* Wrapped: the last child of a modal form becomes the sticky footer. */}
+        <div>
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="w-full rounded-xl bg-[#fc0c97] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#de0a84] disabled:opacity-60"
+          >
+            {isSaving ? 'Moving...' : 'Confirm Move'}
+          </button>
+        </div>
       </form>
     </ModalShell>
   )
