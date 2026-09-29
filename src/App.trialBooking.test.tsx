@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   rpc: vi.fn(),
   role: 'admin' as 'admin' | 'teacher',
   latestLessonLog: vi.fn(),
+  lessonLogs: [] as unknown[],
 }))
 
 vi.mock('./lib/supabase', () => ({
@@ -152,7 +153,7 @@ vi.mock('./lib/api', async (importOriginal) => ({
       notes: null,
     },
   ],
-  fetchLessonLogSummariesFromSupabase: async () => [],
+  fetchLessonLogSummariesFromSupabase: async () => mocks.lessonLogs,
   fetchLessonLogStudentReviewsFromSupabase: async () => [],
   fetchAdminActivityFromSupabase: async () => [],
   fetchLatestLessonLogStudents: mocks.latestLessonLog,
@@ -173,6 +174,7 @@ describe('trial slots on the calendar', () => {
     vi.clearAllMocks()
     mocks.rpc.mockResolvedValue({ data: 1, error: null })
     mocks.latestLessonLog.mockResolvedValue({ summary: null, students: [], reviews: [] })
+    mocks.lessonLogs = []
   })
 
   it('shows a slot with nobody booked as Available and one with children as booked', async () => {
@@ -318,6 +320,37 @@ describe('trial slots on the calendar', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('opens a class with attendance in as its report for the admin, with a way to the bookings', async () => {
+    const log = {
+      id: 90,
+      scheduleId: 300,
+      teacherId: 1,
+      lessonDate: '2026-09-26',
+      lessonRemark: 'Built a maze game',
+      submittedAt: '2026-09-26T04:00:00Z',
+      revisionNumber: 1,
+      parentLogId: null,
+    }
+    mocks.lessonLogs = [log]
+    mocks.latestLessonLog.mockResolvedValue({
+      summary: log,
+      students: [{ id: 1, lessonLogId: 90, studentId: 501, attendanceStatus: 'present' }],
+      reviews: [],
+    })
+    await signIn('admin')
+
+    await userEvent.click(slot('10:00'))
+
+    expect(await screen.findByText('Attendance & Reviews')).toBeInTheDocument()
+    const dialog = within(screen.getByRole('dialog'))
+    expect(await dialog.findByDisplayValue('Built a maze game')).toBeInTheDocument()
+    expect(dialog.getByText(/Teacher: Jia Hui/)).toBeInTheDocument()
+    expect(screen.queryByText('Trial slot')).not.toBeInTheDocument()
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Manage Bookings' }))
+    expect(screen.queryByText('Attendance & Reviews')).not.toBeInTheDocument()
   })
 
   it('lets an admin reach the same attendance flow from Take Attendance', async () => {

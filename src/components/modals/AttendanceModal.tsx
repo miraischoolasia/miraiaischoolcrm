@@ -23,6 +23,11 @@ type AttendanceModalProps = {
   attendanceLocked: boolean
   // A class after today: view the roster only, attendance opens on the day.
   isUpcoming?: boolean
+  // Class teacher of a submitted log, shown so an admin reviewing it knows
+  // whose feedback it is.
+  teacherName?: string | null
+  // Admin only: a way on from the class report to the schedule/bookings.
+  adminAction?: { label: string; onClick: () => void }
   isLoadingAttendance: boolean
   attendanceRoster: Student[]
   attendanceStatuses: Record<number, AttendanceStatus>
@@ -52,6 +57,8 @@ export function AttendanceModal({
   attendanceExistingLog,
   attendanceLocked,
   isUpcoming = false,
+  teacherName = null,
+  adminAction,
   isLoadingAttendance,
   attendanceRoster,
   attendanceStatuses,
@@ -73,7 +80,11 @@ export function AttendanceModal({
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-sm font-medium text-[#be185d]">
-              {isUpcoming ? 'Upcoming Class' : 'Attendance Submission'}
+              {isUpcoming
+                ? 'Upcoming Class'
+                : attendanceExistingLog
+                  ? 'Attendance & Reviews'
+                  : 'Attendance Submission'}
             </div>
             <h2 className="mt-1 text-2xl font-semibold text-slate-900">
               {attendanceModal.title}
@@ -88,6 +99,17 @@ export function AttendanceModal({
                   : `Editing revision ${attendanceExistingLog.revisionNumber} within 24 hours`
                 : 'New lesson attendance submission'}
             </p>
+            {attendanceExistingLog && (
+              <p className="mt-1 text-sm text-slate-500">
+                {teacherName ? `Teacher: ${teacherName} · ` : ''}Submitted{' '}
+                {new Date(attendanceExistingLog.submittedAt).toLocaleString('en-MY', {
+                  day: 'numeric',
+                  month: 'short',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+              </p>
+            )}
             {makeupNotes.length > 0 && (
               <div className="mt-3 space-y-1 rounded-xl bg-violet-50 px-3 py-2 text-sm text-violet-800">
                 {makeupNotes.map((note) => (
@@ -287,6 +309,15 @@ export function AttendanceModal({
         )}
 
         <div className="flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-end">
+          {adminAction && (
+            <button
+              type="button"
+              onClick={adminAction.onClick}
+              className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 sm:mr-auto"
+            >
+              {adminAction.label}
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}

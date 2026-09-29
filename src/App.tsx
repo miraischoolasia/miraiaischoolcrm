@@ -3206,6 +3206,26 @@ function App() {
     }
   }
 
+  // From a class report, the admin's way on: the trial slot's bookings, or
+  // the timetable entry (cancel this day, change time, ...).
+  function getAttendanceAdminAction(modal: { scheduleId: number; occurrenceDate: string }) {
+    const schedule = schedules.find((entry) => entry.id === modal.scheduleId)
+    const classroom = schedule?.classroomId ? classroomMap.get(schedule.classroomId) : null
+    const isTrial = classroom?.category === 'trial'
+
+    return {
+      label: isTrial ? 'Manage Bookings' : 'Edit Schedule',
+      onClick: () => {
+        closeAttendanceModal()
+        if (isTrial) {
+          openTrialBooking(modal.scheduleId, modal.occurrenceDate)
+        } else {
+          openEditSchedule(modal.scheduleId, modal.occurrenceDate)
+        }
+      },
+    }
+  }
+
   function closeAttendanceModal() {
     setAttendanceModal(null)
     setAttendanceSaveError(null)
@@ -3904,6 +3924,18 @@ function App() {
                           return
                         }
 
+                        // A class with attendance already in opens as its
+                        // report (attendance, reviews, remark) for everyone;
+                        // the admin reaches the schedule from there.
+                        if (latestLessonLogMap.has(`${scheduleId}:${occurrenceDate}`)) {
+                          void openAttendanceForEvent(
+                            scheduleId,
+                            occurrenceDate,
+                            arg.event.title,
+                          )
+                          return
+                        }
+
                         if (arg.event.extendedProps.classKind === 'trial') {
                           // Admins manage who's booked; teachers go straight
                           // to attendance, same as every other class type.
@@ -4349,6 +4381,14 @@ function App() {
           attendanceExistingLog={attendanceExistingLog}
           attendanceLocked={attendanceLocked}
           isUpcoming={attendanceUpcoming}
+          teacherName={
+            attendanceExistingLog
+              ? teacherMap.get(attendanceExistingLog.teacherId)?.fullName ?? null
+              : null
+          }
+          adminAction={
+            isAdminView ? getAttendanceAdminAction(attendanceModal) : undefined
+          }
           isLoadingAttendance={isLoadingAttendance}
           attendanceRoster={attendanceRoster}
           attendanceStatuses={attendanceStatuses}
