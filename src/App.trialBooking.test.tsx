@@ -298,6 +298,28 @@ describe('trial slots on the calendar', () => {
     expect(mocks.latestLessonLog).toHaveBeenCalledWith(300, '2026-09-26')
   })
 
+  it('lets a teacher open a class after today to see who is coming, without taking attendance', async () => {
+    // Only Date is faked, so 2026-09-26 is a future class day.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 20, 12))
+
+    try {
+      await signIn('teacher')
+      await userEvent.click(slot('10:00'))
+
+      expect(await screen.findByText('Upcoming Class')).toBeInTheDocument()
+      const dialog = within(screen.getByRole('dialog'))
+      expect(dialog.getByText('Aiden')).toBeInTheDocument()
+      expect(dialog.getByText(/attendance and reviews open on the day/)).toBeInTheDocument()
+      expect(dialog.queryByRole('button', { name: 'Present' })).not.toBeInTheDocument()
+      expect(dialog.queryByRole('button', { name: 'Submit Attendance' })).not.toBeInTheDocument()
+      expect(dialog.queryByText('Lesson Remark')).not.toBeInTheDocument()
+      expect(mocks.latestLessonLog).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('lets an admin reach the same attendance flow from Take Attendance', async () => {
     await signIn()
 

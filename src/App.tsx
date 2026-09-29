@@ -364,6 +364,8 @@ function App() {
   const [attendanceExistingLog, setAttendanceExistingLog] =
     useState<LessonLogSummary | null>(null)
   const [attendanceLocked, setAttendanceLocked] = useState(false)
+  // A class later than today opens read-only: who is coming, no attendance yet.
+  const [attendanceUpcoming, setAttendanceUpcoming] = useState(false)
   const [isLoadingAttendance, setIsLoadingAttendance] = useState(false)
 
   const teacherMap = useMemo(
@@ -3144,11 +3146,9 @@ function App() {
     occurrenceDate: string,
     title: string,
   ) {
-    // Mirrors submit_lesson_attendance: no attendance ahead of the class day.
-    if (occurrenceDate > todayString) {
-      showToast('Attendance opens on the day of the class.')
-      return
-    }
+    // Mirrors submit_lesson_attendance: no attendance ahead of the class day,
+    // but the class can still be opened to see who is in it.
+    const isUpcoming = occurrenceDate > todayString
 
     setAttendanceSaveError(null)
     setAttendanceModal({
@@ -3161,7 +3161,13 @@ function App() {
     setAttendanceRosterIds([])
     setAttendanceReviews({})
     setAttendanceExistingLog(null)
-    setAttendanceLocked(false)
+    setAttendanceLocked(isUpcoming)
+    setAttendanceUpcoming(isUpcoming)
+
+    if (isUpcoming) {
+      setAttendanceRosterIds(getScheduleRosterStudentIds(scheduleId, occurrenceDate))
+      return
+    }
 
     try {
       setIsLoadingAttendance(true)
@@ -3216,6 +3222,7 @@ function App() {
     setAttendanceReviews({})
     setAttendanceExistingLog(null)
     setAttendanceLocked(false)
+    setAttendanceUpcoming(false)
   }
 
   function updateAttendanceReviewScore(
@@ -4348,6 +4355,7 @@ function App() {
           attendanceModal={attendanceModal}
           attendanceExistingLog={attendanceExistingLog}
           attendanceLocked={attendanceLocked}
+          isUpcoming={attendanceUpcoming}
           isLoadingAttendance={isLoadingAttendance}
           attendanceRoster={attendanceRoster}
           attendanceStatuses={attendanceStatuses}

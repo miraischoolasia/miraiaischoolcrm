@@ -21,6 +21,8 @@ type AttendanceModalProps = {
   attendanceModal: AttendanceModalState
   attendanceExistingLog: LessonLogSummary | null
   attendanceLocked: boolean
+  // A class after today: view the roster only, attendance opens on the day.
+  isUpcoming?: boolean
   isLoadingAttendance: boolean
   attendanceRoster: Student[]
   attendanceStatuses: Record<number, AttendanceStatus>
@@ -49,6 +51,7 @@ export function AttendanceModal({
   attendanceModal,
   attendanceExistingLog,
   attendanceLocked,
+  isUpcoming = false,
   isLoadingAttendance,
   attendanceRoster,
   attendanceStatuses,
@@ -70,14 +73,16 @@ export function AttendanceModal({
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-sm font-medium text-[#be185d]">
-              Attendance Submission
+              {isUpcoming ? 'Upcoming Class' : 'Attendance Submission'}
             </div>
             <h2 className="mt-1 text-2xl font-semibold text-slate-900">
               {attendanceModal.title}
             </h2>
             <p className="mt-2 text-sm text-slate-500">
               {formatDate(attendanceModal.occurrenceDate)} -{' '}
-              {attendanceExistingLog
+              {isUpcoming
+                ? 'View only - attendance and reviews open on the day of the class'
+                : attendanceExistingLog
                 ? attendanceLocked
                   ? 'Locked after 24 hours'
                   : `Editing revision ${attendanceExistingLog.revisionNumber} within 24 hours`
@@ -150,6 +155,7 @@ export function AttendanceModal({
                           </div>
                         </div>
 
+                        {!isUpcoming && (
                         <div className="grid grid-cols-3 gap-2">
                           {([
                             ['present', 'Present'],
@@ -185,9 +191,10 @@ export function AttendanceModal({
                             )
                           })}
                         </div>
+                        )}
                       </div>
 
-                      {currentStatus === 'present' && (
+                      {!isUpcoming && currentStatus === 'present' && (
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                           <div className="mb-3 text-sm font-semibold text-slate-900">
                             Student Performance Review
@@ -261,6 +268,7 @@ export function AttendanceModal({
               )}
             </div>
 
+            {!isUpcoming && (
             <label className="block space-y-2">
               <span className="text-sm font-semibold text-slate-700">
                 Lesson Remark
@@ -274,6 +282,7 @@ export function AttendanceModal({
                 className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2] disabled:bg-slate-50"
               />
             </label>
+            )}
           </>
         )}
 
