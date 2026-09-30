@@ -139,12 +139,14 @@ export function LeadsSection({
         )
       : leads
   ).filter(matchesPic)
-  const filteredLeads = searchedLeads.filter((lead) => {
-    const matchesStage = stageFilter === 'all' ? true : lead.status === stageFilter
-    const matchesDateRange =
-      (!dateFrom || lead.addedDate >= dateFrom) && (!dateTo || lead.addedDate <= dateTo)
-    return matchesStage && matchesDateRange
-  })
+  // Search, PIC and date apply to both Pipeline and Board; the stage filter
+  // only to Pipeline (the board's columns are the stages).
+  const datedLeads = searchedLeads.filter(
+    (lead) => (!dateFrom || lead.addedDate >= dateFrom) && (!dateTo || lead.addedDate <= dateTo),
+  )
+  const filteredLeads = datedLeads.filter((lead) =>
+    stageFilter === 'all' ? true : lead.status === stageFilter,
+  )
 
   const pageCount = Math.max(1, Math.ceil(filteredLeads.length / LEADS_PAGE_SIZE))
   const currentPage = Math.min(page, pageCount)
@@ -341,6 +343,8 @@ export function LeadsSection({
                   </option>
                 ))}
               </select>
+              </>
+              )}
 
               <div className="flex items-center gap-2">
                 <input
@@ -374,15 +378,15 @@ export function LeadsSection({
                   </button>
                 )}
               </div>
-              </>
-              )}
             </div>
           )}
         </div>
 
         {view === 'board' && (
           <LeadKanbanBoard
-            leads={searchedLeads}
+            // A new filter starts every column back on its first page.
+            key={`${normalizedSearch}|${picFilter}|${dateFrom}|${dateTo}`}
+            leads={datedLeads}
             picLabel={(lead) => (lead.picId === null ? null : picLabel(lead))}
             onChangeStatus={onChangeStatus}
             onConvertLead={onConvertLead}

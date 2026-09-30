@@ -77,4 +77,23 @@ describe('LeadsSection', () => {
     expect(tableRows()).toHaveLength(1)
     expect(within(tableRows()[0]).getByText('0100000002')).toBeInTheDocument()
   })
+
+  it('shows 15 leads per board column with a pager, and filters the board by date', async () => {
+    const leads = Array.from({ length: 18 }, (_, index) => makeLead(index + 1, null))
+    leads[0] = { ...leads[0], addedDate: '2020-01-01' }
+    renderSection(leads)
+
+    await userEvent.click(screen.getByRole('button', { name: /Board/ }))
+    // The default date range (last month) leaves out the 2020 lead.
+    expect(screen.getByText('1 / 2')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Edit lead' })).toHaveLength(15)
+
+    await userEvent.click(screen.getByRole('button', { name: 'New: next page' }))
+    expect(screen.getAllByRole('button', { name: 'Edit lead' })).toHaveLength(2)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(screen.getByText('1 / 2')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'New: next page' }))
+    expect(screen.getAllByRole('button', { name: 'Edit lead' })).toHaveLength(3)
+  })
 })

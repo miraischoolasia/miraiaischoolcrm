@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PencilSimple, Phone } from '@phosphor-icons/react'
+import { CaretLeft, CaretRight, PencilSimple, Phone } from '@phosphor-icons/react'
 import { cn } from '../lib/cn'
 import { getTodayString } from '../domain/studentStatus'
 import { leadStatusOptions } from '../lib/constants'
@@ -13,6 +13,9 @@ function formatChildren(children: LeadChild[]) {
     .map((child) => (child.name ? `${child.name} (${child.age})` : `${child.age} yrs`))
     .join(', ')
 }
+
+// Each column shows this many leads at a time, with its own pager.
+export const BOARD_PAGE_SIZE = 15
 
 const columnAccentClass: Record<LeadStatus, string> = {
   new: 'border-t-slate-400',
@@ -65,11 +68,20 @@ export function LeadKanbanBoard({
   const todayString = getTodayString()
   const [dragOverStage, setDragOverStage] = useState<LeadStatus | null>(null)
   const [draggingLeadId, setDraggingLeadId] = useState<number | null>(null)
+  const [pageByStage, setPageByStage] = useState<Partial<Record<LeadStatus, number>>>({})
 
   return (
     <div className="flex gap-4 overflow-x-auto p-5 sm:p-6">
       {leadStatusOptions.map((stage) => {
-        const stageLeads = leads.filter((lead) => lead.status === stage.key)
+        const allStageLeads = leads.filter((lead) => lead.status === stage.key)
+        const pageCount = Math.max(1, Math.ceil(allStageLeads.length / BOARD_PAGE_SIZE))
+        const page = Math.min(pageByStage[stage.key] ?? 1, pageCount)
+        const stageLeads = allStageLeads.slice(
+          (page - 1) * BOARD_PAGE_SIZE,
+          page * BOARD_PAGE_SIZE,
+        )
+        const goToPage = (next: number) =>
+          setPageByStage((current) => ({ ...current, [stage.key]: next }))
 
         return (
           <div
@@ -104,7 +116,7 @@ export function LeadKanbanBoard({
             <div className="flex items-center justify-between px-4 py-3">
               <span className="text-sm font-semibold text-slate-700">{stage.label}</span>
               <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-500">
-                {stageLeads.length}
+                {allStageLeads.length}
               </span>
             </div>
 
@@ -181,6 +193,32 @@ export function LeadKanbanBoard({
                 )
               })}
             </div>
+
+            {pageCount > 1 && (
+              <div className="flex items-center justify-between px-3 pb-3 text-xs text-slate-500">
+                <button
+                  type="button"
+                  aria-label={`${stage.label}: previous page`}
+                  disabled={page === 1}
+                  onClick={() => goToPage(page - 1)}
+                  className="rounded-lg border border-slate-200 bg-white p-1.5 transition hover:bg-slate-100 disabled:opacity-40"
+                >
+                  <CaretLeft size={12} aria-hidden="true" />
+                </button>
+                <span>
+                  {page} / {pageCount}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`${stage.label}: next page`}
+                  disabled={page === pageCount}
+                  onClick={() => goToPage(page + 1)}
+                  className="rounded-lg border border-slate-200 bg-white p-1.5 transition hover:bg-slate-100 disabled:opacity-40"
+                >
+                  <CaretRight size={12} aria-hidden="true" />
+                </button>
+              </div>
+            )}
           </div>
         )
       })}
