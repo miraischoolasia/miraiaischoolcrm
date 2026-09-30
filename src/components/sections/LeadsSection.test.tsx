@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { LeadsSection } from './LeadsSection'
@@ -95,5 +95,23 @@ describe('LeadsSection', () => {
     expect(screen.getByText('1 / 2')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'New: next page' }))
     expect(screen.getAllByRole('button', { name: 'Edit lead' })).toHaveLength(3)
+  })
+
+  it('scrolls the board sideways when its background is dragged, but not from a card', async () => {
+    renderSection([makeLead(1, null)])
+    await userEvent.click(screen.getByRole('button', { name: /Board/ }))
+    const board = screen.getByTestId('lead-board')
+    board.scrollLeft = 300
+
+    fireEvent.mouseDown(board, { button: 0, clientX: 500 })
+    fireEvent.mouseMove(window, { clientX: 300 })
+    fireEvent.mouseUp(window)
+    expect(board.scrollLeft).toBe(500)
+
+    const card = screen.getByRole('button', { name: 'Edit lead' }).closest('[draggable="true"]')!
+    fireEvent.mouseDown(card, { button: 0, clientX: 500 })
+    fireEvent.mouseMove(window, { clientX: 100 })
+    fireEvent.mouseUp(window)
+    expect(board.scrollLeft).toBe(500)
   })
 })

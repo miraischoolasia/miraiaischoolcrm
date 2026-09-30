@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { CaretLeft, CaretRight, PencilSimple, Phone } from '@phosphor-icons/react'
 import { cn } from '../lib/cn'
 import { getTodayString } from '../domain/studentStatus'
@@ -69,9 +69,50 @@ export function LeadKanbanBoard({
   const [dragOverStage, setDragOverStage] = useState<LeadStatus | null>(null)
   const [draggingLeadId, setDraggingLeadId] = useState<number | null>(null)
   const [pageByStage, setPageByStage] = useState<Partial<Record<LeadStatus, number>>>({})
+  const boardRef = useRef<HTMLDivElement>(null)
+  const [isPanning, setIsPanning] = useState(false)
+
+  // Press on the board's background and drag to scroll it sideways, instead
+  // of reaching for the scrollbar at the bottom. Cards keep their own drag
+  // (to change stage), and buttons/fields keep their clicks.
+  function startPan(event: React.MouseEvent<HTMLDivElement>) {
+    const board = boardRef.current
+    const target = event.target as HTMLElement
+    if (
+      !board ||
+      event.button !== 0 ||
+      target.closest('[draggable="true"], button, a, input, select, textarea')
+    ) {
+      return
+    }
+
+    event.preventDefault()
+    const startX = event.clientX
+    const startScrollLeft = board.scrollLeft
+    setIsPanning(true)
+
+    function onMove(moveEvent: MouseEvent) {
+      board!.scrollLeft = startScrollLeft - (moveEvent.clientX - startX)
+    }
+    function onUp() {
+      setIsPanning(false)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
 
   return (
-    <div className="flex gap-4 overflow-x-auto p-5 sm:p-6">
+    <div
+      ref={boardRef}
+      data-testid="lead-board"
+      onMouseDown={startPan}
+      className={cn(
+        'flex gap-4 overflow-x-auto p-5 sm:p-6',
+        isPanning ? 'cursor-grabbing select-none' : 'cursor-grab',
+      )}
+    >
       {leadStatusOptions.map((stage) => {
         const allStageLeads = leads.filter((lead) => lead.status === stage.key)
         const pageCount = Math.max(1, Math.ceil(allStageLeads.length / BOARD_PAGE_SIZE))
