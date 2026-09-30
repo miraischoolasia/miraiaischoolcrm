@@ -41,6 +41,8 @@ import type {
   FilterKey,
   Lead,
   LeadFormState,
+  LeadOption,
+  LeadOptionKind,
   LeadStatus,
   LessonLogStudentReview,
   LessonLogSummary,
@@ -64,6 +66,7 @@ import {
   getLatestLessonLogMap,
   mapReviewToFormState,
   mapScheduleParticipantRow,
+  mapLeadOptionRow,
   mapScheduleRow,
 } from './lib/mappers'
 import { buildAttendanceSubmission } from './lib/attendance'
@@ -74,6 +77,7 @@ import {
   fetchAdminActivityFromSupabase,
   fetchClassroomsFromSupabase,
   fetchLatestLessonLogStudents,
+  fetchLeadOptionsFromSupabase,
   fetchLeadsFromSupabase,
   fetchMakeupPlansFromSupabase,
   fetchStudentAttendanceRows,
@@ -117,6 +121,7 @@ import { ClassroomModal } from './components/modals/ClassroomModal'
 import { TeacherModal } from './components/modals/TeacherModal'
 import { DeleteTeacherModal } from './components/modals/DeleteTeacherModal'
 import { LeadModal } from './components/modals/LeadModal'
+import { LeadOptionsModal } from './components/modals/LeadOptionsModal'
 import { LeadBulkImportModal } from './components/modals/LeadBulkImportModal'
 import { PreviewStudentBulkImportModal } from './components/modals/PreviewStudentBulkImportModal'
 import { LeadFollowUpModal } from './components/modals/LeadFollowUpModal'
@@ -152,6 +157,9 @@ function App() {
   const [students, setStudents] = useState<Student[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [leads, setLeads] = useState<Lead[]>([])
+  // Lead Source and PIC names the admin manages.
+  const [leadOptions, setLeadOptions] = useState<LeadOption[]>([])
+  const [isLeadOptionsOpen, setIsLeadOptionsOpen] = useState(false)
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [scheduleParticipants, setScheduleParticipants] = useState<
     ScheduleParticipant[]
@@ -324,7 +332,8 @@ function App() {
   const [leadFormState, setLeadFormState] = useState<LeadFormState>({
     fullName: '',
     phone: '',
-    source: 'other',
+    sourceId: '',
+    picId: '',
     status: 'new',
     children: [],
     notes: '',
@@ -682,6 +691,7 @@ function App() {
           nextAdminActivities,
           nextLeads,
           nextMakeupPlans,
+          nextLeadOptions,
         ] = await Promise.all([
           fetchClassroomsFromSupabase(),
           fetchTeachersFromSupabase(),
@@ -695,6 +705,7 @@ function App() {
           fetchAdminActivityFromSupabase(),
           fetchLeadsFromSupabase(),
           fetchMakeupPlansFromSupabase(),
+          fetchLeadOptionsFromSupabase(),
         ])
 
         if (!cancelled) {
@@ -710,6 +721,7 @@ function App() {
           setAdminActivities(nextAdminActivities)
           setLeads(nextLeads)
           setMakeupPlans(nextMakeupPlans)
+          setLeadOptions(nextLeadOptions)
           setLoadedUserId(authUserId)
         }
       } catch (error) {
@@ -1165,10 +1177,15 @@ function App() {
     setLeadSaveError(null)
     setEditingLeadId(null)
     setIsCreateLeadOpen(true)
+    // New leads start on the "Other" source, as before; PIC starts empty.
+    const otherSource = leadOptions.find(
+      (option) => option.kind === 'source' && option.legacyKey === 'other',
+    )
     setLeadFormState({
       fullName: '',
       phone: '',
-      source: 'other',
+      sourceId: otherSource ? String(otherSource.id) : '',
+      picId: '',
       status: 'new',
       children: [],
       notes: '',
@@ -1188,7 +1205,8 @@ function App() {
     setLeadFormState({
       fullName: lead.fullName ?? '',
       phone: lead.phone ?? '',
-      source: lead.source,
+      sourceId: lead.sourceId !== null ? String(lead.sourceId) : '',
+      picId: lead.picId !== null ? String(lead.picId) : '',
       status: lead.status,
       children: lead.children.map((child) => ({
         name: child.name,
@@ -1204,6 +1222,79 @@ function App() {
     setIsCreateLeadOpen(false)
     setEditingLeadId(null)
     setLeadSaveError(null)
+  }
+
+  // Adds a Source or PIC name; returns it so a picker can select it at once.
+  async function handleAddLeadOption(kind: LeadOptionKind, label: string) {
+    if (!supabase) {
+      return null
+    }
+
+    const { data, error } = await supabase
+      .from('lead_options')
+      .insert({ kind, label: label.trim() })
+      .select('id, kind, label, is_active, legacy_key')
+      .single()
+
+    if (error) {
+      showToast(
+        error.code === '23505'
+          ? `"${label.trim()}" is already in the list.`
+          : getErrorMessage(error, 'Failed to add this name.'),
+      )
+      return null
+    }
+
+    const option = mapLeadOptionRow(data)
+    setLeadOptions((current) => [...current, option])
+    return option
+  }
+
+  // Renaming changes the name on every lead that uses it.
+  async function handleRenameLeadOption(option: LeadOption, label: string) {
+    if (!supabase) {
+      return false
+    }
+
+    const { error } = await supabase
+      .from('lead_options')
+      .update({ label })
+      .eq('id', option.id)
+
+    if (error) {
+      showToast(
+        error.code === '23505'
+          ? `"${label}" is already in the list.`
+          : getErrorMessage(error, 'Failed to rename.'),
+      )
+      return false
+    }
+
+    setLeadOptions((current) =>
+      current.map((entry) => (entry.id === option.id ? { ...entry, label } : entry)),
+    )
+    return true
+  }
+
+  // Hidden names leave the pickers but stay on existing leads.
+  async function handleSetLeadOptionActive(option: LeadOption, isActive: boolean) {
+    if (!supabase) {
+      return
+    }
+
+    const { error } = await supabase
+      .from('lead_options')
+      .update({ is_active: isActive })
+      .eq('id', option.id)
+
+    if (error) {
+      showToast(getErrorMessage(error, 'Failed to update this name.'))
+      return
+    }
+
+    setLeadOptions((current) =>
+      current.map((entry) => (entry.id === option.id ? { ...entry, isActive } : entry)),
+    )
   }
 
   function openBulkImportLeadsModal() {
@@ -2039,7 +2130,8 @@ function App() {
       const payload = {
         full_name: fullName || null,
         phone: leadFormState.phone.trim() || null,
-        source: leadFormState.source,
+        source_id: leadFormState.sourceId ? Number(leadFormState.sourceId) : null,
+        pic_id: leadFormState.picId ? Number(leadFormState.picId) : null,
         status: leadFormState.status,
         children,
         notes: leadFormState.notes.trim() || null,
@@ -2071,7 +2163,7 @@ function App() {
         }
 
         await recordAdminActivity('lead_created', 'lead', data?.id ?? null, activityLabel, {
-          source: leadFormState.source,
+          source_id: leadFormState.sourceId ? Number(leadFormState.sourceId) : null,
         })
       }
 
@@ -3450,7 +3542,13 @@ function App() {
                 completed ? 'text-slate-500' : 'text-white/80',
               )}
             >
-              {slotBookings.map((booking) => booking.childName).join(', ')}
+              {slotBookings
+                .map((booking) =>
+                  booking.childAge !== null
+                    ? `${booking.childName} (${booking.childAge})`
+                    : booking.childName,
+                )
+                .join(', ')}
             </div>
           )}
         </div>
@@ -4042,6 +4140,8 @@ function App() {
                 onOpenFollowUp={openFollowUpModal}
                 onDeleteLead={handleDeleteLead}
                 deletingLeadId={deletingLeadId}
+                leadOptions={leadOptions}
+                onOpenLeadOptions={() => setIsLeadOptionsOpen(true)}
               />
             )}
 
@@ -4150,12 +4250,26 @@ function App() {
           onClose={closeLeadModal}
           onSubmit={handleLeadSubmit}
           onFieldChange={updateLeadForm}
+          leadOptions={leadOptions}
+          onAddLeadOption={handleAddLeadOption}
+        />
+      )}
+
+      {isLeadOptionsOpen && (
+        <LeadOptionsModal
+          options={leadOptions}
+          error={null}
+          onClose={() => setIsLeadOptionsOpen(false)}
+          onAdd={handleAddLeadOption}
+          onRename={handleRenameLeadOption}
+          onSetActive={(option, isActive) => void handleSetLeadOptionActive(option, isActive)}
         />
       )}
 
       {isBulkImportLeadsOpen && (
         <LeadBulkImportModal
           todayString={todayString}
+          sourceOptions={leadOptions}
           isImporting={isImportingLeads}
           importError={bulkImportLeadError}
           onClose={closeBulkImportLeadsModal}

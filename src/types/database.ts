@@ -241,12 +241,41 @@ export type Database = {
           },
         ]
       }
+      lead_options: {
+        Row: {
+          id: number
+          kind: 'source' | 'pic'
+          label: string
+          is_active: boolean
+          legacy_key: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          kind: 'source' | 'pic'
+          label: string
+          is_active?: boolean
+          legacy_key?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          kind?: 'source' | 'pic'
+          label?: string
+          is_active?: boolean
+          legacy_key?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           id: number
           full_name: string | null
           phone: string | null
-          source: 'walk_in' | 'referral' | 'social_media' | 'advertisement' | 'other'
+          source: string
+          source_id: number | null
+          pic_id: number | null
           status:
             | 'new'
             | 'contacted'
@@ -267,7 +296,9 @@ export type Database = {
           id?: number
           full_name?: string | null
           phone?: string | null
-          source?: 'walk_in' | 'referral' | 'social_media' | 'advertisement' | 'other'
+          source?: string
+          source_id?: number | null
+          pic_id?: number | null
           status?:
             | 'new'
             | 'contacted'
@@ -288,7 +319,9 @@ export type Database = {
           id?: number
           full_name?: string | null
           phone?: string | null
-          source?: 'walk_in' | 'referral' | 'social_media' | 'advertisement' | 'other'
+          source?: string
+          source_id?: number | null
+          pic_id?: number | null
           status?:
             | 'new'
             | 'contacted'

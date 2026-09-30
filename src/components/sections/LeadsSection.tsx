@@ -1,14 +1,17 @@
 import { useState } from 'react'
 import { cn } from '../../lib/cn'
 import { formatDate, getTodayString, parseLocalDate } from '../../domain/studentStatus'
-import { MAX_LEAD_FOLLOW_UPS, leadSourceOptions, leadStatusOptions } from '../../lib/constants'
+import { MAX_LEAD_FOLLOW_UPS, leadStatusOptions } from '../../lib/constants'
 import { SummaryBar } from '../SummaryBar'
 import { LeadTrendChart } from '../LeadTrendChart'
 import { LeadKanbanBoard } from '../LeadKanbanBoard'
 import mascotGordo from '../../assets/mascot-gordo.png'
 import {
   ArrowRight,
+  CaretLeft,
+  CaretRight,
   ChartLineUp,
+  GearSix,
   Kanban,
   ListChecks,
   MagnifyingGlass,
@@ -18,7 +21,7 @@ import {
   UploadSimple,
   UserPlus,
 } from '@phosphor-icons/react'
-import type { Lead, LeadChild, LeadStatus } from '../../types/domain'
+import type { Lead, LeadChild, LeadOption, LeadStatus } from '../../types/domain'
 
 const stageToneClass: Record<LeadStatus, string> = {
   new: 'bg-slate-100 text-slate-700',
@@ -38,7 +41,7 @@ const stageChartColor: Record<LeadStatus, string> = {
   lost: '#ef4444',
 }
 
-const sourceLabelMap = new Map(leadSourceOptions.map((option) => [option.key, option.label]))
+export const LEADS_PAGE_SIZE = 25
 
 function toDateString(date: Date) {
   const year = date.getFullYear()
@@ -73,6 +76,8 @@ type LeadsSectionProps = {
   onOpenFollowUp: (leadId: number) => void
   onDeleteLead: (leadId: number) => void
   deletingLeadId: number | null
+  leadOptions: LeadOption[]
+  onOpenLeadOptions: () => void
 }
 
 export function LeadsSection({
@@ -86,6 +91,8 @@ export function LeadsSection({
   onOpenFollowUp,
   onDeleteLead,
   deletingLeadId,
+  leadOptions,
+  onOpenLeadOptions,
 }: LeadsSectionProps) {
   const [view, setView] = useState<'pipeline' | 'board' | 'dashboard'>('pipeline')
   const [searchTerm, setSearchTerm] = useState('')
@@ -93,6 +100,23 @@ export function LeadsSection({
   const todayString = getTodayString()
   const [dateFrom, setDateFrom] = useState(() => getOneMonthAgo(todayString))
   const [dateTo, setDateTo] = useState(() => todayString)
+  // 'all', 'none' (no PIC yet) or a PIC option id.
+  const [picFilter, setPicFilter] = useState('all')
+  const [page, setPage] = useState(1)
+
+  const optionLabelById = new Map(leadOptions.map((option) => [option.id, option.label]))
+  const sourceOptions = leadOptions.filter((option) => option.kind === 'source')
+  const picOptions = leadOptions.filter((option) => option.kind === 'pic')
+  const sourceLabel = (lead: Lead) =>
+    (lead.sourceId !== null && optionLabelById.get(lead.sourceId)) || '-'
+  const picLabel = (lead: Lead) =>
+    (lead.picId !== null && optionLabelById.get(lead.picId)) || '-'
+  const matchesPic = (lead: Lead) =>
+    picFilter === 'all'
+      ? true
+      : picFilter === 'none'
+        ? lead.picId === null
+        : lead.picId === Number(picFilter)
 
   const normalizedSearch = searchTerm.trim().toLowerCase()
   const searchDigits = normalizedSearch.replace(/\D/g, '')
@@ -105,20 +129,34 @@ export function LeadsSection({
       (searchDigits.length > 0 && (value ?? '').replace(/\D/g, '').includes(searchDigits))
     )
   }
-  const searchedLeads = normalizedSearch
-    ? leads.filter(
-        (lead) =>
-          matchesText(lead.fullName) ||
-          matchesPhone(lead.phone) ||
-          lead.children.some((child) => matchesText(child.name) || matchesPhone(child.phone)),
-      )
-    : leads
+  const searchedLeads = (
+    normalizedSearch
+      ? leads.filter(
+          (lead) =>
+            matchesText(lead.fullName) ||
+            matchesPhone(lead.phone) ||
+            lead.children.some((child) => matchesText(child.name) || matchesPhone(child.phone)),
+        )
+      : leads
+  ).filter(matchesPic)
   const filteredLeads = searchedLeads.filter((lead) => {
     const matchesStage = stageFilter === 'all' ? true : lead.status === stageFilter
     const matchesDateRange =
       (!dateFrom || lead.addedDate >= dateFrom) && (!dateTo || lead.addedDate <= dateTo)
     return matchesStage && matchesDateRange
   })
+
+  const pageCount = Math.max(1, Math.ceil(filteredLeads.length / LEADS_PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount)
+  const pageStart = (currentPage - 1) * LEADS_PAGE_SIZE
+  const pagedLeads = filteredLeads.slice(pageStart, pageStart + LEADS_PAGE_SIZE)
+  // Any filter change starts again from page 1.
+  function withPageReset<T>(setter: (value: T) => void) {
+    return (value: T) => {
+      setter(value)
+      setPage(1)
+    }
+  }
 
   const openLeads = leads.filter(
     (lead) => lead.status !== 'converted' && lead.status !== 'lost',
@@ -141,10 +179,22 @@ export function LeadsSection({
     color: stageChartColor[option.key],
   }))
 
-  const sourceChartData = leadSourceOptions.map((option) => ({
-    label: option.label,
-    value: leads.filter((lead) => lead.source === option.key).length,
-  }))
+  // Hidden names still count for leads that use them.
+  const sourceChartData = sourceOptions
+    .map((option) => ({
+      label: option.label,
+      value: leads.filter((lead) => lead.sourceId === option.id).length,
+      isActive: option.isActive,
+    }))
+    .filter((entry) => entry.isActive || entry.value > 0)
+
+  const picChartData = [
+    ...picOptions.map((option) => ({
+      label: option.label,
+      value: leads.filter((lead) => lead.picId === option.id).length,
+    })),
+    { label: 'Not assigned', value: leads.filter((lead) => lead.picId === null).length },
+  ].filter((entry) => entry.value > 0)
 
   return (
     <div className="space-y-4">
@@ -218,6 +268,14 @@ export function LeadsSection({
               </div>
               <button
                 type="button"
+                onClick={onOpenLeadOptions}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                <GearSix size={16} aria-hidden="true" />
+                Sources &amp; PIC
+              </button>
+              <button
+                type="button"
                 onClick={onOpenBulkImportLeads}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               >
@@ -246,18 +304,33 @@ export function LeadsSection({
                 <input
                   type="search"
                   value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
+                  onChange={(event) => withPageReset(setSearchTerm)(event.target.value)}
                   placeholder="Search leads by name, phone, or child's name..."
                   className="w-full max-w-xs rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#fc0c97] focus:outline-none"
                 />
               </div>
+
+              <select
+                value={picFilter}
+                aria-label="Filter by PIC"
+                onChange={(event) => withPageReset(setPicFilter)(event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] sm:w-44"
+              >
+                <option value="all">All PICs</option>
+                <option value="none">Not assigned</option>
+                {picOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
 
               {view === 'pipeline' && (
               <>
               <select
                 value={stageFilter}
                 onChange={(event) =>
-                  setStageFilter(event.target.value as LeadStatus | 'all')
+                  withPageReset(setStageFilter)(event.target.value as LeadStatus | 'all')
                 }
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] sm:w-52"
               >
@@ -273,7 +346,7 @@ export function LeadsSection({
                 <input
                   type="date"
                   value={dateFrom}
-                  onChange={(event) => setDateFrom(event.target.value)}
+                  onChange={(event) => withPageReset(setDateFrom)(event.target.value)}
                   max={dateTo || undefined}
                   aria-label="From date"
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] sm:w-40"
@@ -282,7 +355,7 @@ export function LeadsSection({
                 <input
                   type="date"
                   value={dateTo}
-                  onChange={(event) => setDateTo(event.target.value)}
+                  onChange={(event) => withPageReset(setDateTo)(event.target.value)}
                   min={dateFrom || undefined}
                   aria-label="To date"
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] sm:w-40"
@@ -293,6 +366,7 @@ export function LeadsSection({
                     onClick={() => {
                       setDateFrom('')
                       setDateTo('')
+                      setPage(1)
                     }}
                     className="text-sm font-medium text-slate-400 transition hover:text-slate-600"
                   >
@@ -309,6 +383,7 @@ export function LeadsSection({
         {view === 'board' && (
           <LeadKanbanBoard
             leads={searchedLeads}
+            picLabel={(lead) => (lead.picId === null ? null : picLabel(lead))}
             onChangeStatus={onChangeStatus}
             onConvertLead={onConvertLead}
             onEditLead={onEditLead}
@@ -347,7 +422,7 @@ export function LeadsSection({
               </div>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-2">
+            <div className="grid gap-6 lg:grid-cols-3">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
                   Leads by Stage
@@ -359,6 +434,12 @@ export function LeadsSection({
                   Leads by Source
                 </div>
                 <LeadTrendChart data={sourceChartData} />
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Leads by PIC
+                </div>
+                <LeadTrendChart data={picChartData} />
               </div>
             </div>
           </div>
@@ -378,7 +459,7 @@ export function LeadsSection({
         {view === 'pipeline' && filteredLeads.length > 0 && (
           <>
             <ul className="divide-y divide-slate-200 md:hidden">
-              {filteredLeads.map((lead) => (
+              {pagedLeads.map((lead) => (
                 <li key={lead.id} className="space-y-3 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -386,8 +467,7 @@ export function LeadsSection({
                         {lead.fullName || 'Unnamed Lead'}
                       </div>
                       <div className="mt-1 text-xs text-slate-500">
-                        {sourceLabelMap.get(lead.source) ?? lead.source} · Added{' '}
-                        {formatDate(lead.addedDate)}
+                        {sourceLabel(lead)} · Added {formatDate(lead.addedDate)}
                       </div>
                     </div>
                     <span
@@ -410,6 +490,10 @@ export function LeadsSection({
                       <dd className="text-right text-slate-700">
                         {formatChildren(lead.children)}
                       </dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-xs font-medium text-slate-500">PIC</dt>
+                      <dd className="text-slate-700">{picLabel(lead)}</dd>
                     </div>
                     <div className="flex justify-between gap-3">
                       <dt className="text-xs font-medium text-slate-500">Follow-up</dt>
@@ -482,13 +566,14 @@ export function LeadsSection({
                     <th className="px-6 py-4">Contact</th>
                     <th className="px-6 py-4">Children</th>
                     <th className="px-6 py-4">Source</th>
+                    <th className="px-6 py-4">PIC</th>
                     <th className="px-6 py-4">Stage</th>
                     <th className="px-6 py-4">Follow-up</th>
                     <th className="px-6 py-4 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">
-                  {filteredLeads.map((lead) => (
+                  {pagedLeads.map((lead) => (
                     <tr key={lead.id} className="align-top">
                       <td className="px-6 py-5 text-sm text-slate-600">
                         {formatDate(lead.addedDate)}
@@ -500,8 +585,9 @@ export function LeadsSection({
                         {formatChildren(lead.children)}
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
-                        {sourceLabelMap.get(lead.source) ?? lead.source}
+                        {sourceLabel(lead)}
                       </td>
+                      <td className="px-6 py-5 text-sm text-slate-600">{picLabel(lead)}</td>
                       <td className="px-6 py-5">
                         <select
                           value={lead.status}
@@ -567,6 +653,53 @@ export function LeadsSection({
                 </tbody>
               </table>
             </div>
+
+            {pageCount > 1 && (
+              <nav
+                aria-label="Leads pages"
+                className="flex flex-col items-center justify-between gap-3 border-t border-slate-200 px-5 py-4 text-sm text-slate-500 sm:flex-row sm:px-6"
+              >
+                <span>
+                  Showing {pageStart + 1}-{pageStart + pagedLeads.length} of {filteredLeads.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    aria-label="Previous page"
+                    disabled={currentPage === 1}
+                    onClick={() => setPage(currentPage - 1)}
+                    className="rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50 disabled:opacity-40"
+                  >
+                    <CaretLeft size={14} aria-hidden="true" />
+                  </button>
+                  {Array.from({ length: pageCount }, (_, index) => index + 1).map((number) => (
+                    <button
+                      key={number}
+                      type="button"
+                      aria-current={number === currentPage ? 'page' : undefined}
+                      onClick={() => setPage(number)}
+                      className={cn(
+                        'min-w-9 rounded-lg border px-2.5 py-1.5 font-semibold transition',
+                        number === currentPage
+                          ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50',
+                      )}
+                    >
+                      {number}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    aria-label="Next page"
+                    disabled={currentPage === pageCount}
+                    onClick={() => setPage(currentPage + 1)}
+                    className="rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50 disabled:opacity-40"
+                  >
+                    <CaretRight size={14} aria-hidden="true" />
+                  </button>
+                </div>
+              </nav>
+            )}
           </>
         )}
       </section>

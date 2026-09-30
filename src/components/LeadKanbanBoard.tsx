@@ -50,6 +50,8 @@ type LeadKanbanBoardProps = {
   onConvertLead: (leadId: number) => void
   onEditLead: (leadId: number) => void
   onOpenFollowUp: (leadId: number) => void
+  // The lead's PIC name, or null when nobody is assigned.
+  picLabel?: (lead: Lead) => string | null
 }
 
 export function LeadKanbanBoard({
@@ -58,6 +60,7 @@ export function LeadKanbanBoard({
   onConvertLead,
   onEditLead,
   onOpenFollowUp,
+  picLabel,
 }: LeadKanbanBoardProps) {
   const todayString = getTodayString()
   const [dragOverStage, setDragOverStage] = useState<LeadStatus | null>(null)
@@ -151,6 +154,11 @@ export function LeadKanbanBoard({
                     <div className="text-xs text-slate-500">
                       {childSummary || 'No children listed'}
                     </div>
+                    {picLabel?.(lead) && (
+                      <div className="text-xs font-medium text-[#be185d]">
+                        PIC: {picLabel(lead)}
+                      </div>
+                    )}
                     <div className="flex items-center justify-end gap-1.5">
                       <button
                         type="button"

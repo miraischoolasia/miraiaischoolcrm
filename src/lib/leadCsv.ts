@@ -1,12 +1,13 @@
-import { MAX_LEAD_CHILDREN, leadSourceOptions, leadStatusOptions } from './constants'
-import type { LeadSource, LeadStatus } from '../types/domain'
+import { MAX_LEAD_CHILDREN, leadStatusOptions } from './constants'
+import type { LeadOption, LeadStatus } from '../types/domain'
 
 export type BulkLeadChild = { name: string; age: number; phone: string | null }
 
 export type BulkLeadRow = {
   full_name: string | null
   phone: string | null
-  source: LeadSource
+  // null lets the database fall back to the "Other" source.
+  source_id: number | null
   status: LeadStatus
   children: BulkLeadChild[]
   notes: string | null
@@ -137,7 +138,11 @@ export function buildLeadCsvTemplate(): string {
   return `${lines.join('\r\n')}\r\n`
 }
 
-export function parseLeadCsv(text: string, todayString: string): LeadCsvParseResult {
+export function parseLeadCsv(
+  text: string,
+  todayString: string,
+  sourceOptions: LeadOption[] = [],
+): LeadCsvParseResult {
   const table = parseCsvTable(text)
   const errors: string[] = []
   const rows: BulkLeadRow[] = []
@@ -166,11 +171,17 @@ export function parseLeadCsv(text: string, todayString: string): LeadCsvParseRes
     phoneIdx: columnIndex(`Child ${index + 1} Phone`),
   }))
 
-  const sourceKeys = new Set(leadSourceOptions.map((option) => option.key as string))
+  // A source matches by its name ("Walk-in") or the old key ("walk_in"),
+  // ignoring case, spaces and dashes.
+  const normalizeSource = (value: string) => value.toLowerCase().replace(/[\s_-]+/g, '')
+  const sourceByName = new Map<string, number>()
+  for (const option of sourceOptions.filter((entry) => entry.kind === 'source')) {
+    sourceByName.set(normalizeSource(option.label), option.id)
+    if (option.legacyKey) {
+      sourceByName.set(normalizeSource(option.legacyKey), option.id)
+    }
+  }
   const statusKeys = new Set(leadStatusOptions.map((option) => option.key as string))
-  const sourceByLabel = new Map(
-    leadSourceOptions.map((option) => [option.label.toLowerCase(), option.key]),
-  )
   const statusByLabel = new Map(
     leadStatusOptions.map((option) => [option.label.toLowerCase(), option.key]),
   )
@@ -190,16 +201,16 @@ export function parseLeadCsv(text: string, todayString: string): LeadCsvParseRes
     const phone = phoneIdx >= 0 ? cells[phoneIdx]?.trim() || null : null
     const notes = notesIdx >= 0 ? cells[notesIdx]?.trim() || null : null
 
-    let source: LeadSource = 'other'
+    let sourceId: number | null = null
     const rawSource = (sourceIdx >= 0 ? cells[sourceIdx] : '')?.trim() ?? ''
     if (rawSource) {
-      const normalized = rawSource.toLowerCase().replace(/\s+/g, '_')
-      if (sourceKeys.has(normalized)) {
-        source = normalized as LeadSource
-      } else if (sourceByLabel.has(rawSource.toLowerCase())) {
-        source = sourceByLabel.get(rawSource.toLowerCase()) as LeadSource
+      const matched = sourceByName.get(normalizeSource(rawSource))
+      if (matched !== undefined) {
+        sourceId = matched
       } else {
-        errors.push(`Row ${lineNumber}: unknown source "${rawSource}".`)
+        errors.push(
+          `Row ${lineNumber}: unknown source "${rawSource}". Add it under Leads > Sources & PIC first.`,
+        )
       }
     }
 
@@ -247,7 +258,7 @@ export function parseLeadCsv(text: string, todayString: string): LeadCsvParseRes
     rows.push({
       full_name: fullName,
       phone,
-      source,
+      source_id: sourceId,
       status,
       children,
       notes,

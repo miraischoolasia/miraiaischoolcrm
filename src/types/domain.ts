@@ -10,7 +10,17 @@ export type AppSection =
 export type FilterKey = 'all' | 'hours' | 'accountFee' | 'mirai' | 'normal' | 'preview'
 export type AttendanceStatus = 'present' | 'absent' | 'leave'
 export type StudentType = 'trial' | 'preview' | 'regular'
-export type LeadSource = 'walk_in' | 'referral' | 'social_media' | 'advertisement' | 'other'
+export type LeadOptionKind = 'source' | 'pic'
+
+// A lead source or PIC name the admin manages (see lead_options).
+export type LeadOption = {
+  id: number
+  kind: LeadOptionKind
+  label: string
+  isActive: boolean
+  // The old fixed source key (walk_in, referral, ...) for the first five.
+  legacyKey: string | null
+}
 export type LeadStatus =
   | 'new'
   | 'contacted'
@@ -114,7 +124,8 @@ export type Lead = {
   id: number
   fullName: string | null
   phone: string | null
-  source: LeadSource
+  sourceId: number | null
+  picId: number | null
   status: LeadStatus
   children: LeadChild[]
   notes: string | null
@@ -288,7 +299,9 @@ export type LeadChildFormState = {
 export type LeadFormState = {
   fullName: string
   phone: string
-  source: LeadSource
+  // Option ids as strings for the selects; '' = none picked.
+  sourceId: string
+  picId: string
   status: LeadStatus
   children: LeadChildFormState[]
   notes: string
@@ -403,7 +416,8 @@ export type LeadRow = Pick<
   | 'id'
   | 'full_name'
   | 'phone'
-  | 'source'
+  | 'source_id'
+  | 'pic_id'
   | 'status'
   | 'children'
   | 'notes'
@@ -513,4 +527,9 @@ export type LessonLogStudentReviewRow = Pick<
   | 'expressiveness_remark'
   | 'sustained_focus_score'
   | 'sustained_focus_remark'
+>
+
+export type LeadOptionRow = Pick<
+  Database['public']['Tables']['lead_options']['Row'],
+  'id' | 'kind' | 'label' | 'is_active' | 'legacy_key'
 >

@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import {
   mapAdminActivityRow,
   mapClassroomRow,
+  mapLeadOptionRow,
   mapLeadRow,
   mapMakeupPlanRow,
   mapLessonLogStudentReviewRow,
@@ -92,7 +93,7 @@ export async function fetchLeadsFromSupabase() {
   const { data, error } = await supabase
     .from('leads')
     .select(
-      'id, full_name, phone, source, status, children, notes, follow_ups, tasks, converted_student_id, added_date, created_at, updated_at',
+      'id, full_name, phone, source_id, pic_id, status, children, notes, follow_ups, tasks, converted_student_id, added_date, created_at, updated_at',
     )
     .order('added_date', { ascending: false })
     .order('created_at', { ascending: false })
@@ -102,6 +103,28 @@ export async function fetchLeadsFromSupabase() {
   }
 
   return data.map(mapLeadRow)
+}
+
+export async function fetchLeadOptionsFromSupabase() {
+  if (!supabase) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('lead_options')
+    .select('id, kind, label, is_active, legacy_key')
+    .order('id')
+
+  if (error) {
+    // Before the lead options migration there are no custom names yet.
+    if (isMissingTableError(error)) {
+      return []
+    }
+
+    throw error
+  }
+
+  return data.map(mapLeadOptionRow)
 }
 
 const ADMIN_ACTIVITY_PAGE_SIZE = 250

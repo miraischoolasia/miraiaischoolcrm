@@ -8,7 +8,8 @@ const lead: Lead = {
   id: 7,
   fullName: 'Jane Tan',
   phone: '+60 12-345 6789',
-  source: 'referral',
+  sourceId: null,
+  picId: null,
   status: 'new',
   children: [
     { name: 'Ethan', age: 9, phone: null },

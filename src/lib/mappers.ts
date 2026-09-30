@@ -5,6 +5,8 @@ import type {
   Classroom,
   ClassroomRow,
   Lead,
+  LeadOption,
+  LeadOptionRow,
   LeadRow,
   LessonLogStudent,
   LessonLogStudentRow,
@@ -78,7 +80,8 @@ export function mapLeadRow(row: LeadRow): Lead {
     id: row.id,
     fullName: row.full_name,
     phone: row.phone,
-    source: row.source,
+    sourceId: row.source_id,
+    picId: row.pic_id,
     status: row.status,
     children: row.children ?? [],
     notes: row.notes,
@@ -88,6 +91,16 @@ export function mapLeadRow(row: LeadRow): Lead {
     addedDate: row.added_date,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  }
+}
+
+export function mapLeadOptionRow(row: LeadOptionRow): LeadOption {
+  return {
+    id: row.id,
+    kind: row.kind,
+    label: row.label,
+    isActive: row.is_active,
+    legacyKey: row.legacy_key,
   }
 }
 

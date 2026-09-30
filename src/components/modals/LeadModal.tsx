@@ -3,10 +3,16 @@ import { ModalShell } from '../ModalShell'
 import {
   MAX_LEAD_CHILDREN,
   leadChildAgeOptions,
-  leadSourceOptions,
   leadStatusOptions,
 } from '../../lib/constants'
-import type { Lead, LeadChildFormState, LeadFormState } from '../../types/domain'
+import { LeadOptionPicker } from '../LeadOptionPicker'
+import type {
+  Lead,
+  LeadChildFormState,
+  LeadFormState,
+  LeadOption,
+  LeadOptionKind,
+} from '../../types/domain'
 
 type LeadModalProps = {
   editingLead: Lead | null
@@ -16,6 +22,8 @@ type LeadModalProps = {
   onClose: () => void
   onSubmit: React.FormEventHandler<HTMLFormElement>
   onFieldChange: <K extends keyof LeadFormState>(field: K, value: LeadFormState[K]) => void
+  leadOptions: LeadOption[]
+  onAddLeadOption: (kind: LeadOptionKind, label: string) => Promise<LeadOption | null>
 }
 
 export function LeadModal({
@@ -26,6 +34,8 @@ export function LeadModal({
   onClose,
   onSubmit,
   onFieldChange,
+  leadOptions,
+  onAddLeadOption,
 }: LeadModalProps) {
   function updateChild(index: number, patch: Partial<LeadChildFormState>) {
     onFieldChange(
@@ -123,22 +133,22 @@ export function LeadModal({
             />
           </label>
 
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Source</span>
-            <select
-              value={formState.source}
-              onChange={(event) =>
-                onFieldChange('source', event.target.value as LeadFormState['source'])
-              }
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
-            >
-              {leadSourceOptions.map((option) => (
-                <option key={option.key} value={option.key}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <LeadOptionPicker
+            label="Source"
+            options={leadOptions.filter((option) => option.kind === 'source')}
+            value={formState.sourceId}
+            onChange={(value) => onFieldChange('sourceId', value)}
+            onAdd={(label) => onAddLeadOption('source', label)}
+          />
+
+          <LeadOptionPicker
+            label="PIC"
+            options={leadOptions.filter((option) => option.kind === 'pic')}
+            value={formState.picId}
+            emptyLabel="- Not assigned -"
+            onChange={(value) => onFieldChange('picId', value)}
+            onAdd={(label) => onAddLeadOption('pic', label)}
+          />
 
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Stage</span>

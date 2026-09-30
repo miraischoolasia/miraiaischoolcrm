@@ -95,7 +95,8 @@ const jane = {
   id: 7,
   fullName: 'Jane Tan',
   phone: '+60 12-345 6789',
-  source: 'referral',
+  sourceId: null,
+  picId: null,
   status: 'new',
   children: [{ name: 'Ethan', age: 9, phone: null }],
   notes: null,
@@ -140,6 +141,7 @@ vi.mock('./lib/api', async (importOriginal) => ({
   fetchScheduleParticipantsFromSupabase: async () => [],
   fetchScheduleExceptionsFromSupabase: async () => [],
   fetchMakeupPlansFromSupabase: async () => [],
+  fetchLeadOptionsFromSupabase: async () => [],
   fetchTrialBookingsFromSupabase: async () => [
     {
       id: 5,
@@ -182,7 +184,7 @@ describe('trial slots on the calendar', () => {
 
     expect(within(slot('14:00')).getByText('Available')).toBeInTheDocument()
     expect(within(slot('10:00')).getByText('1 booked')).toBeInTheDocument()
-    expect(within(slot('10:00')).getByText('Aiden')).toBeInTheDocument()
+    expect(within(slot('10:00')).getByText('Aiden (9)')).toBeInTheDocument()
     expect(within(slot('10:00')).queryByText('Available')).not.toBeInTheDocument()
   })
 

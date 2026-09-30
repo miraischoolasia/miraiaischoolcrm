@@ -2,9 +2,12 @@ import { useRef, useState } from 'react'
 import { DownloadSimple, UploadSimple, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { buildLeadCsvTemplate, parseLeadCsv, type BulkLeadRow } from '../../lib/leadCsv'
+import type { LeadOption } from '../../types/domain'
 
 type LeadBulkImportModalProps = {
   todayString: string
+  // Sources the CSV's Source column is matched against, by name.
+  sourceOptions?: LeadOption[]
   isImporting: boolean
   importError: string | null
   onClose: () => void
@@ -13,6 +16,7 @@ type LeadBulkImportModalProps = {
 
 export function LeadBulkImportModal({
   todayString,
+  sourceOptions = [],
   isImporting,
   importError,
   onClose,
@@ -48,7 +52,7 @@ export function LeadBulkImportModal({
 
     try {
       const text = await file.text()
-      const { rows, errors } = parseLeadCsv(text, todayString)
+      const { rows, errors } = parseLeadCsv(text, todayString, sourceOptions)
       setParsedRows(rows)
       setParseErrors(errors)
     } catch {

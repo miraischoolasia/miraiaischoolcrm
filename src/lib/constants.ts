@@ -1,7 +1,6 @@
 import type {
   AgeGroup,
   FilterKey,
-  LeadSource,
   LeadStatus,
   PerformanceMetricKey,
   ProgramLevel,
@@ -84,14 +83,6 @@ export const leadStatusOptions: Array<{ key: LeadStatus; label: string }> = [
   { key: 'trial_completed', label: 'Trial Completed' },
   { key: 'converted', label: 'Converted' },
   { key: 'lost', label: 'Lost' },
-]
-
-export const leadSourceOptions: Array<{ key: LeadSource; label: string }> = [
-  { key: 'walk_in', label: 'Walk-in' },
-  { key: 'referral', label: 'Referral' },
-  { key: 'social_media', label: 'Social Media' },
-  { key: 'advertisement', label: 'Advertisement' },
-  { key: 'other', label: 'Other' },
 ]
 
 export const leadChildAgeOptions = Array.from({ length: 15 }, (_, index) => index + 4)
