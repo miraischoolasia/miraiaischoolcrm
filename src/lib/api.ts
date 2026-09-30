@@ -18,6 +18,7 @@ import {
 import type {
   LessonLogStudent,
   LessonLogStudentReview,
+  LeadRow,
   LessonLogSummary,
   ScheduleExceptionRow,
 } from '../types/domain'
@@ -90,19 +91,32 @@ export async function fetchLeadsFromSupabase() {
     return []
   }
 
-  const { data, error } = await supabase
-    .from('leads')
-    .select(
-      'id, full_name, phone, source_id, pic_id, status, children, notes, follow_ups, tasks, converted_student_id, added_date, created_at, updated_at',
-    )
-    .order('added_date', { ascending: false })
-    .order('created_at', { ascending: false })
+  const select = async (columns: string) => {
+    const result = await supabase!
+      .from('leads')
+      .select(columns)
+      .order('added_date', { ascending: false })
+      .order('created_at', { ascending: false })
+    return { data: result.data as unknown as LeadRow[] | null, error: result.error }
+  }
+
+  const columns =
+    'id, full_name, phone, status, children, notes, follow_ups, tasks, converted_student_id, added_date, created_at, updated_at'
+  let { data, error } = await select(`${columns}, source_id, pic_id`)
+
+  // Before the lead options migration source_id / pic_id do not exist yet:
+  // load the leads without them rather than failing the workspace.
+  if (error?.code === '42703') {
+    ;({ data, error } = await select(columns))
+  }
 
   if (error) {
     throw error
   }
 
-  return data.map(mapLeadRow)
+  return (data ?? []).map((row) =>
+    mapLeadRow({ ...row, source_id: row.source_id ?? null, pic_id: row.pic_id ?? null }),
+  )
 }
 
 export async function fetchLeadOptionsFromSupabase() {

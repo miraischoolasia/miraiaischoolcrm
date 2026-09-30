@@ -9,14 +9,27 @@ const mocks = vi.hoisted(() => ({
 vi.mock('./supabase', () => ({
   supabase: {
     from: () => ({
-      select: () => ({
-        order: async () => mocks.queue.shift() ?? mocks.result,
-      }),
+      select: () => {
+        // Chainable .order().order(); awaiting it takes the next result.
+        let result: unknown
+        const chain = {
+          order: () => chain,
+          then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => {
+            result ??= mocks.queue.shift() ?? mocks.result
+            return Promise.resolve(result).then(resolve, reject)
+          },
+        }
+        return chain
+      },
     }),
   },
 }))
 
-import { fetchScheduleExceptionsFromSupabase, fetchTrialBookingsFromSupabase } from './api'
+import {
+  fetchLeadsFromSupabase,
+  fetchScheduleExceptionsFromSupabase,
+  fetchTrialBookingsFromSupabase,
+} from './api'
 
 describe('fetchScheduleExceptionsFromSupabase', () => {
   beforeEach(() => {
@@ -113,5 +126,38 @@ describe('fetchTrialBookingsFromSupabase', () => {
     mocks.result = { data: null, error }
 
     await expect(fetchTrialBookingsFromSupabase()).rejects.toBe(error)
+  })
+})
+
+describe('fetchLeadsFromSupabase', () => {
+  beforeEach(() => {
+    mocks.result = { data: null, error: null }
+    mocks.queue = []
+  })
+
+  it('loads leads without source/PIC before those columns exist', async () => {
+    mocks.queue = [{ data: null, error: { code: '42703', message: 'column does not exist' } }]
+    mocks.result = {
+      data: [
+        {
+          id: 1,
+          full_name: 'Jane',
+          phone: null,
+          status: 'new',
+          children: [],
+          notes: null,
+          follow_ups: [],
+          tasks: [],
+          converted_student_id: null,
+          added_date: '2026-09-30',
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+      error: null,
+    }
+
+    const [lead] = await fetchLeadsFromSupabase()
+    expect(lead).toMatchObject({ id: 1, fullName: 'Jane', sourceId: null, picId: null })
   })
 })
