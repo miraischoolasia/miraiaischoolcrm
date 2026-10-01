@@ -11,6 +11,20 @@ import type {
 } from '../types/domain'
 
 export const MAX_FORM_FIELDS = 40
+export const IMAGE_MAX_BYTES = 5 * 1024 * 1024
+export const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+
+// Same limits as the storage bucket, checked first so the admin gets a plain
+// message instead of a storage error.
+export function getImageFileProblem(file: { type: string; size: number }): string | null {
+  if (!IMAGE_TYPES.includes(file.type)) {
+    return 'Use a PNG, JPG, WebP or GIF image.'
+  }
+  if (file.size > IMAGE_MAX_BYTES) {
+    return 'The image is bigger than 5 MB. Use a smaller one.'
+  }
+  return null
+}
 export const MAX_FIELD_OPTIONS = 30
 
 type FieldTypeInfo = {
@@ -30,6 +44,7 @@ export const formFieldTypes: FieldTypeInfo[] = [
   { type: 'dropdown', label: 'Dropdown', hasOptions: true, defaultLabel: 'Choose one' },
   { type: 'radio', label: 'Single choice', hasOptions: true, defaultLabel: 'Pick one' },
   { type: 'checkbox', label: 'Multiple choice', hasOptions: true, defaultLabel: 'Pick any' },
+  { type: 'image', label: 'Image / poster', hasOptions: false, defaultLabel: 'Poster' },
 ]
 
 export function getFieldTypeInfo(type: FormFieldType) {
@@ -57,6 +72,9 @@ const leadMapFieldTypes: Record<FormLeadMap, FormFieldType[] | 'any'> = {
 }
 
 export function getLeadMapOptionsFor(type: FormFieldType) {
+  if (type === 'image') {
+    return []
+  }
   return formLeadMapOptions.filter((option) => {
     const allowed = leadMapFieldTypes[option.value]
     return allowed === 'any' || allowed.includes(type)
@@ -100,6 +118,7 @@ export function createField(type: FormFieldType): FormField {
     required: false,
     options: info.hasOptions ? ['Option 1', 'Option 2'] : [],
     mapTo: null,
+    imageUrl: '',
   }
 }
 
@@ -145,7 +164,8 @@ export function normalizeFields(raw: unknown): FormField[] {
         options: Array.isArray(item.options)
           ? item.options.filter((option): option is string => typeof option === 'string')
           : [],
-        mapTo,
+        mapTo: type === 'image' ? null : mapTo,
+        imageUrl: type === 'image' ? asString(item.imageUrl) : '',
       },
     ]
   })
@@ -284,6 +304,12 @@ export function getFormProblem(
 
   const mapped = new Set<FormLeadMap>()
   for (const field of fields) {
+    if (field.type === 'image') {
+      if (!isSafeRedirectUrl(field.imageUrl)) {
+        return 'The poster field has no image yet. Upload one, or delete the field.'
+      }
+      continue
+    }
     if (!field.label.trim()) {
       return 'Every field needs a label.'
     }
@@ -315,6 +341,9 @@ export function validateAnswers(fields: FormField[], answers: Record<string, For
   const errors: Record<string, string> = {}
 
   for (const field of fields) {
+    if (field.type === 'image') {
+      continue
+    }
     const raw = answers[field.id]
     const value = (Array.isArray(raw) ? raw.join(', ') : (raw ?? '')).trim()
 

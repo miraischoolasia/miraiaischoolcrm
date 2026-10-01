@@ -4,7 +4,9 @@ import { formatDate } from '../domain/studentStatus'
 import { getLatestLessonLogMap } from '../lib/mappers'
 import { performanceMetricDefinitions } from '../lib/constants'
 import { weekdayLabels } from '../lib/schedule'
+import { buildPathway } from '../lib/pathway'
 import { ModalShell } from './ModalShell'
+import { PathwaySection } from './PathwaySection'
 import { PerformanceRadarChart } from './PerformanceRadarChart'
 import type {
   Classroom,
@@ -71,7 +73,7 @@ export function StudentDetailModal({
           review,
           log,
           schedule,
-          isTrial: trialIds.has(review.studentId),
+          isTrial: student.studentType === 'trial' || trialIds.has(review.studentId),
         }
       })
       .filter(
@@ -87,7 +89,15 @@ export function StudentDetailModal({
         const leftDate = `${left.log.lessonDate}-${left.log.revisionNumber}`
         return rightDate.localeCompare(leftDate)
       })
-  }, [latestLessonLogIds, lessonLogs, lessonReviews, schedules, student.id, trialStudentIds])
+  }, [
+    latestLessonLogIds,
+    lessonLogs,
+    lessonReviews,
+    schedules,
+    student.id,
+    student.studentType,
+    trialStudentIds,
+  ])
 
   const metricAverages = useMemo(() => {
     const result = {
@@ -117,6 +127,32 @@ export function StudentDetailModal({
 
     return result
   }, [latestReviewEntries])
+
+  const pathwayStages = useMemo(
+    () =>
+      buildPathway(
+        latestReviewEntries.map(({ review, log, isTrial }) => ({
+          lessonDate: log.lessonDate,
+          revisionNumber: log.revisionNumber,
+          isTrial,
+          scores: {
+            logicalThinkingScore: review.logicalThinkingScore,
+            codingCreativityScore: review.codingCreativityScore,
+            problemSolvingScore: review.problemSolvingScore,
+            expressivenessScore: review.expressivenessScore,
+            sustainedFocusScore: review.sustainedFocusScore,
+          },
+          remarks: {
+            logicalThinkingRemark: review.logicalThinkingRemark,
+            codingCreativityRemark: review.codingCreativityRemark,
+            problemSolvingRemark: review.problemSolvingRemark,
+            expressivenessRemark: review.expressivenessRemark,
+            sustainedFocusRemark: review.sustainedFocusRemark,
+          },
+        })),
+      ),
+    [latestReviewEntries],
+  )
 
   const assignedClassroom =
     classrooms.find((classroom) => classroom.id === student.classroomId) ?? null
@@ -324,6 +360,10 @@ export function StudentDetailModal({
               ))}
             </div>
           </section>
+        )}
+
+        {!isPreviewStudent && (
+          <PathwaySection studentName={student.name} stages={pathwayStages} />
         )}
 
         {!isPreviewStudent && (

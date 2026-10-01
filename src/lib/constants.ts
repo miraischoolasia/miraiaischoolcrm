@@ -52,6 +52,14 @@ export const performanceMetricDefinitions: Array<{
   },
 ]
 
+export const pathwayMetricColors: Record<PerformanceMetricKey, string> = {
+  logicalThinking: '#fc0c97',
+  codingCreativity: '#8b5cf6',
+  problemSolving: '#0ea5e9',
+  expressiveness: '#f59e0b',
+  sustainedFocus: '#10b981',
+}
+
 export const studentFilterOptions: Array<{ key: FilterKey; label: string }> = [
   { key: 'hours', label: 'Classes Low / Expired' },
   { key: 'accountFee', label: 'Account Fee Due' },

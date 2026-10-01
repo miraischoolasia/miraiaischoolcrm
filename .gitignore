@@ -19,6 +19,13 @@ dist-ssr
 
 # Claude Code local tool config (not project source)
 .claude/
+
+# Scratch data exports (can contain real lead/parent/child PII) - never commit
+outputs/
+
+# One-off Supabase CLI backups (e.g. from a migration-history repair), not
+# migrations themselves
+supabase/.temp-*
 .DS_Store
 *.suo
 *.ntvs*

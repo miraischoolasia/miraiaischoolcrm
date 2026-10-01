@@ -545,6 +545,8 @@ export type FormFieldType =
   | 'dropdown'
   | 'radio'
   | 'checkbox'
+  // Not a question: shows a picture (for example a poster) on the form.
+  | 'image'
 
 // Which Lead column a form answer fills when the form creates a lead.
 export type FormLeadMap =
@@ -563,6 +565,8 @@ export type FormField = {
   required: boolean
   options: string[]
   mapTo: FormLeadMap | null
+  // Only for 'image' fields: where the picture is stored.
+  imageUrl: string
 }
 
 export type FormAfterSubmit = 'message' | 'redirect'
