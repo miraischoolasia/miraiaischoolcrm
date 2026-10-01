@@ -112,6 +112,11 @@ describe('PublicFormPage', () => {
 
     await waitFor(() => expect(assign).toHaveBeenCalledWith('https://mirai.my/thanks'))
     expect(screen.queryByText('Got it, thanks!')).not.toBeInTheDocument()
+    // A loading animation while the page changes, not a thank-you message.
+    expect(screen.getByRole('status')).toHaveTextContent('Loading be taken around 3 sec...')
+    expect(screen.queryByText(/Thank you/)).not.toBeInTheDocument()
+    expect(document.querySelector('.animate-spin')).toBeInTheDocument()
+    expect(screen.queryByRole('form')).not.toBeInTheDocument()
   })
 
   it('shows the message when the saved address is not a safe web address', async () => {
@@ -286,7 +291,7 @@ describe('PublicFormPage preview', () => {
     await userEvent.type(await screen.findByLabelText(/Phone/), '012-345 6789')
     await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
 
-    expect(await screen.findByText(/would now be taken to https:\/\/mirai.my\/thanks/)).toBeInTheDocument()
+    expect(await screen.findByText(/then be taken to https:\/\/mirai.my\/thanks/)).toBeInTheDocument()
     expect(assign).not.toHaveBeenCalled()
   })
 
@@ -694,5 +699,15 @@ describe('PublicFormPage title', () => {
     render(<PublicFormPage formKey="form-1" />)
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Contact Us' })).toBeInTheDocument()
+  })
+})
+
+describe('PublicFormPage heading', () => {
+  it('has no school-name tag above the title', async () => {
+    render(<PublicFormPage formKey="form-1" />)
+
+    const title = await screen.findByRole('heading', { level: 1 })
+    expect(title.previousElementSibling).toBeNull()
+    expect(screen.queryByText('Mirai AI School', { selector: 'span' })).not.toBeInTheDocument()
   })
 })

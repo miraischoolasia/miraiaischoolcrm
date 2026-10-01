@@ -372,17 +372,40 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
           This form could not be loaded. Please try again later.
         </p>
       )}
-      {form && outcome && (
+      {form && outcome?.kind === 'redirecting' && (
+        <div role="status" className="flex flex-col items-center gap-4 py-10 text-center">
+          <span
+            aria-hidden="true"
+            className="h-12 w-12 animate-spin rounded-full border-4 border-pink-100 border-t-[#fc0c97]"
+          />
+          <p className="text-sm font-medium text-slate-700">Loading be taken around 3 sec...</p>
+          {preview && (
+            <p className="text-sm text-slate-600">
+              Visitors would see this loading animation, then be taken to {outcome.url}
+            </p>
+          )}
+          {preview && (
+            <button
+              type="button"
+              onClick={() => {
+                setOutcome(null)
+                setAnswers({})
+                setExtraChildren([])
+                setPageIndex(0)
+                setHistory([])
+              }}
+              className="text-sm font-semibold text-[#be185d] hover:text-[#9d174d]"
+            >
+              Back to the form
+            </button>
+          )}
+        </div>
+      )}
+      {form && outcome?.kind === 'message' && (
         <div role="status" className="flex flex-col items-center gap-3 py-2 text-center">
           <img src={mascotEggy} alt="" aria-hidden="true" className="h-32 w-auto" />
           <CheckCircle size={28} weight="fill" className="text-emerald-500" aria-hidden="true" />
-          <p className="text-sm text-slate-800">
-            {outcome.kind === 'redirecting'
-              ? preview
-                ? `Visitors would now be taken to ${outcome.url}`
-                : 'Thank you! Taking you to the next page...'
-              : outcome.text}
-          </p>
+          <p className="text-sm text-slate-800">{outcome.text}</p>
           {preview && (
             <button
               type="button"
@@ -403,10 +426,7 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
       {form && page && !outcome && (
         <form onSubmit={(event) => void handleSubmit(event)} noValidate className="space-y-5">
           <div>
-            <span className="inline-block rounded-full bg-[#fff0f9] px-3 py-1 text-xs font-bold uppercase tracking-wider text-[#be185d]">
-              Mirai AI School
-            </span>
-            <h1 className="mt-2 font-heading text-2xl font-extrabold leading-tight text-slate-900 sm:text-3xl">
+            <h1 className="font-heading text-2xl font-extrabold leading-tight text-slate-900 sm:text-3xl">
               {getFormTitle(form.name, form.settings)}
             </h1>
           </div>
