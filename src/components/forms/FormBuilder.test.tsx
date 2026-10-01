@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FormBuilder } from './FormBuilder'
 import { createField, createStarterFields, defaultFormSettings } from '../../lib/forms'
 import type { Form } from '../../types/domain'
@@ -214,6 +214,139 @@ describe('FormBuilder', () => {
 
       expect(screen.queryByRole('img', { name: 'Poster' })).not.toBeInTheDocument()
       expect(screen.getByText('Upload image')).toBeInTheDocument()
+    })
+  })
+
+  describe('preview', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+      window.localStorage.clear()
+    })
+
+    it('opens the form in a new tab with what is on screen, even unsaved', async () => {
+      const open = vi.spyOn(window, 'open').mockReturnValue(null)
+      renderBuilder()
+
+      await userEvent.type(screen.getByLabelText('Form name'), ' Draft')
+      await userEvent.click(screen.getByRole('button', { name: 'Preview' }))
+
+      expect(open).toHaveBeenCalledWith(
+        expect.stringMatching(/\/\?form=form-1&preview=1$/),
+        '_blank',
+        'noopener',
+      )
+      const draft = JSON.parse(window.localStorage.getItem('mirai-form-preview-form-1') ?? '{}')
+      expect(draft.name).toBe('Contact Us Draft')
+      expect(draft.fields).toHaveLength(5)
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    })
+
+    it('says so when the draft cannot be stored and opens nothing', async () => {
+      const open = vi.spyOn(window, 'open').mockReturnValue(null)
+      vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
+        throw new Error('blocked')
+      })
+      renderBuilder()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Preview' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('preview could not be prepared')
+      expect(open).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('poster size', () => {
+    it('sets the width and side of the poster', async () => {
+      const { onSave } = renderBuilder()
+      await userEvent.click(screen.getByRole('button', { name: /Image \/ poster/ }))
+      await userEvent.upload(
+        screen.getByLabelText('Choose image file'),
+        new File(['x'], 'p.png', { type: 'image/png' }),
+      )
+      await screen.findByRole('img', { name: 'Poster' })
+
+      fireEvent.change(screen.getByLabelText('Image width'), { target: { value: '50' } })
+      await userEvent.click(screen.getByRole('radio', { name: 'Right' }))
+
+      expect(screen.getByText('Width: 50%')).toBeInTheDocument()
+      expect(screen.getByRole('radio', { name: 'Right' })).toHaveAttribute('aria-checked', 'true')
+      expect(screen.getByRole('img', { name: 'Poster' })).toHaveStyle({ width: '50%' })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+      expect(onSave.mock.calls[0][0].fields.at(-1)).toMatchObject({ imageWidth: 50, imageAlign: 'right' })
+    })
+  })
+
+  describe('text block', () => {
+    async function addTextBlock() {
+      const view = renderBuilder()
+      await userEvent.click(screen.getByRole('button', { name: /Text \/ details/ }))
+      return view
+    }
+
+    it('shows what the text will look like and hides the question settings', async () => {
+      await addTextBlock()
+
+      const card = screen.getByRole('group', { name: 'Field: Details' })
+      expect(within(card).getByText('Tell parents about this form here.')).toBeInTheDocument()
+      expect(screen.getByLabelText('Details')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Required')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Fills on the lead')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Label')).not.toBeInTheDocument()
+    })
+
+    it('formats the selected words with the Bold, Bullet list and Link buttons', async () => {
+      await addTextBlock()
+      const box = screen.getByLabelText('Details') as HTMLTextAreaElement
+
+      fireEvent.change(box, { target: { value: 'Join free trial\nlaptop\nwater' } })
+      box.setSelectionRange(5, 15)
+      await userEvent.click(screen.getByRole('button', { name: 'Bold' }))
+      expect(box.value).toBe('Join **free trial**\nlaptop\nwater')
+
+      const from = box.value.indexOf('laptop')
+      box.setSelectionRange(from, box.value.length)
+      await userEvent.click(screen.getByRole('button', { name: 'Bullet list' }))
+      expect(box.value).toBe('Join **free trial**\n- laptop\n- water')
+
+      box.setSelectionRange(0, 4)
+      await userEvent.click(screen.getByRole('button', { name: 'Link' }))
+      expect(box.value.startsWith('[Join](https://) **free trial**')).toBe(true)
+
+      const card = screen.getByRole('group', { name: 'Field: Details' })
+      expect(within(card).getAllByRole('listitem')).toHaveLength(2)
+    })
+
+    it('switches to a heading, which has no formatting buttons', async () => {
+      await addTextBlock()
+
+      await userEvent.selectOptions(screen.getByLabelText('Look'), 'heading')
+
+      expect(screen.queryByRole('button', { name: 'Bold' })).not.toBeInTheDocument()
+      const card = screen.getByRole('group', { name: 'Field: Details' })
+      expect(within(card).getByRole('heading', { level: 2 })).toHaveTextContent(
+        'Tell parents about this form here.',
+      )
+    })
+
+    it('will not save an empty text block, and saves the text and look otherwise', async () => {
+      const { onSave } = await addTextBlock()
+      const box = screen.getByLabelText('Details')
+
+      await userEvent.clear(box)
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('text block is empty')
+      expect(onSave).not.toHaveBeenCalled()
+
+      await userEvent.type(box, 'Open to ages 6-17')
+      await userEvent.selectOptions(screen.getByLabelText('Look'), 'heading')
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+      expect(onSave.mock.calls[0][0].fields.at(-1)).toMatchObject({
+        type: 'text_block',
+        content: 'Open to ages 6-17',
+        textStyle: 'heading',
+        required: false,
+      })
     })
   })
 })

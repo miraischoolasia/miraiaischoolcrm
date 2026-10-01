@@ -1,9 +1,10 @@
 import { isSafeRedirectUrl, type FormAnswerValue } from '../../lib/forms'
 import { cn } from '../../lib/cn'
+import { RichText } from './RichText'
 import type { FormField } from '../../types/domain'
 
 const inputClass =
-  'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#fc0c97] focus:outline-none disabled:bg-slate-50'
+  'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#fc0c97] focus:outline-none focus:ring-2 focus:ring-[#fc0c97]/15 disabled:bg-slate-50'
 
 type FormFieldInputProps = {
   field: FormField
@@ -28,13 +29,33 @@ export function FormFieldInput({ field, value, error, disabled, onChange }: Form
       ) : null
     }
     return (
-      <img
-        src={field.imageUrl}
-        alt={field.label}
-        decoding="async"
-        className="block h-auto w-full rounded-xl border border-slate-200"
-      />
+      <div
+        className={cn(
+          'flex',
+          field.imageAlign === 'left' && 'justify-start',
+          field.imageAlign === 'center' && 'justify-center',
+          field.imageAlign === 'right' && 'justify-end',
+        )}
+      >
+        <img
+          src={field.imageUrl}
+          alt={field.label}
+          decoding="async"
+          style={{ width: `${field.imageWidth}%`, minWidth: 'min(100%, 8rem)' }}
+          className="block h-auto max-w-full rounded-xl border border-slate-200"
+        />
+      </div>
     )
+  }
+
+  if (field.type === 'text_block') {
+    return field.content.trim() ? (
+      <RichText content={field.content} style={field.textStyle} />
+    ) : disabled ? (
+      <p className="rounded-xl border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500">
+        Empty text. Write it on the right.
+      </p>
+    ) : null
   }
 
   const inputId = `form-field-${field.id}`

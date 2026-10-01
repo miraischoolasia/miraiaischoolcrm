@@ -1,13 +1,19 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { CheckCircle, Plus, X } from '@phosphor-icons/react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { CheckCircle, Eye, Plus, X } from '@phosphor-icons/react'
 import { FormFieldInput } from './forms/FormFieldInput'
+import miraiLogo from '../assets/mirai-logo.png'
+import miraiSeal from '../assets/mirai-seal-logo.png'
+import mascotEggy from '../assets/mascot-eggy.png'
+import mascotGordo from '../assets/mascot-gordo.png'
 import { fetchPublicForm, recordFormView, submitPublicForm } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import {
   MAX_CHILDREN,
   childAnswerKey,
   getChildFields,
+  isDisplayField,
   isSafeRedirectUrl,
+  readPreviewDraft,
   validateAnswers,
   type FormAnswerValue,
 } from '../lib/forms'
@@ -33,10 +39,58 @@ function countViewOnce(formId: string) {
   void recordFormView(formId).catch(() => {})
 }
 
+// On its own the form gets a branded page. Inside another website's iframe it
+// shrinks to just the card, on a see-through background, so it sits in their
+// page instead of shouting over it.
+function PageShell({
+  embedded,
+  rootRef,
+  children,
+}: {
+  embedded: boolean
+  rootRef: React.RefObject<HTMLDivElement | null>
+  children: ReactNode
+}) {
+  if (embedded) {
+    return (
+      <main className="px-1 py-1 text-slate-900">
+        <div
+          ref={rootRef}
+          className="mx-auto max-w-xl rounded-3xl border border-pink-100 bg-white p-5 sm:p-7"
+        >
+          {children}
+        </div>
+      </main>
+    )
+  }
+
+  return (
+    <main className="min-h-screen bg-gradient-to-b from-[#ffd9ee] via-[#fff3fa] to-white text-slate-900">
+      <header className="border-b-4 border-[#fc0c97] bg-[#0a0a0a] px-4 pb-14 pt-5">
+        <img src={miraiLogo} alt="Mirai AI School" className="mx-auto h-24 w-auto sm:h-28" />
+      </header>
+      <div ref={rootRef} className="mx-auto -mt-9 max-w-xl px-4 pb-10">
+        <div className="rounded-3xl border border-pink-100 bg-white p-5 shadow-[0_24px_60px_rgba(252,12,151,0.14)] sm:p-8">
+          {children}
+        </div>
+        <footer className="mt-8 flex items-center justify-center gap-3 text-xs text-slate-500">
+          <img src={mascotGordo} alt="" aria-hidden="true" className="h-12 w-auto" />
+          <img src={miraiSeal} alt="" aria-hidden="true" className="h-9 w-auto" />
+          <span className="font-semibold">Mirai AI School</span>
+          <img src={mascotEggy} alt="" aria-hidden="true" className="h-12 w-auto" />
+        </footer>
+      </div>
+    </main>
+  )
+}
+
 // The page a visitor sees at /?form=<link name or id>: no login, no CRM
 // chrome. It also runs inside the iframe other websites embed, and tells that
 // page how tall it is so the iframe can grow with the form.
-export function PublicFormPage({ formKey }: { formKey: string }) {
+//
+// With `preview` it shows the draft from the builder instead of the saved
+// form, and nothing is stored, counted or redirected.
+export function PublicFormPage({ formKey, preview = false }: { formKey: string; preview?: boolean }) {
   const [state, setState] = useState<LoadState>({ status: 'loading' })
   const [answers, setAnswers] = useState<Record<string, FormAnswerValue>>({})
   const [extraChildren, setExtraChildren] = useState<number[]>([])
@@ -47,8 +101,25 @@ export function PublicFormPage({ formKey }: { formKey: string }) {
   const [outcome, setOutcome] = useState<'message' | 'redirecting' | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const readyId = state.status === 'ready' ? state.form.id : null
+  const embedded = window.parent !== window
+
+  // Inside another website the page itself is see-through, so only the card
+  // shows and the site's own background stays visible around it.
+  useEffect(() => {
+    if (!embedded) {
+      return
+    }
+    document.documentElement.style.background = 'transparent'
+    document.body.style.background = 'transparent'
+  }, [embedded])
 
   useEffect(() => {
+    if (preview) {
+      const draft = readPreviewDraft(formKey)
+      setState(draft ? { status: 'ready', form: draft } : { status: 'missing' })
+      return
+    }
+
     let cancelled = false
     fetchPublicForm(formKey)
       .then((form) => {
@@ -68,7 +139,7 @@ export function PublicFormPage({ formKey }: { formKey: string }) {
     return () => {
       cancelled = true
     }
-  }, [formKey])
+  }, [formKey, preview])
 
   useEffect(() => {
     if (
@@ -132,11 +203,18 @@ export function PublicFormPage({ formKey }: { formKey: string }) {
       return
     }
 
+    const { settings } = form
+    const redirects = settings.afterSubmit === 'redirect' && isSafeRedirectUrl(settings.redirectUrl)
+
+    if (preview) {
+      setOutcome(redirects ? 'redirecting' : 'message')
+      return
+    }
+
     setIsSubmitting(true)
     try {
       await submitPublicForm(form.id, answers, honeypot)
-      const { settings } = form
-      if (settings.afterSubmit === 'redirect' && isSafeRedirectUrl(settings.redirectUrl)) {
+      if (redirects) {
         setOutcome('redirecting')
         window.location.assign(settings.redirectUrl.trim())
       } else {
@@ -155,111 +233,148 @@ export function PublicFormPage({ formKey }: { formKey: string }) {
     Boolean(form?.settings.allowMoreChildren) &&
     childFields.length > 0 &&
     extraChildren.length < MAX_CHILDREN - 1
+  const hasQuestions = form?.fields.some((field) => !isDisplayField(field.type)) ?? false
 
   return (
-    <main className="min-h-screen bg-white px-4 py-8 text-slate-900">
-      <div ref={rootRef} className="mx-auto max-w-xl">
-        {state.status === 'loading' && <p className="text-sm text-slate-500">Loading...</p>}
-        {state.status === 'missing' && (
-          <p className="text-sm text-slate-600">This form is not available.</p>
-        )}
-        {state.status === 'failed' && (
-          <p role="alert" className="text-sm text-red-600">
-            This form could not be loaded. Please try again later.
+    <PageShell embedded={embedded} rootRef={rootRef}>
+      {preview && (
+        <p
+          role="status"
+          className="mb-5 flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          <Eye size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+          Preview: this is how visitors will see the form. Nothing you fill in here is sent.
+        </p>
+      )}
+      {state.status === 'loading' && <p className="text-sm text-slate-500">Loading...</p>}
+      {state.status === 'missing' && (
+        <p className="text-sm text-slate-600">
+          {preview
+            ? 'This preview is not available. Open Preview again from the form builder.'
+            : 'This form is not available.'}
+        </p>
+      )}
+      {state.status === 'failed' && (
+        <p role="alert" className="text-sm text-red-600">
+          This form could not be loaded. Please try again later.
+        </p>
+      )}
+      {form && outcome && (
+        <div role="status" className="flex flex-col items-center gap-3 py-2 text-center">
+          <img src={mascotEggy} alt="" aria-hidden="true" className="h-32 w-auto" />
+          <CheckCircle size={28} weight="fill" className="text-emerald-500" aria-hidden="true" />
+          <p className="text-sm text-slate-800">
+            {outcome === 'redirecting'
+              ? preview
+                ? `Visitors would now be taken to ${form.settings.redirectUrl.trim()}`
+                : 'Thank you! Taking you to the next page...'
+              : form.settings.successMessage || 'Thank you!'}
           </p>
-        )}
-        {form && outcome && (
-          <div role="status" className="flex items-start gap-3 rounded-2xl bg-emerald-50 p-5">
-            <CheckCircle size={24} weight="fill" className="shrink-0 text-emerald-600" aria-hidden="true" />
-            <p className="text-sm text-emerald-900">
-              {outcome === 'redirecting'
-                ? 'Thank you! Taking you to the next page...'
-                : form.settings.successMessage || 'Thank you!'}
-            </p>
+          {preview && (
+            <button
+              type="button"
+              onClick={() => {
+                setOutcome(null)
+                setAnswers({})
+                setExtraChildren([])
+              }}
+              className="text-sm font-semibold text-[#be185d] hover:text-[#9d174d]"
+            >
+              Back to the form
+            </button>
+          )}
+        </div>
+      )}
+      {form && !outcome && (
+        <form onSubmit={(event) => void handleSubmit(event)} noValidate className="space-y-5">
+          <div>
+            <span className="inline-block rounded-full bg-[#fff0f9] px-3 py-1 text-xs font-bold uppercase tracking-wider text-[#be185d]">
+              Mirai AI School
+            </span>
+            <h1 className="mt-2 font-heading text-2xl font-extrabold leading-tight text-slate-900 sm:text-3xl">
+              {form.name}
+            </h1>
           </div>
-        )}
-        {form && !outcome && (
-          <form onSubmit={(event) => void handleSubmit(event)} noValidate className="space-y-5">
-            <h1 className="text-xl font-semibold text-slate-900">{form.name}</h1>
-            {form.fields.map((field) => (
-              <FormFieldInput
-                key={field.id}
-                field={field}
-                value={answers[field.id] ?? (field.type === 'checkbox' ? [] : '')}
-                error={errors[field.id]}
-                onChange={(value) => setAnswer(field.id, value)}
+          {form.fields.map((field) => (
+            <FormFieldInput
+              key={field.id}
+              field={field}
+              value={answers[field.id] ?? (field.type === 'checkbox' ? [] : '')}
+              error={errors[field.id]}
+              onChange={(value) => setAnswer(field.id, value)}
+            />
+          ))}
+          {extraChildren.map((number) => (
+            <section
+              key={number}
+              aria-label={`Child ${number}`}
+              className="space-y-4 rounded-2xl border border-pink-100 bg-[#fff8fc] p-4"
+            >
+              <div className="flex items-center justify-between">
+                <h2 className="font-heading text-sm font-bold text-slate-800">Child {number}</h2>
+                <button
+                  type="button"
+                  onClick={() => removeChild(number, childFields)}
+                  className="inline-flex items-center gap-1 text-sm font-semibold text-slate-500 hover:text-red-600"
+                >
+                  <X size={14} aria-hidden="true" />
+                  Remove
+                </button>
+              </div>
+              {childFields.map((field) => {
+                const key = childAnswerKey(field.id, number)
+                return (
+                  <FormFieldInput
+                    key={key}
+                    field={{ ...field, id: key }}
+                    value={answers[key] ?? ''}
+                    error={errors[key]}
+                    onChange={(value) => setAnswer(key, value)}
+                  />
+                )
+              })}
+            </section>
+          ))}
+          {canAddChild && (
+            <button
+              type="button"
+              onClick={addChild}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-[#fc0c97]/50 px-3 py-2 text-sm font-semibold text-[#be185d] transition hover:bg-[#fff0f9]"
+            >
+              <Plus size={14} aria-hidden="true" />
+              Add another child
+            </button>
+          )}
+          {/* Bots fill every input they find; people never see this one. */}
+          <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
+            <label>
+              Website
+              <input
+                type="text"
+                name="website"
+                tabIndex={-1}
+                autoComplete="off"
+                value={honeypot}
+                onChange={(event) => setHoneypot(event.target.value)}
               />
-            ))}
-            {extraChildren.map((number) => (
-              <section
-                key={number}
-                aria-label={`Child ${number}`}
-                className="space-y-4 rounded-2xl border border-slate-200 p-4"
-              >
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-slate-800">Child {number}</h2>
-                  <button
-                    type="button"
-                    onClick={() => removeChild(number, childFields)}
-                    className="inline-flex items-center gap-1 text-sm font-semibold text-slate-500 hover:text-red-600"
-                  >
-                    <X size={14} aria-hidden="true" />
-                    Remove
-                  </button>
-                </div>
-                {childFields.map((field) => {
-                  const key = childAnswerKey(field.id, number)
-                  return (
-                    <FormFieldInput
-                      key={key}
-                      field={{ ...field, id: key }}
-                      value={answers[key] ?? ''}
-                      error={errors[key]}
-                      onChange={(value) => setAnswer(key, value)}
-                    />
-                  )
-                })}
-              </section>
-            ))}
-            {canAddChild && (
-              <button
-                type="button"
-                onClick={addChild}
-                className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#be185d] hover:text-[#9d174d]"
-              >
-                <Plus size={14} aria-hidden="true" />
-                Add another child
-              </button>
-            )}
-            {/* Bots fill every input they find; people never see this one. */}
-            <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
-              <label>
-                Website
-                <input
-                  type="text"
-                  name="website"
-                  tabIndex={-1}
-                  autoComplete="off"
-                  value={honeypot}
-                  onChange={(event) => setHoneypot(event.target.value)}
-                />
-              </label>
-            </div>
-            {submitError && (
-              <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
-                {submitError}
-              </p>
-            )}
+            </label>
+          </div>
+          {submitError && (
+            <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+              {submitError}
+            </p>
+          )}
+          {hasQuestions && (
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full rounded-xl bg-[#fc0c97] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#de0a84] disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-2xl bg-[#fc0c97] px-4 py-3 font-heading text-base font-bold text-white shadow-[0_10px_24px_rgba(252,12,151,0.32)] transition hover:bg-[#de0a84] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSubmitting ? 'Sending...' : form.settings.submitLabel}
             </button>
-          </form>
-        )}
-      </div>
-    </main>
+          )}
+        </form>
+      )}
+    </PageShell>
   )
 }

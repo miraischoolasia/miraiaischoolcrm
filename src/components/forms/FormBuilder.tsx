@@ -1,9 +1,10 @@
-import { useMemo, useState, type DragEvent } from 'react'
+import { useMemo, useRef, useState, type DragEvent } from 'react'
 import {
   ArrowLeft,
   ArrowDown,
   ArrowUp,
   Copy,
+  Eye,
   DotsSixVertical,
   Plus,
   ShareNetwork,
@@ -17,7 +18,11 @@ import { cn } from '../../lib/cn'
 import { getErrorMessage } from '../../lib/errors'
 import {
   IMAGE_TYPES,
+  IMAGE_WIDTH_MAX,
+  IMAGE_WIDTH_MIN,
+  IMAGE_WIDTH_STEP,
   MAX_FIELD_OPTIONS,
+  MAX_TEXT_BLOCK_LENGTH,
   MAX_FORM_FIELDS,
   createField,
   duplicateField,
@@ -25,11 +30,21 @@ import {
   getFieldTypeInfo,
   getFormProblem,
   getImageFileProblem,
+  buildPreviewUrl,
   getLeadMapOptionsFor,
   insertField,
+  isDisplayField,
+  savePreviewDraft,
   moveField,
 } from '../../lib/forms'
-import type { Form, FormField, FormFieldType, FormSettings } from '../../types/domain'
+import type {
+  Form,
+  FormField,
+  FormFieldType,
+  FormImageAlign,
+  FormSettings,
+  FormTextStyle,
+} from '../../types/domain'
 
 export type FormChanges = {
   name: string
@@ -153,6 +168,19 @@ export function FormBuilder({
     endDrag()
   }
 
+  // Opens the form as visitors will see it, with what is on screen now, even
+  // before it is saved. Nothing typed in the preview is sent anywhere.
+  function handlePreview() {
+    if (!savePreviewDraft(form.id, { name, fields, settings })) {
+      setRaised({
+        text: 'The preview could not be prepared. Allow this site to store data and try again.',
+        at: snapshot(changes),
+      })
+      return
+    }
+    window.open(buildPreviewUrl(window.location.origin, form.id), '_blank', 'noopener')
+  }
+
   async function handleSave() {
     const found = getFormProblem(name, fields, settings)
     setRaised(found ? { text: found, at: snapshot(changes) } : null)
@@ -201,6 +229,14 @@ export function FormBuilder({
           />
           Published
         </label>
+        <button
+          type="button"
+          onClick={handlePreview}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+        >
+          <Eye size={16} aria-hidden="true" />
+          Preview
+        </button>
         <button
           type="button"
           onClick={() => setSelectedId(null)}
@@ -476,6 +512,8 @@ function FieldProperties({
   const info = getFieldTypeInfo(field.type)
   const mapOptions = getLeadMapOptionsFor(field.type)
   const isImage = field.type === 'image'
+  const isText = field.type === 'text_block'
+  const isDisplay = isDisplayField(field.type)
   const iconButton =
     'rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40'
 
@@ -508,6 +546,7 @@ function FieldProperties({
         </div>
       </div>
 
+      {!isText && (
       <label className="block text-sm font-medium text-slate-700">
         {isImage ? 'Image description' : 'Label'}
         <input
@@ -523,16 +562,27 @@ function FieldProperties({
           </span>
         )}
       </label>
+      )}
+
+      {isText && (
+        <TextBlockControls
+          content={field.content}
+          style={field.textStyle}
+          onChange={(patch) => onChange(patch)}
+        />
+      )}
 
       {isImage && (
         <ImageFieldControls
           imageUrl={field.imageUrl}
+          width={field.imageWidth}
+          align={field.imageAlign}
           onUpload={onUploadImage}
-          onChange={(imageUrl) => onChange({ imageUrl })}
+          onChange={(patch) => onChange(patch)}
         />
       )}
 
-      {!isImage && (!info.hasOptions || field.type === 'dropdown') ? (
+      {!isDisplay && (!info.hasOptions || field.type === 'dropdown') ? (
         field.type !== 'date' && (
           <label className="block text-sm font-medium text-slate-700">
             {field.type === 'dropdown' ? 'Empty choice text' : 'Placeholder'}
@@ -547,7 +597,7 @@ function FieldProperties({
         )
       ) : null}
 
-      {!isImage && (
+      {!isDisplay && (
         <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
           <input
             type="checkbox"
@@ -597,7 +647,7 @@ function FieldProperties({
         </div>
       )}
 
-      {showLeadMap && !isImage && (
+      {showLeadMap && !isDisplay && (
         <label className="block text-sm font-medium text-slate-700">
           Fills on the lead
           <select
@@ -624,14 +674,24 @@ function FieldProperties({
   )
 }
 
+const alignChoices: { value: FormImageAlign; label: string }[] = [
+  { value: 'left', label: 'Left' },
+  { value: 'center', label: 'Center' },
+  { value: 'right', label: 'Right' },
+]
+
 function ImageFieldControls({
   imageUrl,
+  width,
+  align,
   onUpload,
   onChange,
 }: {
   imageUrl: string
+  width: number
+  align: FormImageAlign
   onUpload: (file: File) => Promise<string>
-  onChange: (imageUrl: string) => void
+  onChange: (patch: Partial<FormField>) => void
 }) {
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -648,7 +708,7 @@ function ImageFieldControls({
     setIsUploading(true)
     setError(null)
     try {
-      onChange(await onUpload(file))
+      onChange({ imageUrl: await onUpload(file) })
     } catch (uploadError) {
       setError(getErrorMessage(uploadError, 'Could not upload the image. Please try again.'))
     } finally {
@@ -683,7 +743,7 @@ function ImageFieldControls({
           <button
             type="button"
             disabled={isUploading}
-            onClick={() => onChange('')}
+            onClick={() => onChange({ imageUrl: '' })}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
           >
             Remove image
@@ -691,11 +751,151 @@ function ImageFieldControls({
         )}
       </div>
       <p className="text-xs text-slate-500">PNG, JPG, WebP or GIF, up to 5 MB.</p>
+      <label className="block text-sm font-medium text-slate-700">
+        Width: {width}%
+        <input
+          type="range"
+          min={IMAGE_WIDTH_MIN}
+          max={IMAGE_WIDTH_MAX}
+          step={IMAGE_WIDTH_STEP}
+          value={width}
+          aria-label="Image width"
+          onChange={(event) => onChange({ imageWidth: Number(event.target.value) })}
+          className="mt-1 block w-full accent-[#fc0c97]"
+        />
+      </label>
+      <div role="radiogroup" aria-label="Image alignment" className="flex gap-1.5">
+        {alignChoices.map((choice) => (
+          <button
+            key={choice.value}
+            type="button"
+            role="radio"
+            aria-checked={align === choice.value}
+            onClick={() => onChange({ imageAlign: choice.value })}
+            className={cn(
+              'flex-1 rounded-lg border px-2 py-1.5 text-sm font-semibold transition',
+              align === choice.value
+                ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]'
+                : 'border-slate-200 text-slate-600 hover:bg-slate-50',
+            )}
+          >
+            {choice.label}
+          </button>
+        ))}
+      </div>
       {error && (
         <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">
           {error}
         </p>
       )}
+    </div>
+  )
+}
+
+// Buttons that write the formatting for people who do not know it: select
+// some words and press Bold, or press Bullet list / Link for a starting point.
+function TextBlockControls({
+  content,
+  style,
+  onChange,
+}: {
+  content: string
+  style: FormTextStyle
+  onChange: (patch: Partial<FormField>) => void
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  function apply(edit: (text: string, start: number, end: number) => { text: string; start: number; end: number }) {
+    const area = textareaRef.current
+    const start = area?.selectionStart ?? content.length
+    const end = area?.selectionEnd ?? content.length
+    const next = edit(content, start, end)
+    onChange({ content: next.text })
+    window.requestAnimationFrame(() => {
+      area?.focus()
+      area?.setSelectionRange(next.start, next.end)
+    })
+  }
+
+  const bold = () =>
+    apply((text, start, end) => {
+      const picked = text.slice(start, end) || 'bold words'
+      return {
+        text: `${text.slice(0, start)}**${picked}**${text.slice(end)}`,
+        start: start + 2,
+        end: start + 2 + picked.length,
+      }
+    })
+
+  const list = () =>
+    apply((text, start, end) => {
+      const from = text.lastIndexOf('\n', start - 1) + 1
+      const to = text.indexOf('\n', end) === -1 ? text.length : text.indexOf('\n', end)
+      const lines = text.slice(from, to).split('\n').map((line) => (/^\s*[-*]\s/.test(line) ? line : `- ${line}`))
+      const replaced = lines.join('\n')
+      return { text: text.slice(0, from) + replaced + text.slice(to), start: from, end: from + replaced.length }
+    })
+
+  const link = () =>
+    apply((text, start, end) => {
+      const label = text.slice(start, end) || 'link text'
+      const inserted = `[${label}](https://)`
+      const urlStart = start + label.length + 3
+      return {
+        text: text.slice(0, start) + inserted + text.slice(end),
+        start: urlStart,
+        end: urlStart + 8,
+      }
+    })
+
+  const toolButton =
+    'rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50'
+
+  return (
+    <div className="space-y-3">
+      <label className="block text-sm font-medium text-slate-700">
+        Look
+        <select
+          value={style}
+          onChange={(event) => onChange({ textStyle: event.target.value as FormTextStyle })}
+          className={cn(panelInputClass, 'mt-1')}
+        >
+          <option value="body">Text</option>
+          <option value="heading">Heading</option>
+        </select>
+      </label>
+      <div>
+        <label htmlFor="text-block-content" className="text-sm font-medium text-slate-700">
+          Details
+        </label>
+        {style === 'body' && (
+          <div className="mb-1.5 mt-1 flex gap-1.5">
+            <button type="button" onClick={bold} className={toolButton}>
+              Bold
+            </button>
+            <button type="button" onClick={list} className={toolButton}>
+              Bullet list
+            </button>
+            <button type="button" onClick={link} className={toolButton}>
+              Link
+            </button>
+          </div>
+        )}
+        <textarea
+          id="text-block-content"
+          ref={textareaRef}
+          rows={style === 'heading' ? 2 : 8}
+          value={content}
+          maxLength={MAX_TEXT_BLOCK_LENGTH}
+          onChange={(event) => onChange({ content: event.target.value })}
+          className={cn(panelInputClass, 'mt-1')}
+        />
+        <p className="mt-1 text-xs text-slate-500">
+          {style === 'heading'
+            ? 'Each line is shown on its own row.'
+            : 'Leave a blank line for a new paragraph. Start a line with "- " for a bullet.'}
+        </p>
+      </div>
     </div>
   )
 }

@@ -4,6 +4,8 @@ import type {
   FormAnswer,
   FormField,
   FormFieldType,
+  FormImageAlign,
+  FormTextStyle,
   FormLeadMap,
   FormSettings,
   FormSubmission,
@@ -45,7 +47,28 @@ export const formFieldTypes: FieldTypeInfo[] = [
   { type: 'radio', label: 'Single choice', hasOptions: true, defaultLabel: 'Pick one' },
   { type: 'checkbox', label: 'Multiple choice', hasOptions: true, defaultLabel: 'Pick any' },
   { type: 'image', label: 'Image / poster', hasOptions: false, defaultLabel: 'Poster' },
+  { type: 'text_block', label: 'Text / details', hasOptions: false, defaultLabel: 'Details' },
 ]
+
+// Poster width, as a share of the form's width.
+export const IMAGE_WIDTH_MIN = 25
+export const IMAGE_WIDTH_MAX = 100
+export const IMAGE_WIDTH_STEP = 5
+export const MAX_TEXT_BLOCK_LENGTH = 4000
+
+const imageAligns: FormImageAlign[] = ['left', 'center', 'right']
+const textStyles: FormTextStyle[] = ['heading', 'body']
+
+// Shows something to read or look at; there is nothing for the visitor to answer.
+export function isDisplayField(type: FormFieldType) {
+  return type === 'image' || type === 'text_block'
+}
+
+export function clampImageWidth(value: unknown) {
+  const number = typeof value === 'number' && Number.isFinite(value) ? value : IMAGE_WIDTH_MAX
+  const stepped = Math.round(number / IMAGE_WIDTH_STEP) * IMAGE_WIDTH_STEP
+  return Math.min(IMAGE_WIDTH_MAX, Math.max(IMAGE_WIDTH_MIN, stepped))
+}
 
 export function getFieldTypeInfo(type: FormFieldType) {
   return formFieldTypes.find((entry) => entry.type === type) ?? formFieldTypes[0]
@@ -72,7 +95,7 @@ const leadMapFieldTypes: Record<FormLeadMap, FormFieldType[] | 'any'> = {
 }
 
 export function getLeadMapOptionsFor(type: FormFieldType) {
-  if (type === 'image') {
+  if (isDisplayField(type)) {
     return []
   }
   return formLeadMapOptions.filter((option) => {
@@ -119,6 +142,10 @@ export function createField(type: FormFieldType): FormField {
     options: info.hasOptions ? ['Option 1', 'Option 2'] : [],
     mapTo: null,
     imageUrl: '',
+    imageWidth: IMAGE_WIDTH_MAX,
+    imageAlign: 'center',
+    content: type === 'text_block' ? 'Tell parents about this form here.' : '',
+    textStyle: 'body',
   }
 }
 
@@ -160,12 +187,16 @@ export function normalizeFields(raw: unknown): FormField[] {
         type,
         label: asString(item.label),
         placeholder: asString(item.placeholder),
-        required: item.required === true,
+        required: item.required === true && !isDisplayField(type),
         options: Array.isArray(item.options)
           ? item.options.filter((option): option is string => typeof option === 'string')
           : [],
-        mapTo: type === 'image' ? null : mapTo,
+        mapTo: isDisplayField(type) ? null : mapTo,
         imageUrl: type === 'image' ? asString(item.imageUrl) : '',
+        imageWidth: clampImageWidth(item.imageWidth),
+        imageAlign: imageAligns.find((align) => align === item.imageAlign) ?? 'center',
+        content: type === 'text_block' ? asString(item.content) : '',
+        textStyle: textStyles.find((style) => style === item.textStyle) ?? 'body',
       },
     ]
   })
@@ -310,6 +341,15 @@ export function getFormProblem(
       }
       continue
     }
+    if (field.type === 'text_block') {
+      if (!field.content.trim()) {
+        return 'A text block is empty. Write something in it, or delete it.'
+      }
+      if (field.content.length > MAX_TEXT_BLOCK_LENGTH) {
+        return `A text block can have at most ${MAX_TEXT_BLOCK_LENGTH} characters.`
+      }
+      continue
+    }
     if (!field.label.trim()) {
       return 'Every field needs a label.'
     }
@@ -341,7 +381,7 @@ export function validateAnswers(fields: FormField[], answers: Record<string, For
   const errors: Record<string, string> = {}
 
   for (const field of fields) {
-    if (field.type === 'image') {
+    if (isDisplayField(field.type)) {
       continue
     }
     const raw = answers[field.id]
@@ -369,6 +409,39 @@ export function validateAnswers(fields: FormField[], answers: Record<string, For
 // `key` is the link name when the form has one, else its id; both work.
 export function buildFormUrl(origin: string, key: string) {
   return `${origin}/?form=${key}`
+}
+
+// The form as it is being edited, opened in another tab before saving. The
+// draft travels through this browser's local storage, so nothing about an
+// unsaved form goes to the database.
+const PREVIEW_KEY_PREFIX = 'mirai-form-preview-'
+
+export function buildPreviewUrl(origin: string, formId: string) {
+  return `${buildFormUrl(origin, formId)}&preview=1`
+}
+
+export function savePreviewDraft(
+  formId: string,
+  draft: { name: string; fields: FormField[]; settings: FormSettings },
+) {
+  try {
+    window.localStorage.setItem(
+      PREVIEW_KEY_PREFIX + formId,
+      JSON.stringify({ id: formId, ...draft }),
+    )
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function readPreviewDraft(formId: string): PublicForm | null {
+  try {
+    const stored = window.localStorage.getItem(PREVIEW_KEY_PREFIX + formId)
+    return stored ? mapPublicForm(JSON.parse(stored)) : null
+  } catch {
+    return null
+  }
 }
 
 export function isSafeRedirectUrl(value: string) {

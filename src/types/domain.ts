@@ -545,8 +545,10 @@ export type FormFieldType =
   | 'dropdown'
   | 'radio'
   | 'checkbox'
-  // Not a question: shows a picture (for example a poster) on the form.
+  // Not questions: they show a picture (for example a poster) or some
+  // written details on the form.
   | 'image'
+  | 'text_block'
 
 // Which Lead column a form answer fills when the form creates a lead.
 export type FormLeadMap =
@@ -557,6 +559,9 @@ export type FormLeadMap =
   | 'child_phone'
   | 'notes'
 
+export type FormImageAlign = 'left' | 'center' | 'right'
+export type FormTextStyle = 'heading' | 'body'
+
 export type FormField = {
   id: string
   type: FormFieldType
@@ -565,8 +570,14 @@ export type FormField = {
   required: boolean
   options: string[]
   mapTo: FormLeadMap | null
-  // Only for 'image' fields: where the picture is stored.
+  // Only for 'image' fields: where the picture is stored, how wide it is
+  // (percent of the form's width) and which side it sits on.
   imageUrl: string
+  imageWidth: number
+  imageAlign: FormImageAlign
+  // Only for 'text_block' fields: the written details and how they look.
+  content: string
+  textStyle: FormTextStyle
 }
 
 export type FormAfterSubmit = 'message' | 'redirect'

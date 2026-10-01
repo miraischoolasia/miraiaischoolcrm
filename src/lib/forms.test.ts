@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildEmbedCode,
+  buildPreviewUrl,
+  clampImageWidth,
+  isDisplayField,
+  readPreviewDraft,
+  savePreviewDraft,
   getImageFileProblem,
   buildFormUrl,
   childAnswerKey,
@@ -331,5 +336,78 @@ describe('image fields', () => {
     expect(getImageFileProblem({ type: 'image/svg+xml', size: 1000 })).toMatch(/PNG/)
     expect(getImageFileProblem({ type: 'application/pdf', size: 1000 })).toMatch(/PNG/)
     expect(getImageFileProblem({ type: 'image/png', size: 5 * 1024 * 1024 + 1 })).toMatch(/5 MB/)
+  })
+})
+
+describe('text blocks and poster size', () => {
+  const text = { ...createField('text_block'), content: 'Hello' }
+
+  it('are display-only: never required, never mapped, never validated', () => {
+    expect(isDisplayField('text_block')).toBe(true)
+    expect(isDisplayField('image')).toBe(true)
+    expect(isDisplayField('short_text')).toBe(false)
+    expect(createField('text_block')).toMatchObject({ required: false, mapTo: null })
+    expect(createField('text_block').content).not.toBe('')
+    expect(getLeadMapOptionsFor('text_block')).toEqual([])
+    expect(validateAnswers([{ ...text, required: true }], {})).toEqual({})
+  })
+
+  it('need some text before the form can be saved, but no label', () => {
+    expect(getFormProblem('F', [...createStarterFields(), text])).toBeNull()
+    expect(getFormProblem('F', [{ ...text, content: '  \n ' }])).toMatch(/text block is empty/)
+    expect(getFormProblem('F', [{ ...text, content: 'x'.repeat(4001) }])).toMatch(/4000/)
+    expect(getFormProblem('F', [{ ...text, label: '' }, ...createStarterFields()])).toBeNull()
+  })
+
+  it('keep their text and look when read back, and other fields never get them', () => {
+    const [block, plain] = normalizeFields([
+      { id: 't', type: 'text_block', content: 'Hi', textStyle: 'heading', required: true, mapTo: 'notes' },
+      { id: 'n', type: 'short_text', label: 'Name', content: 'sneaky', imageUrl: 'https://x.test/a.png' },
+    ])
+    expect(block).toMatchObject({ content: 'Hi', textStyle: 'heading', required: false, mapTo: null })
+    expect(plain).toMatchObject({ content: '', imageUrl: '' })
+  })
+
+  it('keep the poster width in range, in steps of 5, with a safe default', () => {
+    expect(clampImageWidth(60)).toBe(60)
+    expect(clampImageWidth(62)).toBe(60)
+    expect(clampImageWidth(3)).toBe(25)
+    expect(clampImageWidth(900)).toBe(100)
+    expect(clampImageWidth(undefined)).toBe(100)
+    expect(clampImageWidth('50')).toBe(100)
+    expect(createField('image')).toMatchObject({ imageWidth: 100, imageAlign: 'center' })
+  })
+
+  it('read the poster size and side back, falling back for bad values', () => {
+    const [good, bad] = normalizeFields([
+      { id: 'a', type: 'image', imageUrl: 'https://x.test/a.png', imageWidth: 50, imageAlign: 'right' },
+      { id: 'b', type: 'image', imageUrl: 'https://x.test/b.png', imageWidth: 'wide', imageAlign: 'diagonal' },
+    ])
+    expect(good).toMatchObject({ imageWidth: 50, imageAlign: 'right' })
+    expect(bad).toMatchObject({ imageWidth: 100, imageAlign: 'center' })
+  })
+})
+
+describe('preview drafts', () => {
+  it('builds a preview address from the form id', () => {
+    expect(buildPreviewUrl('https://crm.test', 'abc')).toBe('https://crm.test/?form=abc&preview=1')
+  })
+
+  it('hands the unsaved form to the preview tab and reads it back', () => {
+    window.localStorage.clear()
+    const fields = [...createStarterFields(), { ...createField('text_block'), content: 'Details' }]
+    expect(savePreviewDraft('f1', { name: 'Draft', fields, settings: defaultFormSettings })).toBe(true)
+
+    const draft = readPreviewDraft('f1')
+    expect(draft).toMatchObject({ id: 'f1', name: 'Draft' })
+    expect(draft?.fields).toHaveLength(6)
+    expect(draft?.fields.at(-1)).toMatchObject({ type: 'text_block', content: 'Details' })
+  })
+
+  it('finds no draft for another form or after the data is damaged', () => {
+    window.localStorage.clear()
+    expect(readPreviewDraft('nope')).toBeNull()
+    window.localStorage.setItem('mirai-form-preview-bad', '{not json')
+    expect(readPreviewDraft('bad')).toBeNull()
   })
 })
