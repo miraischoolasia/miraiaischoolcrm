@@ -5,6 +5,7 @@ import { MAX_LEAD_FOLLOW_UPS, leadStatusOptions } from '../../lib/constants'
 import { SummaryBar } from '../SummaryBar'
 import { LeadTrendChart } from '../LeadTrendChart'
 import { LeadKanbanBoard } from '../LeadKanbanBoard'
+import { FormAnswersChip } from '../FormAnswersChip'
 import mascotGordo from '../../assets/mascot-gordo.png'
 import {
   ArrowRight,
@@ -78,6 +79,9 @@ type LeadsSectionProps = {
   deletingLeadId: number | null
   leadOptions: LeadOption[]
   onOpenLeadOptions: () => void
+  // The leads that came with form answers get a small "Form" tag that opens them.
+  leadIdsWithForms?: Set<number>
+  onOpenFormAnswers?: (leadId: number) => void
 }
 
 export function LeadsSection({
@@ -93,6 +97,8 @@ export function LeadsSection({
   deletingLeadId,
   leadOptions,
   onOpenLeadOptions,
+  leadIdsWithForms,
+  onOpenFormAnswers,
 }: LeadsSectionProps) {
   const [view, setView] = useState<'pipeline' | 'board' | 'dashboard'>('pipeline')
   const [searchTerm, setSearchTerm] = useState('')
@@ -392,6 +398,8 @@ export function LeadsSection({
             onConvertLead={onConvertLead}
             onEditLead={onEditLead}
             onOpenFollowUp={onOpenFollowUp}
+            leadIdsWithForms={leadIdsWithForms}
+            onOpenFormAnswers={onOpenFormAnswers}
           />
         )}
 
@@ -472,6 +480,11 @@ export function LeadsSection({
                       </div>
                       <div className="mt-1 text-xs text-slate-500">
                         {sourceLabel(lead)} · Added {formatDate(lead.addedDate)}
+                        {leadIdsWithForms?.has(lead.id) && onOpenFormAnswers && (
+                          <span className="ml-2">
+                            <FormAnswersChip onClick={() => onOpenFormAnswers(lead.id)} />
+                          </span>
+                        )}
                       </div>
                     </div>
                     <span
@@ -589,7 +602,12 @@ export function LeadsSection({
                         {formatChildren(lead.children)}
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
-                        {sourceLabel(lead)}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {sourceLabel(lead)}
+                          {leadIdsWithForms?.has(lead.id) && onOpenFormAnswers && (
+                            <FormAnswersChip onClick={() => onOpenFormAnswers(lead.id)} />
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">{picLabel(lead)}</td>
                       <td className="px-6 py-5">

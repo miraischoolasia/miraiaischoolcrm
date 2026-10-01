@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { Plus, Trash, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import {
@@ -6,10 +7,12 @@ import {
   leadStatusOptions,
 } from '../../lib/constants'
 import { LeadOptionPicker } from '../LeadOptionPicker'
+import { formatDateTime } from '../../lib/forms'
 import type {
   Lead,
   LeadChildFormState,
   LeadFormState,
+  LeadFormSubmission,
   LeadOption,
   LeadOptionKind,
 } from '../../types/domain'
@@ -24,6 +27,11 @@ type LeadModalProps = {
   onFieldChange: <K extends keyof LeadFormState>(field: K, value: LeadFormState[K]) => void
   leadOptions: LeadOption[]
   onAddLeadOption: (kind: LeadOptionKind, label: string) => Promise<LeadOption | null>
+  // What this lead answered in forms (read-only), newest first.
+  formSubmissions?: LeadFormSubmission[]
+  isLoadingFormSubmissions?: boolean
+  // Scroll to the form answers when the window opens.
+  focusFormAnswers?: boolean
 }
 
 export function LeadModal({
@@ -36,7 +44,19 @@ export function LeadModal({
   onFieldChange,
   leadOptions,
   onAddLeadOption,
+  formSubmissions = [],
+  isLoadingFormSubmissions = false,
+  focusFormAnswers = false,
 }: LeadModalProps) {
+  const formAnswersRef = useRef<HTMLElement>(null)
+  const hasFormAnswers = formSubmissions.length > 0
+
+  useEffect(() => {
+    if (focusFormAnswers && hasFormAnswers) {
+      formAnswersRef.current?.scrollIntoView?.({ block: 'start' })
+    }
+  }, [focusFormAnswers, hasFormAnswers])
+
   function updateChild(index: number, patch: Partial<LeadChildFormState>) {
     onFieldChange(
       'children',
@@ -235,6 +255,50 @@ export function LeadModal({
             </div>
           ))}
         </div>
+
+        {editingLead && (isLoadingFormSubmissions || hasFormAnswers) && (
+          <section
+            ref={formAnswersRef}
+            aria-label="Form answers"
+            className="space-y-3 rounded-2xl border border-pink-100 bg-[#fff8fc] p-4"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-slate-700">Form answers</h3>
+              {hasFormAnswers && (
+                <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-500">
+                  {formSubmissions.length} {formSubmissions.length === 1 ? 'submission' : 'submissions'}
+                </span>
+              )}
+            </div>
+            {isLoadingFormSubmissions && !hasFormAnswers ? (
+              <p className="text-sm text-slate-500">Loading...</p>
+            ) : (
+              formSubmissions.map((submission) => (
+                <article key={submission.id} className="rounded-xl bg-white p-3 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="font-semibold text-[#be185d]">{submission.formName}</span>
+                    <span className="text-slate-500">
+                      {formatDateTime(submission.createdAt)}
+                      {submission.wasExisting && ' · filled in again'}
+                    </span>
+                  </div>
+                  <dl className="mt-2 space-y-2">
+                    {submission.answers.map((answer) => (
+                      <div key={answer.id}>
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          {answer.label}
+                        </dt>
+                        <dd className="whitespace-pre-wrap break-words text-sm text-slate-800">
+                          {answer.value}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </article>
+              ))
+            )}
+          </section>
+        )}
 
         <label className="block space-y-2">
           <span className="text-sm font-semibold text-slate-700">Notes</span>

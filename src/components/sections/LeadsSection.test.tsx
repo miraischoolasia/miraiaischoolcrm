@@ -29,7 +29,10 @@ function makeLead(id: number, picId: number | null): Lead {
   }
 }
 
-function renderSection(leads: Lead[]) {
+function renderSection(
+  leads: Lead[],
+  extra: { leadIdsWithForms?: Set<number>; onOpenFormAnswers?: (leadId: number) => void } = {},
+) {
   render(
     <LeadsSection
       isLoading={false}
@@ -44,6 +47,7 @@ function renderSection(leads: Lead[]) {
       deletingLeadId={null}
       leadOptions={options}
       onOpenLeadOptions={vi.fn()}
+      {...extra}
     />,
   )
 }
@@ -113,5 +117,42 @@ describe('LeadsSection', () => {
     fireEvent.mouseMove(window, { clientX: 100 })
     fireEvent.mouseUp(window)
     expect(board.scrollLeft).toBe(500)
+  })
+
+  it('tags the leads that came with form answers, and opens them from the tag', async () => {
+    const onOpenFormAnswers = vi.fn()
+    renderSection([makeLead(1, null), makeLead(2, null)], {
+      leadIdsWithForms: new Set([2]),
+      onOpenFormAnswers,
+    })
+
+    const tags = within(screen.getByRole('table')).getAllByRole('button', { name: 'View form answers' })
+    expect(tags).toHaveLength(1)
+    const rowOf = (phone: string) => tableRows().find((row) => within(row).queryByText(phone)) as HTMLElement
+    expect(within(rowOf('0100000002')).getByRole('button', { name: 'View form answers' })).toBeInTheDocument()
+    expect(within(rowOf('0100000001')).queryByRole('button', { name: 'View form answers' })).not.toBeInTheDocument()
+
+    await userEvent.click(tags[0])
+    expect(onOpenFormAnswers).toHaveBeenCalledWith(2)
+  })
+
+  it('tags the lead on the board too', async () => {
+    const onOpenFormAnswers = vi.fn()
+    renderSection([makeLead(1, null), makeLead(2, null)], {
+      leadIdsWithForms: new Set([1]),
+      onOpenFormAnswers,
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Board/ }))
+
+    const tags = screen.getAllByRole('button', { name: 'View form answers' })
+    expect(tags).toHaveLength(1)
+    await userEvent.click(tags[0])
+    expect(onOpenFormAnswers).toHaveBeenCalledWith(1)
+  })
+
+  it('shows no tag when nothing is passed in', () => {
+    renderSection([makeLead(1, null)])
+
+    expect(screen.queryByRole('button', { name: 'View form answers' })).not.toBeInTheDocument()
   })
 })

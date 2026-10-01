@@ -661,3 +661,14 @@ export type FormSubmission = {
 
 // The slice of a form the public page needs (see get_public_form).
 export type PublicForm = Pick<Form, 'id' | 'name' | 'fields' | 'settings'>
+
+// One form submission linked to a lead, as the lead's "Form answers" shows it.
+export type LeadFormSubmission = {
+  id: number
+  formId: string
+  formName: string
+  createdAt: string
+  answers: FormAnswer[]
+  // The lead already existed (same phone), so this submission was linked to it.
+  wasExisting: boolean
+}

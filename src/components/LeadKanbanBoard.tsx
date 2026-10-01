@@ -1,3 +1,4 @@
+import { FormAnswersChip } from './FormAnswersChip'
 import { useRef, useState } from 'react'
 import { CaretLeft, CaretRight, PencilSimple, Phone } from '@phosphor-icons/react'
 import { cn } from '../lib/cn'
@@ -55,6 +56,8 @@ type LeadKanbanBoardProps = {
   onOpenFollowUp: (leadId: number) => void
   // The lead's PIC name, or null when nobody is assigned.
   picLabel?: (lead: Lead) => string | null
+  leadIdsWithForms?: Set<number>
+  onOpenFormAnswers?: (leadId: number) => void
 }
 
 export function LeadKanbanBoard({
@@ -64,6 +67,8 @@ export function LeadKanbanBoard({
   onEditLead,
   onOpenFollowUp,
   picLabel,
+  leadIdsWithForms,
+  onOpenFormAnswers,
 }: LeadKanbanBoardProps) {
   const todayString = getTodayString()
   const [dragOverStage, setDragOverStage] = useState<LeadStatus | null>(null)
@@ -210,6 +215,11 @@ export function LeadKanbanBoard({
                     {picLabel?.(lead) && (
                       <div className="text-xs font-medium text-[#be185d]">
                         PIC: {picLabel(lead)}
+                      </div>
+                    )}
+                    {leadIdsWithForms?.has(lead.id) && onOpenFormAnswers && (
+                      <div>
+                        <FormAnswersChip onClick={() => onOpenFormAnswers(lead.id)} />
                       </div>
                     )}
                     <div className="flex items-center justify-end gap-1.5">

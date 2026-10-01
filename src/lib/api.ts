@@ -19,6 +19,7 @@ import {
 import type {
   FormField,
   FormSettings,
+  LeadFormSubmission,
   LessonLogStudent,
   LessonLogStudentReview,
   LeadRow,
@@ -695,4 +696,68 @@ export async function uploadFormImageToSupabase(file: File) {
   }
 
   return supabase.storage.from(FORM_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl
+}
+
+// The leads that have at least one finished form submission, for the small
+// "Form" tag in the Leads list.
+export async function fetchLeadIdsWithFormSubmissions() {
+  if (!supabase) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('form_submissions')
+    .select('lead_id')
+    .eq('status', 'completed')
+    .not('lead_id', 'is', null)
+    .limit(5000)
+
+  if (error) {
+    throw error
+  }
+
+  return [...new Set(data.flatMap((row) => (row.lead_id === null ? [] : [row.lead_id])))]
+}
+
+// Every finished submission linked to one lead, newest first.
+export async function fetchLeadFormSubmissions(leadId: number): Promise<LeadFormSubmission[]> {
+  if (!supabase) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('form_submissions')
+    .select('id, form_id, answers, lead_was_existing, created_at')
+    .eq('lead_id', leadId)
+    .eq('status', 'completed')
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    throw error
+  }
+  if (data.length === 0) {
+    return []
+  }
+
+  const { data: forms, error: formsError } = await supabase
+    .from('forms')
+    .select('id, name')
+    .in('id', [...new Set(data.map((row) => row.form_id))])
+
+  if (formsError) {
+    throw formsError
+  }
+
+  const names = new Map(forms.map((form) => [form.id, form.name]))
+  return data.map((row) => {
+    const submission = mapSubmissionRow({ ...row, lead_id: leadId, status: 'completed', last_page: null })
+    return {
+      id: submission.id,
+      formId: submission.formId,
+      formName: names.get(submission.formId) ?? 'Deleted form',
+      createdAt: submission.createdAt,
+      answers: submission.answers,
+      wasExisting: submission.leadWasExisting,
+    }
+  })
 }

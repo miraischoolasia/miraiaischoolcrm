@@ -118,6 +118,7 @@ import { ClassListingSection } from './components/sections/ClassListingSection'
 import { StudentDashboardSection } from './components/sections/StudentDashboardSection'
 import { TeacherManagementSection } from './components/sections/TeacherManagementSection'
 import { FormsSection } from './components/sections/FormsSection'
+import { useLeadFormAnswers } from './hooks/useLeadFormAnswers'
 import { useUnreadFormSubmissions } from './hooks/useUnreadFormSubmissions'
 import { LeadsSection } from './components/sections/LeadsSection'
 import { AdminActivitySection } from './components/sections/AdminActivitySection'
@@ -498,6 +499,12 @@ function App() {
   const isAdminView = currentSession?.role !== 'teacher'
   const { unread: unreadFormSubmissions, markSeen: markFormSubmissionsSeen } =
     useUnreadFormSubmissions(isAdminView && Boolean(currentSession))
+  const {
+    leadIdsWithForms,
+    submissions: editingLeadFormSubmissions,
+    isLoading: isLoadingEditingLeadForms,
+  } = useLeadFormAnswers(isAdminView && Boolean(currentSession), leads, editingLeadId)
+  const [focusFormAnswers, setFocusFormAnswers] = useState(false)
   const protectedTeacherIds = useMemo(() => {
     const next = new Set<number>()
     const bootstrapAdmin = teachers.find((teacher) => teacher.username === 'admin_demo')
@@ -1248,6 +1255,11 @@ function App() {
     })
   }
 
+  function openLeadFormAnswers(leadId: number) {
+    openEditLeadModal(leadId)
+    setFocusFormAnswers(true)
+  }
+
   function openEditLeadModal(leadId: number) {
     const lead = leads.find((entry) => entry.id === leadId)
     if (!lead) {
@@ -1255,6 +1267,7 @@ function App() {
     }
 
     setLeadSaveError(null)
+    setFocusFormAnswers(false)
     setEditingLeadId(leadId)
     setIsCreateLeadOpen(true)
     setLeadFormState({
@@ -4242,6 +4255,8 @@ function App() {
                 deletingLeadId={deletingLeadId}
                 leadOptions={leadOptions}
                 onOpenLeadOptions={() => setIsLeadOptionsOpen(true)}
+                leadIdsWithForms={leadIdsWithForms}
+                onOpenFormAnswers={openLeadFormAnswers}
               />
             )}
 
@@ -4356,6 +4371,9 @@ function App() {
           onFieldChange={updateLeadForm}
           leadOptions={leadOptions}
           onAddLeadOption={handleAddLeadOption}
+          formSubmissions={editingLeadFormSubmissions}
+          isLoadingFormSubmissions={isLoadingEditingLeadForms}
+          focusFormAnswers={focusFormAnswers}
         />
       )}
 
