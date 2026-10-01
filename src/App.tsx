@@ -19,11 +19,15 @@ import {
   CalendarBlank,
   Chalkboard,
   ClockCounterClockwise,
+  CaretDown,
+  ClipboardText,
   Funnel,
   GraduationCap,
   IdentificationBadge,
+  Megaphone,
   WarningCircle,
 } from '@phosphor-icons/react'
+import type { Icon } from '@phosphor-icons/react'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { formatDate, getTodayString, parseLocalDate } from './domain/studentStatus'
 import type { Database } from './types/database'
@@ -112,6 +116,7 @@ import { SummaryBar } from './components/SummaryBar'
 import { ClassListingSection } from './components/sections/ClassListingSection'
 import { StudentDashboardSection } from './components/sections/StudentDashboardSection'
 import { TeacherManagementSection } from './components/sections/TeacherManagementSection'
+import { FormsSection } from './components/sections/FormsSection'
 import { LeadsSection } from './components/sections/LeadsSection'
 import { AdminActivitySection } from './components/sections/AdminActivitySection'
 import { StudentDetailModal } from './components/StudentDetailModal'
@@ -146,6 +151,8 @@ import {
   sumMakeupMinutes,
   type MakeupEntry,
 } from './lib/makeup'
+
+type NavItem = { key: AppSection; label: string; icon: Icon; group?: 'marketing' }
 
 function App() {
   const isMobile = useIsMobile()
@@ -236,6 +243,7 @@ function App() {
 
   const [studentFilter, setStudentFilter] = useState<FilterKey>('all')
   const [activeSection, setActiveSection] = useState<AppSection>('calendar')
+  const [isMarketingOpen, setIsMarketingOpen] = useState(true)
   const [authSession, setAuthSession] = useState<Session | null>(null)
   // supabase-js hands onAuthStateChange a brand-new session object on every
   // TOKEN_REFRESHED event, including the proactive refresh it runs whenever
@@ -862,20 +870,43 @@ function App() {
     }
   }, [activeVisibleClassrooms, selectedAgeGroup, selectedClassroomId])
 
-  const navItems =
+  const navItems: NavItem[] =
     currentSession?.role === 'teacher'
       ? [
           { key: 'calendar', label: 'Calendar', icon: CalendarBlank },
           { key: 'classrooms', label: 'My Classroom', icon: Chalkboard },
         ]
       : [
-          { key: 'leads', label: 'Leads', icon: Funnel },
+          { key: 'leads', label: 'Leads', icon: Funnel, group: 'marketing' },
+          { key: 'forms', label: 'Forms', icon: ClipboardText, group: 'marketing' },
           { key: 'calendar', label: 'Calendar', icon: CalendarBlank },
           { key: 'classrooms', label: 'My Classroom', icon: Chalkboard },
           { key: 'students', label: 'Students', icon: GraduationCap },
           { key: 'teachers', label: 'My Teacher', icon: IdentificationBadge },
           { key: 'activity', label: 'Activity Log', icon: ClockCounterClockwise },
         ]
+
+  const marketingNavItems = navItems.filter((item) => item.group === 'marketing')
+
+  function renderDesktopNavButton(item: NavItem) {
+    const active = activeSection === item.key
+    return (
+      <button
+        key={item.key}
+        type="button"
+        onClick={() => setActiveSection(item.key)}
+        className={cn(
+          'flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium transition',
+          active
+            ? 'bg-white text-[#be185d]'
+            : 'text-white/70 hover:bg-white/5 hover:text-white',
+        )}
+      >
+        <item.icon size={18} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
+        <span className="ml-3">{item.label}</span>
+      </button>
+    )
+  }
 
   const attendanceRoster = useMemo(() => {
     if (!attendanceModal) {
@@ -3698,25 +3729,35 @@ function App() {
           </div>
 
           <nav className="flex-1 space-y-1 px-3">
-            {navItems.map((item) => {
-              const active = activeSection === item.key
-              return (
+            {marketingNavItems.length > 0 && (
+              <div>
                 <button
-                  key={item.key}
                   type="button"
-                  onClick={() => setActiveSection(item.key as AppSection)}
+                  aria-expanded={isMarketingOpen}
+                  onClick={() => setIsMarketingOpen((open) => !open)}
                   className={cn(
                     'flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium transition',
-                    active
-                      ? 'bg-white text-[#be185d]'
+                    !isMarketingOpen && marketingNavItems.some((item) => item.key === activeSection)
+                      ? 'bg-white/10 text-white'
                       : 'text-white/70 hover:bg-white/5 hover:text-white',
                   )}
                 >
-                  <item.icon size={18} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
-                  <span className="ml-3">{item.label}</span>
+                  <Megaphone size={18} aria-hidden="true" />
+                  <span className="ml-3 flex-1">Marketing</span>
+                  <CaretDown
+                    size={14}
+                    aria-hidden="true"
+                    className={cn('transition', isMarketingOpen && 'rotate-180')}
+                  />
                 </button>
-              )
-            })}
+                {isMarketingOpen && (
+                  <div className="mt-1 space-y-1 border-l border-white/10 pl-3 ml-5">
+                    {marketingNavItems.map((item) => renderDesktopNavButton(item))}
+                  </div>
+                )}
+              </div>
+            )}
+            {navItems.filter((item) => !item.group).map((item) => renderDesktopNavButton(item))}
           </nav>
 
           <div className="border-t border-white/10 px-6 py-5 text-xs text-white/50">
@@ -3737,9 +3778,11 @@ function App() {
                         ? 'Teacher Board'
                         : activeSection === 'leads'
                           ? 'Sales Pipeline'
-                          : activeSection === 'activity'
-                            ? 'Admin Audit'
-                            : 'Student Board'}
+                          : activeSection === 'forms'
+                            ? 'Marketing'
+                            : activeSection === 'activity'
+                              ? 'Admin Audit'
+                              : 'Student Board'}
                 </div>
                 <h1 className="mt-0.5 text-2xl font-semibold tracking-tight text-slate-900">
                   {activeSection === 'calendar'
@@ -3750,9 +3793,11 @@ function App() {
                         ? 'My Teacher'
                         : activeSection === 'leads'
                           ? 'Leads'
-                          : activeSection === 'activity'
-                            ? 'Admin Activity Log'
-                            : 'Student Classes & Expiry'}
+                          : activeSection === 'forms'
+                            ? 'Forms'
+                            : activeSection === 'activity'
+                              ? 'Admin Activity Log'
+                              : 'Student Classes & Expiry'}
                 </h1>
               </div>
 
@@ -4143,6 +4188,10 @@ function App() {
                 leadOptions={leadOptions}
                 onOpenLeadOptions={() => setIsLeadOptionsOpen(true)}
               />
+            )}
+
+            {activeSection === 'forms' && isAdminView && (
+              <FormsSection teacherMap={teacherMap} />
             )}
 
             {activeSection === 'activity' && isAdminView && (

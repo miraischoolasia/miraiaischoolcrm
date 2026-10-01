@@ -1,0 +1,131 @@
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { FormsSection } from './FormsSection'
+import { createStarterFields, defaultFormSettings, mapSubmissionRow } from '../../lib/forms'
+import type { Form, Teacher } from '../../types/domain'
+
+const api = vi.hoisted(() => ({
+  FORM_SUBMISSIONS_FETCH_LIMIT: 2000,
+  fetchFormsFromSupabase: vi.fn(),
+  fetchFormSubmissionsFromSupabase: vi.fn(),
+  createFormInSupabase: vi.fn(),
+  saveFormInSupabase: vi.fn(),
+  deleteFormInSupabase: vi.fn(),
+  deleteFormSubmissionInSupabase: vi.fn(),
+}))
+
+vi.mock('../../lib/api', () => api)
+
+function makeForm(id: string, name: string, patch: Partial<Form> = {}): Form {
+  return {
+    id,
+    name,
+    fields: createStarterFields(),
+    settings: defaultFormSettings,
+    isPublished: true,
+    createdAt: '2026-10-01T02:00:00Z',
+    updatedAt: '2026-10-01T02:00:00Z',
+    updatedByTeacherId: 1,
+    ...patch,
+  }
+}
+
+const teachers = new Map([[1, { id: 1, fullName: 'Lex Chew' } as Teacher]])
+
+function submission(id: number, formId: string, name: string) {
+  return mapSubmissionRow({
+    id,
+    form_id: formId,
+    answers: [{ id: 'a', label: "Parent's name", value: name }],
+    lead_id: id,
+    created_at: '2026-10-01T03:00:00Z',
+  })
+}
+
+beforeEach(() => {
+  Object.values(api).forEach((entry) => typeof entry === 'function' && entry.mockReset())
+  api.fetchFormsFromSupabase.mockResolvedValue([
+    makeForm('f1', 'Contact Us'),
+    makeForm('f2', 'Newsletter', { isPublished: false }),
+  ])
+  api.fetchFormSubmissionsFromSupabase.mockResolvedValue([
+    submission(1, 'f1', 'Mrs Lim'),
+    submission(2, 'f1', 'Mr Tan'),
+  ])
+})
+
+const bodyRows = () => within(screen.getByRole('table')).getAllByRole('row').slice(1)
+
+describe('FormsSection', () => {
+  it('lists forms with status, submission count and who updated them', async () => {
+    render(<FormsSection teacherMap={teachers} />)
+
+    expect(await screen.findByText('Contact Us')).toBeInTheDocument()
+    const [contact, newsletter] = bodyRows()
+    expect(within(contact).getByText('Published')).toBeInTheDocument()
+    expect(within(contact).getByText('2')).toBeInTheDocument()
+    expect(within(contact).getByText('Lex Chew')).toBeInTheDocument()
+    expect(within(newsletter).getByText('Draft')).toBeInTheDocument()
+  })
+
+  it('filters by name', async () => {
+    render(<FormsSection teacherMap={teachers} />)
+    await screen.findByText('Contact Us')
+
+    await userEvent.type(screen.getByLabelText('Search for forms'), 'news')
+
+    expect(bodyRows()).toHaveLength(1)
+    expect(screen.queryByText('Contact Us')).not.toBeInTheDocument()
+  })
+
+  it('creates a form and opens it in the builder', async () => {
+    api.createFormInSupabase.mockResolvedValue(makeForm('f3', 'Untitled form'))
+    render(<FormsSection teacherMap={teachers} />)
+    await screen.findByText('Contact Us')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create form' }))
+
+    expect(await screen.findByLabelText('Form name')).toHaveValue('Untitled form')
+    expect(api.createFormInSupabase).toHaveBeenCalledWith(
+      'Untitled form',
+      expect.arrayContaining([expect.objectContaining({ mapTo: 'parent_name' })]),
+      defaultFormSettings,
+    )
+  })
+
+  it('deletes a form after confirming, with its submissions', async () => {
+    api.deleteFormInSupabase.mockResolvedValue(undefined)
+    render(<FormsSection teacherMap={teachers} />)
+    await screen.findByText('Contact Us')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for Contact Us' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+    expect(screen.getByText(/and its 2 submissions/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+    expect(api.deleteFormInSupabase).toHaveBeenCalledWith('f1')
+    expect(screen.queryByText('Contact Us')).not.toBeInTheDocument()
+  })
+
+  it('shows submissions, filtered by form and search', async () => {
+    render(<FormsSection teacherMap={teachers} />)
+    await screen.findByText('Contact Us')
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Submissions' }))
+    expect(bodyRows()).toHaveLength(2)
+
+    await userEvent.type(screen.getByLabelText('Search submissions'), 'lim')
+    expect(bodyRows()).toHaveLength(1)
+    await userEvent.click(within(bodyRows()[0]).getByRole('button', { name: 'View' }))
+    expect(screen.getByText('A lead was created from this submission.')).toBeInTheDocument()
+  })
+
+  it('tells the admin when the database update has not been run', async () => {
+    api.fetchFormsFromSupabase.mockRejectedValue({ code: 'PGRST205', message: 'missing' })
+    render(<FormsSection teacherMap={teachers} />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('npm run db:push')
+    expect(screen.getByRole('button', { name: 'Create form' })).toBeDisabled()
+  })
+})

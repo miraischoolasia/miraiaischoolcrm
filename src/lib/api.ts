@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { mapFormRow, mapPublicForm, mapSubmissionRow } from './forms'
 import {
   mapAdminActivityRow,
   mapClassroomRow,
@@ -16,6 +17,8 @@ import {
   mapTrialBookingRow,
 } from './mappers'
 import type {
+  FormField,
+  FormSettings,
   LessonLogStudent,
   LessonLogStudentReview,
   LeadRow,
@@ -434,4 +437,154 @@ export function getSupabaseLoadErrorMessage(error: unknown) {
   }
 
   return error.message
+}
+
+const formColumns =
+  'id, name, fields, settings, is_published, created_at, updated_at, updated_by_teacher_id'
+
+export async function fetchFormsFromSupabase() {
+  if (!supabase) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('forms')
+    .select(formColumns)
+    .order('updated_at', { ascending: false })
+
+  if (error) {
+    throw error
+  }
+
+  return data.map(mapFormRow)
+}
+
+export async function createFormInSupabase(
+  name: string,
+  fields: FormField[],
+  settings: FormSettings,
+) {
+  if (!supabase) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  const { data, error } = await supabase
+    .from('forms')
+    .insert({ name, fields, settings })
+    .select(formColumns)
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  return mapFormRow(data)
+}
+
+export async function saveFormInSupabase(
+  formId: string,
+  changes: { name: string; fields: FormField[]; settings: FormSettings; isPublished: boolean },
+) {
+  if (!supabase) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  const { data, error } = await supabase
+    .from('forms')
+    .update({
+      name: changes.name,
+      fields: changes.fields,
+      settings: changes.settings,
+      is_published: changes.isPublished,
+    })
+    .eq('id', formId)
+    .select(formColumns)
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  return mapFormRow(data)
+}
+
+export async function deleteFormInSupabase(formId: string) {
+  if (!supabase) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  const { error } = await supabase.from('forms').delete().eq('id', formId)
+
+  if (error) {
+    throw error
+  }
+}
+
+// Newest first, capped so the page stays quick once a busy form has years of
+// submissions; the list says when the cap is reached.
+export const FORM_SUBMISSIONS_FETCH_LIMIT = 2000
+
+export async function fetchFormSubmissionsFromSupabase() {
+  if (!supabase) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('form_submissions')
+    .select('id, form_id, answers, lead_id, created_at')
+    .order('created_at', { ascending: false })
+    .limit(FORM_SUBMISSIONS_FETCH_LIMIT)
+
+  if (error) {
+    throw error
+  }
+
+  return data.map(mapSubmissionRow)
+}
+
+export async function deleteFormSubmissionInSupabase(submissionId: number) {
+  if (!supabase) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  const { error } = await supabase.from('form_submissions').delete().eq('id', submissionId)
+
+  if (error) {
+    throw error
+  }
+}
+
+// The two calls below are what a visitor who is not logged in can reach.
+export async function fetchPublicForm(formId: string) {
+  if (!supabase) {
+    return null
+  }
+
+  const { data, error } = await supabase.rpc('get_public_form', { p_form_id: formId })
+
+  if (error) {
+    throw error
+  }
+
+  return mapPublicForm(data)
+}
+
+export async function submitPublicForm(
+  formId: string,
+  answers: Record<string, string | string[]>,
+  honeypot: string,
+) {
+  if (!supabase) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  const { error } = await supabase.rpc('submit_form', {
+    p_form_id: formId,
+    p_answers: answers,
+    p_honeypot: honeypot,
+  })
+
+  if (error) {
+    throw error
+  }
 }

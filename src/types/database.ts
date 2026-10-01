@@ -900,6 +900,63 @@ export type Database = {
           },
         ]
       }
+      forms: {
+        Row: {
+          id: string
+          name: string
+          fields: Json
+          settings: Json
+          is_published: boolean
+          created_at: string
+          updated_at: string
+          updated_by_teacher_id: number | null
+        }
+        Insert: {
+          id?: string
+          name: string
+          fields?: Json
+          settings?: Json
+          is_published?: boolean
+          created_at?: string
+          updated_at?: string
+          updated_by_teacher_id?: number | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          fields?: Json
+          settings?: Json
+          is_published?: boolean
+          created_at?: string
+          updated_at?: string
+          updated_by_teacher_id?: number | null
+        }
+        Relationships: []
+      }
+      form_submissions: {
+        Row: {
+          id: number
+          form_id: string
+          answers: Json
+          lead_id: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          form_id: string
+          answers?: Json
+          lead_id?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          form_id?: string
+          answers?: Json
+          lead_id?: number | null
+          created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: {
@@ -1127,6 +1184,20 @@ export type Database = {
           revision_number: number
           updated_student_count: number
         }[]
+      }
+      get_public_form: {
+        Args: {
+          p_form_id: string
+        }
+        Returns: Json | null
+      }
+      submit_form: {
+        Args: {
+          p_form_id: string
+          p_answers: Json
+          p_honeypot?: string
+        }
+        Returns: Json
       }
     }
     Enums: Record<string, never>

@@ -6,6 +6,7 @@ export type AppSection =
   | 'students'
   | 'teachers'
   | 'leads'
+  | 'forms'
   | 'activity'
 export type FilterKey = 'all' | 'hours' | 'accountFee' | 'mirai' | 'normal' | 'preview'
 export type AttendanceStatus = 'present' | 'absent' | 'leave'
@@ -533,3 +534,61 @@ export type LeadOptionRow = Pick<
   Database['public']['Tables']['lead_options']['Row'],
   'id' | 'kind' | 'label' | 'is_active' | 'legacy_key'
 >
+
+export type FormFieldType =
+  | 'short_text'
+  | 'long_text'
+  | 'email'
+  | 'phone'
+  | 'number'
+  | 'date'
+  | 'dropdown'
+  | 'radio'
+  | 'checkbox'
+
+// Which Lead column a form answer fills when the form creates a lead.
+export type FormLeadMap = 'parent_name' | 'phone' | 'child_name' | 'child_age' | 'notes'
+
+export type FormField = {
+  id: string
+  type: FormFieldType
+  label: string
+  placeholder: string
+  required: boolean
+  options: string[]
+  mapTo: FormLeadMap | null
+}
+
+export type FormSettings = {
+  submitLabel: string
+  successMessage: string
+  createLead: boolean
+}
+
+export type Form = {
+  id: string
+  name: string
+  fields: FormField[]
+  settings: FormSettings
+  isPublished: boolean
+  createdAt: string
+  updatedAt: string
+  updatedByTeacherId: number | null
+}
+
+export type FormAnswer = {
+  id: string
+  label: string
+  value: string
+}
+
+export type FormSubmission = {
+  id: number
+  formId: string
+  answers: FormAnswer[]
+  leadId: number | null
+  createdAt: string
+}
+
+// The slice of a form the public page needs (see get_public_form).
+export type PublicForm = Pick<Form, 'id' | 'name' | 'fields' | 'settings'>
