@@ -5,6 +5,7 @@ import {
   buildScheduleEvents,
   calculateDuration,
   filterSchedulesByClassKind,
+  filterSchedulesByTeacher,
   getDateKeyFromDate,
   buildTrialBookingMap,
   getScheduleClassKind,
@@ -182,6 +183,42 @@ describe('buildScheduleEvents', () => {
       }
       expect(occurrences.length).toBeLessThanOrEqual(4)
     }
+  })
+
+  describe('teacher filter', () => {
+    const scheduleA: Schedule = {
+      id: 400,
+      teacherId: 1,
+      classroomId: 1,
+      title: 'Group A',
+      eventType: 'regular',
+      recurrenceType: 'weekly',
+      dayOfWeek: 2,
+      scheduledDate: null,
+      startTime: '19:30',
+      endTime: '21:30',
+      startRecur: '2026-09-01',
+      endRecur: null,
+      status: 'active',
+      notes: null,
+    }
+    const scheduleB: Schedule = { ...scheduleA, id: 401, teacherId: 2 }
+
+    it('returns everything for "all"', () => {
+      expect(filterSchedulesByTeacher([scheduleA, scheduleB], 'all')).toEqual([
+        scheduleA,
+        scheduleB,
+      ])
+    })
+
+    it('keeps only the schedules taught by the chosen teacher', () => {
+      expect(filterSchedulesByTeacher([scheduleA, scheduleB], 1)).toEqual([scheduleA])
+      expect(filterSchedulesByTeacher([scheduleA, scheduleB], 2)).toEqual([scheduleB])
+    })
+
+    it('returns nothing for a teacher id with no schedules', () => {
+      expect(filterSchedulesByTeacher([scheduleA, scheduleB], 999)).toEqual([])
+    })
   })
 
   describe('class kind filter', () => {

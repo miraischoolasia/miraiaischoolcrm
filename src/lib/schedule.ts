@@ -63,6 +63,17 @@ export function getTrialSlotKey(scheduleId: number, dateKey: string) {
   return `${scheduleId}:${dateKey}`
 }
 
+// Admin-only calendar filter: narrows to one teacher's classes. A teacher's
+// own calendar is already scoped to just their classes (see App.tsx's
+// visibleSchedules), so this only has an effect when viewing as admin.
+export function filterSchedulesByTeacher(schedules: Schedule[], teacherId: number | 'all') {
+  if (teacherId === 'all') {
+    return schedules
+  }
+
+  return schedules.filter((schedule) => schedule.teacherId === teacherId)
+}
+
 // Bookings grouped by trial slot and day, so the calendar can tell an empty
 // (available) occurrence from one with children booked.
 export function buildTrialBookingMap(bookings: TrialBooking[]) {

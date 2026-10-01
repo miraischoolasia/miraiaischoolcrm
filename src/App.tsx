@@ -101,6 +101,7 @@ import {
   buildTrialBookingMap,
   calendarClassFilterOptions,
   filterSchedulesByClassKind,
+  filterSchedulesByTeacher,
   getDateKeyFromDate,
   getTrialSlotKey,
   type CalendarClassFilter,
@@ -258,7 +259,7 @@ function App() {
 
   const [studentFilter, setStudentFilter] = useState<FilterKey>('all')
   const [activeSection, setActiveSection] = useState<AppSection>('calendar')
-  const [isMarketingOpen, setIsMarketingOpen] = useState(true)
+  const [isMarketingOpen, setIsMarketingOpen] = useState(false)
   const [authSession, setAuthSession] = useState<Session | null>(null)
   // supabase-js hands onAuthStateChange a brand-new session object on every
   // TOKEN_REFRESHED event, including the proactive refresh it runs whenever
@@ -273,6 +274,7 @@ function App() {
   const [viewAsTeacherId, setViewAsTeacherId] = useState<number | null>(null)
   const [selectedAgeGroup, setSelectedAgeGroup] = useState<AgeGroup>(ageGroupOptions[0])
   const [calendarClassFilter, setCalendarClassFilter] = useState<CalendarClassFilter>('all')
+  const [calendarTeacherFilter, setCalendarTeacherFilter] = useState<number | 'all'>('all')
 
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null)
   const [selectedStudentDetailId, setSelectedStudentDetailId] = useState<number | null>(
@@ -806,7 +808,10 @@ function App() {
   const calendarEvents = useMemo(
     () => [
       ...buildScheduleEvents(
-        filterSchedulesByClassKind(visibleSchedules, classroomMap, calendarClassFilter),
+        filterSchedulesByTeacher(
+          filterSchedulesByClassKind(visibleSchedules, classroomMap, calendarClassFilter),
+          calendarTeacherFilter,
+        ),
         classroomMap,
         classroomStudentMap,
         teacherMap,
@@ -819,6 +824,7 @@ function App() {
     ],
     [
       calendarClassFilter,
+      calendarTeacherFilter,
       classroomMap,
       classroomStudentMap,
       makeupEntries,
@@ -3747,6 +3753,9 @@ function App() {
           </div>
 
           <nav className="flex-1 space-y-1 px-3">
+            {navItems
+              .filter((item) => !item.group && item.key === 'calendar')
+              .map((item) => renderDesktopNavButton(item))}
             {marketingNavItems.length > 0 && (
               <div>
                 <button
@@ -3776,7 +3785,9 @@ function App() {
                 )}
               </div>
             )}
-            {navItems.filter((item) => !item.group).map((item) => renderDesktopNavButton(item))}
+            {navItems
+              .filter((item) => !item.group && item.key !== 'calendar')
+              .map((item) => renderDesktopNavButton(item))}
           </nav>
 
           <div className="border-t border-white/10 px-6 py-5 text-xs text-white/50">
@@ -3956,27 +3967,52 @@ function App() {
                     </div>
                   </div>
 
-                  <div
-                    className="flex flex-wrap gap-2 border-b border-slate-200 px-5 py-3 sm:px-6"
-                    role="group"
-                    aria-label="Filter calendar by class type"
-                  >
-                    {calendarClassFilterOptions.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        aria-pressed={calendarClassFilter === option.value}
-                        onClick={() => setCalendarClassFilter(option.value)}
-                        className={cn(
-                          'rounded-xl border px-4 py-2 text-sm font-semibold',
-                          calendarClassFilter === option.value
-                            ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]'
-                            : 'border-slate-200 text-slate-600',
-                        )}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-3 sm:px-6">
+                    <div
+                      className="flex flex-wrap gap-2"
+                      role="group"
+                      aria-label="Filter calendar by class type"
+                    >
+                      {calendarClassFilterOptions.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          aria-pressed={calendarClassFilter === option.value}
+                          onClick={() => setCalendarClassFilter(option.value)}
+                          className={cn(
+                            'rounded-xl border px-4 py-2 text-sm font-semibold',
+                            calendarClassFilter === option.value
+                              ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]'
+                              : 'border-slate-200 text-slate-600',
+                          )}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {isAdminView && (
+                      <label className="flex items-center gap-2 text-sm text-slate-600">
+                        <span className="font-medium">Teacher</span>
+                        <select
+                          aria-label="Filter calendar by teacher"
+                          value={calendarTeacherFilter}
+                          onChange={(event) =>
+                            setCalendarTeacherFilter(
+                              event.target.value === 'all' ? 'all' : Number(event.target.value),
+                            )
+                          }
+                          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                        >
+                          <option value="all">All Teachers</option>
+                          {assignableTeachers.map((teacher) => (
+                            <option key={teacher.id} value={teacher.id}>
+                              {teacher.fullName}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                   </div>
 
                   <div className="p-3 sm:p-4">
