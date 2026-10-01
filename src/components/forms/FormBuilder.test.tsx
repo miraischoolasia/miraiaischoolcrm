@@ -582,4 +582,30 @@ describe('FormBuilder pages and logic', () => {
       expect(onSave).not.toHaveBeenCalled()
     })
   })
+
+  describe('title for visitors', () => {
+    it('shows the title visitors will see above the page, using the form name until one is written', async () => {
+      renderBuilder()
+
+      expect(screen.getByRole('button', { name: /Title visitors see/ })).toHaveTextContent('Contact Us')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Form settings' }))
+      await userEvent.type(screen.getByLabelText(/Title shown to visitors/), 'Free AI Class')
+
+      expect(screen.getByRole('button', { name: /Title visitors see/ })).toHaveTextContent('Free AI Class')
+      expect(screen.getByLabelText('Form name')).toHaveValue('Contact Us')
+    })
+
+    it('opens the form settings when the title is clicked, and saves it apart from the name', async () => {
+      const { onSave } = renderBuilder()
+
+      await userEvent.click(screen.getByRole('button', { name: /Title visitors see/ }))
+      await userEvent.type(screen.getByLabelText(/Title shown to visitors/), 'Free AI Class')
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+      const saved = onSave.mock.calls[0][0]
+      expect(saved.name).toBe('Contact Us')
+      expect(saved.settings.title).toBe('Free AI Class')
+    })
+  })
 })

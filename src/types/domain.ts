@@ -613,6 +613,9 @@ export type FormPage = {
 }
 
 export type FormSettings = {
+  // The heading visitors see on the form. Empty = use the form's name, which
+  // is only for the admin to tell forms apart.
+  title: string
   submitLabel: string
   // What the visitor gets after sending: the message, or a page to go to.
   afterSubmit: FormAfterSubmit

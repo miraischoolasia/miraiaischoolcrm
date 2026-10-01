@@ -113,6 +113,7 @@ const childMaps: FormLeadMap[] = ['child_name', 'child_age', 'child_phone']
 export const DEFAULT_PAGE_ID = 'page-1'
 
 export const defaultFormSettings: FormSettings = {
+  title: '',
   submitLabel: 'Submit',
   afterSubmit: 'message',
   successMessage: 'Thank you! We have received your details and will contact you soon.',
@@ -212,6 +213,7 @@ export function normalizeFields(raw: unknown): FormField[] {
 export function normalizeSettings(raw: unknown): FormSettings {
   const item = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
   return {
+    title: asString(item.title),
     submitLabel: asString(item.submitLabel, defaultFormSettings.submitLabel) || defaultFormSettings.submitLabel,
     afterSubmit: item.afterSubmit === 'redirect' ? 'redirect' : 'message',
     successMessage: asString(item.successMessage, defaultFormSettings.successMessage),
@@ -335,6 +337,11 @@ export function duplicateField(field: FormField): FormField {
 }
 
 // One problem at a time, in plain words; null means the form can be saved.
+// What visitors see as the form's heading.
+export function getFormTitle(name: string, settings: Pick<FormSettings, 'title'>) {
+  return settings.title.trim() || name
+}
+
 export function getFormProblem(
   name: string,
   fields: FormField[],

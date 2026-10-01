@@ -674,3 +674,25 @@ describe('PublicFormPage with several pages', () => {
     expect(await screen.findByRole('button', { name: /Add another child/ })).toBeInTheDocument()
   })
 })
+
+describe('PublicFormPage title', () => {
+  it('shows the title written for visitors instead of the form name, and puts it in the tab', async () => {
+    api.fetchPublicForm.mockResolvedValue({
+      ...form,
+      name: 'Eduhero X Mirai 2 (internal)',
+      settings: { ...form.settings, title: 'Free AI Class for Kids' },
+    })
+    render(<PublicFormPage formKey="form-1" />)
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Free AI Class for Kids' })).toBeInTheDocument()
+    expect(screen.queryByText(/internal/)).not.toBeInTheDocument()
+    expect(document.title).toBe('Free AI Class for Kids')
+  })
+
+  it('falls back to the form name when no title was written', async () => {
+    api.fetchPublicForm.mockResolvedValue({ ...form, name: 'Contact Us', settings: { ...form.settings, title: '' } })
+    render(<PublicFormPage formKey="form-1" />)
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Contact Us' })).toBeInTheDocument()
+  })
+})

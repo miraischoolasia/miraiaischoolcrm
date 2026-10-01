@@ -16,6 +16,7 @@ import {
   MAX_CHILDREN,
   childAnswerKey,
   getChildFields,
+  getFormTitle,
   isDisplayField,
   isSafeRedirectUrl,
   readPreviewDraft,
@@ -124,6 +125,19 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
   const rootRef = useRef<HTMLDivElement>(null)
   const readyId = state.status === 'ready' ? state.form.id : null
   const embedded = window.parent !== window
+  const pageTitle = state.status === 'ready' ? getFormTitle(state.form.name, state.form.settings) : null
+
+  // The browser tab says what the form is, not just the school's name.
+  useEffect(() => {
+    if (!pageTitle) {
+      return
+    }
+    const previous = document.title
+    document.title = pageTitle
+    return () => {
+      document.title = previous
+    }
+  }, [pageTitle])
 
   // Inside another website the page itself is see-through, so only the card
   // shows and the site's own background stays visible around it.
@@ -393,7 +407,7 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
               Mirai AI School
             </span>
             <h1 className="mt-2 font-heading text-2xl font-extrabold leading-tight text-slate-900 sm:text-3xl">
-              {form.name}
+              {getFormTitle(form.name, form.settings)}
             </h1>
           </div>
           {isMultiPage && (

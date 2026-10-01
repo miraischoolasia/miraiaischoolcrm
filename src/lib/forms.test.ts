@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildEmbedCode,
+  getFormTitle,
   buildPreviewUrl,
   clampImageWidth,
   isDisplayField,
@@ -417,5 +418,19 @@ describe('preview drafts', () => {
     expect(readPreviewDraft('nope')).toBeNull()
     window.localStorage.setItem('mirai-form-preview-bad', '{not json')
     expect(readPreviewDraft('bad')).toBeNull()
+  })
+})
+
+describe('form title', () => {
+  it('is what visitors see, falling back to the form name when none is written', () => {
+    expect(getFormTitle('Eduhero 2', { title: '' })).toBe('Eduhero 2')
+    expect(getFormTitle('Eduhero 2', { title: '   ' })).toBe('Eduhero 2')
+    expect(getFormTitle('Eduhero 2', { title: 'Free AI Class' })).toBe('Free AI Class')
+  })
+
+  it('is read from saved settings, empty for forms saved before it existed', () => {
+    expect(normalizeSettings({ title: 'Free AI Class' }).title).toBe('Free AI Class')
+    expect(normalizeSettings({}).title).toBe('')
+    expect(normalizeSettings({ title: 42 }).title).toBe('')
   })
 })

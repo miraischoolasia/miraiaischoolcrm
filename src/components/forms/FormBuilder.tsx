@@ -40,6 +40,7 @@ import {
   formFieldTypes,
   getFieldTypeInfo,
   getFormProblem,
+  getFormTitle,
   getImageFileProblem,
   buildPreviewUrl,
   getLeadMapOptionsFor,
@@ -467,6 +468,19 @@ export function FormBuilder({
             }}
           >
             <div data-drop-area="true" className="mx-auto max-w-xl space-y-2">
+              <button
+                type="button"
+                onClick={() => setPanel('form')}
+                title="Change the title in Form settings"
+                className="block w-full rounded-xl bg-white px-4 py-3 text-left transition hover:bg-[#fff8fc]"
+              >
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Title visitors see
+                </span>
+                <span className="font-heading text-xl font-extrabold text-slate-900">
+                  {getFormTitle(name, settings) || 'Untitled'}
+                </span>
+              </button>
               {pages.length > 1 && (activePage.title || activePage.description) && (
                 <div className="rounded-xl bg-white px-4 py-3">
                   {activePage.title && (
@@ -604,6 +618,20 @@ function FormSettingsPanel({
   return (
     <div className="space-y-4">
       <h2 className="text-sm font-semibold text-slate-900">Form settings</h2>
+      <label className="block text-sm font-medium text-slate-700">
+        Title shown to visitors
+        <input
+          type="text"
+          value={settings.title}
+          maxLength={120}
+          placeholder="Same as the form name"
+          onChange={(event) => onChange({ ...settings, title: event.target.value })}
+          className={cn(panelInputClass, 'mt-1')}
+        />
+        <span className="mt-1 block text-xs font-normal text-slate-500">
+          The form name above is only for you. This is the heading on the page the parent opens.
+        </span>
+      </label>
       <label className="block text-sm font-medium text-slate-700">
         Submit button text
         <input
