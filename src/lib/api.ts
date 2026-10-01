@@ -561,7 +561,7 @@ export async function fetchFormSubmissionsFromSupabase() {
 
   const { data, error } = await supabase
     .from('form_submissions')
-    .select('id, form_id, answers, lead_id, lead_was_existing, created_at')
+    .select('id, form_id, answers, lead_id, lead_was_existing, status, last_page, created_at')
     .order('created_at', { ascending: false })
     .limit(FORM_SUBMISSIONS_FETCH_LIMIT)
 
@@ -611,6 +611,9 @@ export async function submitPublicForm(
   formId: string,
   answers: Record<string, string | string[]>,
   honeypot: string,
+  // Ties this to the answers saved along the way, so they become one finished
+  // submission instead of two.
+  token: string | null = null,
 ) {
   if (!supabase) {
     throw new Error('Supabase is not configured.')
@@ -620,6 +623,7 @@ export async function submitPublicForm(
     p_form_id: formId,
     p_answers: answers,
     p_honeypot: honeypot,
+    p_token: token,
   })
 
   if (error) {
@@ -627,7 +631,28 @@ export async function submitPublicForm(
   }
 }
 
+// Called each time the visitor presses Next. It is only a safety net, so a
+// failure is never shown to them.
+export async function saveFormProgress(
+  formId: string,
+  token: string,
+  answers: Record<string, string | string[]>,
+  lastPage: number,
+) {
+  if (!supabase) {
+    return
+  }
+
+  await supabase.rpc('save_form_progress', {
+    p_form_id: formId,
+    p_token: token,
+    p_answers: answers,
+    p_last_page: lastPage,
+  })
+}
+
 // How many submissions came in after `sinceIso`, for the Forms menu badge.
+// Unfinished ones do not count: there is nothing to follow up yet.
 export async function countFormSubmissionsSince(sinceIso: string) {
   if (!supabase) {
     return 0
@@ -636,6 +661,7 @@ export async function countFormSubmissionsSince(sinceIso: string) {
   const { count, error } = await supabase
     .from('form_submissions')
     .select('id', { count: 'exact', head: true })
+    .eq('status', 'completed')
     .gt('created_at', sinceIso)
 
   if (error) {

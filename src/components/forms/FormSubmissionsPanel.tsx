@@ -37,6 +37,7 @@ export function FormSubmissionsPanel({
   onDelete,
 }: FormSubmissionsPanelProps) {
   const [formFilter, setFormFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'partial'>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [page, setPage] = useState(1)
   const [openId, setOpenId] = useState<number | null>(null)
@@ -49,11 +50,14 @@ export function FormSubmissionsPanel({
       if (formFilter !== 'all' && submission.formId !== formFilter) {
         return false
       }
+      if (statusFilter !== 'all' && submission.status !== statusFilter) {
+        return false
+      }
       return (
         !term || submission.answers.some((answer) => answer.value.toLowerCase().includes(term))
       )
     })
-  }, [submissions, formFilter, searchTerm])
+  }, [submissions, formFilter, statusFilter, searchTerm])
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / SUBMISSIONS_PAGE_SIZE))
   const currentPage = Math.min(page, pageCount)
@@ -109,6 +113,19 @@ export function FormSubmissionsPanel({
               {form.name}
             </option>
           ))}
+        </select>
+        <select
+          value={statusFilter}
+          aria-label="Filter by status"
+          onChange={(event) => {
+            setStatusFilter(event.target.value as typeof statusFilter)
+            setPage(1)
+          }}
+          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-[#fc0c97] focus:outline-none"
+        >
+          <option value="all">Finished and unfinished</option>
+          <option value="completed">Finished only</option>
+          <option value="partial">Unfinished only</option>
         </select>
         <button
           type="button"
@@ -174,11 +191,17 @@ export function FormSubmissionsPanel({
                     ))
                   )}
                   <td className="px-6 py-4 text-sm text-slate-600">
-                    {submission.leadWasExisting
-                      ? 'Added to existing lead'
-                      : submission.leadId
-                        ? 'In Leads'
-                        : '-'}
+                    {submission.status === 'partial' ? (
+                      <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+                        Unfinished, stopped on page {submission.lastPage ?? 1}
+                      </span>
+                    ) : submission.leadWasExisting ? (
+                      'Added to existing lead'
+                    ) : submission.leadId ? (
+                      'In Leads'
+                    ) : (
+                      '-'
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-right">
                     <button
@@ -264,11 +287,13 @@ export function FormSubmissionsPanel({
               ))}
             </dl>
             <p className="text-xs text-slate-500">
-              {open.leadWasExisting
-                ? 'This phone number already had a lead, so the answers were added to its notes.'
-                : open.leadId
-                  ? 'A lead was created from this submission.'
-                  : 'No lead was created.'}
+              {open.status === 'partial'
+                ? `The visitor stopped on page ${open.lastPage ?? 1} and did not finish. These are the answers so far. No lead was created.`
+                : open.leadWasExisting
+                  ? 'This phone number already had a lead, so the answers were added to its notes.'
+                  : open.leadId
+                    ? 'A lead was created from this submission.'
+                    : 'No lead was created.'}
             </p>
             <div className="flex justify-end">
               <button

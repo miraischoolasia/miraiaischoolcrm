@@ -149,6 +149,8 @@ describe('reading saved data', () => {
       answers: [{ id: 'a', label: 'Name', value: 'Lim' }, 3],
       lead_id: null,
       lead_was_existing: false,
+      status: 'completed',
+      last_page: null,
       created_at: '2026-10-01T00:00:00Z',
     })
     expect(submission.answers).toEqual([{ id: 'a', label: 'Name', value: 'Lim' }])
@@ -167,6 +169,8 @@ describe('exporting', () => {
         ],
         lead_id: 3,
         lead_was_existing: false,
+        status: 'completed',
+        last_page: null,
         created_at: '2026-10-01T00:00:00Z',
       }),
       mapSubmissionRow({
@@ -175,15 +179,19 @@ describe('exporting', () => {
         answers: [{ id: 'a', label: 'Name', value: 'Lim, Ken' }],
         lead_id: null,
         lead_was_existing: false,
+        status: 'completed',
+        last_page: null,
         created_at: '2026-10-02T00:00:00Z',
       }),
     ]
     const lines = buildSubmissionsCsv(submissions, new Map([['f1', 'Contact']]))
       .trim()
       .split('\r\n')
-    expect(lines[0]).toBe('Submitted,Form,Name,Phone')
-    expect(lines[1]).toBe('2026-10-01T00:00:00Z,Contact,"\'=HYPERLINK(""x"")",+60 12-345')
-    expect(lines[2]).toBe('2026-10-02T00:00:00Z,Contact,"Lim, Ken",')
+    expect(lines[0]).toBe('Submitted,Form,Status,Name,Phone')
+    expect(lines[1]).toBe(
+      '2026-10-01T00:00:00Z,Contact,Completed,"\'=HYPERLINK(""x"")",+60 12-345',
+    )
+    expect(lines[2]).toBe('2026-10-02T00:00:00Z,Contact,Completed,"Lim, Ken",')
   })
 
   it('builds an iframe that listens for the form height', () => {

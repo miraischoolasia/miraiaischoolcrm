@@ -14,6 +14,7 @@ const api = vi.hoisted(() => ({
   fetchPublicForm: vi.fn(),
   submitPublicForm: vi.fn(),
   recordFormView: vi.fn(),
+  saveFormProgress: vi.fn(),
 }))
 
 vi.mock('../lib/api', () => api)
@@ -34,6 +35,7 @@ beforeEach(() => {
   api.fetchPublicForm.mockReset().mockResolvedValue(form)
   api.submitPublicForm.mockReset().mockResolvedValue(undefined)
   api.recordFormView.mockReset().mockResolvedValue(undefined)
+  api.saveFormProgress.mockReset().mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -86,6 +88,7 @@ describe('PublicFormPage', () => {
         'form-1',
         { p: '012-345 6789', d: ['Mon', 'Tue'] },
         '',
+        null,
       ),
     )
     expect(await screen.findByText('Got it, thanks!')).toBeInTheDocument()
@@ -157,7 +160,7 @@ describe('PublicFormPage with a poster', () => {
     await userEvent.type(screen.getByLabelText(/Phone/), '012-345 6789')
     await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
     await waitFor(() =>
-      expect(api.submitPublicForm).toHaveBeenCalledWith('form-1', { p: '012-345 6789' }, ''),
+      expect(api.submitPublicForm).toHaveBeenCalledWith('form-1', { p: '012-345 6789' }, '', null),
     )
   })
 
@@ -431,5 +434,227 @@ describe('PublicFormPage with several children', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
 
     expect(await screen.findByText('Enter a whole age from 1 to 99.')).toBeInTheDocument()
+  })
+})
+
+describe('PublicFormPage with several pages', () => {
+  const name = { ...createField('short_text', 'p1'), id: 'name', label: 'Parent name', required: true }
+  const goal = {
+    ...createField('radio', 'p1'),
+    id: 'goal',
+    label: 'Goal',
+    required: true,
+    options: ['Coding', 'Robotics', 'Other'],
+  }
+  const level = {
+    ...createField('dropdown', 'p2'),
+    id: 'lvl',
+    label: 'Level',
+    required: true,
+    options: ['Beginner', 'Advanced'],
+  }
+  const note = { ...createField('long_text', 'p3'), id: 'note', label: 'Anything else', required: true }
+  const endRule = (message = 'Sorry, this is not for you.', ending: 'message' | 'redirect' = 'message', url = '') => ({
+    id: 'r1',
+    fieldId: 'goal',
+    op: 'is' as const,
+    value: 'Other',
+    action: { type: 'end' as const, ending, message, redirectUrl: url },
+  })
+  const jumpRule = {
+    id: 'r2',
+    fieldId: 'goal',
+    op: 'is' as const,
+    value: 'Robotics',
+    action: { type: 'page' as const, pageId: 'p3' },
+  }
+  const survey: PublicForm = {
+    id: 'form-3',
+    name: 'Survey',
+    fields: [name, goal, level, note],
+    settings: {
+      ...defaultFormSettings,
+      pages: [
+        { id: 'p1', title: 'About you', description: 'Tell us a little.', rules: [endRule(), jumpRule] },
+        { id: 'p2', title: 'Your level', description: '', rules: [] },
+        { id: 'p3', title: 'Last thing', description: '', rules: [] },
+      ],
+    },
+  }
+
+  beforeEach(() => api.fetchPublicForm.mockResolvedValue(survey))
+
+  const fillPageOne = async (choice: string) => {
+    await userEvent.type(await screen.findByLabelText(/Parent name/), 'Mrs Lim')
+    await userEvent.click(screen.getByLabelText(choice))
+  }
+
+  it('shows one page at a time, with its title and how far along the visitor is', async () => {
+    render(<PublicFormPage formKey="form-3" />)
+
+    expect(await screen.findByText('Step 1 of 3')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: 'Progress' })).toHaveAttribute('aria-valuenow', '1')
+    expect(screen.getByRole('heading', { name: 'About you' })).toBeInTheDocument()
+    expect(screen.getByText('Tell us a little.')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Parent name/)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Level/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Next/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Submit' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Back/ })).not.toBeInTheDocument()
+  })
+
+  it('will not move on while this page has missing answers, and saves nothing yet', async () => {
+    render(<PublicFormPage formKey="form-3" />)
+
+    await userEvent.click(await screen.findByRole('button', { name: /Next/ }))
+
+    expect(await screen.findAllByText('This field is required.')).toHaveLength(2)
+    expect(screen.getByText('Step 1 of 3')).toBeInTheDocument()
+    expect(api.saveFormProgress).not.toHaveBeenCalled()
+  })
+
+  it('goes to the next page, saves the answers so far, and Back keeps them', async () => {
+    render(<PublicFormPage formKey="form-3" />)
+    await fillPageOne('Coding')
+
+    await userEvent.click(screen.getByRole('button', { name: /Next/ }))
+
+    expect(await screen.findByText('Step 2 of 3')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Level/)).toBeInTheDocument()
+    expect(api.saveFormProgress).toHaveBeenCalledWith(
+      'form-3',
+      expect.stringMatching(/^[0-9a-f-]{36}$/),
+      { name: 'Mrs Lim', goal: 'Coding' },
+      2,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /Back/ }))
+    expect(await screen.findByText('Step 1 of 3')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Parent name/)).toHaveValue('Mrs Lim')
+    expect(screen.getByLabelText('Coding')).toBeChecked()
+  })
+
+  it('skips the pages a rule jumps over, and does not send answers from skipped pages', async () => {
+    render(<PublicFormPage formKey="form-3" />)
+    await fillPageOne('Coding')
+    await userEvent.click(screen.getByRole('button', { name: /Next/ }))
+    await userEvent.selectOptions(await screen.findByLabelText(/Level/), 'Beginner')
+    await userEvent.click(screen.getByRole('button', { name: /Back/ }))
+
+    // Changing the answer changes the route: Robotics jumps past the level page.
+    await userEvent.click(screen.getByLabelText('Robotics'))
+    await userEvent.click(screen.getByRole('button', { name: /Next/ }))
+
+    expect(await screen.findByText('Step 3 of 3')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Level/)).not.toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText(/Anything else/), 'hello')
+    await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
+
+    await waitFor(() => expect(api.submitPublicForm).toHaveBeenCalledTimes(1))
+    const [formId, sent, , token] = api.submitPublicForm.mock.calls[0]
+    expect(formId).toBe('form-3')
+    expect(sent).toEqual({ name: 'Mrs Lim', goal: 'Robotics', note: 'hello' })
+    expect(token).toMatch(/^[0-9a-f-]{36}$/)
+    expect(token).toBe(api.saveFormProgress.mock.calls[0][1])
+  })
+
+  it('Back after a jump returns to the page the visitor really came from', async () => {
+    render(<PublicFormPage formKey="form-3" />)
+    await fillPageOne('Robotics')
+    await userEvent.click(screen.getByRole('button', { name: /Next/ }))
+    await screen.findByText('Step 3 of 3')
+
+    await userEvent.click(screen.getByRole('button', { name: /Back/ }))
+
+    expect(await screen.findByText('Step 1 of 3')).toBeInTheDocument()
+  })
+
+  it('ends the form at a rule, with its own message, without asking for the pages after it', async () => {
+    render(<PublicFormPage formKey="form-3" />)
+    await fillPageOne('Other')
+
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
+
+    expect(await screen.findByText('Sorry, this is not for you.')).toBeInTheDocument()
+    expect(api.submitPublicForm.mock.calls[0][1]).toEqual({ name: 'Mrs Lim', goal: 'Other' })
+  })
+
+  it('shows the form\'s usual message when the ending rule has none of its own', async () => {
+    api.fetchPublicForm.mockResolvedValue({
+      ...survey,
+      settings: {
+        ...survey.settings,
+        successMessage: 'Usual thanks',
+        pages: [{ ...survey.settings.pages[0], rules: [endRule('  ')] }, ...survey.settings.pages.slice(1)],
+      },
+    })
+    render(<PublicFormPage formKey="form-3" />)
+    await fillPageOne('Other')
+    await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
+
+    expect(await screen.findByText('Usual thanks')).toBeInTheDocument()
+  })
+
+  it('sends the visitor to the address a rule gives, not the form\'s usual one', async () => {
+    const assign = vi.fn()
+    Object.defineProperty(window, 'location', { value: { ...originalLocation, assign }, writable: true })
+    api.fetchPublicForm.mockResolvedValue({
+      ...survey,
+      settings: {
+        ...survey.settings,
+        afterSubmit: 'redirect',
+        redirectUrl: 'https://mirai.my/usual',
+        pages: [
+          { ...survey.settings.pages[0], rules: [endRule('', 'redirect', 'https://mirai.my/not-eligible')] },
+          ...survey.settings.pages.slice(1),
+        ],
+      },
+    })
+    render(<PublicFormPage formKey="form-3" />)
+    await fillPageOne('Other')
+    await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
+
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://mirai.my/not-eligible'))
+  })
+
+  it('does not save progress or send anything in a preview', async () => {
+    window.localStorage.clear()
+    savePreviewDraft('form-3', { name: 'Survey', fields: survey.fields, settings: survey.settings })
+    render(<PublicFormPage formKey="form-3" preview />)
+    await fillPageOne('Robotics')
+    await userEvent.click(screen.getByRole('button', { name: /Next/ }))
+    await screen.findByText('Step 3 of 3')
+    await userEvent.type(screen.getByLabelText(/Anything else/), 'x')
+    await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
+
+    expect(await screen.findByText(/Nothing you fill in here is sent/)).toBeInTheDocument()
+    expect(api.saveFormProgress).not.toHaveBeenCalled()
+    expect(api.submitPublicForm).not.toHaveBeenCalled()
+  })
+
+  it('shows no steps, Back or token on a form with one page', async () => {
+    api.fetchPublicForm.mockResolvedValue({ ...form })
+    render(<PublicFormPage formKey="form-1" />)
+
+    await screen.findByRole('button', { name: 'Submit' })
+    expect(screen.queryByText(/Step 1/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Back/ })).not.toBeInTheDocument()
+  })
+
+  it('offers extra children only on the page that holds the child questions', async () => {
+    const childName = { ...createField('short_text', 'p2'), id: 'kid', label: "Child's name", mapTo: 'child_name' as const }
+    api.fetchPublicForm.mockResolvedValue({
+      ...survey,
+      fields: [name, goal, childName],
+      settings: { ...survey.settings, allowMoreChildren: true, pages: survey.settings.pages.slice(0, 2).map((page) => ({ ...page, rules: [] })) },
+    })
+    render(<PublicFormPage formKey="form-3" />)
+    await fillPageOne('Coding')
+    expect(screen.queryByRole('button', { name: /Add another child/ })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /Next/ }))
+    expect(await screen.findByRole('button', { name: /Add another child/ })).toBeInTheDocument()
   })
 })

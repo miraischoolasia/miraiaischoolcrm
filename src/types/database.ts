@@ -946,6 +946,9 @@ export type Database = {
           answers: Json
           lead_id: number | null
           lead_was_existing: boolean
+          status: string
+          session_token: string | null
+          last_page: number | null
           created_at: string
         }
         Insert: {
@@ -954,6 +957,9 @@ export type Database = {
           answers?: Json
           lead_id?: number | null
           lead_was_existing?: boolean
+          status?: string
+          session_token?: string | null
+          last_page?: number | null
           created_at?: string
         }
         Update: {
@@ -962,6 +968,9 @@ export type Database = {
           answers?: Json
           lead_id?: number | null
           lead_was_existing?: boolean
+          status?: string
+          session_token?: string | null
+          last_page?: number | null
           created_at?: string
         }
         Relationships: []
@@ -1212,11 +1221,21 @@ export type Database = {
         }
         Returns: undefined
       }
+      save_form_progress: {
+        Args: {
+          p_form_id: string
+          p_token: string
+          p_answers: Json
+          p_last_page?: number
+        }
+        Returns: undefined
+      }
       submit_form: {
         Args: {
           p_form_id: string
           p_answers: Json
           p_honeypot?: string
+          p_token?: string | null
         }
         Returns: Json
       }

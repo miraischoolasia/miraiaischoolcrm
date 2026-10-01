@@ -44,6 +44,8 @@ function submission(id: number, formId: string, name: string) {
     answers: [{ id: 'a', label: "Parent's name", value: name }],
     lead_id: id,
     lead_was_existing: false,
+    status: 'completed',
+    last_page: null,
     created_at: '2026-10-01T03:00:00Z',
   })
 }
@@ -200,6 +202,8 @@ describe('FormsSection', () => {
         answers: [{ id: 'a', label: "Parent's name", value: 'Mrs Lim' }],
         lead_id: 4,
         lead_was_existing: true,
+        status: 'completed',
+        last_page: null,
         created_at: '2026-10-01T03:00:00Z',
       }),
     ])
@@ -209,5 +213,71 @@ describe('FormsSection', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Submissions' }))
 
     expect(await screen.findByText('Added to existing lead')).toBeInTheDocument()
+  })
+
+  describe('unfinished submissions', () => {
+    const unfinished = mapSubmissionRow({
+      id: 20,
+      form_id: 'f1',
+      answers: [{ id: 'a', label: "Parent's name", value: 'Mr Unfinished' }],
+      lead_id: null,
+      lead_was_existing: false,
+      status: 'partial',
+      last_page: 2,
+      created_at: '2026-10-02T09:00:00Z',
+    })
+
+    beforeEach(() => {
+      api.fetchFormSubmissionsFromSupabase.mockResolvedValue([
+        unfinished,
+        submission(1, 'f1', 'Mrs Lim'),
+      ])
+    })
+
+    it('are not counted as submissions in the forms list', async () => {
+      render(<FormsSection teacherMap={teachers} />)
+      await screen.findByText('Contact Us')
+
+      const [contact] = bodyRows()
+      // 8 views, 1 finished submission (not 2): 13%.
+      expect(within(contact).getByText('13%')).toBeInTheDocument()
+    })
+
+    it('show up in Submissions as unfinished, with the page they stopped on', async () => {
+      render(<FormsSection teacherMap={teachers} />)
+      await screen.findByText('Contact Us')
+      await userEvent.click(screen.getByRole('tab', { name: 'Submissions' }))
+
+      expect(await screen.findByText('Unfinished, stopped on page 2')).toBeInTheDocument()
+      expect(bodyRows()).toHaveLength(2)
+
+      await userEvent.click(within(bodyRows()[0]).getByRole('button', { name: 'View' }))
+      expect(screen.getByText(/stopped on page 2 and did not finish/)).toBeInTheDocument()
+    })
+
+    it('can be filtered to unfinished only, or hidden', async () => {
+      render(<FormsSection teacherMap={teachers} />)
+      await screen.findByText('Contact Us')
+      await userEvent.click(screen.getByRole('tab', { name: 'Submissions' }))
+      await screen.findByText('Unfinished, stopped on page 2')
+
+      await userEvent.selectOptions(screen.getByLabelText('Filter by status'), 'partial')
+      expect(bodyRows()).toHaveLength(1)
+      expect(screen.getByText('Mr Unfinished')).toBeInTheDocument()
+
+      await userEvent.selectOptions(screen.getByLabelText('Filter by status'), 'completed')
+      expect(bodyRows()).toHaveLength(1)
+      expect(screen.queryByText('Unfinished, stopped on page 2')).not.toBeInTheDocument()
+    })
+
+    it('do not count as new when marking submissions as seen', async () => {
+      const onSubmissionsSeen = vi.fn()
+      render(<FormsSection teacherMap={teachers} onSubmissionsSeen={onSubmissionsSeen} />)
+      await screen.findByText('Contact Us')
+
+      await userEvent.click(screen.getByRole('tab', { name: 'Submissions' }))
+
+      await vi.waitFor(() => expect(onSubmissionsSeen).toHaveBeenCalledWith('2026-10-01T03:00:00Z'))
+    })
   })
 })

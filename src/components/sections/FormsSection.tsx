@@ -94,8 +94,9 @@ export function FormsSection({ teacherMap, onSubmissionsSeen }: FormsSectionProp
     }
     let cancelled = false
     void load().then((latest) => {
-      if (!cancelled && latest?.[0]) {
-        onSubmissionsSeen?.(latest[0].createdAt)
+      const newest = latest?.find((submission) => submission.status === 'completed')
+      if (!cancelled && newest) {
+        onSubmissionsSeen?.(newest.createdAt)
       }
     })
     return () => {
@@ -115,7 +116,10 @@ export function FormsSection({ teacherMap, onSubmissionsSeen }: FormsSectionProp
   const submissionCounts = useMemo(() => {
     const counts = new Map<string, number>()
     for (const submission of submissions) {
-      counts.set(submission.formId, (counts.get(submission.formId) ?? 0) + 1)
+      // Unfinished ones are not submissions yet.
+      if (submission.status === 'completed') {
+        counts.set(submission.formId, (counts.get(submission.formId) ?? 0) + 1)
+      }
     }
     return counts
   }, [submissions])

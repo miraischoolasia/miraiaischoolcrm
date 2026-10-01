@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { CheckCircle, Eye, Plus, X } from '@phosphor-icons/react'
+import { ArrowLeft, ArrowRight, CheckCircle, Eye, Plus, X } from '@phosphor-icons/react'
 import { FormFieldInput } from './forms/FormFieldInput'
 import miraiLogo from '../assets/mirai-logo.png'
 import miraiSeal from '../assets/mirai-seal-logo.png'
 import mascotEggy from '../assets/mascot-eggy.png'
 import mascotGordo from '../assets/mascot-gordo.png'
-import { fetchPublicForm, recordFormView, submitPublicForm } from '../lib/api'
+import { fetchPublicForm, recordFormView, saveFormProgress, submitPublicForm } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
+import {
+  computeRoute,
+  filterAnswersToPages,
+  getNextStep,
+  getPageFields,
+} from '../lib/formPages'
 import {
   MAX_CHILDREN,
   childAnswerKey,
@@ -37,6 +43,13 @@ function countViewOnce(formId: string) {
     // Storage can be blocked inside an embed; counting twice is harmless.
   }
   void recordFormView(formId).catch(() => {})
+}
+
+// Extra children are added on the page holding the last child question, so
+// the visitor has seen all of that child's questions by then.
+function getChildPageId(form: PublicForm) {
+  const children = getChildFields(form.fields)
+  return children.length > 0 ? children[children.length - 1].pageId : null
 }
 
 // On its own the form gets a branded page. Inside another website's iframe it
@@ -98,7 +111,15 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
   const [honeypot, setHoneypot] = useState('')
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [outcome, setOutcome] = useState<'message' | 'redirecting' | null>(null)
+  const [outcome, setOutcome] = useState<
+    { kind: 'message'; text: string } | { kind: 'redirecting'; url: string } | null
+  >(null)
+  const [pageIndex, setPageIndex] = useState(0)
+  // The pages already passed, so Back returns to where the visitor really was
+  // (a rule may have skipped pages in between).
+  const [history, setHistory] = useState<number[]>([])
+  // Ties the progress saved at each Next to the final submit.
+  const tokenRef = useRef(crypto.randomUUID())
   const rootRef = useRef<HTMLDivElement>(null)
   const readyId = state.status === 'ready' ? state.form.id : null
   const embedded = window.parent !== window
@@ -160,6 +181,15 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
     return () => observer.disconnect()
   }, [readyId])
 
+  const firstRender = useRef(true)
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false
+      return
+    }
+    window.scrollTo({ top: 0 })
+  }, [pageIndex])
+
   function setAnswer(key: string, value: FormAnswerValue) {
     setAnswers((current) => ({ ...current, [key]: value }))
   }
@@ -182,43 +212,103 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
     })
   }
 
+  // The questions on the page being shown, with the extra children's copies
+  // of the child questions when this is the page they belong to.
+  function getShownFields(readyForm: PublicForm) {
+    const page = readyForm.settings.pages[pageIndex]
+    const onPage = getPageFields(readyForm.fields, page.id)
+    const children = getChildFields(readyForm.fields)
+    const childPage = getChildPageId(readyForm)
+    if (childPage !== page.id) {
+      return onPage
+    }
+    return [
+      ...onPage,
+      ...extraChildren.flatMap((number) =>
+        children.map((field) => ({ ...field, id: childAnswerKey(field.id, number) })),
+      ),
+    ]
+  }
+
+  function goBack() {
+    const previous = history.at(-1)
+    if (previous === undefined) {
+      return
+    }
+    setHistory((current) => current.slice(0, -1))
+    setPageIndex(previous)
+    setErrors({})
+    setSubmitError(null)
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (state.status !== 'ready' || isSubmitting) {
       return
     }
     const { form } = state
-    const childFields = getChildFields(form.fields)
-    const allFields = [
-      ...form.fields,
-      ...extraChildren.flatMap((number) =>
-        childFields.map((field) => ({ ...field, id: childAnswerKey(field.id, number) })),
-      ),
-    ]
+    const { pages } = form.settings
 
-    const problems = validateAnswers(allFields, answers)
+    const problems = validateAnswers(getShownFields(form), answers)
     setErrors(problems)
     setSubmitError(null)
     if (Object.keys(problems).length > 0) {
       return
     }
 
+    // Not the last page: save what is filled in so far, then go on.
+    const step = getNextStep(pages, pageIndex, answers)
+    if (step.kind === 'page') {
+      if (!preview) {
+        const passed = [...history, pageIndex].map((index) => pages[index].id)
+        void saveFormProgress(
+          form.id,
+          tokenRef.current,
+          filterAnswersToPages(form.fields, passed, answers),
+          // The page they are about to be on: that is where they stopped if they leave.
+          step.index + 1,
+        ).catch(() => {})
+      }
+      setHistory((current) => [...current, pageIndex])
+      setPageIndex(step.index)
+      return
+    }
+
+    // Finishing: only the pages the answers lead through are sent, the same
+    // route the server works out for itself.
+    const route = computeRoute(pages, answers)
+    const sent = filterAnswersToPages(form.fields, route.visited, answers)
     const { settings } = form
-    const redirects = settings.afterSubmit === 'redirect' && isSafeRedirectUrl(settings.redirectUrl)
+    const ending = route.ending
+    const redirectUrl =
+      ending?.ending === 'redirect'
+        ? ending.redirectUrl
+        : ending
+          ? ''
+          : settings.afterSubmit === 'redirect'
+            ? settings.redirectUrl
+            : ''
+    const redirects = isSafeRedirectUrl(redirectUrl)
+    const message =
+      (ending?.ending === 'message' ? ending.message.trim() : '') ||
+      settings.successMessage ||
+      'Thank you!'
+    const finish = () =>
+      redirects
+        ? setOutcome({ kind: 'redirecting', url: redirectUrl.trim() })
+        : setOutcome({ kind: 'message', text: message })
 
     if (preview) {
-      setOutcome(redirects ? 'redirecting' : 'message')
+      finish()
       return
     }
 
     setIsSubmitting(true)
     try {
-      await submitPublicForm(form.id, answers, honeypot)
+      await submitPublicForm(form.id, sent, honeypot, pages.length > 1 ? tokenRef.current : null)
+      finish()
       if (redirects) {
-        setOutcome('redirecting')
-        window.location.assign(settings.redirectUrl.trim())
-      } else {
-        setOutcome('message')
+        window.location.assign(redirectUrl.trim())
       }
     } catch (error) {
       setSubmitError(getErrorMessage(error, 'Could not send the form. Please try again.'))
@@ -228,12 +318,20 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
   }
 
   const form = state.status === 'ready' ? state.form : null
+  const pages = form?.settings.pages ?? []
+  const page = pages[pageIndex]
+  const isMultiPage = pages.length > 1
   const childFields = form ? getChildFields(form.fields) : []
+  const onChildPage = Boolean(form && page && getChildPageId(form) === page.id)
   const canAddChild =
     Boolean(form?.settings.allowMoreChildren) &&
     childFields.length > 0 &&
+    onChildPage &&
     extraChildren.length < MAX_CHILDREN - 1
   const hasQuestions = form?.fields.some((field) => !isDisplayField(field.type)) ?? false
+  const step = form && page ? getNextStep(pages, pageIndex, answers) : null
+  const isFinalStep = step ? step.kind !== 'page' : true
+  const shownFields = form && page ? getPageFields(form.fields, page.id) : []
 
   return (
     <PageShell embedded={embedded} rootRef={rootRef}>
@@ -264,11 +362,11 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
           <img src={mascotEggy} alt="" aria-hidden="true" className="h-32 w-auto" />
           <CheckCircle size={28} weight="fill" className="text-emerald-500" aria-hidden="true" />
           <p className="text-sm text-slate-800">
-            {outcome === 'redirecting'
+            {outcome.kind === 'redirecting'
               ? preview
-                ? `Visitors would now be taken to ${form.settings.redirectUrl.trim()}`
+                ? `Visitors would now be taken to ${outcome.url}`
                 : 'Thank you! Taking you to the next page...'
-              : form.settings.successMessage || 'Thank you!'}
+              : outcome.text}
           </p>
           {preview && (
             <button
@@ -277,6 +375,8 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
                 setOutcome(null)
                 setAnswers({})
                 setExtraChildren([])
+                setPageIndex(0)
+                setHistory([])
               }}
               className="text-sm font-semibold text-[#be185d] hover:text-[#9d174d]"
             >
@@ -285,7 +385,7 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
           )}
         </div>
       )}
-      {form && !outcome && (
+      {form && page && !outcome && (
         <form onSubmit={(event) => void handleSubmit(event)} noValidate className="space-y-5">
           <div>
             <span className="inline-block rounded-full bg-[#fff0f9] px-3 py-1 text-xs font-bold uppercase tracking-wider text-[#be185d]">
@@ -295,7 +395,41 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
               {form.name}
             </h1>
           </div>
-          {form.fields.map((field) => (
+          {isMultiPage && (
+            <div>
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                <span>
+                  Step {pageIndex + 1} of {pages.length}
+                </span>
+              </div>
+              <div
+                role="progressbar"
+                aria-label="Progress"
+                aria-valuemin={1}
+                aria-valuemax={pages.length}
+                aria-valuenow={pageIndex + 1}
+                className="mt-1.5 h-2 overflow-hidden rounded-full bg-pink-100"
+              >
+                <div
+                  className="h-full rounded-full bg-[#fc0c97] transition-all"
+                  style={{ width: `${((pageIndex + 1) / pages.length) * 100}%` }}
+                />
+              </div>
+              {(page.title || page.description) && (
+                <div className="mt-4">
+                  {page.title && (
+                    <h2 className="font-heading text-xl font-extrabold text-slate-900">
+                      {page.title}
+                    </h2>
+                  )}
+                  {page.description && (
+                    <p className="mt-1 text-sm text-slate-600">{page.description}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {shownFields.map((field) => (
             <FormFieldInput
               key={field.id}
               field={field}
@@ -304,37 +438,38 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
               onChange={(value) => setAnswer(field.id, value)}
             />
           ))}
-          {extraChildren.map((number) => (
-            <section
-              key={number}
-              aria-label={`Child ${number}`}
-              className="space-y-4 rounded-2xl border border-pink-100 bg-[#fff8fc] p-4"
-            >
-              <div className="flex items-center justify-between">
-                <h2 className="font-heading text-sm font-bold text-slate-800">Child {number}</h2>
-                <button
-                  type="button"
-                  onClick={() => removeChild(number, childFields)}
-                  className="inline-flex items-center gap-1 text-sm font-semibold text-slate-500 hover:text-red-600"
-                >
-                  <X size={14} aria-hidden="true" />
-                  Remove
-                </button>
-              </div>
-              {childFields.map((field) => {
-                const key = childAnswerKey(field.id, number)
-                return (
-                  <FormFieldInput
-                    key={key}
-                    field={{ ...field, id: key }}
-                    value={answers[key] ?? ''}
-                    error={errors[key]}
-                    onChange={(value) => setAnswer(key, value)}
-                  />
-                )
-              })}
-            </section>
-          ))}
+          {onChildPage &&
+            extraChildren.map((number) => (
+              <section
+                key={number}
+                aria-label={`Child ${number}`}
+                className="space-y-4 rounded-2xl border border-pink-100 bg-[#fff8fc] p-4"
+              >
+                <div className="flex items-center justify-between">
+                  <h2 className="font-heading text-sm font-bold text-slate-800">Child {number}</h2>
+                  <button
+                    type="button"
+                    onClick={() => removeChild(number, childFields)}
+                    className="inline-flex items-center gap-1 text-sm font-semibold text-slate-500 hover:text-red-600"
+                  >
+                    <X size={14} aria-hidden="true" />
+                    Remove
+                  </button>
+                </div>
+                {childFields.map((field) => {
+                  const key = childAnswerKey(field.id, number)
+                  return (
+                    <FormFieldInput
+                      key={key}
+                      field={{ ...field, id: key }}
+                      value={answers[key] ?? ''}
+                      error={errors[key]}
+                      onChange={(value) => setAnswer(key, value)}
+                    />
+                  )
+                })}
+              </section>
+            ))}
           {canAddChild && (
             <button
               type="button"
@@ -364,14 +499,31 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
               {submitError}
             </p>
           )}
-          {hasQuestions && (
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full rounded-2xl bg-[#fc0c97] px-4 py-3 font-heading text-base font-bold text-white shadow-[0_10px_24px_rgba(252,12,151,0.32)] transition hover:bg-[#de0a84] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSubmitting ? 'Sending...' : form.settings.submitLabel}
-            </button>
+          {(isMultiPage || hasQuestions) && (
+            <div className="flex gap-3">
+              {history.length > 0 && (
+                <button
+                  type="button"
+                  onClick={goBack}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-4 py-3 font-heading text-base font-bold text-slate-700 transition hover:bg-slate-50"
+                >
+                  <ArrowLeft size={16} aria-hidden="true" />
+                  Back
+                </button>
+              )}
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#fc0c97] px-4 py-3 font-heading text-base font-bold text-white shadow-[0_10px_24px_rgba(252,12,151,0.32)] transition hover:bg-[#de0a84] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSubmitting
+                  ? 'Sending...'
+                  : isFinalStep
+                    ? form.settings.submitLabel
+                    : 'Next'}
+                {!isSubmitting && !isFinalStep && <ArrowRight size={16} aria-hidden="true" />}
+              </button>
+            </div>
           )}
         </form>
       )}

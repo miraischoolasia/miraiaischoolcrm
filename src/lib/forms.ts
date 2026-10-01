@@ -1,4 +1,5 @@
 import { csvEscape } from './leadCsv'
+import { getPagesProblem, isWebAddress, normalizePages } from './formPages'
 import type {
   Form,
   FormAnswer,
@@ -108,6 +109,9 @@ export const MAX_CHILDREN = 3
 
 const childMaps: FormLeadMap[] = ['child_name', 'child_age', 'child_phone']
 
+// The first page of every new form; later pages get a random id.
+export const DEFAULT_PAGE_ID = 'page-1'
+
 export const defaultFormSettings: FormSettings = {
   submitLabel: 'Submit',
   afterSubmit: 'message',
@@ -115,6 +119,7 @@ export const defaultFormSettings: FormSettings = {
   redirectUrl: '',
   createLead: true,
   allowMoreChildren: false,
+  pages: [{ id: DEFAULT_PAGE_ID, title: '', description: '', rules: [] }],
 }
 
 // The questions that describe one child; an extra child repeats exactly these.
@@ -131,7 +136,7 @@ function randomId() {
   return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4)
 }
 
-export function createField(type: FormFieldType): FormField {
+export function createField(type: FormFieldType, pageId = DEFAULT_PAGE_ID): FormField {
   const info = getFieldTypeInfo(type)
   return {
     id: `f_${randomId()}`,
@@ -146,17 +151,18 @@ export function createField(type: FormFieldType): FormField {
     imageAlign: 'center',
     content: type === 'text_block' ? 'Tell parents about this form here.' : '',
     textStyle: 'body',
+    pageId,
   }
 }
 
 // What a brand-new form starts with: enough to make a usable lead.
-export function createStarterFields(): FormField[] {
+export function createStarterFields(pageId = DEFAULT_PAGE_ID): FormField[] {
   return [
-    { ...createField('short_text'), label: "Parent's name", required: true, mapTo: 'parent_name' },
-    { ...createField('short_text'), label: "Child's name", required: true, mapTo: 'child_name' },
-    { ...createField('phone'), label: 'Phone number', required: true, mapTo: 'phone' },
-    { ...createField('phone'), label: "Child's phone number", mapTo: 'child_phone' },
-    { ...createField('number'), label: "Child's age", required: true, mapTo: 'child_age' },
+    { ...createField('short_text', pageId), label: "Parent's name", required: true, mapTo: 'parent_name' },
+    { ...createField('short_text', pageId), label: "Child's name", required: true, mapTo: 'child_name' },
+    { ...createField('phone', pageId), label: 'Phone number', required: true, mapTo: 'phone' },
+    { ...createField('phone', pageId), label: "Child's phone number", mapTo: 'child_phone' },
+    { ...createField('number', pageId), label: "Child's age", required: true, mapTo: 'child_age' },
   ]
 }
 
@@ -197,6 +203,7 @@ export function normalizeFields(raw: unknown): FormField[] {
         imageAlign: imageAligns.find((align) => align === item.imageAlign) ?? 'center',
         content: type === 'text_block' ? asString(item.content) : '',
         textStyle: textStyles.find((style) => style === item.textStyle) ?? 'body',
+        pageId: asString(item.pageId),
       },
     ]
   })
@@ -211,7 +218,21 @@ export function normalizeSettings(raw: unknown): FormSettings {
     redirectUrl: asString(item.redirectUrl),
     createLead: item.createLead === undefined ? true : item.createLead === true,
     allowMoreChildren: item.allowMoreChildren === true,
+    pages: normalizePages(item.pages),
   }
+}
+
+// Reads a saved form's fields and settings together: a form saved before pages
+// existed becomes one page, and a field on a page that is gone moves to the
+// first page, so the two always agree.
+export function normalizeFormContent(fieldsRaw: unknown, settingsRaw: unknown) {
+  const settings = normalizeSettings(settingsRaw)
+  const known = new Set(settings.pages.map((page) => page.id))
+  const first = settings.pages[0].id
+  const fields = normalizeFields(fieldsRaw).map((field) =>
+    known.has(field.pageId) ? field : { ...field, pageId: first },
+  )
+  return { fields, settings }
 }
 
 export function mapFormRow(row: {
@@ -229,8 +250,7 @@ export function mapFormRow(row: {
   return {
     id: row.id,
     name: row.name,
-    fields: normalizeFields(row.fields),
-    settings: normalizeSettings(row.settings),
+    ...normalizeFormContent(row.fields, row.settings),
     isPublished: row.is_published,
     slug: row.slug,
     viewCount: row.view_count,
@@ -252,8 +272,7 @@ export function mapPublicForm(raw: unknown): PublicForm | null {
   return {
     id,
     name: asString(item.name),
-    fields: normalizeFields(item.fields),
-    settings: normalizeSettings(item.settings),
+    ...normalizeFormContent(item.fields, item.settings),
   }
 }
 
@@ -263,6 +282,8 @@ export function mapSubmissionRow(row: {
   answers: unknown
   lead_id: number | null
   lead_was_existing: boolean
+  status: string
+  last_page: number | null
   created_at: string
 }): FormSubmission {
   const answers: FormAnswer[] = Array.isArray(row.answers)
@@ -281,6 +302,8 @@ export function mapSubmissionRow(row: {
     answers,
     leadId: row.lead_id,
     leadWasExisting: row.lead_was_existing,
+    status: row.status === 'partial' ? 'partial' : 'completed',
+    lastPage: row.last_page,
     createdAt: row.created_at,
   }
 }
@@ -370,7 +393,7 @@ export function getFormProblem(
       mapped.add(field.mapTo)
     }
   }
-  return null
+  return getPagesProblem(settings.pages, fields)
 }
 
 export type FormAnswerValue = string | string[]
@@ -445,12 +468,7 @@ export function readPreviewDraft(formId: string): PublicForm | null {
 }
 
 export function isSafeRedirectUrl(value: string) {
-  try {
-    const url = new URL(value.trim())
-    return url.protocol === 'https:' || url.protocol === 'http:'
-  } catch {
-    return false
-  }
+  return isWebAddress(value)
 }
 
 export const SLUG_MIN_LENGTH = 3
@@ -536,10 +554,11 @@ function csvCell(value: string) {
 
 export function buildSubmissionsCsv(submissions: FormSubmission[], formNameById: Map<string, string>) {
   const columns = getSubmissionColumns(submissions)
-  const header = ['Submitted', 'Form', ...columns.map((column) => column.label)]
+  const header = ['Submitted', 'Form', 'Status', ...columns.map((column) => column.label)]
   const rows = submissions.map((submission) => [
     submission.createdAt,
     formNameById.get(submission.formId) ?? '',
+    submission.status === 'partial' ? `Incomplete (page ${submission.lastPage ?? 1})` : 'Completed',
     ...columns.map(
       (column) => submission.answers.find((answer) => answer.id === column.id)?.value ?? '',
     ),

@@ -350,3 +350,236 @@ describe('FormBuilder', () => {
     })
   })
 })
+
+describe('FormBuilder pages and logic', () => {
+  const goal = {
+    ...createField('radio', 'p1'),
+    id: 'goal',
+    label: 'Goal',
+    options: ['Coding', 'Robotics'],
+  }
+  const who = { ...createField('short_text', 'p1'), id: 'who', label: 'Who' }
+  const level = { ...createField('dropdown', 'p2'), id: 'lvl', label: 'Level', options: ['Beginner', 'Advanced'] }
+  const twoPages: Form = {
+    ...form,
+    fields: [who, goal, level],
+    settings: {
+      ...defaultFormSettings,
+      pages: [
+        { id: 'p1', title: 'About you', description: '', rules: [] },
+        { id: 'p2', title: '', description: '', rules: [] },
+      ],
+    },
+  }
+
+  function renderPages(value: Form = twoPages) {
+    const onSave = vi.fn().mockResolvedValue(true)
+    render(
+      <FormBuilder
+        form={value}
+        isSaving={false}
+        onSave={onSave}
+        onUploadImage={vi.fn()}
+        onBack={vi.fn()}
+        onOpenEmbed={vi.fn()}
+      />,
+    )
+    return { onSave }
+  }
+
+  const tabNames = () => screen.getAllByRole('tab', { name: /^Page \d/ }).map((tab) => tab.textContent?.replace(/\d+ rules?$/, '').trim())
+  // A single choice question draws its own unlabelled group, so only the field cards count.
+  const fieldNames = () =>
+    screen
+      .queryAllByRole('group')
+      .map((group) => group.getAttribute('aria-label'))
+      .filter((label): label is string => Boolean(label?.startsWith('Field: ')))
+
+  it('shows one page at a time, and switches with the page tabs', async () => {
+    renderPages()
+
+    expect(tabNames()).toEqual(['Page 1: About you', 'Page 2'])
+    expect(fieldNames()).toEqual(['Field: Who', 'Field: Goal'])
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Page 2' }))
+    expect(fieldNames()).toEqual(['Field: Level'])
+  })
+
+  it('adds a page, puts new fields on the page being edited, and names it', async () => {
+    renderPages()
+
+    await userEvent.click(screen.getByRole('button', { name: /Add page/ }))
+    expect(tabNames()).toEqual(['Page 1: About you', 'Page 2', 'Page 3'])
+    expect(screen.getByText(/Drag a field here/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /Short text/ }))
+    expect(fieldNames()).toEqual(['Field: Short text'])
+    await userEvent.click(screen.getByRole('tab', { name: 'Page' }))
+    await userEvent.type(screen.getByLabelText('Page title'), 'Schedule')
+    expect(tabNames()[2]).toBe('Page 3: Schedule')
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Page 1: About you' }))
+    expect(fieldNames()).toEqual(['Field: Who', 'Field: Goal'])
+  })
+
+  it('will not save a page with no fields', async () => {
+    const { onSave } = renderPages()
+    await userEvent.click(screen.getByRole('button', { name: /Add page/ }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Page 3 has no fields')
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('moves a field to another page and follows it there', async () => {
+    renderPages()
+
+    await userEvent.click(screen.getByRole('group', { name: 'Field: Who' }))
+    await userEvent.selectOptions(screen.getByLabelText('On page'), 'p2')
+
+    expect(screen.getByRole('tab', { name: 'Page 2', selected: true })).toBeInTheDocument()
+    expect(fieldNames()).toEqual(['Field: Level', 'Field: Who'])
+  })
+
+  it('moves a page, keeping its fields with it', async () => {
+    renderPages()
+    await userEvent.click(screen.getByRole('tab', { name: 'Page 2' }))
+    await userEvent.click(screen.getByRole('tab', { name: 'Page' }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Move page left' }))
+
+    expect(tabNames()).toEqual(['Page 1', 'Page 2: About you'])
+    expect(fieldNames()).toEqual(['Field: Level'])
+  })
+
+  it('deletes a page and its fields after asking, and never the only page', async () => {
+    renderPages()
+    await userEvent.click(screen.getByRole('tab', { name: 'Page 2' }))
+    await userEvent.click(screen.getByRole('tab', { name: 'Page' }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete page' }))
+    expect(screen.getByText('Delete Page 2 and its 1 field?')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+    expect(tabNames()).toEqual(['Page 1: About you'])
+    expect(screen.getByRole('button', { name: 'Delete page' })).toBeDisabled()
+  })
+
+  describe('rules', () => {
+    async function openPageOneLogic() {
+      const view = renderPages()
+      await userEvent.click(screen.getByRole('tab', { name: 'Page' }))
+      return view
+    }
+
+    it('explains what a rule needs when there is no choice question yet', async () => {
+      renderPages({ ...twoPages, fields: [who, level] })
+      await userEvent.click(screen.getByRole('tab', { name: 'Page' }))
+
+      expect(screen.getByText(/Rules read a dropdown, single choice or multiple choice answer/)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Add rule/ })).toBeDisabled()
+    })
+
+    it('adds a rule on the first choice question, jumping to the next page', async () => {
+      await openPageOneLogic()
+
+      await userEvent.click(screen.getByRole('button', { name: /Add rule/ }))
+
+      expect(screen.getByLabelText('Rule 1 question')).toHaveValue('goal')
+      expect(screen.getByLabelText('Rule 1 condition')).toHaveValue('is')
+      expect(screen.getByLabelText('Rule 1 answer')).toHaveValue('Coding')
+      expect(screen.getByLabelText('Rule 1 action')).toHaveValue('page:p2')
+      expect(screen.getByText('1 rule')).toBeInTheDocument()
+    })
+
+    it('saves the rule the admin set up, including its own ending', async () => {
+      const { onSave } = await openPageOneLogic()
+      await userEvent.click(screen.getByRole('button', { name: /Add rule/ }))
+
+      await userEvent.selectOptions(screen.getByLabelText('Rule 1 answer'), 'Robotics')
+      await userEvent.selectOptions(screen.getByLabelText('Rule 1 condition'), 'is_not')
+      await userEvent.selectOptions(screen.getByLabelText('Rule 1 action'), 'end')
+      await userEvent.selectOptions(screen.getByLabelText('Rule 1 ending'), 'message')
+      await userEvent.type(screen.getByLabelText('Rule 1 ending message'), 'Not for you')
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+      expect(onSave.mock.calls[0][0].settings.pages[0].rules).toEqual([
+        expect.objectContaining({
+          fieldId: 'goal',
+          op: 'is_not',
+          value: 'Robotics',
+          action: { type: 'end', ending: 'message', message: 'Not for you', redirectUrl: '' },
+        }),
+      ])
+    })
+
+    it('offers the right conditions for the kind of question', async () => {
+      const days = { ...createField('checkbox', 'p1'), id: 'days', label: 'Days', options: ['Sat', 'Sun'] }
+      renderPages({ ...twoPages, fields: [days, level] })
+      await userEvent.click(screen.getByRole('tab', { name: 'Page' }))
+      await userEvent.click(screen.getByRole('button', { name: /Add rule/ }))
+
+      const options = within(screen.getByLabelText('Rule 1 condition')).getAllByRole('option').map((o) => o.textContent)
+      expect(options).toEqual(['includes', 'does not include'])
+    })
+
+    it('only offers jumps to later pages', async () => {
+      await openPageOneLogic()
+      await userEvent.click(screen.getByRole('button', { name: /Add rule/ }))
+
+      const options = within(screen.getByLabelText('Rule 1 action')).getAllByRole('option').map((o) => o.textContent)
+      expect(options).toEqual(['Go to Page 2', 'End the form here'])
+    })
+
+    it('reorders and removes rules', async () => {
+      await openPageOneLogic()
+      await userEvent.click(screen.getByRole('button', { name: /Add rule/ }))
+      await userEvent.click(screen.getByRole('button', { name: /Add rule/ }))
+      await userEvent.selectOptions(screen.getByLabelText('Rule 2 answer'), 'Robotics')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Move rule 2 up' }))
+      expect(screen.getByLabelText('Rule 1 answer')).toHaveValue('Robotics')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Remove rule 1' }))
+      expect(screen.queryByLabelText('Rule 2 answer')).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Rule 1 answer')).toHaveValue('Coding')
+    })
+
+    it('drops a rule when the question it reads is deleted', async () => {
+      const { onSave } = await openPageOneLogic()
+      await userEvent.click(screen.getByRole('button', { name: /Add rule/ }))
+
+      await userEvent.click(screen.getByRole('group', { name: 'Field: Goal' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Delete field' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+      expect(onSave.mock.calls[0][0].settings.pages[0].rules).toEqual([])
+    })
+
+    it('will not save a rule whose option was renamed away', async () => {
+      const { onSave } = await openPageOneLogic()
+      await userEvent.click(screen.getByRole('button', { name: /Add rule/ }))
+
+      await userEvent.click(screen.getByRole('group', { name: 'Field: Goal' }))
+      await userEvent.clear(screen.getByLabelText('Option 1'))
+      await userEvent.type(screen.getByLabelText('Option 1'), 'Maths')
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('no longer exists')
+      expect(onSave).not.toHaveBeenCalled()
+    })
+
+    it('will not save a rule that ends with a web address that is not a full one', async () => {
+      const { onSave } = await openPageOneLogic()
+      await userEvent.click(screen.getByRole('button', { name: /Add rule/ }))
+      await userEvent.selectOptions(screen.getByLabelText('Rule 1 action'), 'end')
+      await userEvent.selectOptions(screen.getByLabelText('Rule 1 ending'), 'redirect')
+      await userEvent.type(screen.getByLabelText('Rule 1 ending web address'), 'thanks')
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('web address')
+      expect(onSave).not.toHaveBeenCalled()
+    })
+  })
+})

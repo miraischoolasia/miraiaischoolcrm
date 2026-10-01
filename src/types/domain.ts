@@ -578,9 +578,39 @@ export type FormField = {
   // Only for 'text_block' fields: the written details and how they look.
   content: string
   textStyle: FormTextStyle
+  // The page of the form this field is on (see FormSettings.pages).
+  pageId: string
 }
 
 export type FormAfterSubmit = 'message' | 'redirect'
+
+// A page's rule reads the answer to an earlier choice question. 'is' and
+// 'is_not' are for dropdown and single choice, 'includes' and 'excludes' for
+// multiple choice.
+export type FormRuleOp = 'is' | 'is_not' | 'includes' | 'excludes'
+
+// What happens when a rule matches: jump forward to a later page, or end the
+// form there, with the form's usual ending or one of its own.
+export type FormRuleAction =
+  | { type: 'page'; pageId: string }
+  | { type: 'end'; ending: 'default' | 'message' | 'redirect'; message: string; redirectUrl: string }
+
+export type FormRule = {
+  id: string
+  fieldId: string
+  op: FormRuleOp
+  value: string
+  action: FormRuleAction
+}
+
+// Rules are checked top to bottom and the first match wins; with none, the
+// visitor goes to the next page.
+export type FormPage = {
+  id: string
+  title: string
+  description: string
+  rules: FormRule[]
+}
 
 export type FormSettings = {
   submitLabel: string
@@ -591,6 +621,8 @@ export type FormSettings = {
   createLead: boolean
   // Lets the visitor add up to two more children.
   allowMoreChildren: boolean
+  // The form's pages, in order. A form always has at least one.
+  pages: FormPage[]
 }
 
 export type Form = {
@@ -620,6 +652,10 @@ export type FormSubmission = {
   leadId: number | null
   // The phone already belonged to a lead, so the answers went into its notes.
   leadWasExisting: boolean
+  // 'partial' = the visitor pressed Next but never finished; no lead yet.
+  status: 'partial' | 'completed'
+  // For a partial one: the page the visitor had got to (1 = first).
+  lastPage: number | null
   createdAt: string
 }
 

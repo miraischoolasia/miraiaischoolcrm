@@ -13,9 +13,20 @@ import {
   X,
 } from '@phosphor-icons/react'
 import { FormFieldInput } from './FormFieldInput'
+import { PagePanel } from './PagePanel'
 import { useConfirm } from '../../hooks/useConfirm'
 import { cn } from '../../lib/cn'
 import { getErrorMessage } from '../../lib/errors'
+import {
+  MAX_PAGES,
+  createPage,
+  getPageFields,
+  orderFieldsByPages,
+  pageLabel,
+  removeRulesForField,
+  removeRulesForPage,
+  replacePageFields,
+} from '../../lib/formPages'
 import {
   IMAGE_TYPES,
   IMAGE_WIDTH_MAX,
@@ -42,6 +53,7 @@ import type {
   FormField,
   FormFieldType,
   FormImageAlign,
+  FormPage,
   FormSettings,
   FormTextStyle,
 } from '../../types/domain'
@@ -65,6 +77,10 @@ type FormBuilderProps = {
 
 type DragSource = { kind: 'new'; type: FormFieldType } | { kind: 'move'; index: number }
 
+// Which settings the right-hand panel shows: the chosen field's, the page's
+// (its title and logic), or the whole form's.
+type Panel = 'field' | 'page' | 'form'
+
 const panelInputClass =
   'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#fc0c97] focus:outline-none'
 
@@ -72,8 +88,10 @@ function snapshot(changes: FormChanges) {
   return JSON.stringify(changes)
 }
 
-// Drag question types from the left onto the form (or click them), drag the
-// questions to reorder, and set each one's options on the right.
+// Drag question types from the left onto the page (or click them), drag the
+// questions to reorder, and set each one's options on the right. A form can
+// have several pages, switched with the tabs above the page; each page's logic
+// is set in the Page panel.
 export function FormBuilder({
   form,
   isSaving,
@@ -86,7 +104,11 @@ export function FormBuilder({
   const [fields, setFields] = useState(form.fields)
   const [settings, setSettings] = useState(form.settings)
   const [isPublished, setIsPublished] = useState(form.isPublished)
-  const [selectedId, setSelectedId] = useState<string | null>(form.fields[0]?.id ?? null)
+  const [activePageId, setActivePageId] = useState(form.settings.pages[0].id)
+  const [selectedId, setSelectedId] = useState<string | null>(
+    getPageFields(form.fields, form.settings.pages[0].id)[0]?.id ?? null,
+  )
+  const [panel, setPanel] = useState<Panel>('field')
   const [drag, setDrag] = useState<DragSource | null>(null)
   const [dropSlot, setDropSlot] = useState<number | null>(null)
   const [raised, setRaised] = useState<{ text: string; at: string } | null>(null)
@@ -100,37 +122,135 @@ export function FormBuilder({
   )
   const { confirm, dialog } = useConfirm()
 
+  const pages = settings.pages
   const changes: FormChanges = { name, fields, settings, isPublished }
   const isDirty = snapshot(changes) !== baseline
   const problem = raised && raised.at === snapshot(changes) ? raised.text : null
-  const selectedIndex = fields.findIndex((field) => field.id === selectedId)
-  const selected = selectedIndex >= 0 ? fields[selectedIndex] : null
+  const pageIndex = Math.max(
+    0,
+    pages.findIndex((page) => page.id === activePageId),
+  )
+  const activePage = pages[pageIndex]
+  const pageFields = getPageFields(fields, activePage.id)
+  const selectedIndex = pageFields.findIndex((field) => field.id === selectedId)
+  const selected = selectedIndex >= 0 ? pageFields[selectedIndex] : null
+  const shownPanel: Panel = panel === 'field' && !selected ? 'page' : panel
   const usedMaps = useMemo(
     () => new Set(fields.map((field) => field.mapTo).filter((map) => map && map !== 'notes')),
     [fields],
   )
 
+  function setPages(next: FormPage[]) {
+    setSettings((current) => ({ ...current, pages: next }))
+  }
+
   function updateField(id: string, patch: Partial<FormField>) {
     setFields((current) => current.map((field) => (field.id === id ? { ...field, ...patch } : field)))
   }
 
-  function addField(type: FormFieldType, index = fields.length) {
+  // Changes the fields of the page being edited, keeping every page's fields
+  // together in page order.
+  function setActivePageFields(next: FormField[]) {
+    setFields((current) => replacePageFields(current, pages, activePage.id, next))
+  }
+
+  function selectField(id: string) {
+    setSelectedId(id)
+    setPanel('field')
+  }
+
+  function addField(type: FormFieldType, index = pageFields.length) {
     if (fields.length >= MAX_FORM_FIELDS) {
       setRaised({ text: `A form can have at most ${MAX_FORM_FIELDS} fields.`, at: snapshot(changes) })
       return
     }
-    const field = createField(type)
-    setFields((current) => insertField(current, field, index))
-    setSelectedId(field.id)
+    const field = createField(type, activePage.id)
+    setActivePageFields(insertField(pageFields, field, index))
+    selectField(field.id)
   }
 
   function removeSelected() {
     if (!selected) {
       return
     }
-    const next = fields.filter((field) => field.id !== selected.id)
-    setFields(next)
+    const next = pageFields.filter((field) => field.id !== selected.id)
+    setActivePageFields(next)
+    setPages(removeRulesForField(pages, selected.id))
     setSelectedId(next[Math.min(selectedIndex, next.length - 1)]?.id ?? null)
+  }
+
+  function moveSelectedToPage(pageId: string) {
+    if (!selected) {
+      return
+    }
+    // It joins the end of the other page.
+    setFields((current) => {
+      const rest = current.filter((field) => field.id !== selected.id)
+      return replacePageFields(rest, pages, pageId, [
+        ...getPageFields(rest, pageId),
+        { ...selected, pageId },
+      ])
+    })
+    setActivePageId(pageId)
+  }
+
+  function openPage(pageId: string) {
+    setActivePageId(pageId)
+    setSelectedId(getPageFields(fields, pageId)[0]?.id ?? null)
+    setPanel('page')
+  }
+
+  function addPage() {
+    if (pages.length >= MAX_PAGES) {
+      setRaised({ text: `A form can have at most ${MAX_PAGES} pages.`, at: snapshot(changes) })
+      return
+    }
+    const page = createPage()
+    setPages([...pages, page])
+    setActivePageId(page.id)
+    setSelectedId(null)
+    setPanel('page')
+  }
+
+  function updatePage(patch: Partial<FormPage>) {
+    setPages(pages.map((page) => (page.id === activePage.id ? { ...page, ...patch } : page)))
+  }
+
+  function movePage(direction: 'left' | 'right') {
+    const target = pageIndex + (direction === 'left' ? -1 : 1)
+    if (target < 0 || target >= pages.length) {
+      return
+    }
+    const next = [...pages]
+    ;[next[pageIndex], next[target]] = [next[target], next[pageIndex]]
+    setPages(next)
+    setFields((current) => orderFieldsByPages(current, next))
+  }
+
+  async function deletePage() {
+    if (pages.length === 1) {
+      return
+    }
+    const count = pageFields.length
+    const label = pageLabel(activePage, pageIndex)
+    const message =
+      count > 0
+        ? `Delete ${label} and its ${count} field${count === 1 ? '' : 's'}?`
+        : `Delete ${label}?`
+    if (!(await confirm(message))) {
+      return
+    }
+    const gone = new Set(pageFields.map((field) => field.id))
+    let nextPages = removeRulesForPage(pages, activePage.id)
+    for (const id of gone) {
+      nextPages = removeRulesForField(nextPages, id)
+    }
+    setFields((current) => current.filter((field) => !gone.has(field.id)))
+    setPages(nextPages)
+    const neighbour = nextPages[Math.min(pageIndex, nextPages.length - 1)]
+    setActivePageId(neighbour.id)
+    setSelectedId(null)
+    setPanel('page')
   }
 
   function endDrag() {
@@ -152,7 +272,7 @@ export function FormBuilder({
     const target = event.target as HTMLElement
     if (drag && (target === event.currentTarget || target.dataset.dropArea)) {
       event.preventDefault()
-      setDropSlot(fields.length)
+      setDropSlot(pageFields.length)
     }
   }
 
@@ -162,7 +282,7 @@ export function FormBuilder({
       if (drag.kind === 'new') {
         addField(drag.type, dropSlot)
       } else {
-        setFields((current) => moveField(current, drag.index, dropSlot))
+        setActivePageFields(moveField(pageFields, drag.index, dropSlot))
       }
     }
     endDrag()
@@ -199,6 +319,12 @@ export function FormBuilder({
     }
     onBack()
   }
+
+  const panelTabs: { key: Panel; label: string; disabled?: boolean }[] = [
+    { key: 'field', label: 'Field', disabled: !selected },
+    { key: 'page', label: 'Page' },
+    { key: 'form', label: 'Form' },
+  ]
 
   return (
     <section className="space-y-4">
@@ -239,7 +365,7 @@ export function FormBuilder({
         </button>
         <button
           type="button"
-          onClick={() => setSelectedId(null)}
+          onClick={() => setPanel('form')}
           className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
         >
           Form settings
@@ -272,7 +398,7 @@ export function FormBuilder({
       <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)_300px]">
         <aside className="rounded-2xl border border-slate-200 bg-white p-4">
           <h2 className="text-sm font-semibold text-slate-900">Add a field</h2>
-          <p className="mt-1 text-xs text-slate-500">Click one, or drag it onto the form.</p>
+          <p className="mt-1 text-xs text-slate-500">Click one, or drag it onto the page.</p>
           <ul className="mt-3 space-y-1.5">
             {formFieldTypes.map((info) => (
               <li key={info.type}>
@@ -296,83 +422,164 @@ export function FormBuilder({
           </ul>
         </aside>
 
-        <div
-          className="min-h-[24rem] rounded-2xl border border-slate-200 bg-slate-50 p-4"
-          onDragOver={handleCanvasDragOver}
-          onDrop={handleDrop}
-          onDragLeave={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-              setDropSlot(null)
-            }
-          }}
-        >
-          <div data-drop-area="true" className="mx-auto max-w-xl space-y-2">
-            {fields.length === 0 && (
-              <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">
-                Drag a field here, or click one on the left.
-              </p>
-            )}
-            {fields.map((field, index) => (
-              <div key={field.id}>
-                {dropSlot === index && <DropBar />}
-                <div
-                  role="group"
-                  aria-label={`Field: ${field.label}`}
-                  tabIndex={0}
-                  draggable
-                  onClick={() => setSelectedId(field.id)}
-                  onFocus={() => setSelectedId(field.id)}
-                  onDragStart={(event) => {
-                    event.dataTransfer.effectAllowed = 'move'
-                    event.dataTransfer.setData('text/plain', field.id)
-                    setDrag({ kind: 'move', index })
-                  }}
-                  onDragEnd={endDrag}
-                  onDragOver={(event) => handleCardDragOver(event, index)}
-                  className={cn(
-                    'flex gap-2 rounded-xl border bg-white p-3 transition',
-                    field.id === selectedId
-                      ? 'border-[#fc0c97] shadow-[0_0_0_3px_rgba(252,12,151,0.12)]'
-                      : 'border-slate-200 hover:border-slate-300',
-                    drag?.kind === 'move' && drag.index === index && 'opacity-40',
+        <div className="min-w-0 space-y-3">
+          <div role="tablist" aria-label="Pages" className="flex flex-wrap items-center gap-1.5">
+            {pages.map((page, index) => (
+              <button
+                key={page.id}
+                type="button"
+                role="tab"
+                aria-selected={page.id === activePage.id}
+                onClick={() => openPage(page.id)}
+                className={cn(
+                  'max-w-[12rem] truncate rounded-xl border px-3 py-1.5 text-sm font-semibold transition',
+                  page.id === activePage.id
+                    ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+                )}
+              >
+                {pageLabel(page, index)}
+                {page.rules.length > 0 && (
+                  <span className="ml-1.5 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                    {page.rules.length} {page.rules.length === 1 ? 'rule' : 'rules'}
+                  </span>
+                )}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={addPage}
+              className="inline-flex items-center gap-1 rounded-xl border border-dashed border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 transition hover:border-[#fc0c97] hover:text-[#be185d]"
+            >
+              <Plus size={14} aria-hidden="true" />
+              Add page
+            </button>
+          </div>
+
+          <div
+            className="min-h-[24rem] rounded-2xl border border-slate-200 bg-slate-50 p-4"
+            onDragOver={handleCanvasDragOver}
+            onDrop={handleDrop}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setDropSlot(null)
+              }
+            }}
+          >
+            <div data-drop-area="true" className="mx-auto max-w-xl space-y-2">
+              {pages.length > 1 && (activePage.title || activePage.description) && (
+                <div className="rounded-xl bg-white px-4 py-3">
+                  {activePage.title && (
+                    <p className="font-heading text-lg font-extrabold text-slate-900">
+                      {activePage.title}
+                    </p>
                   )}
-                >
-                  <DotsSixVertical
-                    size={18}
-                    className="mt-1 shrink-0 cursor-grab text-slate-400"
-                    aria-hidden="true"
-                  />
-                  <div className="pointer-events-none min-w-0 flex-1">
-                    <FormFieldInput field={field} value={field.type === 'checkbox' ? [] : ''} disabled onChange={() => {}} />
+                  {activePage.description && (
+                    <p className="mt-0.5 text-sm text-slate-600">{activePage.description}</p>
+                  )}
+                </div>
+              )}
+              {pageFields.length === 0 && (
+                <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">
+                  Drag a field here, or click one on the left.
+                </p>
+              )}
+              {pageFields.map((field, index) => (
+                <div key={field.id}>
+                  {dropSlot === index && <DropBar />}
+                  <div
+                    role="group"
+                    aria-label={`Field: ${field.label}`}
+                    tabIndex={0}
+                    draggable
+                    onClick={() => selectField(field.id)}
+                    onFocus={() => selectField(field.id)}
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = 'move'
+                      event.dataTransfer.setData('text/plain', field.id)
+                      setDrag({ kind: 'move', index })
+                    }}
+                    onDragEnd={endDrag}
+                    onDragOver={(event) => handleCardDragOver(event, index)}
+                    className={cn(
+                      'flex gap-2 rounded-xl border bg-white p-3 transition',
+                      field.id === selectedId
+                        ? 'border-[#fc0c97] shadow-[0_0_0_3px_rgba(252,12,151,0.12)]'
+                        : 'border-slate-200 hover:border-slate-300',
+                      drag?.kind === 'move' && drag.index === index && 'opacity-40',
+                    )}
+                  >
+                    <DotsSixVertical
+                      size={18}
+                      className="mt-1 shrink-0 cursor-grab text-slate-400"
+                      aria-hidden="true"
+                    />
+                    <div className="pointer-events-none min-w-0 flex-1">
+                      <FormFieldInput
+                        field={field}
+                        value={field.type === 'checkbox' ? [] : ''}
+                        disabled
+                        onChange={() => {}}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-            {dropSlot === fields.length && fields.length > 0 && <DropBar />}
+              ))}
+              {dropSlot === pageFields.length && pageFields.length > 0 && <DropBar />}
+            </div>
           </div>
         </div>
 
         <aside className="rounded-2xl border border-slate-200 bg-white p-4">
-          {selected ? (
+          <div role="tablist" aria-label="Settings" className="mb-4 flex gap-1 rounded-xl bg-slate-100 p-1">
+            {panelTabs.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={shownPanel === tab.key}
+                disabled={tab.disabled}
+                onClick={() => setPanel(tab.key)}
+                className={cn(
+                  'flex-1 rounded-lg px-2 py-1 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40',
+                  shownPanel === tab.key ? 'bg-white text-[#be185d] shadow-sm' : 'text-slate-600',
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          {shownPanel === 'field' && selected ? (
             <FieldProperties
               field={selected}
               index={selectedIndex}
-              count={fields.length}
+              count={pageFields.length}
+              pages={pages}
               showLeadMap={settings.createLead}
               usedMaps={usedMaps}
               onUploadImage={onUploadImage}
               onChange={(patch) => updateField(selected.id, patch)}
               onMove={(direction) =>
-                setFields((current) =>
-                  moveField(current, selectedIndex, direction === 'up' ? selectedIndex - 1 : selectedIndex + 2),
+                setActivePageFields(
+                  moveField(pageFields, selectedIndex, direction === 'up' ? selectedIndex - 1 : selectedIndex + 2),
                 )
               }
+              onMoveToPage={moveSelectedToPage}
               onDuplicate={() => {
                 const copy = duplicateField(selected)
-                setFields((current) => insertField(current, copy, selectedIndex + 1))
-                setSelectedId(copy.id)
+                setActivePageFields(insertField(pageFields, copy, selectedIndex + 1))
+                selectField(copy.id)
               }}
               onDelete={removeSelected}
+            />
+          ) : shownPanel === 'page' ? (
+            <PagePanel
+              pages={pages}
+              fields={fields}
+              pageIndex={pageIndex}
+              onChange={updatePage}
+              onMove={movePage}
+              onDelete={() => void deletePage()}
             />
           ) : (
             <FormSettingsPanel settings={settings} onChange={setSettings} />
@@ -490,22 +697,26 @@ function FieldProperties({
   field,
   index,
   count,
+  pages,
   showLeadMap,
   usedMaps,
   onUploadImage,
   onChange,
   onMove,
+  onMoveToPage,
   onDuplicate,
   onDelete,
 }: {
   field: FormField
   index: number
   count: number
+  pages: FormPage[]
   showLeadMap: boolean
   usedMaps: Set<FormField['mapTo']>
   onUploadImage: (file: File) => Promise<string>
   onChange: (patch: Partial<FormField>) => void
   onMove: (direction: 'up' | 'down') => void
+  onMoveToPage: (pageId: string) => void
   onDuplicate: () => void
   onDelete: () => void
 }) {
@@ -562,6 +773,23 @@ function FieldProperties({
           </span>
         )}
       </label>
+      )}
+
+      {pages.length > 1 && (
+        <label className="block text-sm font-medium text-slate-700">
+          On page
+          <select
+            value={field.pageId}
+            onChange={(event) => onMoveToPage(event.target.value)}
+            className={cn(panelInputClass, 'mt-1')}
+          >
+            {pages.map((page, pageNumber) => (
+              <option key={page.id} value={page.id}>
+                {pageLabel(page, pageNumber)}
+              </option>
+            ))}
+          </select>
+        </label>
       )}
 
       {isText && (
