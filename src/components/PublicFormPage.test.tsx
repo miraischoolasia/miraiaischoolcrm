@@ -350,6 +350,22 @@ describe('PublicFormPage inside another website', () => {
     )
   })
 
+  it('shows the company footer on its own page, and none inside another website', async () => {
+    const own = render(<PublicFormPage formKey="form-1" />)
+    await screen.findByLabelText(/Phone/)
+    expect(
+      screen.getByText(/All rights reserved\./, { exact: false }).textContent,
+    ).toContain(`\u00a9 ${new Date().getFullYear()} Mirai AI School. All rights reserved.`)
+    expect(screen.getByText(/operated by EGENIUS SDN\. BHD\./)).toBeInTheDocument()
+    expect(document.querySelector('footer img')).toBeInTheDocument()
+    own.unmount()
+
+    Object.defineProperty(window, 'parent', { value: { postMessage: vi.fn() }, configurable: true })
+    render(<PublicFormPage formKey="form-1" />)
+    await screen.findByLabelText(/Phone/)
+    expect(screen.queryByText(/EGENIUS SDN/)).not.toBeInTheDocument()
+  })
+
   it('shows the full branded page when opened on its own', async () => {
     render(<PublicFormPage formKey="form-1" />)
 

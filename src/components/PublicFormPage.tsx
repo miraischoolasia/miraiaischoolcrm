@@ -4,7 +4,6 @@ import { FormFieldInput } from './forms/FormFieldInput'
 import miraiLogo from '../assets/mirai-logo.png'
 import miraiSeal from '../assets/mirai-seal-logo.png'
 import mascotEggy from '../assets/mascot-eggy.png'
-import mascotGordo from '../assets/mascot-gordo.png'
 import { fetchPublicForm, recordFormView, saveFormProgress, submitPublicForm } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import {
@@ -86,11 +85,13 @@ function PageShell({
         <div className="rounded-3xl border border-pink-100 bg-white p-5 shadow-[0_24px_60px_rgba(252,12,151,0.14)] sm:p-8">
           {children}
         </div>
-        <footer className="mt-8 flex items-center justify-center gap-3 text-xs text-slate-500">
-          <img src={mascotGordo} alt="" aria-hidden="true" className="h-12 w-auto" />
-          <img src={miraiSeal} alt="" aria-hidden="true" className="h-9 w-auto" />
-          <span className="font-semibold">Mirai AI School</span>
-          <img src={mascotEggy} alt="" aria-hidden="true" className="h-12 w-auto" />
+        <footer className="mt-10 flex flex-col items-center gap-3 text-center text-sm italic text-slate-700">
+          <img src={miraiSeal} alt="" aria-hidden="true" className="h-20 w-auto" />
+          <p>
+            © {new Date().getFullYear()} Mirai AI School. All rights reserved.
+            <br />
+            Mirai AI School is operated by EGENIUS SDN. BHD.
+          </p>
         </footer>
       </div>
     </main>
