@@ -117,6 +117,7 @@ import { ClassListingSection } from './components/sections/ClassListingSection'
 import { StudentDashboardSection } from './components/sections/StudentDashboardSection'
 import { TeacherManagementSection } from './components/sections/TeacherManagementSection'
 import { FormsSection } from './components/sections/FormsSection'
+import { useUnreadFormSubmissions } from './hooks/useUnreadFormSubmissions'
 import { LeadsSection } from './components/sections/LeadsSection'
 import { AdminActivitySection } from './components/sections/AdminActivitySection'
 import { StudentDetailModal } from './components/StudentDetailModal'
@@ -153,6 +154,20 @@ import {
 } from './lib/makeup'
 
 type NavItem = { key: AppSection; label: string; icon: Icon; group?: 'marketing' }
+
+function UnreadBadge({ count }: { count: number }) {
+  if (count <= 0) {
+    return null
+  }
+  return (
+    <span
+      aria-label={`${count} new submissions`}
+      className="ml-2 min-w-5 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white"
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  )
+}
 
 function App() {
   const isMobile = useIsMobile()
@@ -479,6 +494,8 @@ function App() {
   )
 
   const isAdminView = currentSession?.role !== 'teacher'
+  const { unread: unreadFormSubmissions, markSeen: markFormSubmissionsSeen } =
+    useUnreadFormSubmissions(isAdminView && Boolean(currentSession))
   const protectedTeacherIds = useMemo(() => {
     const next = new Set<number>()
     const bootstrapAdmin = teachers.find((teacher) => teacher.username === 'admin_demo')
@@ -903,7 +920,8 @@ function App() {
         )}
       >
         <item.icon size={18} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
-        <span className="ml-3">{item.label}</span>
+        <span className="ml-3 flex-1">{item.label}</span>
+        {item.key === 'forms' && <UnreadBadge count={unreadFormSubmissions} />}
       </button>
     )
   }
@@ -3744,6 +3762,7 @@ function App() {
                 >
                   <Megaphone size={18} aria-hidden="true" />
                   <span className="ml-3 flex-1">Marketing</span>
+                  {!isMarketingOpen && <UnreadBadge count={unreadFormSubmissions} />}
                   <CaretDown
                     size={14}
                     aria-hidden="true"
@@ -4191,7 +4210,7 @@ function App() {
             )}
 
             {activeSection === 'forms' && isAdminView && (
-              <FormsSection teacherMap={teacherMap} />
+              <FormsSection teacherMap={teacherMap} onSubmissionsSeen={markFormSubmissionsSeen} />
             )}
 
             {activeSection === 'activity' && isAdminView && (
@@ -4640,7 +4659,15 @@ function App() {
                     : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800',
                 )}
               >
-                <item.icon size={20} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
+                <span className="relative">
+                  <item.icon size={20} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
+                  {item.key === 'forms' && unreadFormSubmissions > 0 && (
+                    <span
+                      aria-label={`${unreadFormSubmissions} new submissions`}
+                      className="absolute -right-1.5 -top-1 h-2.5 w-2.5 rounded-full bg-[#fc0c97]"
+                    />
+                  )}
+                </span>
                 {item.label}
               </button>
             )

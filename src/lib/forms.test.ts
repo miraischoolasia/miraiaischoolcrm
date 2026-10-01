@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildEmbedCode,
+  buildFormUrl,
+  childAnswerKey,
+  defaultFormSettings,
+  formatConversionRate,
+  getChildFields,
+  getSlugProblem,
+  isSafeRedirectUrl,
+  slugify,
+  suggestSlug,
   buildSubmissionsCsv,
   createField,
   createStarterFields,
@@ -75,7 +84,11 @@ describe('getFormProblem', () => {
 
 describe('lead column choices', () => {
   it('offers only columns that fit the field type', () => {
-    expect(getLeadMapOptionsFor('phone').map((option) => option.value)).toEqual(['phone', 'notes'])
+    expect(getLeadMapOptionsFor('phone').map((option) => option.value)).toEqual([
+      'phone',
+      'child_phone',
+      'notes',
+    ])
     expect(getLeadMapOptionsFor('number').map((option) => option.value)).toEqual([
       'child_age',
       'notes',
@@ -129,6 +142,7 @@ describe('reading saved data', () => {
       form_id: 'f',
       answers: [{ id: 'a', label: 'Name', value: 'Lim' }, 3],
       lead_id: null,
+      lead_was_existing: false,
       created_at: '2026-10-01T00:00:00Z',
     })
     expect(submission.answers).toEqual([{ id: 'a', label: 'Name', value: 'Lim' }])
@@ -146,6 +160,7 @@ describe('exporting', () => {
           { id: 'b', label: 'Phone', value: '+60 12-345' },
         ],
         lead_id: 3,
+        lead_was_existing: false,
         created_at: '2026-10-01T00:00:00Z',
       }),
       mapSubmissionRow({
@@ -153,6 +168,7 @@ describe('exporting', () => {
         form_id: 'f1',
         answers: [{ id: 'a', label: 'Name', value: 'Lim, Ken' }],
         lead_id: null,
+        lead_was_existing: false,
         created_at: '2026-10-02T00:00:00Z',
       }),
     ]
@@ -169,5 +185,113 @@ describe('exporting', () => {
     expect(code).toContain('src="https://crm.test/?form=abc"')
     expect(code).toContain('title="Say &quot;hi&quot;"')
     expect(code).toContain('mirai-form-height')
+  })
+})
+
+describe('starter fields', () => {
+  it('cover what a lead needs, in order, with the required ones marked', () => {
+    const fields = createStarterFields()
+    expect(fields.map((field) => [field.label, field.mapTo, field.required])).toEqual([
+      ["Parent's name", 'parent_name', true],
+      ["Child's name", 'child_name', true],
+      ['Phone number', 'phone', true],
+      ["Child's phone number", 'child_phone', false],
+      ["Child's age", 'child_age', true],
+    ])
+    expect(getFormProblem('Trial', fields)).toBeNull()
+  })
+})
+
+describe('after sending', () => {
+  const fields = createStarterFields()
+
+  it('needs a real web address when the form redirects', () => {
+    const redirect = { ...defaultFormSettings, afterSubmit: 'redirect' as const }
+    expect(getFormProblem('F', fields, { ...redirect, redirectUrl: '' })).toMatch(/web address/)
+    expect(getFormProblem('F', fields, { ...redirect, redirectUrl: 'thank-you' })).toMatch(
+      /web address/,
+    )
+    expect(
+      getFormProblem('F', fields, { ...redirect, redirectUrl: 'https://mirai.my/thanks' }),
+    ).toBeNull()
+  })
+
+  it('ignores the address while the form shows a message', () => {
+    expect(getFormProblem('F', fields, { ...defaultFormSettings, redirectUrl: 'junk' })).toBeNull()
+  })
+
+  it('only accepts http and https addresses', () => {
+    expect(isSafeRedirectUrl('https://a.com/x?y=1')).toBe(true)
+    expect(isSafeRedirectUrl(' http://a.com ')).toBe(true)
+    expect(isSafeRedirectUrl('javascript:alert(1)')).toBe(false)
+    expect(isSafeRedirectUrl('//a.com')).toBe(false)
+  })
+})
+
+describe('several children', () => {
+  const fields = createStarterFields()
+
+  it('finds the questions that describe one child', () => {
+    expect(getChildFields(fields).map((field) => field.mapTo)).toEqual([
+      'child_name',
+      'child_phone',
+      'child_age',
+    ])
+  })
+
+  it('keys the first child by the field id and the others with a number', () => {
+    expect(childAnswerKey('f_a', 1)).toBe('f_a')
+    expect(childAnswerKey('f_a', 2)).toBe('f_a#2')
+  })
+
+  it('needs a child question before more children can be allowed', () => {
+    const settings = { ...defaultFormSettings, allowMoreChildren: true }
+    expect(getFormProblem('F', fields, settings)).toBeNull()
+    expect(getFormProblem('F', [createField('short_text')], settings)).toMatch(/child/)
+  })
+
+  it('wants a whole age for the child age field', () => {
+    const age = { ...createField('number'), mapTo: 'child_age' as const }
+    expect(validateAnswers([age], { [age.id]: '9.5' })).toHaveProperty(age.id)
+    expect(validateAnswers([age], { [age.id]: '0' })).toHaveProperty(age.id)
+    expect(validateAnswers([age], { [age.id]: '9' })).toEqual({})
+  })
+})
+
+describe('link names', () => {
+  it('turns a form name into a link name', () => {
+    expect(slugify('Trial Class - Oct 2026!')).toBe('trial-class-oct-2026')
+    expect(slugify('  ')).toBe('')
+  })
+
+  it('checks the rules the database enforces', () => {
+    expect(getSlugProblem('trial-class')).toBeNull()
+    expect(getSlugProblem('ab')).toMatch(/characters/)
+    expect(getSlugProblem('Trial')).toMatch(/lower case/)
+    expect(getSlugProblem('a--b')).toMatch(/lower case/)
+    expect(getSlugProblem('trial-')).toMatch(/lower case/)
+    expect(getSlugProblem('12345678-1234-1234-1234-123456789abc')).toMatch(/form id/)
+  })
+
+  it('suggests a valid name with a tail, even for a name with no letters', () => {
+    expect(getSlugProblem(suggestSlug('Contact Us'))).toBeNull()
+    expect(suggestSlug('Contact Us')).toMatch(/^contact-us-[a-z0-9]{4}$/)
+    expect(getSlugProblem(suggestSlug('!!!'))).toBeNull()
+    expect(getSlugProblem(suggestSlug('x'.repeat(200)))).toBeNull()
+  })
+
+  it('builds the public link from the link name', () => {
+    expect(buildFormUrl('https://crm.test', 'trial-class')).toBe(
+      'https://crm.test/?form=trial-class',
+    )
+  })
+})
+
+describe('conversion', () => {
+  it('is submissions over views, and blank without views', () => {
+    expect(formatConversionRate(5, 20)).toBe('25%')
+    expect(formatConversionRate(0, 10)).toBe('0%')
+    expect(formatConversionRate(3, 0)).toBe('-')
+    expect(formatConversionRate(9, 4)).toBe('100%')
   })
 })

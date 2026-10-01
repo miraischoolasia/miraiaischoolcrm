@@ -174,7 +174,11 @@ export function FormSubmissionsPanel({
                     ))
                   )}
                   <td className="px-6 py-4 text-sm text-slate-600">
-                    {submission.leadId ? 'In Leads' : '-'}
+                    {submission.leadWasExisting
+                      ? 'Added to existing lead'
+                      : submission.leadId
+                        ? 'In Leads'
+                        : '-'}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-right">
                     <button
@@ -260,7 +264,11 @@ export function FormSubmissionsPanel({
               ))}
             </dl>
             <p className="text-xs text-slate-500">
-              {open.leadId ? 'A lead was created from this submission.' : 'No lead was created.'}
+              {open.leadWasExisting
+                ? 'This phone number already had a lead, so the answers were added to its notes.'
+                : open.leadId
+                  ? 'A lead was created from this submission.'
+                  : 'No lead was created.'}
             </p>
             <div className="flex justify-end">
               <button

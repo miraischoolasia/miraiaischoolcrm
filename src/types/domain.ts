@@ -547,7 +547,13 @@ export type FormFieldType =
   | 'checkbox'
 
 // Which Lead column a form answer fills when the form creates a lead.
-export type FormLeadMap = 'parent_name' | 'phone' | 'child_name' | 'child_age' | 'notes'
+export type FormLeadMap =
+  | 'parent_name'
+  | 'phone'
+  | 'child_name'
+  | 'child_age'
+  | 'child_phone'
+  | 'notes'
 
 export type FormField = {
   id: string
@@ -559,10 +565,17 @@ export type FormField = {
   mapTo: FormLeadMap | null
 }
 
+export type FormAfterSubmit = 'message' | 'redirect'
+
 export type FormSettings = {
   submitLabel: string
+  // What the visitor gets after sending: the message, or a page to go to.
+  afterSubmit: FormAfterSubmit
   successMessage: string
+  redirectUrl: string
   createLead: boolean
+  // Lets the visitor add up to two more children.
+  allowMoreChildren: boolean
 }
 
 export type Form = {
@@ -571,6 +584,9 @@ export type Form = {
   fields: FormField[]
   settings: FormSettings
   isPublished: boolean
+  // The editable part of the public link (/?form=<slug>); null until set.
+  slug: string | null
+  viewCount: number
   createdAt: string
   updatedAt: string
   updatedByTeacherId: number | null
@@ -587,6 +603,8 @@ export type FormSubmission = {
   formId: string
   answers: FormAnswer[]
   leadId: number | null
+  // The phone already belonged to a lead, so the answers went into its notes.
+  leadWasExisting: boolean
   createdAt: string
 }
 

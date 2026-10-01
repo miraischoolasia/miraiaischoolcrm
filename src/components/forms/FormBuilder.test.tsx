@@ -11,6 +11,8 @@ const form: Form = {
   fields: createStarterFields(),
   settings: defaultFormSettings,
   isPublished: true,
+  slug: null,
+  viewCount: 0,
   createdAt: '',
   updatedAt: '',
   updatedByTeacherId: null,
@@ -77,10 +79,11 @@ describe('FormBuilder', () => {
 
     await userEvent.click(screen.getByRole('group', { name: "Field: Parent's name" }))
     await userEvent.click(screen.getByRole('button', { name: 'Move field down' }))
-    expect(labelsInOrder()).toEqual(['Field: Phone', "Field: Parent's name"])
+    expect(labelsInOrder().slice(0, 2)).toEqual(["Field: Child's name", "Field: Parent's name"])
 
     await userEvent.click(screen.getByRole('button', { name: 'Delete field' }))
-    expect(labelsInOrder()).toEqual(['Field: Phone'])
+    expect(labelsInOrder()[0]).toBe("Field: Child's name")
+    expect(labelsInOrder()).toHaveLength(4)
   })
 
   it('asks before leaving with unsaved changes', async () => {
@@ -92,5 +95,33 @@ describe('FormBuilder', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
     expect(onBack).toHaveBeenCalledTimes(1)
+  })
+
+  it('saves a redirect address chosen in the form settings', async () => {
+    const { onSave } = renderBuilder()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Form settings' }))
+    await userEvent.click(screen.getByLabelText('Go to a web address'))
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('web address')
+    expect(onSave).not.toHaveBeenCalled()
+
+    await userEvent.type(screen.getByLabelText('Web address to go to'), 'https://mirai.my/thanks')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onSave.mock.calls[0][0].settings).toMatchObject({
+      afterSubmit: 'redirect',
+      redirectUrl: 'https://mirai.my/thanks',
+    })
+  })
+
+  it('saves the choice to let visitors add another child', async () => {
+    const { onSave } = renderBuilder()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Form settings' }))
+    await userEvent.click(screen.getByLabelText(/Let visitors add another child/))
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onSave.mock.calls[0][0].settings.allowMoreChildren).toBe(true)
   })
 })

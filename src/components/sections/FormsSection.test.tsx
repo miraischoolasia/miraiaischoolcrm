@@ -13,6 +13,7 @@ const api = vi.hoisted(() => ({
   saveFormInSupabase: vi.fn(),
   deleteFormInSupabase: vi.fn(),
   deleteFormSubmissionInSupabase: vi.fn(),
+  saveFormSlugInSupabase: vi.fn(),
 }))
 
 vi.mock('../../lib/api', () => api)
@@ -24,6 +25,8 @@ function makeForm(id: string, name: string, patch: Partial<Form> = {}): Form {
     fields: createStarterFields(),
     settings: defaultFormSettings,
     isPublished: true,
+    slug: null,
+    viewCount: 0,
     createdAt: '2026-10-01T02:00:00Z',
     updatedAt: '2026-10-01T02:00:00Z',
     updatedByTeacherId: 1,
@@ -39,6 +42,7 @@ function submission(id: number, formId: string, name: string) {
     form_id: formId,
     answers: [{ id: 'a', label: "Parent's name", value: name }],
     lead_id: id,
+    lead_was_existing: false,
     created_at: '2026-10-01T03:00:00Z',
   })
 }
@@ -46,7 +50,7 @@ function submission(id: number, formId: string, name: string) {
 beforeEach(() => {
   Object.values(api).forEach((entry) => typeof entry === 'function' && entry.mockReset())
   api.fetchFormsFromSupabase.mockResolvedValue([
-    makeForm('f1', 'Contact Us'),
+    makeForm('f1', 'Contact Us', { slug: 'contact-us', viewCount: 8 }),
     makeForm('f2', 'Newsletter', { isPublished: false }),
   ])
   api.fetchFormSubmissionsFromSupabase.mockResolvedValue([
@@ -127,5 +131,82 @@ describe('FormsSection', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('npm run db:push')
     expect(screen.getByRole('button', { name: 'Create form' })).toBeDisabled()
+  })
+
+  it('shows views and the share of views that became submissions', async () => {
+    render(<FormsSection teacherMap={teachers} />)
+    await screen.findByText('Contact Us')
+
+    const [contact, newsletter] = bodyRows()
+    expect(within(contact).getByText('8')).toBeInTheDocument()
+    expect(within(contact).getByText('25%')).toBeInTheDocument()
+    expect(within(newsletter).getAllByText('-')).toContain(within(newsletter).getByText('-', { selector: 'td' }))
+  })
+
+  it('changes the link name from Share / Embed', async () => {
+    api.saveFormSlugInSupabase.mockResolvedValue({
+      form: makeForm('f1', 'Contact Us', { slug: 'trial-class' }),
+      taken: false,
+    })
+    render(<FormsSection teacherMap={teachers} />)
+    await screen.findByText('Contact Us')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for Contact Us' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Share / Embed' }))
+    const input = screen.getByLabelText('Link name')
+    expect(input).toHaveValue('contact-us')
+
+    await userEvent.clear(input)
+    await userEvent.type(input, 'Trial Class')
+    expect(input).toHaveValue('trial-class')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(api.saveFormSlugInSupabase).toHaveBeenCalledWith('f1', 'trial-class')
+    await vi.waitFor(() =>
+      expect((screen.getByLabelText('Link') as HTMLTextAreaElement).value).toMatch(/\?form=trial-class$/),
+    )
+  })
+
+  it('says when the link name belongs to another form', async () => {
+    api.saveFormSlugInSupabase.mockResolvedValue({ form: null, taken: true })
+    render(<FormsSection teacherMap={teachers} />)
+    await screen.findByText('Contact Us')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for Contact Us' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Share / Embed' }))
+    await userEvent.type(screen.getByLabelText('Link name'), '-2')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('already used')
+  })
+
+  it('reports the newest submission as seen when Submissions opens', async () => {
+    const onSubmissionsSeen = vi.fn()
+    render(<FormsSection teacherMap={teachers} onSubmissionsSeen={onSubmissionsSeen} />)
+    await screen.findByText('Contact Us')
+    expect(onSubmissionsSeen).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Submissions' }))
+
+    await vi.waitFor(() => expect(onSubmissionsSeen).toHaveBeenCalledWith('2026-10-01T03:00:00Z'))
+  })
+
+  it('marks a submission whose phone already had a lead', async () => {
+    api.fetchFormSubmissionsFromSupabase.mockResolvedValue([
+      mapSubmissionRow({
+        id: 9,
+        form_id: 'f1',
+        answers: [{ id: 'a', label: "Parent's name", value: 'Mrs Lim' }],
+        lead_id: 4,
+        lead_was_existing: true,
+        created_at: '2026-10-01T03:00:00Z',
+      }),
+    ])
+    render(<FormsSection teacherMap={teachers} />)
+    await screen.findByText('Contact Us')
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Submissions' }))
+
+    expect(await screen.findByText('Added to existing lead')).toBeInTheDocument()
   })
 })

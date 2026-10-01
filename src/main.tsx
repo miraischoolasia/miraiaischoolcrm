@@ -8,5 +8,5 @@ import { PublicFormPage } from './components/PublicFormPage.tsx'
 const publicFormId = new URLSearchParams(window.location.search).get('form')
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>{publicFormId ? <PublicFormPage formId={publicFormId} /> : <App />}</StrictMode>,
+  <StrictMode>{publicFormId ? <PublicFormPage formKey={publicFormId} /> : <App />}</StrictMode>,
 )

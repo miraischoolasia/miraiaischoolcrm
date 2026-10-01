@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { mapFormRow, mapPublicForm, mapSubmissionRow } from './forms'
+import { mapFormRow, mapPublicForm, mapSubmissionRow, suggestSlug } from './forms'
 import {
   mapAdminActivityRow,
   mapClassroomRow,
@@ -440,7 +440,7 @@ export function getSupabaseLoadErrorMessage(error: unknown) {
 }
 
 const formColumns =
-  'id, name, fields, settings, is_published, created_at, updated_at, updated_by_teacher_id'
+  'id, name, fields, settings, is_published, slug, view_count, created_at, updated_at, updated_by_teacher_id'
 
 export async function fetchFormsFromSupabase() {
   if (!supabase) {
@@ -459,6 +459,8 @@ export async function fetchFormsFromSupabase() {
   return data.map(mapFormRow)
 }
 
+const UNIQUE_VIOLATION = '23505'
+
 export async function createFormInSupabase(
   name: string,
   fields: FormField[],
@@ -468,17 +470,45 @@ export async function createFormInSupabase(
     throw new Error('Supabase is not configured.')
   }
 
+  // Every form gets a readable link name; a clash with another form's just
+  // draws a new random tail.
+  for (let attempt = 0; ; attempt += 1) {
+    const { data, error } = await supabase
+      .from('forms')
+      .insert({ name, fields, settings, slug: suggestSlug(name) })
+      .select(formColumns)
+      .single()
+
+    if (error?.code === UNIQUE_VIOLATION && attempt < 3) {
+      continue
+    }
+    if (error) {
+      throw error
+    }
+    return mapFormRow(data)
+  }
+}
+
+// Returns null when saved, or a message when the link name is taken.
+export async function saveFormSlugInSupabase(formId: string, slug: string) {
+  if (!supabase) {
+    throw new Error('Supabase is not configured.')
+  }
+
   const { data, error } = await supabase
     .from('forms')
-    .insert({ name, fields, settings })
+    .update({ slug })
+    .eq('id', formId)
     .select(formColumns)
     .single()
 
+  if (error?.code === UNIQUE_VIOLATION) {
+    return { form: null, taken: true }
+  }
   if (error) {
     throw error
   }
-
-  return mapFormRow(data)
+  return { form: mapFormRow(data), taken: false }
 }
 
 export async function saveFormInSupabase(
@@ -531,7 +561,7 @@ export async function fetchFormSubmissionsFromSupabase() {
 
   const { data, error } = await supabase
     .from('form_submissions')
-    .select('id, form_id, answers, lead_id, created_at')
+    .select('id, form_id, answers, lead_id, lead_was_existing, created_at')
     .order('created_at', { ascending: false })
     .limit(FORM_SUBMISSIONS_FETCH_LIMIT)
 
@@ -555,18 +585,26 @@ export async function deleteFormSubmissionInSupabase(submissionId: number) {
 }
 
 // The two calls below are what a visitor who is not logged in can reach.
-export async function fetchPublicForm(formId: string) {
+export async function fetchPublicForm(formKey: string) {
   if (!supabase) {
     return null
   }
 
-  const { data, error } = await supabase.rpc('get_public_form', { p_form_id: formId })
+  const { data, error } = await supabase.rpc('get_public_form_by_key', { p_form_key: formKey })
 
   if (error) {
     throw error
   }
 
   return mapPublicForm(data)
+}
+
+export async function recordFormView(formId: string) {
+  if (!supabase) {
+    return
+  }
+
+  await supabase.rpc('record_form_view', { p_form_id: formId })
 }
 
 export async function submitPublicForm(
@@ -587,4 +625,22 @@ export async function submitPublicForm(
   if (error) {
     throw error
   }
+}
+
+// How many submissions came in after `sinceIso`, for the Forms menu badge.
+export async function countFormSubmissionsSince(sinceIso: string) {
+  if (!supabase) {
+    return 0
+  }
+
+  const { count, error } = await supabase
+    .from('form_submissions')
+    .select('id', { count: 'exact', head: true })
+    .gt('created_at', sinceIso)
+
+  if (error) {
+    throw error
+  }
+
+  return count ?? 0
 }

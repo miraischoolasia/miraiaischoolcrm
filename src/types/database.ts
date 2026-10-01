@@ -907,6 +907,8 @@ export type Database = {
           fields: Json
           settings: Json
           is_published: boolean
+          slug: string | null
+          view_count: number
           created_at: string
           updated_at: string
           updated_by_teacher_id: number | null
@@ -917,6 +919,8 @@ export type Database = {
           fields?: Json
           settings?: Json
           is_published?: boolean
+          slug?: string | null
+          view_count?: number
           created_at?: string
           updated_at?: string
           updated_by_teacher_id?: number | null
@@ -927,6 +931,8 @@ export type Database = {
           fields?: Json
           settings?: Json
           is_published?: boolean
+          slug?: string | null
+          view_count?: number
           created_at?: string
           updated_at?: string
           updated_by_teacher_id?: number | null
@@ -939,6 +945,7 @@ export type Database = {
           form_id: string
           answers: Json
           lead_id: number | null
+          lead_was_existing: boolean
           created_at: string
         }
         Insert: {
@@ -946,6 +953,7 @@ export type Database = {
           form_id: string
           answers?: Json
           lead_id?: number | null
+          lead_was_existing?: boolean
           created_at?: string
         }
         Update: {
@@ -953,6 +961,7 @@ export type Database = {
           form_id?: string
           answers?: Json
           lead_id?: number | null
+          lead_was_existing?: boolean
           created_at?: string
         }
         Relationships: []
@@ -1190,6 +1199,18 @@ export type Database = {
           p_form_id: string
         }
         Returns: Json | null
+      }
+      get_public_form_by_key: {
+        Args: {
+          p_form_key: string
+        }
+        Returns: Json | null
+      }
+      record_form_view: {
+        Args: {
+          p_form_id: string
+        }
+        Returns: undefined
       }
       submit_form: {
         Args: {

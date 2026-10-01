@@ -1,13 +1,84 @@
 import { useState } from 'react'
 import { Check, Copy, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
-import { buildEmbedCode, buildFormUrl } from '../../lib/forms'
+import { buildEmbedCode, buildFormUrl, getSlugProblem } from '../../lib/forms'
+import { cn } from '../../lib/cn'
 
 type EmbedFormModalProps = {
   formId: string
   formName: string
   isPublished: boolean
+  // The editable part of the link; null for a form that only has its id.
+  slug: string | null
+  // Resolves to a message when the name could not be used, else null.
+  onSaveSlug: (slug: string) => Promise<string | null>
   onClose: () => void
+}
+
+function LinkNameEditor({
+  origin,
+  slug,
+  onSave,
+}: {
+  origin: string
+  slug: string | null
+  onSave: (slug: string) => Promise<string | null>
+}) {
+  const [draft, setDraft] = useState(slug ?? '')
+  const [serverError, setServerError] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const problem = draft ? getSlugProblem(draft) : 'Enter a link name.'
+  const isChanged = draft !== (slug ?? '')
+
+  async function save() {
+    setIsSaving(true)
+    setServerError(await onSave(draft))
+    setIsSaving(false)
+  }
+
+  return (
+    <div>
+      <label htmlFor="form-link-name" className="mb-1.5 block text-sm font-semibold text-slate-800">
+        Link name
+      </label>
+      <div className="flex items-center gap-2">
+        <span className="hidden shrink-0 text-xs text-slate-500 sm:inline">{origin}/?form=</span>
+        <input
+          id="form-link-name"
+          type="text"
+          value={draft}
+          maxLength={60}
+          spellCheck={false}
+          aria-invalid={isChanged && Boolean(problem)}
+          onChange={(event) => {
+            setDraft(
+              event.target.value
+                .toLowerCase()
+                .replace(/[^a-z0-9-]+/g, '-')
+                .replace(/-{2,}/g, '-')
+                .replace(/^-/, ''),
+            )
+            setServerError(null)
+          }}
+          className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-[#fc0c97] focus:outline-none"
+        />
+        <button
+          type="button"
+          disabled={!isChanged || Boolean(problem) || isSaving}
+          onClick={() => void save()}
+          className="rounded-xl bg-[#fc0c97] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isSaving ? 'Saving...' : 'Save'}
+        </button>
+      </div>
+      <p
+        role={serverError || (isChanged && problem) ? 'alert' : undefined}
+        className={cn('mt-1 text-xs', serverError || (isChanged && problem) ? 'text-red-600' : 'text-slate-500')}
+      >
+        {serverError ?? (isChanged && problem ? problem : 'Lower case letters, numbers and hyphens. The old link keeps working.')}
+      </p>
+    </div>
+  )
 }
 
 function CopyBox({ label, value, rows }: { label: string; value: string; rows: number }) {
@@ -57,8 +128,15 @@ function CopyBox({ label, value, rows }: { label: string; value: string; rows: n
   )
 }
 
-export function EmbedFormModal({ formId, formName, isPublished, onClose }: EmbedFormModalProps) {
-  const url = buildFormUrl(window.location.origin, formId)
+export function EmbedFormModal({
+  formId,
+  formName,
+  isPublished,
+  slug,
+  onSaveSlug,
+  onClose,
+}: EmbedFormModalProps) {
+  const url = buildFormUrl(window.location.origin, slug ?? formId)
   const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname)
 
   return (
@@ -92,6 +170,7 @@ export function EmbedFormModal({ formId, formName, isPublished, onClose }: Embed
             live CRM address to copy the real ones.
           </p>
         )}
+        <LinkNameEditor origin={window.location.origin} slug={slug} onSave={onSaveSlug} />
         <CopyBox label="Link" value={url} rows={2} />
         <CopyBox label="Embed code (paste into your website)" value={buildEmbedCode(url, formId, formName)} rows={5} />
         <p className="text-xs text-slate-500">

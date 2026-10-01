@@ -141,7 +141,7 @@ export function FormBuilder({ form, isSaving, onSave, onBack, onOpenEmbed }: For
   }
 
   async function handleSave() {
-    const found = getFormProblem(name, fields)
+    const found = getFormProblem(name, fields, settings)
     setProblem(found)
     if (found) {
       return
@@ -357,15 +357,65 @@ function FormSettingsPanel({
           className={cn(panelInputClass, 'mt-1')}
         />
       </label>
-      <label className="block text-sm font-medium text-slate-700">
-        Message after sending
-        <textarea
-          rows={3}
-          value={settings.successMessage}
-          maxLength={300}
-          onChange={(event) => onChange({ ...settings, successMessage: event.target.value })}
-          className={cn(panelInputClass, 'mt-1')}
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium text-slate-700">After sending</legend>
+        {(
+          [
+            { value: 'message', label: 'Show a message' },
+            { value: 'redirect', label: 'Go to a web address' },
+          ] as const
+        ).map((choice) => (
+          <label key={choice.value} className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="radio"
+              name="after-submit"
+              checked={settings.afterSubmit === choice.value}
+              onChange={() => onChange({ ...settings, afterSubmit: choice.value })}
+              className="h-4 w-4 accent-[#fc0c97]"
+            />
+            {choice.label}
+          </label>
+        ))}
+        {settings.afterSubmit === 'message' ? (
+          <textarea
+            rows={3}
+            value={settings.successMessage}
+            maxLength={300}
+            aria-label="Message after sending"
+            onChange={(event) => onChange({ ...settings, successMessage: event.target.value })}
+            className={panelInputClass}
+          />
+        ) : (
+          <div>
+            <input
+              type="url"
+              value={settings.redirectUrl}
+              maxLength={500}
+              placeholder="https://yourwebsite.com/thank-you"
+              aria-label="Web address to go to"
+              onChange={(event) => onChange({ ...settings, redirectUrl: event.target.value })}
+              className={panelInputClass}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              The form is saved first, then the visitor is taken here. When the form is embedded,
+              only the form box changes.
+            </p>
+          </div>
+        )}
+      </fieldset>
+      <label className="flex items-start gap-2 text-sm text-slate-700">
+        <input
+          type="checkbox"
+          checked={settings.allowMoreChildren}
+          onChange={(event) => onChange({ ...settings, allowMoreChildren: event.target.checked })}
+          className="mt-0.5 h-4 w-4 accent-[#fc0c97]"
         />
+        <span>
+          <span className="font-medium">Let visitors add another child</span>
+          <span className="mt-0.5 block text-xs text-slate-500">
+            Repeats the child name, phone and age questions, up to 3 children.
+          </span>
+        </span>
       </label>
       <label className="flex items-start gap-2 text-sm text-slate-700">
         <input

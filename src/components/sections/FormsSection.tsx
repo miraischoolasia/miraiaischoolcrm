@@ -13,10 +13,16 @@ import {
   fetchFormSubmissionsFromSupabase,
   fetchFormsFromSupabase,
   saveFormInSupabase,
+  saveFormSlugInSupabase,
 } from '../../lib/api'
 import { cn } from '../../lib/cn'
 import { getErrorMessage } from '../../lib/errors'
-import { createStarterFields, defaultFormSettings, formatDateTime } from '../../lib/forms'
+import {
+  createStarterFields,
+  defaultFormSettings,
+  formatConversionRate,
+  formatDateTime,
+} from '../../lib/forms'
 import type { Form, FormSubmission, Teacher } from '../../types/domain'
 
 type FormsTab = 'forms' | 'submissions'
@@ -31,7 +37,13 @@ function isMissingTable(error: unknown) {
   return code === 'PGRST205' || code === '42P01'
 }
 
-export function FormsSection({ teacherMap }: { teacherMap: Map<number, Teacher> }) {
+type FormsSectionProps = {
+  teacherMap: Map<number, Teacher>
+  // Told the time of the newest submission once the admin has seen them all.
+  onSubmissionsSeen?: (newestIso: string) => void
+}
+
+export function FormsSection({ teacherMap, onSubmissionsSeen }: FormsSectionProps) {
   const [tab, setTab] = useState<FormsTab>('forms')
   const [forms, setForms] = useState<Form[]>([])
   const [submissions, setSubmissions] = useState<FormSubmission[]>([])
@@ -56,6 +68,7 @@ export function FormsSection({ teacherMap }: { teacherMap: Map<number, Teacher> 
       setForms(nextForms)
       setSubmissions(nextSubmissions)
       setLoadError(null)
+      return nextSubmissions
     } catch (error) {
       setLoadError(
         isMissingTable(error)
@@ -65,11 +78,29 @@ export function FormsSection({ teacherMap }: { teacherMap: Map<number, Teacher> 
     } finally {
       setIsLoading(false)
     }
+    return null
   }, [])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  // Opening Submissions refreshes them (new ones may have come in) and clears
+  // the unread badge.
+  useEffect(() => {
+    if (tab !== 'submissions') {
+      return
+    }
+    let cancelled = false
+    void load().then((latest) => {
+      if (!cancelled && latest?.[0]) {
+        onSubmissionsSeen?.(latest[0].createdAt)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [tab, load, onSubmissionsSeen])
 
   useEffect(() => {
     if (!menuId) {
@@ -121,6 +152,20 @@ export function FormsSection({ teacherMap }: { teacherMap: Map<number, Teacher> 
       return false
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  async function handleSaveSlug(formId: string, slug: string) {
+    try {
+      const result = await saveFormSlugInSupabase(formId, slug)
+      if (result.taken || !result.form) {
+        return 'That link name is already used by another form.'
+      }
+      const saved = result.form
+      setForms((current) => current.map((form) => (form.id === formId ? saved : form)))
+      return null
+    } catch (error) {
+      return getErrorMessage(error, 'Could not save the link name.')
     }
   }
 
@@ -184,6 +229,8 @@ export function FormsSection({ teacherMap }: { teacherMap: Map<number, Teacher> 
             formId={embedForm.id}
             formName={embedForm.name}
             isPublished={embedForm.isPublished}
+            slug={embedForm.slug}
+            onSaveSlug={(slug) => handleSaveSlug(embedForm.id, slug)}
             onClose={() => setEmbedId(null)}
           />
         )}
@@ -267,7 +314,9 @@ export function FormsSection({ teacherMap }: { teacherMap: Map<number, Teacher> 
                   <tr>
                     <th className="px-6 py-4">Name</th>
                     <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4">Views</th>
                     <th className="px-6 py-4">Submissions</th>
+                    <th className="px-6 py-4">Conversion</th>
                     <th className="px-6 py-4">Updated on</th>
                     <th className="px-6 py-4">Updated by</th>
                     <th className="px-6 py-4 text-right">
@@ -299,8 +348,12 @@ export function FormsSection({ teacherMap }: { teacherMap: Map<number, Teacher> 
                           {form.isPublished ? 'Published' : 'Draft'}
                         </span>
                       </td>
+                      <td className="px-6 py-4 text-sm text-slate-600">{form.viewCount}</td>
                       <td className="px-6 py-4 text-sm text-slate-600">
                         {submissionCounts.get(form.id) ?? 0}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-slate-600">
+                        {formatConversionRate(submissionCounts.get(form.id) ?? 0, form.viewCount)}
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-600">
                         {formatDateTime(form.updatedAt)}
@@ -373,6 +426,8 @@ export function FormsSection({ teacherMap }: { teacherMap: Map<number, Teacher> 
           formId={embedForm.id}
           formName={embedForm.name}
           isPublished={embedForm.isPublished}
+          slug={embedForm.slug}
+          onSaveSlug={(slug) => handleSaveSlug(embedForm.id, slug)}
           onClose={() => setEmbedId(null)}
         />
       )}
