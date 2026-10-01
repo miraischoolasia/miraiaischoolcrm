@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildEmbedCode,
+  getImageFileProblem,
   buildFormUrl,
   childAnswerKey,
   defaultFormSettings,
@@ -293,5 +294,42 @@ describe('conversion', () => {
     expect(formatConversionRate(0, 10)).toBe('0%')
     expect(formatConversionRate(3, 0)).toBe('-')
     expect(formatConversionRate(9, 4)).toBe('100%')
+  })
+})
+
+describe('image fields', () => {
+  const poster = { ...createField('image'), label: 'Poster', imageUrl: 'https://img.test/p.png' }
+
+  it('start empty, never required and never filling a lead column', () => {
+    expect(createField('image')).toMatchObject({ imageUrl: '', required: false, mapTo: null })
+    expect(getLeadMapOptionsFor('image')).toEqual([])
+  })
+
+  it('need an image before the form can be saved, but no label', () => {
+    expect(getFormProblem('F', [...createStarterFields(), poster])).toBeNull()
+    expect(getFormProblem('F', [{ ...poster, imageUrl: '' }])).toMatch(/no image/)
+    expect(getFormProblem('F', [{ ...poster, imageUrl: 'javascript:alert(1)' }])).toMatch(/no image/)
+    expect(getFormProblem('F', [{ ...poster, label: '' }, ...createStarterFields()])).toBeNull()
+  })
+
+  it('are skipped when checking answers', () => {
+    expect(validateAnswers([{ ...poster, required: true }], {})).toEqual({})
+  })
+
+  it('keep their picture when read back, and other fields never get one', () => {
+    const [image, text] = normalizeFields([
+      { id: 'i', type: 'image', label: 'Poster', imageUrl: 'https://img.test/p.png', mapTo: 'notes' },
+      { id: 't', type: 'short_text', label: 'Name', imageUrl: 'https://img.test/x.png' },
+    ])
+    expect(image).toMatchObject({ imageUrl: 'https://img.test/p.png', mapTo: null })
+    expect(text.imageUrl).toBe('')
+  })
+
+  it('accepts only PNG, JPG, WebP and GIF files up to 5 MB', () => {
+    expect(getImageFileProblem({ type: 'image/png', size: 1000 })).toBeNull()
+    expect(getImageFileProblem({ type: 'image/webp', size: 5 * 1024 * 1024 })).toBeNull()
+    expect(getImageFileProblem({ type: 'image/svg+xml', size: 1000 })).toMatch(/PNG/)
+    expect(getImageFileProblem({ type: 'application/pdf', size: 1000 })).toMatch(/PNG/)
+    expect(getImageFileProblem({ type: 'image/png', size: 5 * 1024 * 1024 + 1 })).toMatch(/5 MB/)
   })
 })

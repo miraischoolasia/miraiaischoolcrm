@@ -14,6 +14,7 @@ import {
   fetchFormsFromSupabase,
   saveFormInSupabase,
   saveFormSlugInSupabase,
+  uploadFormImageToSupabase,
 } from '../../lib/api'
 import { cn } from '../../lib/cn'
 import { getErrorMessage } from '../../lib/errors'
@@ -221,6 +222,7 @@ export function FormsSection({ teacherMap, onSubmissionsSeen }: FormsSectionProp
           form={editingForm}
           isSaving={isSaving}
           onSave={(changes) => handleSave(editingForm.id, changes)}
+          onUploadImage={uploadFormImageToSupabase}
           onBack={() => setEditingId(null)}
           onOpenEmbed={() => setEmbedId(editingForm.id)}
         />

@@ -1,4 +1,4 @@
-import type { FormAnswerValue } from '../../lib/forms'
+import { isSafeRedirectUrl, type FormAnswerValue } from '../../lib/forms'
 import { cn } from '../../lib/cn'
 import type { FormField } from '../../types/domain'
 
@@ -17,6 +17,26 @@ type FormFieldInputProps = {
 // One question as the person filling the form sees it. Used by the public
 // page and by the builder's preview so the two cannot drift apart.
 export function FormFieldInput({ field, value, error, disabled, onChange }: FormFieldInputProps) {
+  if (field.type === 'image') {
+    // A picture, not a question: nothing to answer. The builder shows a
+    // placeholder until one is uploaded; visitors just see nothing.
+    if (!isSafeRedirectUrl(field.imageUrl)) {
+      return disabled ? (
+        <p className="rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">
+          No image yet. Upload one on the right.
+        </p>
+      ) : null
+    }
+    return (
+      <img
+        src={field.imageUrl}
+        alt={field.label}
+        decoding="async"
+        className="block h-auto w-full rounded-xl border border-slate-200"
+      />
+    )
+  }
+
   const inputId = `form-field-${field.id}`
   const text = typeof value === 'string' ? value : ''
   const picked = Array.isArray(value) ? value : []

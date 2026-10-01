@@ -8,12 +8,15 @@ import {
   Plus,
   ShareNetwork,
   Trash,
+  UploadSimple,
   X,
 } from '@phosphor-icons/react'
 import { FormFieldInput } from './FormFieldInput'
 import { useConfirm } from '../../hooks/useConfirm'
 import { cn } from '../../lib/cn'
+import { getErrorMessage } from '../../lib/errors'
 import {
+  IMAGE_TYPES,
   MAX_FIELD_OPTIONS,
   MAX_FORM_FIELDS,
   createField,
@@ -21,6 +24,7 @@ import {
   formFieldTypes,
   getFieldTypeInfo,
   getFormProblem,
+  getImageFileProblem,
   getLeadMapOptionsFor,
   insertField,
   moveField,
@@ -38,6 +42,8 @@ type FormBuilderProps = {
   form: Form
   isSaving: boolean
   onSave: (changes: FormChanges) => Promise<boolean>
+  // Stores a picture for an image field and resolves to its web address.
+  onUploadImage: (file: File) => Promise<string>
   onBack: () => void
   onOpenEmbed: () => void
 }
@@ -53,7 +59,14 @@ function snapshot(changes: FormChanges) {
 
 // Drag question types from the left onto the form (or click them), drag the
 // questions to reorder, and set each one's options on the right.
-export function FormBuilder({ form, isSaving, onSave, onBack, onOpenEmbed }: FormBuilderProps) {
+export function FormBuilder({
+  form,
+  isSaving,
+  onSave,
+  onUploadImage,
+  onBack,
+  onOpenEmbed,
+}: FormBuilderProps) {
   const [name, setName] = useState(form.name)
   const [fields, setFields] = useState(form.fields)
   const [settings, setSettings] = useState(form.settings)
@@ -61,7 +74,7 @@ export function FormBuilder({ form, isSaving, onSave, onBack, onOpenEmbed }: For
   const [selectedId, setSelectedId] = useState<string | null>(form.fields[0]?.id ?? null)
   const [drag, setDrag] = useState<DragSource | null>(null)
   const [dropSlot, setDropSlot] = useState<number | null>(null)
-  const [problem, setProblem] = useState<string | null>(null)
+  const [raised, setRaised] = useState<{ text: string; at: string } | null>(null)
   const [baseline, setBaseline] = useState(() =>
     snapshot({
       name: form.name,
@@ -74,6 +87,7 @@ export function FormBuilder({ form, isSaving, onSave, onBack, onOpenEmbed }: For
 
   const changes: FormChanges = { name, fields, settings, isPublished }
   const isDirty = snapshot(changes) !== baseline
+  const problem = raised && raised.at === snapshot(changes) ? raised.text : null
   const selectedIndex = fields.findIndex((field) => field.id === selectedId)
   const selected = selectedIndex >= 0 ? fields[selectedIndex] : null
   const usedMaps = useMemo(
@@ -87,13 +101,12 @@ export function FormBuilder({ form, isSaving, onSave, onBack, onOpenEmbed }: For
 
   function addField(type: FormFieldType, index = fields.length) {
     if (fields.length >= MAX_FORM_FIELDS) {
-      setProblem(`A form can have at most ${MAX_FORM_FIELDS} fields.`)
+      setRaised({ text: `A form can have at most ${MAX_FORM_FIELDS} fields.`, at: snapshot(changes) })
       return
     }
     const field = createField(type)
     setFields((current) => insertField(current, field, index))
     setSelectedId(field.id)
-    setProblem(null)
   }
 
   function removeSelected() {
@@ -142,7 +155,7 @@ export function FormBuilder({ form, isSaving, onSave, onBack, onOpenEmbed }: For
 
   async function handleSave() {
     const found = getFormProblem(name, fields, settings)
-    setProblem(found)
+    setRaised(found ? { text: found, at: snapshot(changes) } : null)
     if (found) {
       return
     }
@@ -311,6 +324,7 @@ export function FormBuilder({ form, isSaving, onSave, onBack, onOpenEmbed }: For
               count={fields.length}
               showLeadMap={settings.createLead}
               usedMaps={usedMaps}
+              onUploadImage={onUploadImage}
               onChange={(patch) => updateField(selected.id, patch)}
               onMove={(direction) =>
                 setFields((current) =>
@@ -442,6 +456,7 @@ function FieldProperties({
   count,
   showLeadMap,
   usedMaps,
+  onUploadImage,
   onChange,
   onMove,
   onDuplicate,
@@ -452,6 +467,7 @@ function FieldProperties({
   count: number
   showLeadMap: boolean
   usedMaps: Set<FormField['mapTo']>
+  onUploadImage: (file: File) => Promise<string>
   onChange: (patch: Partial<FormField>) => void
   onMove: (direction: 'up' | 'down') => void
   onDuplicate: () => void
@@ -459,6 +475,7 @@ function FieldProperties({
 }) {
   const info = getFieldTypeInfo(field.type)
   const mapOptions = getLeadMapOptionsFor(field.type)
+  const isImage = field.type === 'image'
   const iconButton =
     'rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40'
 
@@ -492,7 +509,7 @@ function FieldProperties({
       </div>
 
       <label className="block text-sm font-medium text-slate-700">
-        Label
+        {isImage ? 'Image description' : 'Label'}
         <input
           type="text"
           value={field.label}
@@ -500,9 +517,22 @@ function FieldProperties({
           onChange={(event) => onChange({ label: event.target.value })}
           className={cn(panelInputClass, 'mt-1')}
         />
+        {isImage && (
+          <span className="mt-1 block text-xs font-normal text-slate-500">
+            Read aloud to people who cannot see the picture. Not shown on the form.
+          </span>
+        )}
       </label>
 
-      {!info.hasOptions || field.type === 'dropdown' ? (
+      {isImage && (
+        <ImageFieldControls
+          imageUrl={field.imageUrl}
+          onUpload={onUploadImage}
+          onChange={(imageUrl) => onChange({ imageUrl })}
+        />
+      )}
+
+      {!isImage && (!info.hasOptions || field.type === 'dropdown') ? (
         field.type !== 'date' && (
           <label className="block text-sm font-medium text-slate-700">
             {field.type === 'dropdown' ? 'Empty choice text' : 'Placeholder'}
@@ -517,15 +547,17 @@ function FieldProperties({
         )
       ) : null}
 
-      <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-        <input
-          type="checkbox"
-          checked={field.required}
-          onChange={(event) => onChange({ required: event.target.checked })}
-          className="h-4 w-4 accent-[#fc0c97]"
-        />
-        Required
-      </label>
+      {!isImage && (
+        <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+          <input
+            type="checkbox"
+            checked={field.required}
+            onChange={(event) => onChange({ required: event.target.checked })}
+            className="h-4 w-4 accent-[#fc0c97]"
+          />
+          Required
+        </label>
+      )}
 
       {info.hasOptions && (
         <div>
@@ -565,7 +597,7 @@ function FieldProperties({
         </div>
       )}
 
-      {showLeadMap && (
+      {showLeadMap && !isImage && (
         <label className="block text-sm font-medium text-slate-700">
           Fills on the lead
           <select
@@ -587,6 +619,82 @@ function FieldProperties({
             ))}
           </select>
         </label>
+      )}
+    </div>
+  )
+}
+
+function ImageFieldControls({
+  imageUrl,
+  onUpload,
+  onChange,
+}: {
+  imageUrl: string
+  onUpload: (file: File) => Promise<string>
+  onChange: (imageUrl: string) => void
+}) {
+  const [isUploading, setIsUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleFile(file: File | undefined) {
+    if (!file) {
+      return
+    }
+    const problem = getImageFileProblem(file)
+    if (problem) {
+      setError(problem)
+      return
+    }
+    setIsUploading(true)
+    setError(null)
+    try {
+      onChange(await onUpload(file))
+    } catch (uploadError) {
+      setError(getErrorMessage(uploadError, 'Could not upload the image. Please try again.'))
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <label
+          className={cn(
+            'inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-[#fc0c97] px-3 py-2 text-sm font-semibold text-white transition focus-within:ring-2 focus-within:ring-[#fc0c97]/40 hover:bg-[#de0a84]',
+            isUploading && 'pointer-events-none opacity-60',
+          )}
+        >
+          <UploadSimple size={16} aria-hidden="true" />
+          {isUploading ? 'Uploading...' : imageUrl ? 'Replace image' : 'Upload image'}
+          <input
+            type="file"
+            accept={IMAGE_TYPES.join(',')}
+            disabled={isUploading}
+            aria-label="Choose image file"
+            className="sr-only"
+            onChange={(event) => {
+              void handleFile(event.target.files?.[0])
+              event.target.value = ''
+            }}
+          />
+        </label>
+        {imageUrl && (
+          <button
+            type="button"
+            disabled={isUploading}
+            onClick={() => onChange('')}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            Remove image
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-slate-500">PNG, JPG, WebP or GIF, up to 5 MB.</p>
+      {error && (
+        <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">
+          {error}
+        </p>
       )}
     </div>
   )

@@ -14,6 +14,7 @@ const api = vi.hoisted(() => ({
   deleteFormInSupabase: vi.fn(),
   deleteFormSubmissionInSupabase: vi.fn(),
   saveFormSlugInSupabase: vi.fn(),
+  uploadFormImageToSupabase: vi.fn(),
 }))
 
 vi.mock('../../lib/api', () => api)

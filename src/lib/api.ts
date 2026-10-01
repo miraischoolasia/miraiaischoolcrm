@@ -644,3 +644,29 @@ export async function countFormSubmissionsSince(sinceIso: string) {
 
   return count ?? 0
 }
+
+const FORM_IMAGE_BUCKET = 'form-images'
+
+// Stores a poster in the public bucket and returns the address visitors load
+// it from. Every upload gets its own name, so replacing an image never shows
+// an old cached copy.
+export async function uploadFormImageToSupabase(file: File) {
+  if (!supabase) {
+    throw new Error('Supabase is not configured.')
+  }
+
+  const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' }[
+    file.type
+  ]
+  const path = `${crypto.randomUUID()}.${extension ?? 'img'}`
+
+  const { error } = await supabase.storage
+    .from(FORM_IMAGE_BUCKET)
+    .upload(path, file, { contentType: file.type, cacheControl: '31536000' })
+
+  if (error) {
+    throw error
+  }
+
+  return supabase.storage.from(FORM_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl
+}

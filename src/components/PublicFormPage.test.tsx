@@ -134,6 +134,40 @@ describe('PublicFormPage', () => {
   })
 })
 
+describe('PublicFormPage with a poster', () => {
+  const poster = {
+    ...createField('image'),
+    id: 'img',
+    label: 'Class poster',
+    imageUrl: 'https://img.test/poster.png',
+  }
+
+  it('shows the picture where the field sits and does not ask for an answer', async () => {
+    api.fetchPublicForm.mockResolvedValue({ ...form, fields: [poster, phone] })
+    render(<PublicFormPage formKey="form-1" />)
+
+    const image = await screen.findByRole('img', { name: 'Class poster' })
+    expect(image).toHaveAttribute('src', 'https://img.test/poster.png')
+
+    await userEvent.type(screen.getByLabelText(/Phone/), '012-345 6789')
+    await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
+    await waitFor(() =>
+      expect(api.submitPublicForm).toHaveBeenCalledWith('form-1', { p: '012-345 6789' }, ''),
+    )
+  })
+
+  it('shows nothing for a poster without a usable address', async () => {
+    api.fetchPublicForm.mockResolvedValue({
+      ...form,
+      fields: [{ ...poster, imageUrl: 'javascript:alert(1)' }, phone],
+    })
+    render(<PublicFormPage formKey="form-1" />)
+
+    await screen.findByLabelText(/Phone/)
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+})
+
 describe('PublicFormPage with several children', () => {
   const starter = createStarterFields()
   const [parent, child, parentPhone, , age] = starter
