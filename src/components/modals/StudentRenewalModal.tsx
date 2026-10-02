@@ -1,7 +1,8 @@
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
+import { PackagePicker } from '../PackagePicker'
 import { formatDate } from '../../domain/studentStatus'
-import type { RenewalFormState, Student } from '../../types/domain'
+import type { Package, RenewalFormState, Student } from '../../types/domain'
 
 type StudentRenewalModalProps = {
   student: Student
@@ -12,6 +13,9 @@ type StudentRenewalModalProps = {
   onClose: () => void
   onSubmit: React.FormEventHandler<HTMLFormElement>
   onFieldChange: (field: keyof RenewalFormState, value: string) => void
+  packages?: Package[]
+  onPackageChange?: (packageId: string, startDate: string) => void
+  packageNotice?: string | null
 }
 
 export function StudentRenewalModal({
@@ -23,6 +27,9 @@ export function StudentRenewalModal({
   onClose,
   onSubmit,
   onFieldChange,
+  packages = [],
+  onPackageChange,
+  packageNotice = null,
 }: StudentRenewalModalProps) {
   return (
     <ModalShell maxWidth="2xl" onClose={onClose}>
@@ -81,6 +88,16 @@ export function StudentRenewalModal({
         )}
 
         <div className="grid gap-5 sm:grid-cols-2">
+          {student.studentType === 'regular' && onPackageChange && packages.length > 0 && (
+            <PackagePicker
+              packages={packages}
+              packageId={formState.packageId}
+              startDate={formState.startDate}
+              onChange={onPackageChange}
+              notice={packageNotice}
+            />
+          )}
+
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">
               Add Classes

@@ -317,6 +317,9 @@ export type AttendanceReviewFormState = {
 }
 
 export type RenewalFormState = {
+  // '' when renewing by hand, without a package.
+  packageId: string
+  startDate: string
   addHours: string
   lessonExpiryDate: string
   accountFeeExpiryDate: string
@@ -325,6 +328,8 @@ export type RenewalFormState = {
 }
 
 export type CreateStudentFormState = {
+  packageId: string
+  startDate: string
   fullName: string
   phone: string
   classroomId: string

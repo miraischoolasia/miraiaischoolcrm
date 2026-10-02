@@ -48,6 +48,7 @@ import type {
   LeadOption,
   LeadOptionKind,
   Package,
+  StudentEnrollment,
   LeadStatus,
   LessonLogStudentReview,
   LessonLogSummary,
@@ -87,6 +88,7 @@ import {
   fetchLatestLessonLogStudents,
   fetchLeadOptionsFromSupabase,
   fetchPackagesFromSupabase,
+  fetchStudentEnrollments,
   fetchLeadsFromSupabase,
   fetchMakeupPlansFromSupabase,
   fetchStudentAttendanceRows,
@@ -152,6 +154,13 @@ import {
 } from './components/modals/MoveClassModal'
 import { getDragBlockReason, getTimeFromDate, getTrialSlotsOnDate } from './lib/move'
 import { hasPermission } from './lib/permissions'
+import {
+  getOfferedPackages,
+  getRenewalStartDate,
+  planEnrollment,
+  planFeeChange,
+  type FeeChange,
+} from './lib/packages'
 import {
   addMinutesToTime,
   buildMakeupMap,
@@ -319,6 +328,8 @@ function App() {
   const [isSavingTask, setIsSavingTask] = useState(false)
   const [taskSaveError, setTaskSaveError] = useState<string | null>(null)
   const [studentFormState, setStudentFormState] = useState<RenewalFormState>({
+    packageId: '',
+    startDate: todayString,
     addHours: '0',
     lessonExpiryDate: '',
     accountFeeExpiryDate: '',
@@ -327,6 +338,8 @@ function App() {
   })
   const [createStudentFormState, setCreateStudentFormState] =
     useState<CreateStudentFormState>({
+      packageId: '',
+      startDate: todayString,
       fullName: '',
       phone: '',
       classroomId: '',
@@ -686,13 +699,38 @@ function App() {
     }
 
     setStudentFormState({
+      packageId: '',
+      startDate: getRenewalStartDate(selectedStudent.lessonExpiryDate, todayString),
       addHours: '0',
       lessonExpiryDate: selectedStudent.lessonExpiryDate,
       accountFeeExpiryDate: selectedStudent.accountFeeExpiryDate,
       miraiClubExpiryDate: selectedStudent.miraiClubExpiryDate,
       remark: '',
     })
-  }, [selectedStudent])
+  }, [selectedStudent, todayString])
+
+  // The renewing student's past packages, for the fee-year rules.
+  const [renewalHistory, setRenewalHistory] = useState<StudentEnrollment[]>([])
+  const renewingStudentId = selectedStudent?.id ?? null
+  useEffect(() => {
+    setRenewalHistory([])
+    if (renewingStudentId === null) {
+      return
+    }
+    let cancelled = false
+    fetchStudentEnrollments(renewingStudentId)
+      .then((rows) => {
+        if (!cancelled) {
+          setRenewalHistory(rows)
+        }
+      })
+      .catch(() => {
+        // Without history only the trial-counts rule is skipped.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [renewingStudentId])
 
   useEffect(() => {
     if (!isCreatingClassroom && !editingClassroom) {
@@ -1102,6 +1140,108 @@ function App() {
     setStudentDetailsSaveError(null)
   }
 
+  const offeredPackages = useMemo(() => getOfferedPackages(packages), [packages])
+
+  function findPackage(packageId: string) {
+    return packages.find((pkg) => String(pkg.id) === packageId) ?? null
+  }
+
+  // A new student: the package sets the classes and lesson dates, and starts
+  // the fee year when it has fees (no-fee packages leave the fees unpaid).
+  function applyCreatePackage(packageId: string, startDate: string) {
+    const pkg = findPackage(packageId)
+    setCreateStudentFormState((current) => {
+      if (!pkg) {
+        return { ...current, packageId: '', startDate }
+      }
+      const plan = planEnrollment(pkg, startDate)
+      const feeExpiry = planFeeChange(pkg, startDate, plan.endDate, null, [])?.to ?? startDate
+      return {
+        ...current,
+        packageId,
+        startDate,
+        initialHours: String(plan.classCount),
+        lessonExpiryDate: plan.endDate,
+        accountFeeExpiryDate: feeExpiry,
+        miraiClubExpiryDate: feeExpiry,
+      }
+    })
+  }
+
+  function getCreatePackageNotice() {
+    const pkg = findPackage(createStudentFormState.packageId)
+    if (!pkg) {
+      return null
+    }
+    return pkg.includesFees
+      ? `Account Fee and Mirai Club run for a year, to ${formatDate(createStudentFormState.accountFeeExpiryDate)}.`
+      : 'No Account Fee or Mirai Club for this package.'
+  }
+
+  // A renewal: the package sets the classes and lesson dates. Fee changes
+  // are only offered on save, in a confirm box.
+  function applyRenewalPackage(packageId: string, startDate: string) {
+    const pkg = findPackage(packageId)
+    setStudentFormState((current) => {
+      if (!pkg) {
+        return { ...current, packageId: '', startDate }
+      }
+      const plan = planEnrollment(pkg, startDate)
+      return {
+        ...current,
+        packageId,
+        startDate,
+        addHours: String(plan.classCount),
+        lessonExpiryDate: plan.endDate,
+      }
+    })
+  }
+
+  function getRenewalFeeChanges(): { label: string; change: FeeChange }[] {
+    const pkg = findPackage(studentFormState.packageId)
+    if (!pkg || !selectedStudent || !studentFormState.lessonExpiryDate) {
+      return []
+    }
+    const kindById = new Map(packages.map((entry) => [entry.id, entry.kind]))
+    const history = renewalHistory.map((entry) => ({
+      startDate: entry.startDate,
+      kind: kindById.get(entry.packageId) ?? 'regular',
+    }))
+    const plan = (current: string) =>
+      planFeeChange(pkg, studentFormState.startDate, studentFormState.lessonExpiryDate, current, history)
+    return [
+      { label: 'Account Fee', change: plan(selectedStudent.accountFeeExpiryDate) },
+      { label: 'Mirai Club', change: plan(selectedStudent.miraiClubExpiryDate) },
+    ].filter((entry): entry is { label: string; change: FeeChange } => entry.change !== null)
+  }
+
+  function describeFeeChanges(changes: { label: string; change: FeeChange }[]) {
+    return changes
+      .map(({ label, change }) =>
+        change.kind === 'extend'
+          ? `${label}: ${formatDate(change.from!)} -> ${formatDate(change.to)}`
+          : `${label}: ran out${change.from ? ` on ${formatDate(change.from)}` : ''}, new year to ${formatDate(change.to)}`,
+      )
+      .join('\n')
+  }
+
+  function getRenewalPackageNotice() {
+    const pkg = findPackage(studentFormState.packageId)
+    if (!pkg) {
+      return null
+    }
+    if (!pkg.includesFees) {
+      return 'No Account Fee or Mirai Club for this package; their dates stay as they are.'
+    }
+    const changes = getRenewalFeeChanges()
+    if (changes.length === 0) {
+      return 'Account Fee and Mirai Club already cover this package.'
+    }
+    return changes.some(({ change }) => change.kind === 'new')
+      ? 'Account Fee / Mirai Club have run out. You will be asked on save whether to start a new year.'
+      : 'This package goes past the Account Fee / Mirai Club year. You will be asked on save whether to extend them.'
+  }
+
   function openStudentRenewal(studentId: number) {
     setStudentSaveError(null)
     setSelectedStudentId(studentId)
@@ -1163,6 +1303,8 @@ function App() {
     setCreateStudentSaveError(null)
     setIsCreateStudentOpen(true)
     setCreateStudentFormState({
+      packageId: '',
+      startDate: todayString,
       fullName: '',
       phone: '',
       classroomId: '',
@@ -2117,13 +2259,21 @@ function App() {
       return
     }
 
+    const signUpPackage =
+      createStudentFormState.studentType === 'regular'
+        ? findPackage(createStudentFormState.packageId)
+        : null
+    const startingClasses =
+      !isPreviewStudent && Number.isFinite(initialHours) && initialHours > 0 ? initialHours : 0
+
     try {
       setIsCreatingStudentRecord(true)
       setCreateStudentSaveError(null)
 
       // One call does it all atomically: create, assign the classroom, log
       // the activity, and convert the lead (when converting from Leads).
-      const { error } = await supabase.rpc('create_student_record', {
+      // With a package the classes are added by the enrollment below instead.
+      const { data: created, error } = await supabase.rpc('create_student_record', {
         p_full_name: fullName,
         p_phone: phone || null,
         p_teacher_id: null,
@@ -2132,10 +2282,7 @@ function App() {
             ? Number(createStudentFormState.classroomId)
             : null,
         p_lead_id: convertingLeadId,
-        p_initial_hours:
-          !isPreviewStudent && Number.isFinite(initialHours) && initialHours > 0
-            ? initialHours
-            : 0,
+        p_initial_hours: signUpPackage ? 0 : startingClasses,
         p_lesson_expiry_date: isPreviewStudent
           ? todayString
           : createStudentFormState.lessonExpiryDate,
@@ -2153,6 +2300,25 @@ function App() {
         throw error
       }
 
+      const createdStudentId = (created as { student_id: number }[] | null)?.[0]?.student_id
+      if (signUpPackage && createdStudentId) {
+        const { error: enrollError } = await supabase.rpc('enroll_student_package', {
+          p_student_id: createdStudentId,
+          p_package_id: signUpPackage.id,
+          p_start_date: createStudentFormState.startDate,
+          p_class_count: startingClasses,
+          p_lesson_expiry_date: createStudentFormState.lessonExpiryDate,
+          p_account_fee_expiry_date: createStudentFormState.accountFeeExpiryDate,
+          p_mirai_club_expiry_date: createStudentFormState.miraiClubExpiryDate,
+        })
+        if (enrollError) {
+          // The student exists now, so closing (not retrying) avoids a duplicate.
+          showToast(
+            `Saved the student, but not the package: ${getErrorMessage(enrollError, 'unknown error')}. Renew with the package to add it.`,
+          )
+        }
+      }
+
       await Promise.all([
         refreshStudentsAndLogs(),
         refreshClassrooms(),
@@ -2161,9 +2327,7 @@ function App() {
       ])
       closeCreateStudentModal()
     } catch (error) {
-      setCreateStudentSaveError(
-        error instanceof Error ? error.message : 'Failed to create student record.',
-      )
+      setCreateStudentSaveError(getErrorMessage(error, 'Failed to create student record.'))
     } finally {
       setIsCreatingStudentRecord(false)
     }
@@ -2416,6 +2580,8 @@ function App() {
     setCreateStudentSaveError(null)
     setIsCreateStudentOpen(true)
     setCreateStudentFormState({
+      packageId: '',
+      startDate: todayString,
       fullName: lead.fullName ?? lead.children[0]?.name ?? '',
       phone: lead.children[0]?.phone ?? lead.phone ?? '',
       classroomId: '',
@@ -2845,6 +3011,33 @@ function App() {
     const parsedHours = Number.parseInt(studentFormState.addHours, 10)
     const hoursToAdd =
       Number.isFinite(parsedHours) && parsedHours > 0 ? parsedHours : 0
+    const renewalPackage = findPackage(studentFormState.packageId)
+    let accountFeeExpiry =
+      studentFormState.accountFeeExpiryDate || selectedStudent.accountFeeExpiryDate
+    let miraiClubExpiry =
+      studentFormState.miraiClubExpiryDate || selectedStudent.miraiClubExpiryDate
+
+    // Offer the fee-year change, unless the admin already typed new fee dates.
+    const feeChanges = getRenewalFeeChanges().filter(({ label }) =>
+      label === 'Account Fee'
+        ? accountFeeExpiry === selectedStudent.accountFeeExpiryDate
+        : miraiClubExpiry === selectedStudent.miraiClubExpiryDate,
+    )
+    if (renewalPackage && feeChanges.length > 0) {
+      const update = await confirm(
+        `${renewalPackage.name} runs to ${formatDate(studentFormState.lessonExpiryDate)}.\n\n${describeFeeChanges(feeChanges)}\n\nUpdate the fees?`,
+        { confirmLabel: 'Update fees', cancelLabel: 'Keep as they are' },
+      )
+      if (update) {
+        for (const { label, change } of feeChanges) {
+          if (label === 'Account Fee') {
+            accountFeeExpiry = change.to
+          } else {
+            miraiClubExpiry = change.to
+          }
+        }
+      }
+    }
 
     try {
       setIsSavingStudent(true)
@@ -2863,19 +3056,28 @@ function App() {
         }
       }
 
-      const { error } = await supabase.rpc('renew_student_record', {
-        p_student_id: selectedStudent.id,
-        p_add_hours: hoursToAdd,
-        p_new_lesson_expiry_date:
-          studentFormState.lessonExpiryDate || selectedStudent.lessonExpiryDate,
-        p_new_account_fee_expiry_date:
-          studentFormState.accountFeeExpiryDate ||
-          selectedStudent.accountFeeExpiryDate,
-        p_new_mirai_club_expiry_date:
-          studentFormState.miraiClubExpiryDate ||
-          selectedStudent.miraiClubExpiryDate,
-        p_remark: studentFormState.remark.trim() || null,
-      })
+      const lessonExpiry = studentFormState.lessonExpiryDate || selectedStudent.lessonExpiryDate
+      const remark = studentFormState.remark.trim() || null
+      // With a package the renewal is also recorded as an enrollment.
+      const { error } = renewalPackage
+        ? await supabase.rpc('enroll_student_package', {
+            p_student_id: selectedStudent.id,
+            p_package_id: renewalPackage.id,
+            p_start_date: studentFormState.startDate,
+            p_class_count: hoursToAdd,
+            p_lesson_expiry_date: lessonExpiry,
+            p_account_fee_expiry_date: accountFeeExpiry,
+            p_mirai_club_expiry_date: miraiClubExpiry,
+            p_remark: remark,
+          })
+        : await supabase.rpc('renew_student_record', {
+            p_student_id: selectedStudent.id,
+            p_add_hours: hoursToAdd,
+            p_new_lesson_expiry_date: lessonExpiry,
+            p_new_account_fee_expiry_date: accountFeeExpiry,
+            p_new_mirai_club_expiry_date: miraiClubExpiry,
+            p_remark: remark,
+          })
 
       if (error) {
         throw error
@@ -2887,19 +3089,18 @@ function App() {
         selectedStudent.id,
         selectedStudent.name,
         {
+          package: renewalPackage?.name ?? null,
           classes_added: hoursToAdd,
-          lesson_expiry: studentFormState.lessonExpiryDate,
-          account_fee_expiry: studentFormState.accountFeeExpiryDate,
-          mirai_club_expiry: studentFormState.miraiClubExpiryDate,
+          lesson_expiry: lessonExpiry,
+          account_fee_expiry: accountFeeExpiry,
+          mirai_club_expiry: miraiClubExpiry,
         },
       )
 
       await Promise.all([refreshStudentsAndLogs(), refreshAdminActivities()])
       closeStudentRenewal()
     } catch (error) {
-      setStudentSaveError(
-        error instanceof Error ? error.message : 'Failed to save renewal.',
-      )
+      setStudentSaveError(getErrorMessage(error, 'Failed to save renewal.'))
     } finally {
       setIsSavingStudent(false)
     }
@@ -4451,6 +4652,9 @@ function App() {
           isSaving={isCreatingStudentRecord}
           onClose={closeCreateStudentModal}
           onSubmit={handleCreateStudentSubmit}
+          packages={offeredPackages}
+          onPackageChange={applyCreatePackage}
+          packageNotice={getCreatePackageNotice()}
           onFieldChange={updateCreateStudentForm}
         />
       )}
@@ -4625,6 +4829,9 @@ function App() {
           onClose={closeStudentRenewal}
           onSubmit={handleStudentRenewalSubmit}
           onFieldChange={updateStudentForm}
+          packages={offeredPackages}
+          onPackageChange={applyRenewalPackage}
+          packageNotice={getRenewalPackageNotice()}
         />
       )}
 

@@ -1,7 +1,8 @@
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
+import { PackagePicker } from '../PackagePicker'
 import { ageGroupOptions, programLevelOptions } from '../../lib/constants'
-import type { Classroom, CreateStudentFormState, Teacher } from '../../types/domain'
+import type { Classroom, CreateStudentFormState, Package, Teacher } from '../../types/domain'
 
 type CreateStudentModalProps = {
   activeVisibleClassrooms: Classroom[]
@@ -12,6 +13,9 @@ type CreateStudentModalProps = {
   onClose: () => void
   onSubmit: React.FormEventHandler<HTMLFormElement>
   onFieldChange: (field: keyof CreateStudentFormState, value: string) => void
+  packages?: Package[]
+  onPackageChange?: (packageId: string, startDate: string) => void
+  packageNotice?: string | null
 }
 
 export function CreateStudentModal({
@@ -23,6 +27,9 @@ export function CreateStudentModal({
   onClose,
   onSubmit,
   onFieldChange,
+  packages = [],
+  onPackageChange,
+  packageNotice = null,
 }: CreateStudentModalProps) {
   const selectedClassroom = formState.classroomId
     ? activeVisibleClassrooms.find(
@@ -118,6 +125,16 @@ export function CreateStudentModal({
               <option value="preview">Preview Class</option>
             </select>
           </label>
+
+          {formState.studentType === 'regular' && onPackageChange && packages.length > 0 && (
+            <PackagePicker
+              packages={packages}
+              packageId={formState.packageId}
+              startDate={formState.startDate}
+              onChange={onPackageChange}
+              notice={packageNotice}
+            />
+          )}
 
           {!isPreviewStudent && (
           <label className="space-y-2">

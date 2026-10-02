@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Eye, EyeSlash, Plus, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { cn } from '../../lib/cn'
+import { packageKindLabels } from '../../lib/packages'
 import type { Package, PackageKind } from '../../types/domain'
 
 export type PackageDraft = Pick<
@@ -15,12 +16,6 @@ type PackagesModalProps = {
   onAdd: (draft: PackageDraft) => Promise<boolean>
   onSave: (pkg: Package, draft: PackageDraft) => Promise<boolean>
   onSetActive: (pkg: Package, isActive: boolean) => void
-}
-
-export const packageKindLabels: Record<PackageKind, string> = {
-  trial: 'Trial',
-  regular: 'Regular',
-  camp: 'Camp',
 }
 
 const emptyDraft: PackageDraft = {
