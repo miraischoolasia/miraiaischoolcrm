@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   role: 'admin' as 'admin' | 'teacher',
   latestLessonLog: vi.fn(),
   lessonLogs: [] as unknown[],
+  converted: false,
 }))
 
 vi.mock('./lib/supabase', () => ({
@@ -113,7 +114,9 @@ vi.mock('./lib/api', async (importOriginal) => ({
   fetchTeachersFromSupabase: async () => [
     { id: 1, authUserId: 'user-1', username: 'user', fullName: 'Jia Hui', role: mocks.role, isActive: true, permissions: {} },
   ],
-  fetchLeadsFromSupabase: async () => [jane],
+  fetchLeadsFromSupabase: async () => [
+    { ...jane, status: mocks.converted ? 'converted' : jane.status, convertedStudentId: mocks.converted ? 601 : null },
+  ],
   fetchClassroomsFromSupabase: async () => [trialClassroom],
   // The trial booking's student_id links to this - a real (lightweight)
   // students row is how attendance can be taken for a trial-booked child.
@@ -133,6 +136,26 @@ vi.mock('./lib/api', async (importOriginal) => ({
       isActive: true,
       studentType: 'trial',
     },
+    // The regular student Jane's lead became.
+    ...(mocks.converted
+      ? [
+          {
+            id: 601,
+            teacherId: 1,
+            classroomId: null,
+            name: 'Aiden',
+            phone: '+60 12-222 2222',
+            age: 9,
+            remainingHours: 8,
+            lessonExpiryDate: '2026-12-31',
+            accountFeeExpiryDate: '2026-12-31',
+            miraiClubExpiryDate: '2026-12-31',
+            notes: null,
+            isActive: true,
+            studentType: 'regular',
+          },
+        ]
+      : []),
   ],
   fetchSchedulesFromSupabase: async () => [
     saturdaySlot,
@@ -177,6 +200,7 @@ describe('trial slots on the calendar', () => {
     mocks.rpc.mockResolvedValue({ data: 1, error: null })
     mocks.latestLessonLog.mockResolvedValue({ summary: null, students: [], reviews: [] })
     mocks.lessonLogs = []
+    mocks.converted = false
   })
 
   it('shows a slot with nobody booked as Available and one with children as booked', async () => {
@@ -396,5 +420,24 @@ describe('trial slots on the calendar', () => {
         p_student_reviews: [],
       }),
     )
+  })
+
+  it('lists a converted child once on the Students page, as the regular student', async () => {
+    mocks.converted = true
+    await signIn()
+
+    await userEvent.click(screen.getAllByRole('button', { name: /^Students$/ })[0])
+
+    const table = await screen.findByRole('table')
+    expect(within(table).getAllByText('Aiden')).toHaveLength(1)
+    expect(screen.getByText('Total Students').nextElementSibling?.textContent ?? '').toBe('1')
+  })
+
+  it('still lists a trial child whose lead is not converted yet', async () => {
+    await signIn()
+
+    await userEvent.click(screen.getAllByRole('button', { name: /^Students$/ })[0])
+
+    expect(within(await screen.findByRole('table')).getAllByText('Aiden')).toHaveLength(1)
   })
 })

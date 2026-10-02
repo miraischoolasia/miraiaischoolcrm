@@ -550,6 +550,22 @@ function App() {
     students.find((student) => student.id === selectedStudentId) ?? null
   const selectedStudentDetail =
     students.find((student) => student.id === selectedStudentDetailId) ?? null
+  // Trial-type rows of a lead that became a regular student. They are kept
+  // for the trial attendance/reviews (shown on the regular student), but
+  // listing them would show the same child twice on the Students page.
+  const listedStudents = useMemo(() => {
+    const convertedLeadIds = new Set(
+      leads.filter((lead) => lead.convertedStudentId !== null).map((lead) => lead.id),
+    )
+    const convertedTrialIds = new Set(
+      trialBookings
+        .filter((booking) => booking.leadId !== null && convertedLeadIds.has(booking.leadId))
+        .map((booking) => booking.studentId),
+    )
+    return students.filter(
+      (student) => !(student.studentType === 'trial' && convertedTrialIds.has(student.id)),
+    )
+  }, [leads, students, trialBookings])
   // A student converted from a lead keeps the trial-type rows its trial
   // bookings created; their attendance/reviews belong to this student too.
   const selectedStudentTrialIds = useMemo(() => {
@@ -4256,7 +4272,7 @@ function App() {
                 canDelete={can('students', 'delete')}
                 deactivatingStudentId={deactivatingStudentId}
                 isLoading={isLoading}
-                students={students}
+                students={listedStudents}
                 todayString={todayString}
                 onDeactivateStudent={handleDeactivateStudent}
                 onEditStudent={openEditStudent}
