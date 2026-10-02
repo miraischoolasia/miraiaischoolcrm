@@ -138,6 +138,10 @@ import { DeleteTeacherModal } from './components/modals/DeleteTeacherModal'
 import { LeadModal } from './components/modals/LeadModal'
 import { LeadOptionsModal } from './components/modals/LeadOptionsModal'
 import { PackagesModal, type PackageDraft } from './components/modals/PackagesModal'
+import {
+  AssignPackagesModal,
+  type PackageAssignment,
+} from './components/modals/AssignPackagesModal'
 import { LeadBulkImportModal } from './components/modals/LeadBulkImportModal'
 import { PreviewStudentBulkImportModal } from './components/modals/PreviewStudentBulkImportModal'
 import { LeadFollowUpModal } from './components/modals/LeadFollowUpModal'
@@ -202,6 +206,9 @@ function App() {
   const [isLeadOptionsOpen, setIsLeadOptionsOpen] = useState(false)
   const [packages, setPackages] = useState<Package[]>([])
   const [isPackagesOpen, setIsPackagesOpen] = useState(false)
+  const [isAssignPackagesOpen, setIsAssignPackagesOpen] = useState(false)
+  const [isSavingAssignments, setIsSavingAssignments] = useState(false)
+  const [assignPackagesError, setAssignPackagesError] = useState<string | null>(null)
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [scheduleParticipants, setScheduleParticipants] = useState<
     ScheduleParticipant[]
@@ -1638,6 +1645,35 @@ function App() {
     setPackages((current) =>
       current.map((entry) => (entry.id === pkg.id ? { ...entry, isActive } : entry)),
     )
+  }
+
+  // Tags students with the package they are already on; classes and dates
+  // stay as they are.
+  async function handleAssignPackages(changes: PackageAssignment[]) {
+    if (!supabase) {
+      return
+    }
+
+    setIsSavingAssignments(true)
+    setAssignPackagesError(null)
+    try {
+      for (const change of changes) {
+        const { error } = await supabase.rpc('set_student_package', {
+          p_student_id: change.studentId,
+          p_package_id: change.packageId,
+        })
+        if (error) {
+          throw error
+        }
+      }
+      setIsAssignPackagesOpen(false)
+    } catch (error) {
+      setAssignPackagesError(getErrorMessage(error, 'Failed to save the packages.'))
+    } finally {
+      // Some may have saved before a failure, so always reload.
+      await refreshStudentsAndLogs().catch(() => undefined)
+      setIsSavingAssignments(false)
+    }
   }
 
   function openBulkImportLeadsModal() {
@@ -4598,6 +4634,14 @@ function App() {
                 canEdit={can('students', 'edit')}
                 canDelete={can('students', 'delete')}
                 packages={packages}
+                onOpenAssignPackages={
+                  can('students', 'edit')
+                    ? () => {
+                        setAssignPackagesError(null)
+                        setIsAssignPackagesOpen(true)
+                      }
+                    : undefined
+                }
                 onOpenPackages={isAdmin ? () => setIsPackagesOpen(true) : undefined}
                 deactivatingStudentId={deactivatingStudentId}
                 isLoading={isLoading}
@@ -4770,6 +4814,17 @@ function App() {
           isLoadingFormSubmissions={isLoadingEditingLeadForms}
           focusFormAnswers={focusFormAnswers}
           readOnly={Boolean(editingLead) && !can('leads', 'edit')}
+        />
+      )}
+
+      {isAssignPackagesOpen && (
+        <AssignPackagesModal
+          students={students.filter((student) => student.studentType === 'regular')}
+          packages={packages}
+          isSaving={isSavingAssignments}
+          error={assignPackagesError}
+          onClose={() => setIsAssignPackagesOpen(false)}
+          onSave={(changes) => void handleAssignPackages(changes)}
         />
       )}
 

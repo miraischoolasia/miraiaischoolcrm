@@ -27,6 +27,8 @@ type StudentDashboardSectionProps = {
   canDelete?: boolean
   // For the package tag, the filters, and whether fees are tracked.
   packages?: Package[]
+  // Opens the window that tags students with their current package.
+  onOpenAssignPackages?: () => void
   // Admin only: opens the course packages settings.
   onOpenPackages?: () => void
   onDeactivateStudent: (studentId: number) => void
@@ -46,6 +48,7 @@ export function StudentDashboardSection({
   canEdit = true,
   canDelete = true,
   packages = [],
+  onOpenAssignPackages,
   onOpenPackages,
   onDeactivateStudent,
   onOpenBulkImportPreviewStudents,
@@ -67,6 +70,9 @@ export function StudentDashboardSection({
   })
 
   const normalizedSearch = searchTerm.trim().toLowerCase()
+  const untaggedCount = students.filter(
+    (student) => student.studentType === 'regular' && student.isActive && !student.packageId,
+  ).length
 
   const filteredStudents = studentsWithStatus.filter(({ student, status, pkg }) => {
     if (normalizedSearch && !student.name.toLowerCase().includes(normalizedSearch)) {
@@ -116,6 +122,22 @@ export function StudentDashboardSection({
           { label: 'Preview Students', value: previewStudentCount },
         ]}
       />
+
+      {onOpenAssignPackages && packages.length > 0 && untaggedCount > 0 && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-[#fbcfe8] bg-[#fff8fc] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-[#9d174d]">
+            {untaggedCount} student{untaggedCount === 1 ? ' has' : 's have'} no package yet. Set
+            them so the filters and fee alerts are right.
+          </p>
+          <button
+            type="button"
+            onClick={onOpenAssignPackages}
+            className="shrink-0 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
+          >
+            Set Packages
+          </button>
+        </div>
+      )}
 
       <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
