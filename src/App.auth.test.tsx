@@ -32,6 +32,7 @@ vi.mock('./lib/api', async (importOriginal) => ({
   fetchScheduleExceptionsFromSupabase: async () => [],
   fetchMakeupPlansFromSupabase: async () => [],
   fetchLeadOptionsFromSupabase: async () => [],
+  fetchPackagesFromSupabase: async () => [],
   fetchTrialBookingsFromSupabase: async () => [],
   fetchLessonLogSummariesFromSupabase: async () => [],
   fetchLessonLogStudentReviewsFromSupabase: async () => [],

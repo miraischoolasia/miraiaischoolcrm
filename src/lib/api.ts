@@ -6,12 +6,14 @@ import {
   mapLeadOptionRow,
   mapLeadRow,
   mapMakeupPlanRow,
+  mapPackageRow,
   mapLessonLogStudentReviewRow,
   mapLessonLogStudentRow,
   mapLessonLogSummaryRow,
   mapScheduleExceptionRow,
   mapScheduleParticipantRow,
   mapScheduleRow,
+  mapStudentEnrollmentRow,
   mapStudentRow,
   mapTeacherRow,
   mapTrialBookingRow,
@@ -25,6 +27,7 @@ import type {
   LeadRow,
   LessonLogSummary,
   ScheduleExceptionRow,
+  StudentRow,
 } from '../types/domain'
 
 function isMissingTableError(error: { code?: string }) {
@@ -36,18 +39,70 @@ export async function fetchStudentsFromSupabase() {
     return []
   }
 
-  const { data, error } = await supabase
-    .from('students')
-    .select(
-      'id, teacher_id, classroom_id, full_name, phone, age, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date, notes, is_active, student_type',
-    )
-    .order('full_name')
+  const columns =
+    'id, teacher_id, classroom_id, full_name, phone, age, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date, notes, is_active, student_type'
+  const select = async (selected: string) => {
+    const result = await supabase!.from('students').select(selected).order('full_name')
+    return result as unknown as {
+      data: (Omit<StudentRow, 'package_id'> & { package_id?: number | null })[] | null
+      error: { code?: string } | null
+    }
+  }
+  let { data, error } = await select(`${columns}, package_id`)
+
+  // Before the packages migration package_id does not exist yet.
+  if (error?.code === '42703') {
+    ;({ data, error } = await select(columns))
+  }
 
   if (error) {
     throw error
   }
 
-  return data.map(mapStudentRow)
+  return (data ?? []).map((row) => mapStudentRow({ ...row, package_id: row.package_id ?? null }))
+}
+
+export async function fetchPackagesFromSupabase() {
+  if (!supabase) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('packages')
+    .select('id, name, kind, class_count, duration_months, includes_fees, is_active, sort_order')
+    .order('sort_order')
+    .order('id')
+
+  if (error) {
+    // Before the packages migration there are none yet.
+    if (isMissingTableError(error)) {
+      return []
+    }
+    throw error
+  }
+
+  return data.map(mapPackageRow)
+}
+
+export async function fetchStudentEnrollments(studentId: number) {
+  if (!supabase) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('student_enrollments')
+    .select('id, student_id, package_id, start_date, end_date, class_count, remark, created_at')
+    .eq('student_id', studentId)
+    .order('start_date', { ascending: false })
+
+  if (error) {
+    if (isMissingTableError(error)) {
+      return []
+    }
+    throw error
+  }
+
+  return data.map(mapStudentEnrollmentRow)
 }
 
 export async function fetchClassroomsFromSupabase() {

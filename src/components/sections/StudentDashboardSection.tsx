@@ -10,6 +10,7 @@ import type { FilterKey, Student } from '../../types/domain'
 import {
   ArrowsClockwise,
   MagnifyingGlass,
+  Package,
   Prohibit,
   UploadSimple,
   UserPlus,
@@ -24,6 +25,8 @@ type StudentDashboardSectionProps = {
   // Edit covers add, edit and renew; delete covers deactivate.
   canEdit?: boolean
   canDelete?: boolean
+  // Admin only: opens the course packages settings.
+  onOpenPackages?: () => void
   onDeactivateStudent: (studentId: number) => void
   onOpenBulkImportPreviewStudents: () => void
   onOpenCreateStudent: () => void
@@ -40,6 +43,7 @@ export function StudentDashboardSection({
   todayString,
   canEdit = true,
   canDelete = true,
+  onOpenPackages,
   onDeactivateStudent,
   onOpenBulkImportPreviewStudents,
   onOpenCreateStudent,
@@ -116,8 +120,20 @@ export function StudentDashboardSection({
                 Class balance, membership, and renewal control.
               </p>
             </div>
-            {canEdit && (
+            {(canEdit || onOpenPackages) && (
             <div className="flex flex-col gap-2 sm:flex-row">
+              {onOpenPackages && (
+                <button
+                  type="button"
+                  onClick={onOpenPackages}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  <Package size={16} aria-hidden="true" />
+                  Packages
+                </button>
+              )}
+              {canEdit && (
+              <>
               <button
                 type="button"
                 onClick={onOpenBulkImportPreviewStudents}
@@ -134,6 +150,8 @@ export function StudentDashboardSection({
                 <UserPlus size={16} weight="bold" aria-hidden="true" />
                 Add Student
               </button>
+              </>
+              )}
             </div>
             )}
           </div>

@@ -47,6 +47,7 @@ import type {
   LeadFormState,
   LeadOption,
   LeadOptionKind,
+  Package,
   LeadStatus,
   LessonLogStudentReview,
   LessonLogSummary,
@@ -73,6 +74,7 @@ import {
   mapReviewToFormState,
   mapScheduleParticipantRow,
   mapLeadOptionRow,
+  mapPackageRow,
   mapScheduleRow,
 } from './lib/mappers'
 import { buildAttendanceSubmission } from './lib/attendance'
@@ -84,6 +86,7 @@ import {
   fetchClassroomsFromSupabase,
   fetchLatestLessonLogStudents,
   fetchLeadOptionsFromSupabase,
+  fetchPackagesFromSupabase,
   fetchLeadsFromSupabase,
   fetchMakeupPlansFromSupabase,
   fetchStudentAttendanceRows,
@@ -132,6 +135,7 @@ import { TeacherModal } from './components/modals/TeacherModal'
 import { DeleteTeacherModal } from './components/modals/DeleteTeacherModal'
 import { LeadModal } from './components/modals/LeadModal'
 import { LeadOptionsModal } from './components/modals/LeadOptionsModal'
+import { PackagesModal, type PackageDraft } from './components/modals/PackagesModal'
 import { LeadBulkImportModal } from './components/modals/LeadBulkImportModal'
 import { PreviewStudentBulkImportModal } from './components/modals/PreviewStudentBulkImportModal'
 import { LeadFollowUpModal } from './components/modals/LeadFollowUpModal'
@@ -187,6 +191,8 @@ function App() {
   // Lead Source and PIC names the admin manages.
   const [leadOptions, setLeadOptions] = useState<LeadOption[]>([])
   const [isLeadOptionsOpen, setIsLeadOptionsOpen] = useState(false)
+  const [packages, setPackages] = useState<Package[]>([])
+  const [isPackagesOpen, setIsPackagesOpen] = useState(false)
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [scheduleParticipants, setScheduleParticipants] = useState<
     ScheduleParticipant[]
@@ -768,6 +774,7 @@ function App() {
           nextLeads,
           nextMakeupPlans,
           nextLeadOptions,
+          nextPackages,
         ] = await Promise.all([
           fetchClassroomsFromSupabase(),
           fetchTeachersFromSupabase(),
@@ -782,6 +789,7 @@ function App() {
           fetchLeadsFromSupabase(),
           fetchMakeupPlansFromSupabase(),
           fetchLeadOptionsFromSupabase(),
+          fetchPackagesFromSupabase(),
         ])
 
         if (!cancelled) {
@@ -798,6 +806,7 @@ function App() {
           setLeads(nextLeads)
           setMakeupPlans(nextMakeupPlans)
           setLeadOptions(nextLeadOptions)
+          setPackages(nextPackages)
           setLoadedUserId(authUserId)
         }
       } catch (error) {
@@ -1382,6 +1391,88 @@ function App() {
 
     setLeadOptions((current) =>
       current.map((entry) => (entry.id === option.id ? { ...entry, isActive } : entry)),
+    )
+  }
+
+  function toPackageRow(draft: PackageDraft) {
+    return {
+      name: draft.name,
+      kind: draft.kind,
+      class_count: draft.classCount,
+      duration_months: draft.durationMonths,
+      includes_fees: draft.includesFees,
+    }
+  }
+
+  const packageColumns = 'id, name, kind, class_count, duration_months, includes_fees, is_active, sort_order'
+
+  async function handleAddPackage(draft: PackageDraft) {
+    if (!supabase) {
+      return false
+    }
+
+    const sortOrder = Math.max(0, ...packages.map((pkg) => pkg.sortOrder)) + 10
+    const { data, error } = await supabase
+      .from('packages')
+      .insert({ ...toPackageRow(draft), sort_order: sortOrder })
+      .select(packageColumns)
+      .single()
+
+    if (error) {
+      showToast(
+        error.code === '23505'
+          ? `"${draft.name}" is already a package.`
+          : getErrorMessage(error, 'Failed to add this package.'),
+      )
+      return false
+    }
+
+    setPackages((current) => [...current, mapPackageRow(data)])
+    return true
+  }
+
+  // Changing a package only affects later sign-ups; past enrollments keep
+  // the classes and dates they were given.
+  async function handleSavePackage(pkg: Package, draft: PackageDraft) {
+    if (!supabase) {
+      return false
+    }
+
+    const { data, error } = await supabase
+      .from('packages')
+      .update(toPackageRow(draft))
+      .eq('id', pkg.id)
+      .select(packageColumns)
+      .single()
+
+    if (error) {
+      showToast(
+        error.code === '23505'
+          ? `"${draft.name}" is already a package.`
+          : getErrorMessage(error, 'Failed to save this package.'),
+      )
+      return false
+    }
+
+    const saved = mapPackageRow(data)
+    setPackages((current) => current.map((entry) => (entry.id === pkg.id ? saved : entry)))
+    return true
+  }
+
+  async function handleSetPackageActive(pkg: Package, isActive: boolean) {
+    if (!supabase) {
+      return
+    }
+
+    const { error } = await supabase.from('packages').update({ is_active: isActive }).eq('id', pkg.id)
+
+    if (error) {
+      showToast(getErrorMessage(error, 'Failed to update this package.'))
+      return
+    }
+
+    setPackages((current) =>
+      current.map((entry) => (entry.id === pkg.id ? { ...entry, isActive } : entry)),
     )
   }
 
@@ -4270,6 +4361,7 @@ function App() {
                 activeFilter={studentFilter}
                 canEdit={can('students', 'edit')}
                 canDelete={can('students', 'delete')}
+                onOpenPackages={isAdmin ? () => setIsPackagesOpen(true) : undefined}
                 deactivatingStudentId={deactivatingStudentId}
                 isLoading={isLoading}
                 students={listedStudents}
@@ -4438,6 +4530,16 @@ function App() {
           isLoadingFormSubmissions={isLoadingEditingLeadForms}
           focusFormAnswers={focusFormAnswers}
           readOnly={Boolean(editingLead) && !can('leads', 'edit')}
+        />
+      )}
+
+      {isPackagesOpen && (
+        <PackagesModal
+          packages={packages}
+          onClose={() => setIsPackagesOpen(false)}
+          onAdd={handleAddPackage}
+          onSave={handleSavePackage}
+          onSetActive={(pkg, isActive) => void handleSetPackageActive(pkg, isActive)}
         />
       )}
 

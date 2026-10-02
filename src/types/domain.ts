@@ -76,6 +76,33 @@ export type Student = {
   notes: string | null
   isActive: boolean
   studentType: StudentType
+  // The package the student is on now (regular students only).
+  packageId?: number | null
+}
+
+export type PackageKind = 'trial' | 'regular' | 'camp'
+
+// What a parent signs up for. Admin adds, renames and hides these.
+export type Package = {
+  id: number
+  name: string
+  kind: PackageKind
+  classCount: number
+  durationMonths: number
+  includesFees: boolean
+  isActive: boolean
+  sortOrder: number
+}
+
+export type StudentEnrollment = {
+  id: number
+  studentId: number
+  packageId: number
+  startDate: string
+  endDate: string
+  classCount: number
+  remark: string | null
+  createdAt: string
 }
 
 export type ClassroomCategory = 'regular' | 'trial'
@@ -404,6 +431,7 @@ export type StudentRow = Pick<
   | 'notes'
   | 'is_active'
   | 'student_type'
+  | 'package_id'
 >
 
 export type ClassroomRow = Pick<
@@ -548,6 +576,23 @@ export type LessonLogStudentReviewRow = Pick<
   | 'expressiveness_remark'
   | 'sustained_focus_score'
   | 'sustained_focus_remark'
+>
+
+export type PackageRow = Pick<
+  Database['public']['Tables']['packages']['Row'],
+  | 'id'
+  | 'name'
+  | 'kind'
+  | 'class_count'
+  | 'duration_months'
+  | 'includes_fees'
+  | 'is_active'
+  | 'sort_order'
+>
+
+export type StudentEnrollmentRow = Pick<
+  Database['public']['Tables']['student_enrollments']['Row'],
+  'id' | 'student_id' | 'package_id' | 'start_date' | 'end_date' | 'class_count' | 'remark' | 'created_at'
 >
 
 export type LeadOptionRow = Pick<

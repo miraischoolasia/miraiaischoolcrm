@@ -190,6 +190,7 @@ export type Database = {
           notes: string | null
           is_active: boolean
           student_type: 'trial' | 'preview' | 'regular'
+          package_id: number | null
           created_at: string
           updated_at: string
         }
@@ -207,6 +208,7 @@ export type Database = {
           notes?: string | null
           is_active?: boolean
           student_type?: 'trial' | 'preview' | 'regular'
+          package_id?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -224,6 +226,7 @@ export type Database = {
           notes?: string | null
           is_active?: boolean
           student_type?: 'trial' | 'preview' | 'regular'
+          package_id?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -243,6 +246,78 @@ export type Database = {
             referencedColumns: ['id']
           },
         ]
+      }
+      packages: {
+        Row: {
+          id: number
+          name: string
+          kind: 'trial' | 'regular' | 'camp'
+          class_count: number
+          duration_months: number
+          includes_fees: boolean
+          is_active: boolean
+          sort_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          kind: 'trial' | 'regular' | 'camp'
+          class_count: number
+          duration_months: number
+          includes_fees?: boolean
+          is_active?: boolean
+          sort_order?: number
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          kind?: 'trial' | 'regular' | 'camp'
+          class_count?: number
+          duration_months?: number
+          includes_fees?: boolean
+          is_active?: boolean
+          sort_order?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
+      student_enrollments: {
+        Row: {
+          id: number
+          student_id: number
+          package_id: number
+          start_date: string
+          end_date: string
+          class_count: number
+          remark: string | null
+          actor_teacher_id: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          student_id: number
+          package_id: number
+          start_date: string
+          end_date: string
+          class_count: number
+          remark?: string | null
+          actor_teacher_id?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          student_id?: number
+          package_id?: number
+          start_date?: string
+          end_date?: string
+          class_count?: number
+          remark?: string | null
+          actor_teacher_id?: number | null
+          created_at?: string
+        }
+        Relationships: []
       }
       lead_options: {
         Row: {
@@ -981,6 +1056,26 @@ export type Database = {
     }
     Views: Record<string, never>
     Functions: {
+      enroll_student_package: {
+        Args: {
+          p_student_id: number
+          p_package_id: number
+          p_start_date: string
+          p_class_count: number
+          p_lesson_expiry_date: string
+          p_account_fee_expiry_date: string | null
+          p_mirai_club_expiry_date: string | null
+          p_remark?: string | null
+        }
+        Returns: number
+      }
+      set_student_package: {
+        Args: {
+          p_student_id: number
+          p_package_id: number | null
+        }
+        Returns: undefined
+      }
       set_account_permissions: {
         Args: {
           p_teacher_id: number

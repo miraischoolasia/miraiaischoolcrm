@@ -27,6 +27,8 @@ vi.mock('./supabase', () => ({
 
 import {
   fetchLeadsFromSupabase,
+  fetchPackagesFromSupabase,
+  fetchStudentsFromSupabase,
   fetchScheduleExceptionsFromSupabase,
   fetchTrialBookingsFromSupabase,
 } from './api'
@@ -159,5 +161,45 @@ describe('fetchLeadsFromSupabase', () => {
 
     const [lead] = await fetchLeadsFromSupabase()
     expect(lead).toMatchObject({ id: 1, fullName: 'Jane', sourceId: null, picId: null })
+  })
+})
+
+describe('packages before the migration', () => {
+  beforeEach(() => {
+    mocks.result = { data: null, error: null }
+    mocks.queue = []
+  })
+
+  it('loads students without package_id before that column exists', async () => {
+    mocks.queue = [{ data: null, error: { code: '42703', message: 'column does not exist' } }]
+    mocks.result = {
+      data: [
+        {
+          id: 1,
+          teacher_id: null,
+          classroom_id: null,
+          full_name: 'Ali',
+          phone: null,
+          age: null,
+          remaining_hours: 8,
+          lesson_expiry_date: '2026-12-01',
+          account_fee_expiry_date: '2026-12-01',
+          mirai_club_expiry_date: '2026-12-01',
+          notes: null,
+          is_active: true,
+          student_type: 'regular',
+        },
+      ],
+      error: null,
+    }
+
+    const [student] = await fetchStudentsFromSupabase()
+    expect(student).toMatchObject({ id: 1, name: 'Ali', packageId: null })
+  })
+
+  it('has no packages when the table does not exist yet', async () => {
+    mocks.result = { data: null, error: { code: 'PGRST205', message: 'table not found' } }
+
+    expect(await fetchPackagesFromSupabase()).toEqual([])
   })
 })

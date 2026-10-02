@@ -24,6 +24,7 @@ describe('mapStudentRow', () => {
       notes: 'VIP',
       is_active: true,
       student_type: 'trial',
+      package_id: null,
     }
 
     expect(mapStudentRow(row)).toEqual({
@@ -40,6 +41,7 @@ describe('mapStudentRow', () => {
       notes: 'VIP',
       isActive: true,
       studentType: 'trial',
+      packageId: null,
     })
   })
 })

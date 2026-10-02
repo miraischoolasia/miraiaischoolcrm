@@ -9,6 +9,10 @@ import type {
   LeadOption,
   LeadOptionRow,
   LeadRow,
+  Package,
+  PackageRow,
+  StudentEnrollment,
+  StudentEnrollmentRow,
   LessonLogStudent,
   LessonLogStudentRow,
   LessonLogStudentReview,
@@ -46,6 +50,33 @@ export function mapStudentRow(row: StudentRow): Student {
     notes: row.notes,
     isActive: row.is_active,
     studentType: row.student_type,
+    packageId: row.package_id,
+  }
+}
+
+export function mapPackageRow(row: PackageRow): Package {
+  return {
+    id: row.id,
+    name: row.name,
+    kind: row.kind,
+    classCount: row.class_count,
+    durationMonths: row.duration_months,
+    includesFees: row.includes_fees,
+    isActive: row.is_active,
+    sortOrder: row.sort_order,
+  }
+}
+
+export function mapStudentEnrollmentRow(row: StudentEnrollmentRow): StudentEnrollment {
+  return {
+    id: row.id,
+    studentId: row.student_id,
+    packageId: row.package_id,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    classCount: row.class_count,
+    remark: row.remark,
+    createdAt: row.created_at,
   }
 }
 
