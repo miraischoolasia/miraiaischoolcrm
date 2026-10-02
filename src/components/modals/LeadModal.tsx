@@ -7,7 +7,9 @@ import {
   leadStatusOptions,
 } from '../../lib/constants'
 import { LeadOptionPicker } from '../LeadOptionPicker'
+import { WhatsAppLink } from '../WhatsAppLink'
 import { formatDateTime } from '../../lib/forms'
+import { trafficSourceLabel } from '../../lib/formInsights'
 import type {
   Lead,
   LeadChildFormState,
@@ -142,7 +144,10 @@ export function LeadModal({
           </label>
 
           <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">Phone</span>
+            <span className="flex items-center gap-1 text-sm font-semibold text-slate-700">
+              Phone
+              <WhatsAppLink phone={formState.phone} name={formState.fullName} />
+            </span>
             <input
               type="text"
               value={formState.phone}
@@ -292,6 +297,12 @@ export function LeadModal({
                       {submission.wasExisting && ' · filled in again'}
                     </span>
                   </div>
+                  {submission.tracking && (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Came from {trafficSourceLabel(submission.tracking)}
+                      {submission.tracking.campaign && ` · ${submission.tracking.campaign}`}
+                    </p>
+                  )}
                   <dl className="mt-2 space-y-2">
                     {submission.answers.map((answer) => (
                       <div key={answer.id}>

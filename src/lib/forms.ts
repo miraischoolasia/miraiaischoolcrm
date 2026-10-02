@@ -1,5 +1,6 @@
 import { csvEscape } from './leadCsv'
 import { getPagesProblem, isWebAddress, normalizePages } from './formPages'
+import { trafficSourceLabel } from './formInsights'
 import type {
   Form,
   FormAnswer,
@@ -10,6 +11,7 @@ import type {
   FormLeadMap,
   FormSettings,
   FormSubmission,
+  FormTracking,
   PublicForm,
 } from '../types/domain'
 
@@ -112,6 +114,10 @@ const childMaps: FormLeadMap[] = ['child_name', 'child_age', 'child_phone']
 // The first page of every new form; later pages get a random id.
 export const DEFAULT_PAGE_ID = 'page-1'
 
+export const MAX_NOTIFY_EMAILS = 5
+export const MAX_SUBMISSIONS_LIMIT = 100000
+export const MAX_CLOSED_MESSAGE_LENGTH = 300
+
 export const defaultFormSettings: FormSettings = {
   title: '',
   submitLabel: 'Submit',
@@ -121,6 +127,58 @@ export const defaultFormSettings: FormSettings = {
   createLead: true,
   allowMoreChildren: false,
   pages: [{ id: DEFAULT_PAGE_ID, title: '', description: '', rules: [] }],
+  closesAt: '',
+  maxSubmissions: null,
+  closedMessage: '',
+  notifyEmails: [],
+}
+
+const emailShape = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+
+export function isValidEmail(value: string) {
+  return emailShape.test(value.trim())
+}
+
+// "a@x.com, b@y.com" (commas, spaces or new lines) into a list. Entries that
+// are not emails are kept so the admin can be told which one is wrong.
+export function splitEmailList(text: string) {
+  const seen = new Set<string>()
+  return text
+    .split(/[\s,;]+/)
+    .map((entry) => entry.trim())
+    .filter((entry) => {
+      const key = entry.toLowerCase()
+      if (!entry || seen.has(key)) {
+        return false
+      }
+      seen.add(key)
+      return true
+    })
+}
+
+// The browser's date-time box works in the admin's own time zone; the form
+// keeps one exact moment (an ISO time) so it closes at the same instant for
+// everyone.
+export function isoToLocalInput(iso: string) {
+  const date = new Date(iso)
+  if (!iso || Number.isNaN(date.getTime())) {
+    return ''
+  }
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+export function localInputToIso(value: string) {
+  if (!value) {
+    return ''
+  }
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString()
+}
+
+export function isClosedByDeadline(settings: Pick<FormSettings, 'closesAt'>, now = Date.now()) {
+  const time = settings.closesAt ? new Date(settings.closesAt).getTime() : Number.NaN
+  return !Number.isNaN(time) && now >= time
 }
 
 // The questions that describe one child; an extra child repeats exactly these.
@@ -221,7 +279,32 @@ export function normalizeSettings(raw: unknown): FormSettings {
     createLead: item.createLead === undefined ? true : item.createLead === true,
     allowMoreChildren: item.allowMoreChildren === true,
     pages: normalizePages(item.pages),
+    closesAt: normalizeClosesAt(item.closesAt),
+    maxSubmissions: normalizeMaxSubmissions(item.maxSubmissions),
+    closedMessage: asString(item.closedMessage).slice(0, MAX_CLOSED_MESSAGE_LENGTH),
+    notifyEmails: Array.isArray(item.notifyEmails)
+      ? splitEmailList(item.notifyEmails.filter((entry) => typeof entry === 'string').join(' '))
+          .filter(isValidEmail)
+          .slice(0, MAX_NOTIFY_EMAILS)
+      : [],
   }
+}
+
+function normalizeClosesAt(value: unknown) {
+  if (typeof value !== 'string' || !value) {
+    return ''
+  }
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString()
+}
+
+function normalizeMaxSubmissions(value: unknown) {
+  return typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= MAX_SUBMISSIONS_LIMIT
+    ? value
+    : null
 }
 
 // Reads a saved form's fields and settings together: a form saved before pages
@@ -275,7 +358,23 @@ export function mapPublicForm(raw: unknown): PublicForm | null {
     id,
     name: asString(item.name),
     ...normalizeFormContent(item.fields, item.settings),
+    notify: item.notify === true,
+    closedReason:
+      item.closedReason === 'deadline' || item.closedReason === 'full' ? item.closedReason : null,
   }
+}
+
+const trackingKeys = ['source', 'medium', 'campaign', 'content', 'referrer'] as const
+
+export function mapTracking(raw: unknown): FormTracking | null {
+  if (typeof raw !== 'object' || raw === null) {
+    return null
+  }
+  const item = raw as Record<string, unknown>
+  const tracking = Object.fromEntries(
+    trackingKeys.map((key) => [key, asString(item[key])]),
+  ) as FormTracking
+  return trackingKeys.some((key) => tracking[key]) ? tracking : null
 }
 
 export function mapSubmissionRow(row: {
@@ -286,6 +385,7 @@ export function mapSubmissionRow(row: {
   lead_was_existing: boolean
   status: string
   last_page: number | null
+  tracking?: unknown
   created_at: string
 }): FormSubmission {
   const answers: FormAnswer[] = Array.isArray(row.answers)
@@ -306,6 +406,7 @@ export function mapSubmissionRow(row: {
     leadWasExisting: row.lead_was_existing,
     status: row.status === 'partial' ? 'partial' : 'completed',
     lastPage: row.last_page,
+    tracking: mapTracking(row.tracking),
     createdAt: row.created_at,
   }
 }
@@ -358,6 +459,29 @@ export function getFormProblem(
   }
   if (settings.afterSubmit === 'redirect' && !isSafeRedirectUrl(settings.redirectUrl)) {
     return 'Enter the full web address to go to after sending, starting with https://.'
+  }
+  if (settings.closesAt && Number.isNaN(new Date(settings.closesAt).getTime())) {
+    return 'The time to close the form is not a real date and time.'
+  }
+  if (
+    settings.maxSubmissions !== null &&
+    !(
+      Number.isInteger(settings.maxSubmissions) &&
+      settings.maxSubmissions >= 1 &&
+      settings.maxSubmissions <= MAX_SUBMISSIONS_LIMIT
+    )
+  ) {
+    return `The limit on submissions must be a whole number from 1 to ${MAX_SUBMISSIONS_LIMIT}.`
+  }
+  if (settings.closedMessage.length > MAX_CLOSED_MESSAGE_LENGTH) {
+    return `The message for a closed form can have at most ${MAX_CLOSED_MESSAGE_LENGTH} characters.`
+  }
+  if (settings.notifyEmails.length > MAX_NOTIFY_EMAILS) {
+    return `You can email at most ${MAX_NOTIFY_EMAILS} people for new submissions.`
+  }
+  const badEmail = settings.notifyEmails.find((entry) => !isValidEmail(entry))
+  if (badEmail) {
+    return `"${badEmail}" is not a valid email address for new submission alerts.`
   }
   if (settings.allowMoreChildren && getChildFields(fields).length === 0) {
     return "Adding more children needs a field that fills the child's name, phone or age."
@@ -521,13 +645,20 @@ export function formatConversionRate(submissions: number, views: number) {
   return `${Math.min(100, Math.round((submissions / views) * 100))}%`
 }
 
-// The iframe grows to fit the form: the public page reports its height.
+// The iframe grows to fit the form: the public page reports its height. The
+// script also passes the website page's ?utm_ parameters on to the form, so a
+// campaign link to the page is still known when someone fills in the form.
 export function buildEmbedCode(url: string, formId: string, name: string) {
   const frameId = `mirai-form-${formId}`
   const title = name.replace(/"/g, '&quot;')
+  const script =
+    `(function(){var f=document.getElementById("${frameId}"),q=new URLSearchParams(location.search),u=new URL(f.src),c=0;` +
+    `["utm_source","utm_medium","utm_campaign","utm_content","fbclid","gclid"].forEach(function(k){if(q.get(k)){u.searchParams.set(k,q.get(k));c=1}});` +
+    `if(c){f.src=u.href}` +
+    `window.addEventListener("message",function(e){var d=e.data;if(d&&d.type==="mirai-form-height"&&d.formId==="${formId}"){f.style.height=d.height+"px"}})})()`
   return [
     `<iframe id="${frameId}" src="${url}" title="${title}" style="width:100%;min-height:480px;border:0"></iframe>`,
-    `<script>window.addEventListener("message",function(e){var d=e.data;if(d&&d.type==="mirai-form-height"&&d.formId==="${formId}"){document.getElementById("${frameId}").style.height=d.height+"px"}})</script>`,
+    `<script>${script}</script>`,
   ].join('\n')
 }
 
@@ -561,11 +692,22 @@ function csvCell(value: string) {
 
 export function buildSubmissionsCsv(submissions: FormSubmission[], formNameById: Map<string, string>) {
   const columns = getSubmissionColumns(submissions)
-  const header = ['Submitted', 'Form', 'Status', ...columns.map((column) => column.label)]
+  const header = [
+    'Submitted',
+    'Form',
+    'Status',
+    'Source',
+    'Medium',
+    'Campaign',
+    ...columns.map((column) => column.label),
+  ]
   const rows = submissions.map((submission) => [
     submission.createdAt,
     formNameById.get(submission.formId) ?? '',
     submission.status === 'partial' ? `Incomplete (page ${submission.lastPage ?? 1})` : 'Completed',
+    trafficSourceLabel(submission.tracking),
+    submission.tracking?.medium ?? '',
+    submission.tracking?.campaign ?? '',
     ...columns.map(
       (column) => submission.answers.find((answer) => answer.id === column.id)?.value ?? '',
     ),

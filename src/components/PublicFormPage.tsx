@@ -4,7 +4,13 @@ import { FormFieldInput } from './forms/FormFieldInput'
 import miraiLogo from '../assets/mirai-logo.png'
 import miraiSeal from '../assets/mirai-seal-logo.png'
 import mascotEggy from '../assets/mascot-eggy.png'
-import { fetchPublicForm, recordFormView, saveFormProgress, submitPublicForm } from '../lib/api'
+import {
+  fetchPublicForm,
+  notifyFormSubmission,
+  recordFormView,
+  saveFormProgress,
+  submitPublicForm,
+} from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import {
   computeRoute,
@@ -12,6 +18,7 @@ import {
   getNextStep,
   getPageFields,
 } from '../lib/formPages'
+import { readTracking } from '../lib/formInsights'
 import {
   MAX_CHILDREN,
   childAnswerKey,
@@ -122,6 +129,11 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
   const [history, setHistory] = useState<number[]>([])
   // Ties the progress saved at each Next to the final submit.
   const tokenRef = useRef(crypto.randomUUID())
+  // Where this visit came from (the link's ?utm_ parts and the page that sent
+  // them), read once and sent with the submission.
+  const trackingRef = useRef(
+    readTracking(window.location.search, document.referrer, window.location.hostname),
+  )
   const rootRef = useRef<HTMLDivElement>(null)
   const readyId = state.status === 'ready' ? state.form.id : null
   const embedded = window.parent !== window
@@ -320,9 +332,16 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
 
     setIsSubmitting(true)
     try {
-      await submitPublicForm(form.id, sent, honeypot, pages.length > 1 ? tokenRef.current : null)
+      await submitPublicForm(form.id, sent, honeypot, tokenRef.current, trackingRef.current)
       finish()
+      // The email alert is only a courtesy to the staff: it never holds the
+      // visitor up for long, nor shows them a failure.
+      const alerting = form.notify ? notifyFormSubmission(form.id, tokenRef.current).catch(() => {}) : null
       if (redirects) {
+        // Leaving the page would cancel the request, so give it a moment first.
+        if (alerting) {
+          await Promise.race([alerting, new Promise((resolve) => setTimeout(resolve, 2500))])
+        }
         window.location.assign(redirectUrl.trim())
       }
     } catch (error) {
@@ -423,7 +442,20 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
           )}
         </div>
       )}
-      {form && page && !outcome && (
+      {form && !outcome && form.closedReason && (
+        <div role="status" className="space-y-3 py-2 text-center">
+          <h1 className="font-heading text-2xl font-extrabold leading-tight text-slate-900">
+            {getFormTitle(form.name, form.settings)}
+          </h1>
+          <p className="text-sm text-slate-700">
+            {form.settings.closedMessage.trim() ||
+              (form.closedReason === 'full'
+                ? 'This form is full. Thank you for your interest!'
+                : 'This form is closed and is no longer accepting responses.')}
+          </p>
+        </div>
+      )}
+      {form && page && !outcome && !form.closedReason && (
         <form onSubmit={(event) => void handleSubmit(event)} noValidate className="space-y-5">
           <div>
             <h1 className="font-heading text-2xl font-extrabold leading-tight text-slate-900 sm:text-3xl">

@@ -412,3 +412,8 @@ enabled = true
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# The public form page calls this one without a login, so it is deployed without JWT
+# checking (the visitor's session token is what authorises it).
+[functions.notify-form-submission]
+verify_jwt = false

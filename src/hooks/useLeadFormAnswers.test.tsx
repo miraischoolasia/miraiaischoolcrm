@@ -18,6 +18,7 @@ const submission: LeadFormSubmission = {
   createdAt: '2026-10-01T00:00:00Z',
   answers: [],
   wasExisting: false,
+  tracking: null,
 }
 
 beforeEach(() => {

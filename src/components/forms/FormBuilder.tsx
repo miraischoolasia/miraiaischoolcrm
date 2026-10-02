@@ -12,6 +12,7 @@ import {
   UploadSimple,
   X,
 } from '@phosphor-icons/react'
+import { FormAlertSettings, FormAvailabilitySettings } from './FormAvailabilitySettings'
 import { FormFieldInput } from './FormFieldInput'
 import { PagePanel } from './PagePanel'
 import { useConfirm } from '../../hooks/useConfirm'
@@ -717,6 +718,8 @@ function FormSettingsPanel({
           </span>
         </span>
       </label>
+      <FormAvailabilitySettings settings={settings} onChange={onChange} />
+      <FormAlertSettings settings={settings} onChange={onChange} />
     </div>
   )
 }

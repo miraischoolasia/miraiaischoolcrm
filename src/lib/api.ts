@@ -21,6 +21,7 @@ import {
 import type {
   FormField,
   FormSettings,
+  FormTracking,
   LeadFormSubmission,
   LessonLogStudent,
   LessonLogStudentReview,
@@ -617,7 +618,7 @@ export async function fetchFormSubmissionsFromSupabase() {
 
   const { data, error } = await supabase
     .from('form_submissions')
-    .select('id, form_id, answers, lead_id, lead_was_existing, status, last_page, created_at')
+    .select('id, form_id, answers, lead_id, lead_was_existing, status, last_page, tracking, created_at')
     .order('created_at', { ascending: false })
     .limit(FORM_SUBMISSIONS_FETCH_LIMIT)
 
@@ -670,6 +671,9 @@ export async function submitPublicForm(
   // Ties this to the answers saved along the way, so they become one finished
   // submission instead of two.
   token: string | null = null,
+  // Where the visitor came from. Only sent when there is something to say, so
+  // a form still submits against a database that does not know it yet.
+  tracking: FormTracking | null = null,
 ) {
   if (!supabase) {
     throw new Error('Supabase is not configured.')
@@ -680,11 +684,23 @@ export async function submitPublicForm(
     p_answers: answers,
     p_honeypot: honeypot,
     p_token: token,
+    ...(tracking ? { p_tracking: tracking } : {}),
   })
 
   if (error) {
     throw error
   }
+}
+
+// Asks the notify-form-submission function to email the people the form lists
+// about this finished submission. The visitor never waits for it or sees a
+// failure: the submission is already saved.
+export async function notifyFormSubmission(formId: string, token: string) {
+  if (!supabase) {
+    return
+  }
+
+  await supabase.functions.invoke('notify-form-submission', { body: { formId, token } })
 }
 
 // Called each time the visitor presses Next. It is only a safety net, so a
@@ -782,7 +798,7 @@ export async function fetchLeadFormSubmissions(leadId: number): Promise<LeadForm
 
   const { data, error } = await supabase
     .from('form_submissions')
-    .select('id, form_id, answers, lead_was_existing, created_at')
+    .select('id, form_id, answers, lead_was_existing, tracking, created_at')
     .eq('lead_id', leadId)
     .eq('status', 'completed')
     .order('created_at', { ascending: false })
@@ -813,6 +829,7 @@ export async function fetchLeadFormSubmissions(leadId: number): Promise<LeadForm
       createdAt: submission.createdAt,
       answers: submission.answers,
       wasExisting: submission.leadWasExisting,
+      tracking: submission.tracking,
     }
   })
 }

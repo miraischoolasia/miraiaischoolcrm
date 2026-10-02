@@ -281,3 +281,180 @@ describe('FormsSection', () => {
     })
   })
 })
+
+describe('FormsSection open and close status', () => {
+  const settings = (patch: Partial<Form['settings']>) => ({ ...defaultFormSettings, ...patch })
+
+  it('shows Closed once the deadline has passed, and the time it closed', async () => {
+    api.fetchFormsFromSupabase.mockResolvedValue([
+      makeForm('f1', 'Event', { settings: settings({ closesAt: '2020-01-01T12:00:00.000Z' }) }),
+    ])
+    render(<FormsSection teacherMap={teachers} />)
+
+    const [row] = (await screen.findAllByRole('row')).slice(1)
+    expect(within(row).getByText('Closed')).toBeInTheDocument()
+    expect(within(row).getByText(/closed Jan 01, 2020/)).toBeInTheDocument()
+  })
+
+  it('shows Full when the places are taken, and how many are used', async () => {
+    api.fetchFormsFromSupabase.mockResolvedValue([
+      makeForm('f1', 'Event', { settings: settings({ maxSubmissions: 2 }) }),
+    ])
+    render(<FormsSection teacherMap={teachers} />)
+
+    const [row] = (await screen.findAllByRole('row')).slice(1)
+    expect(within(row).getByText('Full')).toBeInTheDocument()
+    expect(within(row).getByText('2/2 places')).toBeInTheDocument()
+  })
+
+  it('stays Published with places left and a deadline ahead', async () => {
+    api.fetchFormsFromSupabase.mockResolvedValue([
+      makeForm('f1', 'Event', {
+        settings: settings({ maxSubmissions: 30, closesAt: '2099-01-01T00:00:00.000Z' }),
+      }),
+    ])
+    render(<FormsSection teacherMap={teachers} />)
+
+    const [row] = (await screen.findAllByRole('row')).slice(1)
+    expect(within(row).getByText('Published')).toBeInTheDocument()
+    expect(within(row).getByText(/2\/30 places · closes /)).toBeInTheDocument()
+  })
+
+  it('keeps showing Draft for an unpublished form', async () => {
+    api.fetchFormsFromSupabase.mockResolvedValue([
+      makeForm('f1', 'Event', {
+        isPublished: false,
+        settings: settings({ closesAt: '2020-01-01T00:00:00.000Z' }),
+      }),
+    ])
+    render(<FormsSection teacherMap={teachers} />)
+
+    const [row] = (await screen.findAllByRole('row')).slice(1)
+    expect(within(row).getByText('Draft')).toBeInTheDocument()
+  })
+})
+
+describe('FormsSection insights', () => {
+  const tracked = (id: number, formId: string, tracking: object | null) =>
+    mapSubmissionRow({
+      id,
+      form_id: formId,
+      answers: [{ id: 'a', label: "Parent's name", value: `Parent ${id}` }],
+      lead_id: id,
+      lead_was_existing: false,
+      status: 'completed',
+      last_page: null,
+      tracking,
+      created_at: '2026-10-01T03:00:00Z',
+    })
+
+  async function openSubmissions() {
+    render(<FormsSection teacherMap={teachers} />)
+    await screen.findByText('Contact Us')
+    await userEvent.click(screen.getByRole('tab', { name: 'Submissions' }))
+  }
+
+  it('shows where submissions came from for the form that is picked', async () => {
+    api.fetchFormSubmissionsFromSupabase.mockResolvedValue([
+      tracked(1, 'f1', { source: 'facebook', medium: 'cpc', campaign: 'spring' }),
+      tracked(2, 'f1', { source: 'facebook', campaign: 'spring' }),
+      tracked(3, 'f1', null),
+    ])
+    await openSubmissions()
+
+    // Not for all forms at once.
+    expect(screen.queryByRole('region', { name: /Insights/ })).not.toBeInTheDocument()
+
+    await userEvent.selectOptions(screen.getByLabelText('Filter by form'), 'Contact Us')
+    const insights = await screen.findByRole('region', { name: 'Insights for Contact Us' })
+    expect(within(insights).getByText('Where submissions came from')).toBeInTheDocument()
+    expect(within(insights).getByText('facebook')).toBeInTheDocument()
+    expect(within(insights).getByText('· spring')).toBeInTheDocument()
+    expect(within(insights).getByText('2 (67%)')).toBeInTheDocument()
+    expect(within(insights).getByText('Direct')).toBeInTheDocument()
+    // One page: no funnel.
+    expect(within(insights).queryByText('Where people stop')).not.toBeInTheDocument()
+  })
+
+  it('has a Source column on every row', async () => {
+    api.fetchFormSubmissionsFromSupabase.mockResolvedValue([
+      tracked(1, 'f1', { source: 'facebook' }),
+      tracked(2, 'f1', null),
+    ])
+    await openSubmissions()
+
+    const rows = bodyRows()
+    expect(within(rows[0]).getByText('facebook')).toBeInTheDocument()
+    expect(within(rows[1]).getByText('Direct')).toBeInTheDocument()
+  })
+
+  it('says where people stop on a form with several pages', async () => {
+    const [first, second] = createStarterFields().map((field, index) => ({
+      ...field,
+      pageId: index < 2 ? 'p1' : 'p2',
+    }))
+    const pageFields = [first, second, ...createStarterFields().slice(2).map((f) => ({ ...f, pageId: 'p2' }))]
+    api.fetchFormsFromSupabase.mockResolvedValue([
+      makeForm('f1', 'Contact Us', {
+        viewCount: 5,
+        fields: pageFields,
+        settings: {
+          ...defaultFormSettings,
+          pages: [
+            { id: 'p1', title: 'You', description: '', rules: [] },
+            { id: 'p2', title: 'Your child', description: '', rules: [] },
+          ],
+        },
+      }),
+    ])
+    api.fetchFormSubmissionsFromSupabase.mockResolvedValue([
+      tracked(1, 'f1', null),
+      mapSubmissionRow({
+        id: 2,
+        form_id: 'f1',
+        answers: [{ id: first.id, label: first.label, value: 'Mrs Lim' }],
+        lead_id: null,
+        lead_was_existing: false,
+        status: 'partial',
+        last_page: 2,
+        created_at: '2026-10-01T03:00:00Z',
+      }),
+    ])
+    await openSubmissions()
+    await userEvent.selectOptions(screen.getByLabelText('Filter by form'), 'Contact Us')
+
+    const insights = await screen.findByRole('region', { name: 'Insights for Contact Us' })
+    expect(within(insights).getByText('Where people stop')).toBeInTheDocument()
+    // 5 views: 2 got past page 1's start (one finished, one stopped on page 2), 3 left at once.
+    expect(within(insights).getByText('Page 1: You')).toBeInTheDocument()
+    const lines = within(insights)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent)
+    expect(lines[0]).toContain('Page 1: You5 reached · 3 stopped here')
+    expect(lines[1]).toContain('Page 2: Your child2 reached · 1 stopped here')
+  })
+})
+
+describe('FormsSection a submission that came from a campaign', () => {
+  it('says so when the submission is opened', async () => {
+    api.fetchFormSubmissionsFromSupabase.mockResolvedValue([
+      mapSubmissionRow({
+        id: 1,
+        form_id: 'f1',
+        answers: [{ id: 'a', label: "Parent's name", value: 'Mrs Lim' }],
+        lead_id: 1,
+        lead_was_existing: false,
+        status: 'completed',
+        last_page: null,
+        tracking: { source: 'facebook', medium: 'cpc', campaign: 'spring', referrer: 'l.facebook.com' },
+        created_at: '2026-10-01T03:00:00Z',
+      }),
+    ])
+    render(<FormsSection teacherMap={teachers} />)
+    await screen.findByText('Contact Us')
+    await userEvent.click(screen.getByRole('tab', { name: 'Submissions' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'View' }))
+
+    expect(screen.getByText(/Came from: facebook \/ cpc \/ spring \(via l\.facebook\.com\)/)).toBeInTheDocument()
+  })
+})

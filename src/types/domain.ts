@@ -696,6 +696,13 @@ export type FormSettings = {
   allowMoreChildren: boolean
   // The form's pages, in order. A form always has at least one.
   pages: FormPage[]
+  // Closing the form: after this time (ISO, empty = never), and/or once this
+  // many submissions are finished (null = no limit). What visitors see then.
+  closesAt: string
+  maxSubmissions: number | null
+  closedMessage: string
+  // People emailed for each new submission. Only admins ever see this.
+  notifyEmails: string[]
 }
 
 export type Form = {
@@ -718,6 +725,16 @@ export type FormAnswer = {
   value: string
 }
 
+// Where a visitor came from: ?utm_source=... in the link, and the website that
+// sent them. Each is empty when unknown.
+export type FormTracking = {
+  source: string
+  medium: string
+  campaign: string
+  content: string
+  referrer: string
+}
+
 export type FormSubmission = {
   id: number
   formId: string
@@ -729,11 +746,19 @@ export type FormSubmission = {
   status: 'partial' | 'completed'
   // For a partial one: the page the visitor had got to (1 = first).
   lastPage: number | null
+  tracking: FormTracking | null
   createdAt: string
 }
 
+export type FormClosedReason = 'deadline' | 'full'
+
 // The slice of a form the public page needs (see get_public_form).
-export type PublicForm = Pick<Form, 'id' | 'name' | 'fields' | 'settings'>
+export type PublicForm = Pick<Form, 'id' | 'name' | 'fields' | 'settings'> & {
+  // Alerts are on, so the page asks for an email to be sent after submitting.
+  notify: boolean
+  // Why the form is not taking answers right now; null = open.
+  closedReason: FormClosedReason | null
+}
 
 // One form submission linked to a lead, as the lead's "Form answers" shows it.
 export type LeadFormSubmission = {
@@ -744,4 +769,5 @@ export type LeadFormSubmission = {
   answers: FormAnswer[]
   // The lead already existed (same phone), so this submission was linked to it.
   wasExisting: boolean
+  tracking: FormTracking | null
 }

@@ -1027,6 +1027,8 @@ export type Database = {
           status: string
           session_token: string | null
           last_page: number | null
+          tracking: Json | null
+          notified_at: string | null
           created_at: string
         }
         Insert: {
@@ -1038,6 +1040,8 @@ export type Database = {
           status?: string
           session_token?: string | null
           last_page?: number | null
+          tracking?: Json | null
+          notified_at?: string | null
           created_at?: string
         }
         Update: {
@@ -1049,6 +1053,8 @@ export type Database = {
           status?: string
           session_token?: string | null
           last_page?: number | null
+          tracking?: Json | null
+          notified_at?: string | null
           created_at?: string
         }
         Relationships: []
@@ -1341,6 +1347,7 @@ export type Database = {
           p_answers: Json
           p_honeypot?: string
           p_token?: string | null
+          p_tracking?: Json | null
         }
         Returns: Json
       }

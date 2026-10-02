@@ -10,18 +10,24 @@ import {
 } from '../lib/forms'
 import type { PublicForm } from '../types/domain'
 
+// Most forms in these tests are open and send no alerts, so those two parts
+// are optional here.
+type FormFixture = Omit<PublicForm, 'notify' | 'closedReason'> &
+  Partial<Pick<PublicForm, 'notify' | 'closedReason'>>
+
 const api = vi.hoisted(() => ({
   fetchPublicForm: vi.fn(),
   submitPublicForm: vi.fn(),
   recordFormView: vi.fn(),
   saveFormProgress: vi.fn(),
+  notifyFormSubmission: vi.fn(),
 }))
 
 vi.mock('../lib/api', () => api)
 
 const phone = { ...createField('phone'), id: 'p', label: 'Phone', required: true }
 const days = { ...createField('checkbox'), id: 'd', label: 'Days', options: ['Mon', 'Tue'] }
-const form: PublicForm = {
+const form: FormFixture = {
   id: 'form-1',
   name: 'Contact Us',
   fields: [phone, days],
@@ -36,6 +42,7 @@ beforeEach(() => {
   api.submitPublicForm.mockReset().mockResolvedValue(undefined)
   api.recordFormView.mockReset().mockResolvedValue(undefined)
   api.saveFormProgress.mockReset().mockResolvedValue(undefined)
+  api.notifyFormSubmission.mockReset().mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -88,6 +95,8 @@ describe('PublicFormPage', () => {
         'form-1',
         { p: '012-345 6789', d: ['Mon', 'Tue'] },
         '',
+        // Every submission carries its session token now, even on a one-page form.
+        expect.any(String),
         null,
       ),
     )
@@ -165,7 +174,7 @@ describe('PublicFormPage with a poster', () => {
     await userEvent.type(screen.getByLabelText(/Phone/), '012-345 6789')
     await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
     await waitFor(() =>
-      expect(api.submitPublicForm).toHaveBeenCalledWith('form-1', { p: '012-345 6789' }, '', null),
+      expect(api.submitPublicForm).toHaveBeenCalledWith('form-1', { p: '012-345 6789' }, '', expect.any(String), null),
     )
   })
 
@@ -383,7 +392,7 @@ describe('PublicFormPage inside another website', () => {
 describe('PublicFormPage with several children', () => {
   const starter = createStarterFields()
   const [parent, child, parentPhone, , age] = starter
-  const multi: PublicForm = {
+  const multi: FormFixture = {
     id: 'form-2',
     name: 'Trial',
     fields: [parent, child, parentPhone, age],
@@ -489,7 +498,7 @@ describe('PublicFormPage with several pages', () => {
     value: 'Robotics',
     action: { type: 'page' as const, pageId: 'p3' },
   }
-  const survey: PublicForm = {
+  const survey: FormFixture = {
     id: 'form-3',
     name: 'Survey',
     fields: [name, goal, level, note],
@@ -709,5 +718,132 @@ describe('PublicFormPage heading', () => {
     const title = await screen.findByRole('heading', { level: 1 })
     expect(title.previousElementSibling).toBeNull()
     expect(screen.queryByText('Mirai AI School', { selector: 'span' })).not.toBeInTheDocument()
+  })
+})
+
+describe('PublicFormPage when the form is closed', () => {
+  it('shows the closed message instead of the form after the deadline', async () => {
+    api.fetchPublicForm.mockResolvedValue({ ...form, closedReason: 'deadline' })
+    render(<PublicFormPage formKey="form-1" />)
+
+    expect(await screen.findByText(/closed and is no longer accepting responses/)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Contact Us' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Submit' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Phone/)).not.toBeInTheDocument()
+  })
+
+  it('says the form is full when every place is taken', async () => {
+    api.fetchPublicForm.mockResolvedValue({ ...form, closedReason: 'full' })
+    render(<PublicFormPage formKey="form-1" />)
+
+    expect(await screen.findByText(/This form is full/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Submit' })).not.toBeInTheDocument()
+  })
+
+  it('uses the message the admin wrote', async () => {
+    api.fetchPublicForm.mockResolvedValue({
+      ...form,
+      closedReason: 'full',
+      settings: { ...form.settings, closedMessage: 'All seats gone. See you at the next class!' },
+    })
+    render(<PublicFormPage formKey="form-1" />)
+
+    expect(await screen.findByText('All seats gone. See you at the next class!')).toBeInTheDocument()
+  })
+
+  it('shows the server message when the form closed while the visitor was filling it in', async () => {
+    api.submitPublicForm.mockRejectedValue({ message: 'This form is no longer accepting responses.' })
+    render(<PublicFormPage formKey="form-1" />)
+
+    await userEvent.type(await screen.findByLabelText(/Phone/), '012-345 6789')
+    await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('no longer accepting responses')
+  })
+})
+
+describe('PublicFormPage tracking and alerts', () => {
+  afterEach(() => {
+    window.history.pushState({}, '', '/')
+  })
+
+  async function fillAndSubmit() {
+    await userEvent.type(await screen.findByLabelText(/Phone/), '012-345 6789')
+    await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
+  }
+
+  it('sends where the visitor came from with the submission', async () => {
+    window.history.pushState({}, '', '/?form=form-1&utm_source=facebook&utm_campaign=spring')
+    render(<PublicFormPage formKey="form-1" />)
+    await fillAndSubmit()
+
+    await waitFor(() => expect(api.submitPublicForm).toHaveBeenCalledTimes(1))
+    expect(api.submitPublicForm.mock.calls[0][4]).toEqual({
+      source: 'facebook',
+      medium: '',
+      campaign: 'spring',
+      content: '',
+      referrer: '',
+    })
+  })
+
+  it('sends nothing about the source when the link has none', async () => {
+    render(<PublicFormPage formKey="form-1" />)
+    await fillAndSubmit()
+
+    await waitFor(() => expect(api.submitPublicForm).toHaveBeenCalledTimes(1))
+    expect(api.submitPublicForm.mock.calls[0][4]).toBeNull()
+  })
+
+  it('asks for the alert email with the same session token once the form is saved', async () => {
+    api.fetchPublicForm.mockResolvedValue({ ...form, notify: true })
+    render(<PublicFormPage formKey="form-1" />)
+    await fillAndSubmit()
+
+    await waitFor(() => expect(api.notifyFormSubmission).toHaveBeenCalledTimes(1))
+    const token = api.submitPublicForm.mock.calls[0][3]
+    expect(token).toEqual(expect.any(String))
+    expect(api.notifyFormSubmission).toHaveBeenCalledWith('form-1', token)
+    expect(await screen.findByText('Got it, thanks!')).toBeInTheDocument()
+  })
+
+  it('does not ask for an email when alerts are off', async () => {
+    render(<PublicFormPage formKey="form-1" />)
+    await fillAndSubmit()
+    expect(await screen.findByText('Got it, thanks!')).toBeInTheDocument()
+    expect(api.notifyFormSubmission).not.toHaveBeenCalled()
+  })
+
+  it('never shows the visitor a problem with the alert email', async () => {
+    api.fetchPublicForm.mockResolvedValue({ ...form, notify: true })
+    api.notifyFormSubmission.mockRejectedValue(new Error('email service down'))
+    render(<PublicFormPage formKey="form-1" />)
+    await fillAndSubmit()
+
+    expect(await screen.findByText('Got it, thanks!')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('lets the alert request go out before taking the visitor to the other page', async () => {
+    const assign = vi.fn()
+    Object.defineProperty(window, 'location', {
+      value: { ...originalLocation, assign },
+      writable: true,
+    })
+    let release: () => void = () => {}
+    api.notifyFormSubmission.mockReturnValue(new Promise<void>((resolve) => (release = resolve)))
+    api.fetchPublicForm.mockResolvedValue({
+      ...form,
+      notify: true,
+      settings: { ...form.settings, afterSubmit: 'redirect', redirectUrl: 'https://mirai.my/thanks' },
+    })
+    render(<PublicFormPage formKey="form-1" />)
+    await fillAndSubmit()
+
+    await waitFor(() => expect(api.notifyFormSubmission).toHaveBeenCalledTimes(1))
+    expect(assign).not.toHaveBeenCalled()
+
+    release()
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://mirai.my/thanks'))
   })
 })

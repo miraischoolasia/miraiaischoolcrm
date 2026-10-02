@@ -156,3 +156,20 @@ describe('LeadsSection', () => {
     expect(screen.queryByRole('button', { name: 'View form answers' })).not.toBeInTheDocument()
   })
 })
+
+describe('LeadsSection WhatsApp link', () => {
+  it('opens a WhatsApp chat with the lead from the phone number', () => {
+    renderSection([{ ...makeLead(1, null), phone: '012-345 6789', fullName: 'Mrs Lim' }])
+
+    const link = within(screen.getByRole('table')).getByRole('link', { name: 'WhatsApp Mrs Lim' })
+    expect(link).toHaveAttribute('href', 'https://wa.me/60123456789')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
+  })
+
+  it('is left out when the lead has no usable phone number', () => {
+    renderSection([{ ...makeLead(1, null), phone: null }, { ...makeLead(2, null), phone: '12' }])
+
+    expect(screen.queryByRole('link', { name: /WhatsApp/ })).not.toBeInTheDocument()
+  })
+})

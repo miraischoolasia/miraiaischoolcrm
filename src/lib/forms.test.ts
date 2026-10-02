@@ -23,7 +23,13 @@ import {
   getFormProblem,
   getLeadMapOptionsFor,
   insertField,
+  isClosedByDeadline,
+  isValidEmail,
+  isoToLocalInput,
+  localInputToIso,
+  mapPublicForm,
   mapSubmissionRow,
+  splitEmailList,
   moveField,
   normalizeFields,
   normalizeSettings,
@@ -188,11 +194,11 @@ describe('exporting', () => {
     const lines = buildSubmissionsCsv(submissions, new Map([['f1', 'Contact']]))
       .trim()
       .split('\r\n')
-    expect(lines[0]).toBe('Submitted,Form,Status,Name,Phone')
+    expect(lines[0]).toBe('Submitted,Form,Status,Source,Medium,Campaign,Name,Phone')
     expect(lines[1]).toBe(
-      '2026-10-01T00:00:00Z,Contact,Completed,"\'=HYPERLINK(""x"")",+60 12-345',
+      '2026-10-01T00:00:00Z,Contact,Completed,Direct,,,"\'=HYPERLINK(""x"")",+60 12-345',
     )
-    expect(lines[2]).toBe('2026-10-02T00:00:00Z,Contact,Completed,"Lim, Ken",')
+    expect(lines[2]).toBe('2026-10-02T00:00:00Z,Contact,Completed,Direct,,,"Lim, Ken",')
   })
 
   it('builds an iframe that listens for the form height', () => {
@@ -432,5 +438,154 @@ describe('form title', () => {
     expect(normalizeSettings({ title: 'Free AI Class' }).title).toBe('Free AI Class')
     expect(normalizeSettings({}).title).toBe('')
     expect(normalizeSettings({ title: 42 }).title).toBe('')
+  })
+})
+
+describe('closing a form and alerts', () => {
+  const fields = createStarterFields()
+
+  it('reads the saved settings and drops anything that is not valid', () => {
+    expect(
+      normalizeSettings({
+        closesAt: '2026-10-20T04:00:00Z',
+        maxSubmissions: 30,
+        closedMessage: 'Full house!',
+        notifyEmails: ['Boss@Example.com', 'not an email', 'boss@example.com', 5],
+      }),
+    ).toMatchObject({
+      closesAt: '2026-10-20T04:00:00.000Z',
+      maxSubmissions: 30,
+      closedMessage: 'Full house!',
+      // One valid address, once.
+      notifyEmails: ['Boss@Example.com'],
+    })
+
+    expect(
+      normalizeSettings({ closesAt: 'soon', maxSubmissions: 0, notifyEmails: 'a@b.co' }),
+    ).toMatchObject({ closesAt: '', maxSubmissions: null, notifyEmails: [] })
+    expect(normalizeSettings({ maxSubmissions: 2.5 }).maxSubmissions).toBeNull()
+    expect(normalizeSettings(undefined)).toMatchObject({
+      closesAt: '',
+      maxSubmissions: null,
+      closedMessage: '',
+      notifyEmails: [],
+    })
+  })
+
+  it('keeps at most five alert addresses', () => {
+    const many = Array.from({ length: 8 }, (_, index) => `p${index}@example.com`)
+    expect(normalizeSettings({ notifyEmails: many }).notifyEmails).toHaveLength(5)
+  })
+
+  it('tells the admin what is wrong with the closing and alert settings', () => {
+    const settings = defaultFormSettings
+    expect(getFormProblem('F', fields, { ...settings, maxSubmissions: 0 })).toMatch(/limit on submissions/)
+    expect(getFormProblem('F', fields, { ...settings, maxSubmissions: 1.5 })).toMatch(/limit on submissions/)
+    expect(getFormProblem('F', fields, { ...settings, closesAt: 'nonsense' })).toMatch(/close the form/)
+    expect(getFormProblem('F', fields, { ...settings, notifyEmails: ['a@b.co', 'oops'] })).toMatch(
+      /"oops" is not a valid email/,
+    )
+    expect(
+      getFormProblem('F', fields, {
+        ...settings,
+        notifyEmails: Array.from({ length: 6 }, (_, index) => `p${index}@example.com`),
+      }),
+    ).toMatch(/at most 5/)
+    expect(
+      getFormProblem('F', fields, {
+        ...settings,
+        closesAt: '2030-01-01T00:00:00.000Z',
+        maxSubmissions: 30,
+        notifyEmails: ['a@b.co'],
+      }),
+    ).toBeNull()
+  })
+
+  it('splits a typed list of emails and keeps the wrong ones so they can be reported', () => {
+    expect(splitEmailList('a@b.co, c@d.co;  e@f.co\ng@h.co, a@b.co')).toEqual([
+      'a@b.co',
+      'c@d.co',
+      'e@f.co',
+      'g@h.co',
+    ])
+    expect(splitEmailList('a@b.co, oops')).toEqual(['a@b.co', 'oops'])
+    expect(splitEmailList('  ')).toEqual([])
+    expect(isValidEmail(' a@b.co ')).toBe(true)
+    expect(isValidEmail('a@b')).toBe(false)
+  })
+
+  it('moves a closing time between the date box and one exact moment', () => {
+    // A time typed in the admin's own zone comes back unchanged.
+    const iso = localInputToIso('2026-10-20T18:30')
+    expect(new Date(iso).getHours()).toBe(18)
+    expect(isoToLocalInput(iso)).toBe('2026-10-20T18:30')
+    expect(localInputToIso('')).toBe('')
+    expect(isoToLocalInput('')).toBe('')
+    expect(isoToLocalInput('garbage')).toBe('')
+  })
+
+  it('knows when the deadline has passed', () => {
+    const now = Date.parse('2026-10-20T00:00:00Z')
+    expect(isClosedByDeadline({ closesAt: '2026-10-19T00:00:00Z' }, now)).toBe(true)
+    expect(isClosedByDeadline({ closesAt: '2026-10-20T00:00:00Z' }, now)).toBe(true)
+    expect(isClosedByDeadline({ closesAt: '2026-10-21T00:00:00Z' }, now)).toBe(false)
+    expect(isClosedByDeadline({ closesAt: '' }, now)).toBe(false)
+  })
+
+  it('reads why the public page is closed and whether alerts are on', () => {
+    const base = { id: 'f1', name: 'F', fields: [], settings: {} }
+    expect(mapPublicForm({ ...base, notify: true, closedReason: 'full' })).toMatchObject({
+      notify: true,
+      closedReason: 'full',
+    })
+    expect(mapPublicForm({ ...base, closedReason: 'deadline' })?.closedReason).toBe('deadline')
+    expect(mapPublicForm({ ...base, closedReason: 'whatever' })).toMatchObject({
+      notify: false,
+      closedReason: null,
+    })
+  })
+})
+
+describe('where a submission came from', () => {
+  const row = {
+    id: 1,
+    form_id: 'f1',
+    answers: [],
+    lead_id: null,
+    lead_was_existing: false,
+    status: 'completed',
+    last_page: null,
+    created_at: '2026-10-01T00:00:00Z',
+  }
+
+  it('reads the saved tracking, and nothing when it is empty or missing', () => {
+    expect(
+      mapSubmissionRow({ ...row, tracking: { source: 'facebook', campaign: 'spring' } }).tracking,
+    ).toEqual({ source: 'facebook', medium: '', campaign: 'spring', content: '', referrer: '' })
+    expect(mapSubmissionRow({ ...row, tracking: {} }).tracking).toBeNull()
+    expect(mapSubmissionRow({ ...row, tracking: null }).tracking).toBeNull()
+    expect(mapSubmissionRow(row).tracking).toBeNull()
+  })
+
+  it('goes into the export as source, medium and campaign', () => {
+    const submission = mapSubmissionRow({
+      ...row,
+      tracking: { source: 'facebook', medium: 'cpc', campaign: 'spring' },
+    })
+    const lines = buildSubmissionsCsv([submission], new Map([['f1', 'Contact']]))
+      .trim()
+      .split('\r\n')
+    expect(lines[1]).toBe('2026-10-01T00:00:00Z,Contact,Completed,facebook,cpc,spring')
+  })
+
+  it('has the embed code hand the website page campaign parts on to the form', () => {
+    const code = buildEmbedCode('https://crm.test/?form=abc', 'abc', 'Hi')
+    expect(code).toContain('utm_source')
+    expect(code).toContain('utm_campaign')
+    expect(code).toContain('f.src=u.href')
+    expect(code).toContain('mirai-form-height')
+    // Still one iframe followed by one script.
+    expect(code.match(/<iframe/g)).toHaveLength(1)
+    expect(code.match(/<script>/g)).toHaveLength(1)
   })
 })

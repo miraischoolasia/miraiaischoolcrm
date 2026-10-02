@@ -6,6 +6,7 @@ import { SummaryBar } from '../SummaryBar'
 import { LeadTrendChart } from '../LeadTrendChart'
 import { LeadKanbanBoard } from '../LeadKanbanBoard'
 import { FormAnswersChip } from '../FormAnswersChip'
+import { WhatsAppLink } from '../WhatsAppLink'
 import mascotGordo from '../../assets/mascot-gordo.png'
 import {
   ArrowRight,
@@ -513,7 +514,10 @@ export function LeadsSection({
                   <dl className="space-y-1 rounded-xl bg-slate-50 p-3 text-sm">
                     <div className="flex justify-between gap-3">
                       <dt className="text-xs font-medium text-slate-500">Phone</dt>
-                      <dd className="text-slate-700">{lead.phone || '-'}</dd>
+                      <dd className="inline-flex items-center gap-1 text-slate-700">
+                        {lead.phone || '-'}
+                        <WhatsAppLink phone={lead.phone} name={lead.fullName} />
+                      </dd>
                     </div>
                     <div className="flex justify-between gap-3">
                       <dt className="text-xs font-medium text-slate-500">Children</dt>
@@ -615,7 +619,10 @@ export function LeadsSection({
                         {formatDate(lead.addedDate)}
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
-                        {lead.phone || '-'}
+                        <span className="inline-flex items-center gap-1">
+                          {lead.phone || '-'}
+                          <WhatsAppLink phone={lead.phone} name={lead.fullName} />
+                        </span>
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
                         {formatChildren(lead.children)}

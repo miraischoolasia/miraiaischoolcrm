@@ -609,3 +609,95 @@ describe('FormBuilder pages and logic', () => {
     })
   })
 })
+
+describe('FormBuilder open, close and alert settings', () => {
+  async function openFormSettings() {
+    await userEvent.click(screen.getByRole('button', { name: 'Form settings' }))
+  }
+
+  it('saves a deadline, a limit on submissions, the closed message and alert emails', async () => {
+    const { onSave } = renderBuilder()
+    await openFormSettings()
+
+    fireEvent.change(screen.getByLabelText('Stop accepting answers on'), {
+      target: { value: '2030-10-20T18:30' },
+    })
+    fireEvent.change(screen.getByLabelText(/Stop after this many submissions/), {
+      target: { value: '30' },
+    })
+    await userEvent.type(screen.getByLabelText('Message when the form is closed'), 'Seats are gone.')
+    await userEvent.type(
+      screen.getByLabelText('Email these people'),
+      'boss@example.com, Teammate@Example.com',
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onSave).toHaveBeenCalledTimes(1)
+    const { settings } = onSave.mock.calls[0][0]
+    expect(settings).toMatchObject({
+      maxSubmissions: 30,
+      closedMessage: 'Seats are gone.',
+      notifyEmails: ['boss@example.com', 'Teammate@Example.com'],
+    })
+    // One exact moment, that shows as the same time in the box.
+    expect(new Date(settings.closesAt).getHours()).toBe(18)
+    expect(new Date(settings.closesAt).getMinutes()).toBe(30)
+  })
+
+  it('shows the saved values when the form is opened again', async () => {
+    renderBuilder({
+      settings: {
+        ...defaultFormSettings,
+        closesAt: new Date(2030, 9, 20, 18, 30).toISOString(),
+        maxSubmissions: 12,
+        closedMessage: 'Closed!',
+        notifyEmails: ['a@b.co', 'c@d.co'],
+      },
+    })
+    await openFormSettings()
+
+    expect(screen.getByLabelText('Stop accepting answers on')).toHaveValue('2030-10-20T18:30')
+    expect(screen.getByLabelText(/Stop after this many submissions/)).toHaveValue(12)
+    expect(screen.getByLabelText('Message when the form is closed')).toHaveValue('Closed!')
+    expect(screen.getByLabelText('Email these people')).toHaveValue('a@b.co, c@d.co')
+  })
+
+  it('clears the deadline', async () => {
+    const { onSave } = renderBuilder({
+      settings: { ...defaultFormSettings, closesAt: new Date(2030, 9, 20, 18, 30).toISOString() },
+    })
+    await openFormSettings()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear the date' }))
+    expect(screen.getByLabelText('Stop accepting answers on')).toHaveValue('')
+    expect(screen.queryByRole('button', { name: 'Clear the date' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSave.mock.calls[0][0].settings.closesAt).toBe('')
+  })
+
+  it('warns when the chosen time has already passed', async () => {
+    renderBuilder({ settings: { ...defaultFormSettings, closesAt: '2020-01-01T00:00:00.000Z' } })
+    await openFormSettings()
+
+    expect(screen.getByRole('status')).toHaveTextContent('already passed')
+  })
+
+  it('will not save a wrong alert email or a limit that is not a whole number', async () => {
+    const { onSave } = renderBuilder()
+    await openFormSettings()
+
+    await userEvent.type(screen.getByLabelText('Email these people'), 'boss@example.com, oops')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('"oops" is not a valid email')
+    expect(onSave).not.toHaveBeenCalled()
+
+    await userEvent.clear(screen.getByLabelText('Email these people'))
+    fireEvent.change(screen.getByLabelText(/Stop after this many submissions/), {
+      target: { value: '2.5' },
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('whole number')
+    expect(onSave).not.toHaveBeenCalled()
+  })
+})

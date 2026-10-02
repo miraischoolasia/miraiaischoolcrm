@@ -38,6 +38,7 @@ const submissions: LeadFormSubmission[] = [
     formName: 'Trial Class',
     createdAt: '2026-10-02T03:00:00Z',
     wasExisting: true,
+    tracking: null,
     answers: [
       { id: 'goal', label: 'Goal', value: 'Robotics' },
       { id: 'days', label: 'Days', value: 'Sat, Sun' },
@@ -49,6 +50,7 @@ const submissions: LeadFormSubmission[] = [
     formName: 'Trial Class',
     createdAt: '2026-10-01T03:00:00Z',
     wasExisting: false,
+    tracking: null,
     answers: [{ id: 'goal', label: 'Goal', value: 'Coding' }],
   },
 ]
@@ -124,5 +126,32 @@ describe('LeadModal form answers', () => {
     renderModal({ formSubmissions: submissions, focusFormAnswers: false })
 
     expect(scrollIntoView).not.toHaveBeenCalled()
+  })
+})
+
+describe('LeadModal form answers: where it came from and WhatsApp', () => {
+  it('says which campaign a submission came from', () => {
+    renderModal({
+      formSubmissions: [
+        {
+          ...submissions[0],
+          tracking: { source: 'facebook', medium: 'cpc', campaign: 'spring', content: '', referrer: '' },
+        },
+        submissions[1],
+      ],
+    })
+
+    const articles = within(screen.getByRole('region', { name: 'Form answers' })).getAllByRole('article')
+    expect(within(articles[0]).getByText('Came from facebook · spring')).toBeInTheDocument()
+    expect(within(articles[1]).queryByText(/Came from/)).not.toBeInTheDocument()
+  })
+
+  it('has a WhatsApp link beside the phone number', () => {
+    renderModal({ formSubmissions: [] })
+
+    expect(screen.getByRole('link', { name: 'WhatsApp Mrs Lim' })).toHaveAttribute(
+      'href',
+      'https://wa.me/60123456789',
+    )
   })
 })

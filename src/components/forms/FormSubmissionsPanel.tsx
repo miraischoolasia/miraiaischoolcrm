@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { CaretLeft, CaretRight, DownloadSimple, MagnifyingGlass, Trash, X } from '@phosphor-icons/react'
+import { FormInsights } from './FormInsights'
 import { ModalShell } from '../ModalShell'
+import { trafficSourceLabel } from '../../lib/formInsights'
 import {
   buildSubmissionsCsv,
   formatDateTime,
@@ -65,6 +67,11 @@ export function FormSubmissionsPanel({
   const pageStart = (currentPage - 1) * SUBMISSIONS_PAGE_SIZE
   const paged = filtered.slice(pageStart, pageStart + SUBMISSIONS_PAGE_SIZE)
   const open = submissions.find((submission) => submission.id === openId) ?? null
+  const selectedForm = forms.find((form) => form.id === formFilter) ?? null
+  const selectedFormSubmissions = useMemo(
+    () => (selectedForm ? submissions.filter((submission) => submission.formId === selectedForm.id) : []),
+    [submissions, selectedForm],
+  )
 
   // One form picked: a column per question. Otherwise a short summary.
   const columns = useMemo(
@@ -139,6 +146,8 @@ export function FormSubmissionsPanel({
         </button>
       </div>
 
+      {selectedForm && <FormInsights form={selectedForm} submissions={selectedFormSubmissions} />}
+
       {filtered.length === 0 ? (
         <p className="px-6 py-12 text-center text-sm text-slate-500">
           {submissions.length === 0
@@ -163,6 +172,7 @@ export function FormSubmissionsPanel({
                     </th>
                   ))
                 )}
+                <th className="px-6 py-4">Source</th>
                 <th className="px-6 py-4">Lead</th>
                 <th className="px-6 py-4 text-right">
                   <span className="sr-only">Actions</span>
@@ -191,6 +201,9 @@ export function FormSubmissionsPanel({
                       </td>
                     ))
                   )}
+                  <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-600">
+                    {submission.status === 'partial' ? '-' : trafficSourceLabel(submission.tracking)}
+                  </td>
                   <td className="px-6 py-4 text-sm text-slate-600">
                     {submission.status === 'partial' ? (
                       <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
@@ -287,11 +300,20 @@ export function FormSubmissionsPanel({
                 </div>
               ))}
             </dl>
+            {open.tracking && (
+              <p className="text-xs text-slate-500">
+                Came from:{' '}
+                {[open.tracking.source, open.tracking.medium, open.tracking.campaign, open.tracking.content]
+                  .filter(Boolean)
+                  .join(' / ') || open.tracking.referrer}
+                {open.tracking.referrer && open.tracking.source ? ` (via ${open.tracking.referrer})` : ''}
+              </p>
+            )}
             <p className="text-xs text-slate-500">
               {open.status === 'partial'
                 ? `The visitor stopped on page ${open.lastPage ?? 1} and did not finish. These are the answers so far. No lead was created.`
                 : open.leadWasExisting
-                  ? 'This phone number already had a lead, so the answers were added to its notes.'
+                  ? 'This phone number already had a lead, so this submission was linked to it.'
                   : open.leadId
                     ? 'A lead was created from this submission.'
                     : 'No lead was created.'}

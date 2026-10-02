@@ -23,6 +23,7 @@ import {
   defaultFormSettings,
   formatConversionRate,
   formatDateTime,
+  isClosedByDeadline,
 } from '../../lib/forms'
 import type { Form, FormSubmission, Teacher } from '../../types/domain'
 
@@ -32,6 +33,35 @@ const tabs: { key: FormsTab; label: string }[] = [
   { key: 'forms', label: 'All forms' },
   { key: 'submissions', label: 'Submissions' },
 ]
+
+// Published, a draft, or published but not taking answers (deadline passed or
+// all places taken), with what is left of the places or time.
+function FormStatus({ form, finished }: { form: Form; finished: number }) {
+  const { closesAt, maxSubmissions } = form.settings
+  const closedByDate = isClosedByDeadline(form.settings)
+  const full = maxSubmissions !== null && finished >= maxSubmissions
+
+  const [label, tone] = !form.isPublished
+    ? ['Draft', 'bg-slate-100 text-slate-600']
+    : closedByDate
+      ? ['Closed', 'bg-amber-50 text-amber-800']
+      : full
+        ? ['Full', 'bg-amber-50 text-amber-800']
+        : ['Published', 'bg-emerald-50 text-emerald-700']
+
+  const notes = [
+    maxSubmissions !== null ? `${Math.min(finished, maxSubmissions)}/${maxSubmissions} places` : '',
+    closesAt && !closedByDate ? `closes ${formatDateTime(closesAt)}` : '',
+    closedByDate ? `closed ${formatDateTime(closesAt)}` : '',
+  ].filter(Boolean)
+
+  return (
+    <div>
+      <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold', tone)}>{label}</span>
+      {notes.length > 0 && <div className="mt-1 text-xs text-slate-500">{notes.join(' · ')}</div>}
+    </div>
+  )
+}
 
 function isMissingTable(error: unknown) {
   const code = (error as { code?: string } | null)?.code
@@ -357,16 +387,7 @@ export function FormsSection({
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        <span
-                          className={cn(
-                            'rounded-full px-2.5 py-0.5 text-xs font-semibold',
-                            form.isPublished
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : 'bg-slate-100 text-slate-600',
-                          )}
-                        >
-                          {form.isPublished ? 'Published' : 'Draft'}
-                        </span>
+                        <FormStatus form={form} finished={submissionCounts.get(form.id) ?? 0} />
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-600">{form.viewCount}</td>
                       <td className="px-6 py-4 text-sm text-slate-600">
