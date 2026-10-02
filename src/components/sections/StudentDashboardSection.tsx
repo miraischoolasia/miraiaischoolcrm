@@ -9,9 +9,7 @@ import mascotGordo from '../../assets/mascot-gordo.png'
 import type { FilterKey, Student } from '../../types/domain'
 import {
   ArrowsClockwise,
-  Eye,
   MagnifyingGlass,
-  PencilSimple,
   Prohibit,
   UploadSimple,
   UserPlus,
@@ -27,12 +25,11 @@ type StudentDashboardSectionProps = {
   canEdit?: boolean
   canDelete?: boolean
   onDeactivateStudent: (studentId: number) => void
-  onEditStudent: (studentId: number) => void
   onOpenBulkImportPreviewStudents: () => void
   onOpenCreateStudent: () => void
   onOpenStudentDetail: (studentId: number) => void
   onOpenRenewal: (studentId: number) => void
-  onToggleFilter: (filter: FilterKey) => void
+  onSelectFilter: (filter: FilterKey) => void
 }
 
 export function StudentDashboardSection({
@@ -44,12 +41,11 @@ export function StudentDashboardSection({
   canEdit = true,
   canDelete = true,
   onDeactivateStudent,
-  onEditStudent,
   onOpenBulkImportPreviewStudents,
   onOpenCreateStudent,
   onOpenStudentDetail,
   onOpenRenewal,
-  onToggleFilter,
+  onSelectFilter,
 }: StudentDashboardSectionProps) {
   const [searchTerm, setSearchTerm] = useState('')
 
@@ -64,32 +60,7 @@ export function StudentDashboardSection({
     if (normalizedSearch && !student.name.toLowerCase().includes(normalizedSearch)) {
       return false
     }
-
-    if (activeFilter === 'preview') {
-      return student.studentType === 'preview'
-    }
-
-    if (activeFilter === 'hours') {
-      return status.hoursLow || status.lessonExpired
-    }
-
-    if (activeFilter === 'accountFee') {
-      return status.accountFeeNeedsAttention
-    }
-
-    if (activeFilter === 'mirai') {
-      return status.miraiClubNeedsAttention
-    }
-
-    if (activeFilter === 'normal') {
-      return (
-        status.isNormal &&
-        student.studentType !== 'preview' &&
-        student.studentType !== 'trial'
-      )
-    }
-
-    return true
+    return matchesFilter(student, status, activeFilter)
   })
 
   const totalStudents = studentsWithStatus.length
@@ -105,6 +76,14 @@ export function StudentDashboardSection({
   const previewStudentCount = studentsWithStatus.filter(
     ({ student }) => student.studentType === 'preview',
   ).length
+
+  // A click anywhere on a row opens the student, except on its own buttons.
+  function openFromRow(event: React.MouseEvent, studentId: number) {
+    if ((event.target as HTMLElement).closest('button, a, input, select, textarea')) {
+      return
+    }
+    onOpenStudentDetail(studentId)
+  }
 
   function getStudentTypeLabel(student: Student) {
     if (student.studentType === 'preview') {
@@ -181,7 +160,8 @@ export function StudentDashboardSection({
                 <button
                   key={option.key}
                   type="button"
-                  onClick={() => onToggleFilter(option.key)}
+                  aria-pressed={selected}
+                  onClick={() => onSelectFilter(option.key)}
                   className={cn(
                     'inline-flex items-center border-b-2 pb-2 text-sm font-semibold transition',
                     selected
@@ -190,6 +170,11 @@ export function StudentDashboardSection({
                   )}
                 >
                   {option.label}
+                  <span className="ml-1.5 text-xs font-medium text-slate-400">
+                    {studentsWithStatus.filter(({ student, status }) =>
+                      matchesFilter(student, status, option.key),
+                    ).length}
+                  </span>
                 </button>
               )
             })}
@@ -216,7 +201,11 @@ export function StudentDashboardSection({
           <>
             <ul className="divide-y divide-slate-200 md:hidden">
               {filteredStudents.map(({ student, status }) => (
-                <li key={student.id} className="space-y-3 p-4">
+                <li
+                  key={student.id}
+                  onClick={(event) => openFromRow(event, student.id)}
+                  className="cursor-pointer space-y-3 p-4 transition hover:bg-[#fff8fc]"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="flex items-center gap-2">
@@ -310,24 +299,6 @@ export function StudentDashboardSection({
                   </dl>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onOpenStudentDetail(student.id)}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                    >
-                      <Eye size={16} aria-hidden="true" />
-                      Details
-                    </button>
-                    {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => onEditStudent(student.id)}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                    >
-                      <PencilSimple size={16} aria-hidden="true" />
-                      Edit
-                    </button>
-                    )}
                     {canEdit && student.studentType !== 'preview' && (
                       <button
                         type="button"
@@ -380,7 +351,8 @@ export function StudentDashboardSection({
                   {filteredStudents.map(({ student, status }) => (
                     <tr
                       key={student.id}
-                      className="align-top transition hover:bg-[#fff8fc]"
+                      onClick={(event) => openFromRow(event, student.id)}
+                      className="cursor-pointer align-top transition hover:bg-[#fff8fc]"
                     >
                       <td className="px-6 py-5">
                         <div className="space-y-1">
@@ -458,24 +430,6 @@ export function StudentDashboardSection({
                       </td>
                       <td className="px-6 py-5 text-right">
                         <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => onOpenStudentDetail(student.id)}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                          >
-                            <Eye size={16} aria-hidden="true" />
-                            Details
-                          </button>
-                          {canEdit && (
-                          <button
-                            type="button"
-                            onClick={() => onEditStudent(student.id)}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                          >
-                            <PencilSimple size={16} aria-hidden="true" />
-                            Edit
-                          </button>
-                          )}
                           {canEdit && student.studentType !== 'preview' && (
                             <button
                               type="button"
@@ -518,4 +472,30 @@ export function StudentDashboardSection({
       </section>
     </div>
   )
+}
+
+// Need Follow Up: classes at 2 or fewer, the lesson package expired, or the
+// account fee / Mirai Club expired or due within 14 days. Deactivated
+// students are not renewing, so they are left out.
+function matchesFilter(
+  student: Student,
+  status: ReturnType<typeof getStudentStatus>,
+  filter: FilterKey,
+) {
+  if (filter === 'regular') {
+    return student.studentType === 'regular'
+  }
+  if (filter === 'trial') {
+    return student.studentType === 'trial' || student.studentType === 'preview'
+  }
+  if (filter === 'followUp') {
+    return (
+      student.isActive &&
+      (status.hoursLow ||
+        status.lessonExpired ||
+        status.accountFeeNeedsAttention ||
+        status.miraiClubNeedsAttention)
+    )
+  }
+  return true
 }

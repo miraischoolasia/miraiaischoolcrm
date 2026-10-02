@@ -4275,16 +4275,11 @@ function App() {
                 students={listedStudents}
                 todayString={todayString}
                 onDeactivateStudent={handleDeactivateStudent}
-                onEditStudent={openEditStudent}
                 onOpenCreateStudent={openCreateStudentModal}
                 onOpenBulkImportPreviewStudents={openBulkImportPreviewStudentsModal}
                 onOpenStudentDetail={openStudentDetail}
                 onOpenRenewal={openStudentRenewal}
-                onToggleFilter={(filter) =>
-                  setStudentFilter((currentFilter) =>
-                    currentFilter === filter ? 'all' : filter,
-                  )
-                }
+                onSelectFilter={setStudentFilter}
               />
             )}
 
@@ -4507,6 +4502,14 @@ function App() {
               : undefined
           }
           onEditMakeup={canEditCalendar ? openMakeupPlan : undefined}
+          onEdit={
+            can('students', 'edit')
+              ? () => {
+                  closeStudentDetail()
+                  openEditStudent(selectedStudentDetail.id)
+                }
+              : undefined
+          }
         />
       )}
 

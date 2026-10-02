@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { X } from '@phosphor-icons/react'
+import { PencilSimple, X } from '@phosphor-icons/react'
 import { formatDate } from '../domain/studentStatus'
 import { getLatestLessonLogMap } from '../lib/mappers'
 import { performanceMetricDefinitions } from '../lib/constants'
@@ -34,6 +34,8 @@ type StudentDetailModalProps = {
   makeupPlans?: MakeupPlan[]
   onArrangeMakeup?: () => void
   onEditMakeup?: (planId: number) => void
+  // Left out when the account may not edit students.
+  onEdit?: () => void
 }
 
 export function StudentDetailModal({
@@ -48,6 +50,7 @@ export function StudentDetailModal({
   makeupPlans = [],
   onArrangeMakeup,
   onEditMakeup,
+  onEdit,
 }: StudentDetailModalProps) {
   const isPreviewStudent = student.studentType === 'preview'
   const latestLessonLogIds = useMemo(() => {
@@ -188,14 +191,26 @@ export function StudentDetailModal({
                 : ' - recent class reviews and five-metric performance profile.'}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="rounded-xl border border-slate-200 p-2 text-slate-600 transition hover:bg-white"
-          >
-            <X size={18} aria-hidden="true" />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {onEdit && (
+              <button
+                type="button"
+                onClick={onEdit}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                <PencilSimple size={16} aria-hidden="true" />
+                Edit
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="rounded-xl border border-slate-200 p-2 text-slate-600 transition hover:bg-white"
+            >
+              <X size={18} aria-hidden="true" />
+            </button>
+          </div>
         </div>
       </div>
 

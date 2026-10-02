@@ -61,11 +61,10 @@ export const pathwayMetricColors: Record<PerformanceMetricKey, string> = {
 }
 
 export const studentFilterOptions: Array<{ key: FilterKey; label: string }> = [
-  { key: 'hours', label: 'Classes Low / Expired' },
-  { key: 'accountFee', label: 'Account Fee Due' },
-  { key: 'mirai', label: 'Mirai Club Due' },
-  { key: 'normal', label: 'All Normal' },
-  { key: 'preview', label: 'Preview Class' },
+  { key: 'all', label: 'All' },
+  { key: 'regular', label: 'Regular' },
+  { key: 'trial', label: 'Trial' },
+  { key: 'followUp', label: 'Need Follow Up' },
 ]
 
 export const ageGroupOptions: AgeGroup[] = [
