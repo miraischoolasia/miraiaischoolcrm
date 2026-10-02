@@ -75,6 +75,7 @@ describe('buildScheduleEvents', () => {
     phone: null,
     role: 'teacher',
     isActive: true,
+    permissions: {},
   }
   const classroom: Classroom = {
     id: 1,

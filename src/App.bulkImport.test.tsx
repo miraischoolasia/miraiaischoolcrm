@@ -28,7 +28,7 @@ vi.mock('@fullcalendar/react', () => ({ default: () => <div>Calendar ready</div>
 vi.mock('./lib/api', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   fetchTeachersFromSupabase: async () => [
-    { id: 1, authUserId: 'admin-1', username: 'admin', fullName: 'Admin', role: 'admin', isActive: true },
+    { id: 1, authUserId: 'admin-1', username: 'admin', fullName: 'Admin', role: 'admin', isActive: true, permissions: {} },
   ],
   fetchLeadsFromSupabase: async () => [],
   fetchClassroomsFromSupabase: async () => [],

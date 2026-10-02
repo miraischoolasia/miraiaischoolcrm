@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { cn } from '../../lib/cn'
 import { SummaryBar } from '../SummaryBar'
 import mascotGordo from '../../assets/mascot-gordo.png'
+import { describePermissions } from '../../lib/permissions'
 import type { Teacher } from '../../types/domain'
 import {
   LockSimple,
@@ -59,10 +60,8 @@ export function TeacherManagementSection({
             tone: 'blue',
           },
           {
-            label: 'With Contact Info',
-            value: teachers.filter(
-              (teacher) => Boolean(teacher.email) || Boolean(teacher.phone),
-            ).length,
+            label: 'Staff Accounts',
+            value: teachers.filter((teacher) => teacher.role === 'staff').length,
             tone: 'green',
           },
         ]}
@@ -83,7 +82,7 @@ export function TeacherManagementSection({
               className="inline-flex items-center gap-1.5 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
             >
               <UserPlus size={16} weight="bold" aria-hidden="true" />
-              Add Teacher
+              Add Account
             </button>
           </div>
 
@@ -137,14 +136,14 @@ export function TeacherManagementSection({
                     <span
                       className={cn(
                         'inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold',
-                        teacher.role === 'admin'
-                          ? 'bg-[#fff1f8] text-[#be185d]'
-                          : 'bg-sky-50 text-sky-700',
+                        roleBadgeClass[teacher.role],
                       )}
                     >
-                      {teacher.role === 'admin' ? 'Admin' : 'Teacher'}
+                      {roleLabel[teacher.role]}
                     </span>
                   </div>
+
+                  <AccessSummary teacher={teacher} />
 
                   <dl className="space-y-1 rounded-xl bg-slate-50 p-3 text-sm">
                     <div className="flex justify-between gap-3">
@@ -231,13 +230,12 @@ export function TeacherManagementSection({
                         <span
                           className={cn(
                             'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
-                            teacher.role === 'admin'
-                              ? 'bg-[#fff1f8] text-[#be185d]'
-                              : 'bg-sky-50 text-sky-700',
+                            roleBadgeClass[teacher.role],
                           )}
                         >
-                          {teacher.role === 'admin' ? 'Admin' : 'Teacher'}
+                          {roleLabel[teacher.role]}
                         </span>
+                        <AccessSummary teacher={teacher} />
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
                         {teacher.email || '-'}
@@ -290,6 +288,34 @@ export function TeacherManagementSection({
           </>
         )}
       </section>
+    </div>
+  )
+}
+
+const roleLabel: Record<Teacher['role'], string> = {
+  admin: 'Admin',
+  teacher: 'Teacher',
+  staff: 'Staff',
+}
+
+const roleBadgeClass: Record<Teacher['role'], string> = {
+  admin: 'bg-[#fff1f8] text-[#be185d]',
+  teacher: 'bg-sky-50 text-sky-700',
+  staff: 'bg-amber-50 text-amber-700',
+}
+
+// What the account can use beyond its role, e.g. "Leads (edit) · Calendar (view)".
+function AccessSummary({ teacher }: { teacher: Teacher }) {
+  if (teacher.role === 'admin') {
+    return null
+  }
+  if (teacher.role === 'teacher' && Object.keys(teacher.permissions).length === 0) {
+    return null
+  }
+  return (
+    <div className="mt-1 max-w-xs text-xs text-slate-500">
+      {teacher.role === 'teacher' ? 'Also: ' : ''}
+      {describePermissions(teacher.permissions)}
     </div>
   )
 }

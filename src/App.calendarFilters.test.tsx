@@ -47,6 +47,7 @@ const admin = {
   fullName: 'Admin',
   role: 'admin',
   isActive: true,
+  permissions: {},
 }
 const teacherOne = {
   id: 2,
@@ -55,6 +56,7 @@ const teacherOne = {
   fullName: 'Jia Hui',
   role: 'teacher',
   isActive: true,
+  permissions: {},
 }
 const teacherTwo = {
   id: 3,
@@ -63,6 +65,7 @@ const teacherTwo = {
   fullName: 'Zen Ho',
   role: 'teacher',
   isActive: true,
+  permissions: {},
 }
 
 const classroomOne = {

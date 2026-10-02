@@ -23,6 +23,9 @@ type AttendanceModalProps = {
   attendanceLocked: boolean
   // A class after today: view the roster only, attendance opens on the day.
   isUpcoming?: boolean
+  // Someone who is neither admin nor the class teacher: they can look, but
+  // attendance is only ever taken by the class teacher (or admin).
+  isViewOnly?: boolean
   // Class teacher of a submitted log, shown so an admin reviewing it knows
   // whose feedback it is.
   teacherName?: string | null
@@ -57,6 +60,7 @@ export function AttendanceModal({
   attendanceExistingLog,
   attendanceLocked,
   isUpcoming = false,
+  isViewOnly = false,
   teacherName = null,
   adminAction,
   isLoadingAttendance,
@@ -74,6 +78,9 @@ export function AttendanceModal({
   onRemarkChange,
   makeupNotes = [],
 }: AttendanceModalProps) {
+  // Nothing has been submitted that this viewer could look at: roster only.
+  const isRosterOnly = isUpcoming || (isViewOnly && !attendanceExistingLog)
+
   return (
     <ModalShell maxWidth="760" onClose={onClose}>
       <div className="border-b border-slate-200 bg-white px-6 py-5 sm:px-8">
@@ -84,7 +91,9 @@ export function AttendanceModal({
                 ? 'Upcoming Class'
                 : attendanceExistingLog
                   ? 'Attendance & Reviews'
-                  : 'Attendance Submission'}
+                  : isViewOnly
+                    ? 'Class Roster'
+                    : 'Attendance Submission'}
             </div>
             <h2 className="mt-1 text-2xl font-semibold text-slate-900">
               {attendanceModal.title}
@@ -93,6 +102,10 @@ export function AttendanceModal({
               {formatDate(attendanceModal.occurrenceDate)} -{' '}
               {isUpcoming
                 ? 'View only - attendance and reviews open on the day of the class'
+                : isViewOnly
+                ? attendanceExistingLog
+                  ? 'View only'
+                  : 'View only - attendance is taken by the class teacher'
                 : attendanceExistingLog
                 ? attendanceLocked
                   ? 'Locked after 24 hours'
@@ -177,7 +190,7 @@ export function AttendanceModal({
                           </div>
                         </div>
 
-                        {!isUpcoming && (
+                        {!isRosterOnly && (
                         <div className="grid grid-cols-3 gap-2">
                           {([
                             ['present', 'Present'],
@@ -216,7 +229,7 @@ export function AttendanceModal({
                         )}
                       </div>
 
-                      {!isUpcoming && currentStatus === 'present' && (
+                      {!isRosterOnly && currentStatus === 'present' && (
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                           <div className="mb-3 text-sm font-semibold text-slate-900">
                             Student Performance Review
@@ -290,7 +303,7 @@ export function AttendanceModal({
               )}
             </div>
 
-            {!isUpcoming && (
+            {!isRosterOnly && (
             <label className="block space-y-2">
               <span className="text-sm font-semibold text-slate-700">
                 Lesson Remark

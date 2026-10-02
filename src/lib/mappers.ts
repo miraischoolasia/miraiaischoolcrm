@@ -1,3 +1,4 @@
+import { parseAccountPermissions } from './permissions'
 import type {
   AdminActivity,
   AdminActivityRow,
@@ -72,6 +73,7 @@ export function mapTeacherRow(row: TeacherRow): Teacher {
     phone: row.phone,
     role: row.role,
     isActive: row.is_active,
+    permissions: parseAccountPermissions(row.permissions),
   }
 }
 

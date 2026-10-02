@@ -111,7 +111,7 @@ const jane = {
 vi.mock('./lib/api', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   fetchTeachersFromSupabase: async () => [
-    { id: 1, authUserId: 'user-1', username: 'user', fullName: 'Jia Hui', role: mocks.role, isActive: true },
+    { id: 1, authUserId: 'user-1', username: 'user', fullName: 'Jia Hui', role: mocks.role, isActive: true, permissions: {} },
   ],
   fetchLeadsFromSupabase: async () => [jane],
   fetchClassroomsFromSupabase: async () => [trialClassroom],

@@ -24,7 +24,8 @@ type ScheduleModalProps = {
   onSubmit: React.FormEventHandler<HTMLFormElement>
   onFieldChange: (field: keyof ScheduleFormState, value: string) => void
   onToggleParticipant: (studentId: string) => void
-  onCancelSchedule: () => void
+  // Left out when the account may not cancel whole schedules.
+  onCancelSchedule?: () => void
   // The calendar day that was clicked (regular classes only). Enables
   // cancelling just that one day instead of the whole weekly series.
   occurrenceDate: string | null
@@ -507,7 +508,7 @@ export function ScheduleModal({
 
         <div className="flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            {!isCreatingSchedule && editingSchedule && (
+            {!isCreatingSchedule && editingSchedule && onCancelSchedule && (
               <button
                 type="button"
                 onClick={onCancelSchedule}

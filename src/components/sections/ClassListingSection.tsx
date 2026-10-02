@@ -30,14 +30,15 @@ type ClassListingSectionProps = {
   classroomStudentMap: Map<number, Student[]>
   deletingClassroomId: number | null
   restoringClassroomId: number | null
-  isAdminView: boolean
-  onDeleteClassroom: (classroomId: number) => void
+  canEdit: boolean
+  // Left out when the account may not archive classrooms.
+  onDeleteClassroom?: (classroomId: number) => void
   onEditClassroom: (classroomId: number) => void
   onEditSchedule: (scheduleId: number) => void
   onOpenCreateClassroom?: () => void
   onOpenCreateRegularSchedule?: (classroomId: number) => void
   onOpenStudentDetail: (studentId: number) => void
-  onRestoreClassroom: (classroomId: number) => void
+  onRestoreClassroom?: (classroomId: number) => void
   onSelectAgeGroup: (ageGroup: AgeGroup) => void
   schedules: Schedule[]
   selectedAgeGroup: AgeGroup
@@ -52,7 +53,7 @@ export function ClassListingSection({
   classroomStudentMap,
   deletingClassroomId,
   restoringClassroomId,
-  isAdminView,
+  canEdit,
   onDeleteClassroom,
   onEditClassroom,
   onEditSchedule,
@@ -148,7 +149,7 @@ export function ClassListingSection({
             <div>
               <h2 className="text-lg font-semibold text-slate-900">My Classroom</h2>
               <p className="mt-1 text-sm text-slate-500">
-                {isAdminView
+                {canEdit
                   ? 'Browse classrooms by age group, then open each class roster and timetable.'
                   : 'Browse assigned classrooms by age group, then open the class roster quickly.'}
               </p>
@@ -158,7 +159,7 @@ export function ClassListingSection({
                 {activeClassrooms.length} classroom
                 {activeClassrooms.length === 1 ? '' : 's'}
               </div>
-              {isAdminView && onOpenCreateClassroom && (
+              {canEdit && onOpenCreateClassroom && (
                 <button
                   type="button"
                   onClick={onOpenCreateClassroom}
@@ -306,7 +307,7 @@ export function ClassListingSection({
                       )}
                     </div>
 
-                    {isAdminView && (
+                    {canEdit && (
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
@@ -328,6 +329,7 @@ export function ClassListingSection({
                             Add Weekly Timetable
                           </button>
                         )}
+                        {onDeleteClassroom && (
                         <div className="relative">
                           <button
                             type="button"
@@ -362,6 +364,7 @@ export function ClassListingSection({
                             </>
                           )}
                         </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -413,7 +416,7 @@ export function ClassListingSection({
                               </div>
                             </div>
                           </div>
-                          {isAdminView && (
+                          {canEdit && (
                             <button
                               type="button"
                               onClick={() => onEditSchedule(schedule.id)}
@@ -626,7 +629,7 @@ export function ClassListingSection({
                                     : ''}
                                 </div>
                               </div>
-                              {isAdminView && (
+                              {canEdit && (
                                 <button
                                   type="button"
                                   onClick={() => onEditSchedule(schedule.id)}
@@ -648,7 +651,7 @@ export function ClassListingSection({
           </div>
         )}
 
-        {isAdminView && (
+        {canEdit && (
           <div className="border-t border-slate-200 bg-slate-50 px-5 py-5 sm:px-6">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -693,6 +696,7 @@ export function ClassListingSection({
                           <div className="mt-2 text-sm text-slate-500">{classroom.notes}</div>
                         )}
                       </div>
+                      {onRestoreClassroom && (
                       <button
                         type="button"
                         disabled={restoringClassroomId === classroom.id}
@@ -702,6 +706,7 @@ export function ClassListingSection({
                         <ArrowCounterClockwise size={16} aria-hidden="true" />
                         {restoringClassroomId === classroom.id ? 'Restoring...' : 'Restore'}
                       </button>
+                      )}
                     </div>
                   )
                 })}

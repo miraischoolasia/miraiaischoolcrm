@@ -18,7 +18,8 @@ type TrialBookingModalProps = {
   error: string | null
   onClose: () => void
   onBook: (form: TrialBookingFormState) => Promise<boolean>
-  onCancelBooking: (booking: TrialBooking) => void
+  // Left out when the account may not remove bookings.
+  onCancelBooking?: (booking: TrialBooking) => void
   onEditSlot: () => void
   // Omitted for a future day: attendance opens on the day of the class.
   onTakeAttendance?: () => void
@@ -182,7 +183,7 @@ export function TrialBookingModal({
                       {[booking.phone, booking.notes].filter(Boolean).join(' · ') || 'No contact'}
                     </div>
                   </div>
-                  {canManage && (
+                  {canManage && onCancelBooking && (
                     <button
                       type="button"
                       onClick={() => onCancelBooking(booking)}

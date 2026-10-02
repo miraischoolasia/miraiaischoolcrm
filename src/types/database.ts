@@ -98,8 +98,9 @@ export type Database = {
           full_name: string
           email: string | null
           phone: string | null
-          role: 'admin' | 'teacher'
+          role: 'admin' | 'teacher' | 'staff'
           is_active: boolean
+          permissions: Json
           created_at: string
           updated_at: string
         }
@@ -111,8 +112,9 @@ export type Database = {
           full_name: string
           email?: string | null
           phone?: string | null
-          role?: 'admin' | 'teacher'
+          role?: 'admin' | 'teacher' | 'staff'
           is_active?: boolean
+          permissions?: Json
           created_at?: string
           updated_at?: string
         }
@@ -124,8 +126,9 @@ export type Database = {
           full_name?: string
           email?: string | null
           phone?: string | null
-          role?: 'admin' | 'teacher'
+          role?: 'admin' | 'teacher' | 'staff'
           is_active?: boolean
+          permissions?: Json
           created_at?: string
           updated_at?: string
         }
@@ -978,6 +981,13 @@ export type Database = {
     }
     Views: Record<string, never>
     Functions: {
+      set_account_permissions: {
+        Args: {
+          p_teacher_id: number
+          p_permissions: Json
+        }
+        Returns: undefined
+      }
       book_trial_slot: {
         Args: {
           p_schedule_id: number

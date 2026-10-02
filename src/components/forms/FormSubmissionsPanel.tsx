@@ -17,7 +17,8 @@ type FormSubmissionsPanelProps = {
   submissions: FormSubmission[]
   isCapped: boolean
   deletingId: number | null
-  onDelete: (submission: FormSubmission) => void
+  // Left out when the account may not delete responses.
+  onDelete?: (submission: FormSubmission) => void
 }
 
 function downloadCsv(filename: string, content: string) {
@@ -295,6 +296,7 @@ export function FormSubmissionsPanel({
                     ? 'A lead was created from this submission.'
                     : 'No lead was created.'}
             </p>
+            {onDelete && (
             <div className="flex justify-end">
               <button
                 type="button"
@@ -309,6 +311,7 @@ export function FormSubmissionsPanel({
                 Delete submission
               </button>
             </div>
+            )}
           </div>
         </ModalShell>
       )}

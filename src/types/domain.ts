@@ -99,9 +99,27 @@ export type Teacher = {
   fullName: string
   email: string | null
   phone: string | null
-  role: 'admin' | 'teacher'
+  role: TeacherRole
   isActive: boolean
+  permissions: AccountPermissions
 }
+
+export type TeacherRole = 'admin' | 'teacher' | 'staff'
+
+export type PermissionModule =
+  | 'calendar'
+  | 'classrooms'
+  | 'students'
+  | 'leads'
+  | 'forms'
+  | 'activity'
+
+export type PermissionAction = 'view' | 'edit' | 'delete'
+
+// A missing module means no access. Delete is only ever set with edit.
+export type AccountPermissions = Partial<
+  Record<PermissionModule, { level: 'view' | 'edit'; delete?: boolean }>
+>
 
 export type LeadChild = {
   name: string
@@ -314,7 +332,8 @@ export type CreateTeacherFormState = {
   fullName: string
   email: string
   phone: string
-  role: 'admin' | 'teacher'
+  role: TeacherRole
+  permissions: AccountPermissions
 }
 
 export type StudentDetailsFormState = {
@@ -365,7 +384,7 @@ export type ClassStatusSummary = {
 
 export type UserSession = {
   key: string
-  role: 'admin' | 'teacher'
+  role: TeacherRole
   label: string
   teacherId: number | null
 }
@@ -410,6 +429,7 @@ export type TeacherRow = Pick<
   | 'phone'
   | 'role'
   | 'is_active'
+  | 'permissions'
 >
 
 export type LeadRow = Pick<

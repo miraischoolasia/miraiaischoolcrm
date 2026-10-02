@@ -49,6 +49,7 @@ const teacher: Teacher = {
   phone: null,
   role: 'teacher',
   isActive: true,
+  permissions: {},
 }
 
 const cancelled23: ScheduleException = {

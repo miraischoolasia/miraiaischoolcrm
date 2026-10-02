@@ -38,7 +38,7 @@ vi.mock('./lib/api', async (importOriginal) => ({
   fetchAdminActivityFromSupabase: async () => [],
 }))
 
-const teacher = { id: 1, authUserId: 'user-1', username: 'teacher', fullName: 'Test Teacher', role: 'teacher', isActive: true }
+const teacher = { id: 1, authUserId: 'user-1', username: 'teacher', fullName: 'Test Teacher', role: 'teacher', isActive: true, permissions: {} }
 async function signIn(id = 'user-1') {
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id } }))
 }

@@ -14,6 +14,7 @@ function makeTeacher(id: number, fullName: string): Teacher {
     phone: null,
     role: 'teacher',
     isActive: true,
+    permissions: {},
   }
 }
 

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
-import type { CreateTeacherFormState, Teacher } from '../../types/domain'
+import { PermissionMatrix } from '../PermissionMatrix'
+import type { AccountPermissions, CreateTeacherFormState, Teacher } from '../../types/domain'
 
 type TeacherModalProps = {
   editingTeacher: Teacher | null
@@ -11,6 +12,7 @@ type TeacherModalProps = {
   onClose: () => void
   onSubmit: React.FormEventHandler<HTMLFormElement>
   onFieldChange: (field: keyof CreateTeacherFormState, value: string) => void
+  onPermissionsChange: (permissions: AccountPermissions) => void
   loginPassword: string
   onLoginPasswordChange: (value: string) => void
   onProvisionLogin: () => void
@@ -26,6 +28,7 @@ export function TeacherModal({
   onClose,
   onSubmit,
   onFieldChange,
+  onPermissionsChange,
   loginPassword,
   onLoginPasswordChange,
   onProvisionLogin,
@@ -39,15 +42,15 @@ export function TeacherModal({
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-sm font-medium text-[#be185d]">
-              {editingTeacher ? 'Teacher profile' : 'Teacher record setup'}
+              {editingTeacher ? 'Account profile' : 'Account setup'}
             </div>
             <h2 className="mt-1 text-2xl font-semibold text-slate-900">
-              {editingTeacher ? `Edit ${editingTeacher.fullName}` : 'Add Teacher'}
+              {editingTeacher ? `Edit ${editingTeacher.fullName}` : 'Add Account'}
             </h2>
             <p className="mt-2 text-sm text-slate-500">
               {editingTeacher
-                ? 'Update this account’s basic details and role.'
-                : 'Create a teacher profile for classroom assignment and timetable visibility.'}
+                ? 'Update this account’s details, role and what it can use.'
+                : 'Create a teacher or staff account, then tick what it can use.'}
             </p>
           </div>
           <button
@@ -146,10 +149,27 @@ export function TeacherModal({
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2] disabled:bg-slate-100 disabled:text-slate-500"
             >
               <option value="teacher">Teacher</option>
+              <option value="staff">Staff (does not teach)</option>
               <option value="admin">Admin</option>
             </select>
           </label>
         </div>
+
+        <section className="space-y-3" aria-label="Permissions">
+          <div>
+            <div className="text-sm font-semibold text-slate-700">What this account can use</div>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {formState.role === 'admin'
+                ? 'Admins can use everything.'
+                : formState.role === 'teacher'
+                  ? 'Teachers always see their own classes and take their attendance. Tick anything extra here.'
+                  : 'Staff only see what is ticked here. Edit lets them add and change; Can delete is ticked separately.'}
+            </p>
+          </div>
+          {formState.role !== 'admin' && (
+            <PermissionMatrix value={formState.permissions} onChange={onPermissionsChange} />
+          )}
+        </section>
 
         {editingTeacher && (
           <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -229,7 +249,7 @@ export function TeacherModal({
               ? 'Saving...'
               : editingTeacher
                 ? 'Save Details'
-                : 'Create Teacher'}
+                : 'Create Account'}
           </button>
         </div>
       </form>

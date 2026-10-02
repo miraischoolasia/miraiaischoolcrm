@@ -24,6 +24,7 @@ const teachers: Teacher[] = [2, 3].map((id) => ({
   phone: null,
   role: 'teacher',
   isActive: true,
+  permissions: {},
 }))
 
 function renderWithTeacher(teacherId: string) {

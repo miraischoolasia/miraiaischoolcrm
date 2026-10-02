@@ -79,7 +79,7 @@ export async function fetchTeachersFromSupabase() {
 
   const { data, error } = await supabase
     .from('teachers')
-    .select('id, auth_user_id, username, full_name, email, phone, role, is_active')
+    .select('id, auth_user_id, username, full_name, email, phone, role, is_active, permissions')
     .order('role', { ascending: true })
     .order('full_name')
 

@@ -11,7 +11,8 @@ type EmbedFormModalProps = {
   // The editable part of the link; null for a form that only has its id.
   slug: string | null
   // Resolves to a message when the name could not be used, else null.
-  onSaveSlug: (slug: string) => Promise<string | null>
+  // Left out for accounts that may only view forms: the link name is fixed.
+  onSaveSlug?: (slug: string) => Promise<string | null>
   onClose: () => void
 }
 
@@ -170,7 +171,9 @@ export function EmbedFormModal({
             live CRM address to copy the real ones.
           </p>
         )}
-        <LinkNameEditor origin={window.location.origin} slug={slug} onSave={onSaveSlug} />
+        {onSaveSlug && (
+          <LinkNameEditor origin={window.location.origin} slug={slug} onSave={onSaveSlug} />
+        )}
         <CopyBox label="Link" value={url} rows={2} />
         <CopyBox label="Embed code (paste into your website)" value={buildEmbedCode(url, formId, formName)} rows={5} />
         <p className="text-xs text-slate-500">

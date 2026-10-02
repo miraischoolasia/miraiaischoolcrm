@@ -85,6 +85,7 @@ describe('mapTeacherRow', () => {
       phone: null,
       role: 'admin',
       is_active: true,
+      permissions: { leads: { level: 'edit', delete: true }, forms: { level: 'own' }, money: { level: 'view' } },
     }
 
     expect(mapTeacherRow(row)).toEqual({
@@ -96,6 +97,8 @@ describe('mapTeacherRow', () => {
       phone: null,
       role: 'admin',
       isActive: true,
+      // Unknown modules and levels are dropped.
+      permissions: { leads: { level: 'edit', delete: true } },
     })
   })
 })

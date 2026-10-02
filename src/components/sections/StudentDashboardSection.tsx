@@ -23,6 +23,9 @@ type StudentDashboardSectionProps = {
   isLoading: boolean
   students: Student[]
   todayString: string
+  // Edit covers add, edit and renew; delete covers deactivate.
+  canEdit?: boolean
+  canDelete?: boolean
   onDeactivateStudent: (studentId: number) => void
   onEditStudent: (studentId: number) => void
   onOpenBulkImportPreviewStudents: () => void
@@ -38,6 +41,8 @@ export function StudentDashboardSection({
   isLoading,
   students,
   todayString,
+  canEdit = true,
+  canDelete = true,
   onDeactivateStudent,
   onEditStudent,
   onOpenBulkImportPreviewStudents,
@@ -129,9 +134,10 @@ export function StudentDashboardSection({
                 Student Classes & Expiry Board
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Admin-only table for class balance, membership, and renewal control.
+                Class balance, membership, and renewal control.
               </p>
             </div>
+            {canEdit && (
             <div className="flex flex-col gap-2 sm:flex-row">
               <button
                 type="button"
@@ -150,6 +156,7 @@ export function StudentDashboardSection({
                 Add Student
               </button>
             </div>
+            )}
           </div>
 
           <div className="relative mt-4">
@@ -311,6 +318,7 @@ export function StudentDashboardSection({
                       <Eye size={16} aria-hidden="true" />
                       Details
                     </button>
+                    {canEdit && (
                     <button
                       type="button"
                       onClick={() => onEditStudent(student.id)}
@@ -319,7 +327,8 @@ export function StudentDashboardSection({
                       <PencilSimple size={16} aria-hidden="true" />
                       Edit
                     </button>
-                    {student.studentType !== 'preview' && (
+                    )}
+                    {canEdit && student.studentType !== 'preview' && (
                       <button
                         type="button"
                         onClick={() => onOpenRenewal(student.id)}
@@ -329,6 +338,7 @@ export function StudentDashboardSection({
                         Renew
                       </button>
                     )}
+                    {(canDelete || !student.isActive) && (
                     <button
                       type="button"
                       disabled={!student.isActive || deactivatingStudentId === student.id}
@@ -347,6 +357,7 @@ export function StudentDashboardSection({
                           ? 'Deactivating...'
                           : 'Deactivate'}
                     </button>
+                    )}
                   </div>
                 </li>
               ))}
@@ -455,6 +466,7 @@ export function StudentDashboardSection({
                             <Eye size={16} aria-hidden="true" />
                             Details
                           </button>
+                          {canEdit && (
                           <button
                             type="button"
                             onClick={() => onEditStudent(student.id)}
@@ -463,7 +475,8 @@ export function StudentDashboardSection({
                             <PencilSimple size={16} aria-hidden="true" />
                             Edit
                           </button>
-                          {student.studentType !== 'preview' && (
+                          )}
+                          {canEdit && student.studentType !== 'preview' && (
                             <button
                               type="button"
                               onClick={() => onOpenRenewal(student.id)}
@@ -473,6 +486,7 @@ export function StudentDashboardSection({
                               Renew
                             </button>
                           )}
+                          {(canDelete || !student.isActive) && (
                           <button
                             type="button"
                             disabled={!student.isActive || deactivatingStudentId === student.id}
@@ -491,6 +505,7 @@ export function StudentDashboardSection({
                                 ? 'Deactivating...'
                                 : 'Deactivate'}
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>

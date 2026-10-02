@@ -32,6 +32,8 @@ type LeadModalProps = {
   isLoadingFormSubmissions?: boolean
   // Scroll to the form answers when the window opens.
   focusFormAnswers?: boolean
+  // Leads view-only accounts: every field is shown but nothing can be saved.
+  readOnly?: boolean
 }
 
 export function LeadModal({
@@ -47,6 +49,7 @@ export function LeadModal({
   formSubmissions = [],
   isLoadingFormSubmissions = false,
   focusFormAnswers = false,
+  readOnly = false,
 }: LeadModalProps) {
   const formAnswersRef = useRef<HTMLElement>(null)
   const hasFormAnswers = formSubmissions.length > 0
@@ -89,10 +92,14 @@ export function LeadModal({
               {editingLead ? 'Lead profile' : 'New lead'}
             </div>
             <h2 className="mt-1 text-2xl font-semibold text-slate-900">
-              {editingLead ? `Edit ${editingLead.fullName || 'Lead'}` : 'Add Lead'}
+              {editingLead
+                ? `${readOnly ? 'View' : 'Edit'} ${editingLead.fullName || 'Lead'}`
+                : 'Add Lead'}
             </h2>
             <p className="mt-2 text-sm text-slate-500">
-              {editingLead
+              {readOnly
+                ? 'View only - your account cannot change leads.'
+                : editingLead
                 ? 'Update contact details, pipeline stage, and follow-up notes.'
                 : 'Capture a new prospective student inquiry.'}
             </p>
@@ -119,6 +126,7 @@ export function LeadModal({
           </div>
         )}
 
+        <fieldset disabled={readOnly} className="min-w-0 space-y-6">
         <div className="grid gap-5 sm:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">
@@ -256,6 +264,8 @@ export function LeadModal({
           ))}
         </div>
 
+        </fieldset>
+
         {editingLead && (isLoadingFormSubmissions || hasFormAnswers) && (
           <section
             ref={formAnswersRef}
@@ -300,6 +310,7 @@ export function LeadModal({
           </section>
         )}
 
+        <fieldset disabled={readOnly} className="min-w-0">
         <label className="block space-y-2">
           <span className="text-sm font-semibold text-slate-700">Notes</span>
           <textarea
@@ -310,6 +321,7 @@ export function LeadModal({
             className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
           />
         </label>
+        </fieldset>
 
         <div className="flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-end">
           <button
@@ -317,8 +329,9 @@ export function LeadModal({
             onClick={onClose}
             className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
           >
-            Cancel
+            {readOnly ? 'Close' : 'Cancel'}
           </button>
+          {!readOnly && (
           <button
             type="submit"
             disabled={isSaving}
@@ -326,6 +339,7 @@ export function LeadModal({
           >
             {isSaving ? 'Saving...' : editingLead ? 'Save Details' : 'Add Lead'}
           </button>
+          )}
         </div>
       </form>
     </ModalShell>

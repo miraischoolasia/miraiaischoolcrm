@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import type {
   EventApi,
@@ -63,6 +63,8 @@ import type {
   Teacher,
   TrialBooking,
   TrialBookingFormState,
+  PermissionAction,
+  PermissionModule,
   UserSession,
 } from './types/domain'
 import {
@@ -145,6 +147,7 @@ import {
   type MoveClassInput,
 } from './components/modals/MoveClassModal'
 import { getDragBlockReason, getTimeFromDate, getTrialSlotsOnDate } from './lib/move'
+import { hasPermission } from './lib/permissions'
 import {
   addMinutesToTime,
   buildMakeupMap,
@@ -354,6 +357,7 @@ function App() {
       email: '',
       phone: '',
       role: 'teacher',
+      permissions: {},
     })
   const [leadFormState, setLeadFormState] = useState<LeadFormState>({
     fullName: '',
@@ -401,6 +405,7 @@ function App() {
   const [attendanceLocked, setAttendanceLocked] = useState(false)
   // A class later than today opens read-only: who is coming, no attendance yet.
   const [attendanceUpcoming, setAttendanceUpcoming] = useState(false)
+  const [attendanceViewOnly, setAttendanceViewOnly] = useState(false)
   const [isLoadingAttendance, setIsLoadingAttendance] = useState(false)
 
   const teacherMap = useMemo(
@@ -496,14 +501,39 @@ function App() {
     [effectiveTeacher],
   )
 
-  const isAdminView = currentSession?.role !== 'teacher'
+  // What this account may do; admins may do everything. The database
+  // enforces the same rules, so this only decides what the screens offer.
+  const can = useCallback(
+    (module: PermissionModule, action: PermissionAction = 'view') =>
+      hasPermission(effectiveTeacher, module, action),
+    [effectiveTeacher],
+  )
+  const isAdmin = currentSession?.role === 'admin'
+  const isTeacherAccount = currentSession?.role === 'teacher'
+  const canEditCalendar = can('calendar', 'edit')
+  const canDeleteCalendar = can('calendar', 'delete')
+  // Same rule as can_view_classes(): any class module shows every class.
+  // Without one, a teacher sees only their own classes.
+  const seesAllClasses = can('calendar') || can('classrooms') || can('students')
+  const allowedSections = useMemo(() => {
+    const sections: AppSection[] = []
+    if (can('leads')) sections.push('leads')
+    if (can('forms')) sections.push('forms')
+    if (isTeacherAccount || can('calendar')) sections.push('calendar')
+    if (isTeacherAccount || can('classrooms')) sections.push('classrooms')
+    if (can('students')) sections.push('students')
+    if (isAdmin) sections.push('teachers')
+    if (can('activity')) sections.push('activity')
+    return sections
+  }, [can, isAdmin, isTeacherAccount])
+  const visibleSection = allowedSections.includes(activeSection) ? activeSection : null
   const { unread: unreadFormSubmissions, markSeen: markFormSubmissionsSeen } =
-    useUnreadFormSubmissions(isAdminView && Boolean(currentSession))
+    useUnreadFormSubmissions(can('forms'))
   const {
     leadIdsWithForms,
     submissions: editingLeadFormSubmissions,
     isLoading: isLoadingEditingLeadForms,
-  } = useLeadFormAnswers(isAdminView && Boolean(currentSession), leads, editingLeadId)
+  } = useLeadFormAnswers(can('leads'), leads, editingLeadId)
   const [focusFormAnswers, setFocusFormAnswers] = useState(false)
   const protectedTeacherIds = useMemo(() => {
     const next = new Set<number>()
@@ -602,17 +632,13 @@ function App() {
   }, [authSession, currentTeacher, isLoading, loadError, loadedUserId])
 
   useEffect(() => {
-    if (
-      currentSession?.role === 'teacher' &&
-      activeSection !== 'calendar' &&
-      activeSection !== 'classrooms'
-    ) {
-      setActiveSection('calendar')
+    if (allowedSections.length > 0 && !allowedSections.includes(activeSection)) {
+      setActiveSection(allowedSections.includes('calendar') ? 'calendar' : allowedSections[0])
     }
-  }, [activeSection, currentSession])
+  }, [activeSection, allowedSections])
 
   useEffect(() => {
-    if (!selectedStudentDetailId || !isAdminView) {
+    if (!selectedStudentDetailId || !canEditCalendar) {
       return
     }
 
@@ -630,7 +656,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [isAdminView, selectedStudentDetailId])
+  }, [canEditCalendar, selectedStudentDetailId])
 
   useEffect(() => {
     if (!selectedStudent) {
@@ -777,40 +803,20 @@ function App() {
   }, [authUserId, loadAttempt])
 
   const visibleSchedules = useMemo(() => {
-    if (!currentSession) {
+    if (!currentSession || seesAllClasses) {
       return schedules
     }
 
-    if (currentSession.role === 'teacher' && currentSession.teacherId !== null) {
-      return schedules.filter(
-        (schedule) => schedule.teacherId === currentSession.teacherId,
-      )
-    }
-
-    if (currentSession.role === 'teacher' && currentSession.teacherId === null) {
-      return []
-    }
-
-    return schedules
-  }, [currentSession, schedules])
+    return schedules.filter((schedule) => schedule.teacherId === currentSession.teacherId)
+  }, [currentSession, schedules, seesAllClasses])
 
   const visibleClassrooms = useMemo(() => {
-    if (!currentSession) {
+    if (!currentSession || seesAllClasses) {
       return classrooms
     }
 
-    if (currentSession.role === 'teacher' && currentSession.teacherId !== null) {
-      return classrooms.filter(
-        (classroom) => classroom.teacherId === currentSession.teacherId,
-      )
-    }
-
-    if (currentSession.role === 'teacher' && currentSession.teacherId === null) {
-      return []
-    }
-
-    return classrooms
-  }, [classrooms, currentSession])
+    return classrooms.filter((classroom) => classroom.teacherId === currentSession.teacherId)
+  }, [classrooms, currentSession, seesAllClasses])
 
   const calendarEvents = useMemo(
     () => [
@@ -859,7 +865,7 @@ function App() {
     (schedule) => schedule.eventType === 'replacement',
   ).length
   const visibleTeacherCount =
-    currentSession?.role === 'teacher'
+    !seesAllClasses
       ? 1
       : new Set(activeVisibleSchedules.map((schedule) => schedule.teacherId)).size
 
@@ -900,21 +906,17 @@ function App() {
     }
   }, [activeVisibleClassrooms, selectedAgeGroup, selectedClassroomId])
 
-  const navItems: NavItem[] =
-    currentSession?.role === 'teacher'
-      ? [
-          { key: 'calendar', label: 'Calendar', icon: CalendarBlank },
-          { key: 'classrooms', label: 'My Classroom', icon: Chalkboard },
-        ]
-      : [
-          { key: 'leads', label: 'Leads', icon: Funnel, group: 'marketing' },
-          { key: 'forms', label: 'Forms', icon: ClipboardText, group: 'marketing' },
-          { key: 'calendar', label: 'Calendar', icon: CalendarBlank },
-          { key: 'classrooms', label: 'My Classroom', icon: Chalkboard },
-          { key: 'students', label: 'Students', icon: GraduationCap },
-          { key: 'teachers', label: 'My Teacher', icon: IdentificationBadge },
-          { key: 'activity', label: 'Activity Log', icon: ClockCounterClockwise },
-        ]
+  const navItems: NavItem[] = (
+    [
+      { key: 'leads', label: 'Leads', icon: Funnel, group: 'marketing' },
+      { key: 'forms', label: 'Forms', icon: ClipboardText, group: 'marketing' },
+      { key: 'calendar', label: 'Calendar', icon: CalendarBlank },
+      { key: 'classrooms', label: 'My Classroom', icon: Chalkboard },
+      { key: 'students', label: 'Students', icon: GraduationCap },
+      { key: 'teachers', label: 'My Teacher', icon: IdentificationBadge },
+      { key: 'activity', label: 'Activity Log', icon: ClockCounterClockwise },
+    ] satisfies NavItem[]
+  ).filter((item) => allowedSections.includes(item.key))
 
   const marketingNavItems = navItems.filter((item) => item.group === 'marketing')
 
@@ -1176,6 +1178,7 @@ function App() {
       email: '',
       phone: '',
       role: 'teacher',
+      permissions: {},
     })
   }
 
@@ -1196,6 +1199,7 @@ function App() {
       email: teacher.email ?? '',
       phone: teacher.phone ?? '',
       role: teacher.role,
+      permissions: teacher.permissions,
     })
   }
 
@@ -2146,6 +2150,19 @@ function App() {
       let createdTeacherId: number | null = null
       if (!editingTeacher) {
         createdTeacherId = data?.[0]?.teacher_id ?? null
+      }
+
+      // Admins can use everything, so their ticks are left as they are.
+      const savedTeacherId = editingTeacher?.id ?? createdTeacherId
+      let permissionsError: unknown = null
+      if (savedTeacherId && createTeacherFormState.role !== 'admin') {
+        ;({ error: permissionsError } = await supabase.rpc('set_account_permissions', {
+          p_teacher_id: savedTeacherId,
+          p_permissions: createTeacherFormState.permissions,
+        }))
+      }
+
+      if (!editingTeacher) {
         await recordAdminActivity(
           'teacher_created',
           'teacher',
@@ -2161,13 +2178,16 @@ function App() {
         // Keep the modal open, now in "edit" mode for the row just
         // created, so the admin can set up its login in one continuous flow.
         setEditingTeacherId(createdTeacherId)
-      } else {
+      }
+      if (permissionsError) {
+        // The account itself saved; only the ticks need another try.
+        throw permissionsError
+      }
+      if (!createdTeacherId) {
         closeCreateTeacherModal()
       }
     } catch (error) {
-      setCreateTeacherSaveError(
-        error instanceof Error ? error.message : 'Failed to save teacher record.',
-      )
+      setCreateTeacherSaveError(getErrorMessage(error, 'Failed to save teacher record.'))
     } finally {
       setIsCreatingTeacherRecord(false)
     }
@@ -3302,6 +3322,9 @@ function App() {
     // Mirrors submit_lesson_attendance: no attendance ahead of the class day,
     // but the class can still be opened to see who is in it.
     const isUpcoming = occurrenceDate > todayString
+    // Mirrors submit_lesson_attendance: only admin or the class teacher.
+    const classTeacherId = schedules.find((entry) => entry.id === scheduleId)?.teacherId
+    const isViewOnly = !isAdmin && classTeacherId !== currentSession?.teacherId
 
     setAttendanceSaveError(null)
     setAttendanceModal({
@@ -3314,8 +3337,9 @@ function App() {
     setAttendanceRosterIds([])
     setAttendanceReviews({})
     setAttendanceExistingLog(null)
-    setAttendanceLocked(isUpcoming)
+    setAttendanceLocked(isUpcoming || isViewOnly)
     setAttendanceUpcoming(isUpcoming)
+    setAttendanceViewOnly(isViewOnly)
 
     if (isUpcoming) {
       setAttendanceRosterIds(getScheduleRosterStudentIds(scheduleId, occurrenceDate))
@@ -3352,7 +3376,7 @@ function App() {
       setAttendanceExistingLog(summary)
       setAttendanceRemark(summary?.lessonRemark ?? '')
 
-      if (summary) {
+      if (summary && !isViewOnly) {
         const editableUntil =
           new Date(summary.submittedAt).getTime() + 24 * 60 * 60 * 1000
         setAttendanceLocked(Date.now() > editableUntil)
@@ -3396,6 +3420,7 @@ function App() {
     setAttendanceExistingLog(null)
     setAttendanceLocked(false)
     setAttendanceUpcoming(false)
+    setAttendanceViewOnly(false)
   }
 
   function updateAttendanceReviewScore(
@@ -3755,12 +3780,16 @@ function App() {
               <div className="text-sm font-semibold">
                 {currentSession?.role === 'teacher'
                   ? 'Teacher Workspace'
-                  : 'Admin Workspace'}
+                  : currentSession?.role === 'staff'
+                    ? 'Staff Workspace'
+                    : 'Admin Workspace'}
               </div>
               <div className="mt-1 text-xs text-white/85">
                 {currentSession?.role === 'teacher'
                   ? 'Calendar, attendance, and classroom overview'
-                  : 'Calendar, attendance, and student control center'}
+                  : currentSession?.role === 'staff'
+                    ? 'The modules your admin has ticked for you'
+                    : 'Calendar, attendance, and student control center'}
               </div>
             </div>
           </div>
@@ -3867,7 +3896,13 @@ function App() {
                         )
                         .map((teacher) => (
                           <option key={teacher.id} value={teacher.id}>
-                            {teacher.fullName} ({teacher.role === 'admin' ? 'Admin' : 'Teacher'})
+                            {teacher.fullName} (
+                            {teacher.role === 'admin'
+                              ? 'Admin'
+                              : teacher.role === 'staff'
+                                ? 'Staff'
+                                : 'Teacher'}
+                            )
                           </option>
                         ))}
                     </select>
@@ -3911,7 +3946,13 @@ function App() {
               </section>
             )}
 
-            {activeSection === 'calendar' && (
+            {visibleSection === null && !isLoading && (
+              <section className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-600">
+                Your account has no modules yet. Ask your admin to tick what you can use.
+              </section>
+            )}
+
+            {visibleSection === 'calendar' && (
               <>
                 <SummaryBar
                   metrics={[
@@ -3967,7 +4008,7 @@ function App() {
                           <span className="h-3 w-3 rounded-full bg-violet-500" />
                           <span>Make-up</span>
                         </div>
-                        {isAdminView && (
+                        {canEditCalendar && (
                           <button
                             type="button"
                             onClick={() => openCreateSchedule()}
@@ -4004,7 +4045,7 @@ function App() {
                       ))}
                     </div>
 
-                    {isAdminView && (
+                    {seesAllClasses && (
                       <label className="flex items-center gap-2 text-sm text-slate-600">
                         <span className="font-medium">Teacher</span>
                         <select
@@ -4070,7 +4111,7 @@ function App() {
                         minute: '2-digit',
                         meridiem: 'short',
                       }}
-                      editable={isAdminView && !isMobile}
+                      editable={canEditCalendar && !isMobile}
                       eventDurationEditable={false}
                       // Snap a refused drop back quickly so its reason shows sooner.
                       dragRevertDuration={200}
@@ -4098,7 +4139,7 @@ function App() {
                         openMoveDraft(info.oldEvent, info.event)
                       }}
                       dateClick={(arg: DateClickArg) => {
-                        if (isAdminView) {
+                        if (canEditCalendar) {
                           openCreateSchedule(arg.dateStr)
                         }
                       }}
@@ -4120,7 +4161,7 @@ function App() {
                                 occurrenceDate,
                               ),
                             ) ?? []
-                          if (isAdminView && entries[0]) {
+                          if (canEditCalendar && entries[0]) {
                             openMakeupPlan(entries[0].planId)
                           } else {
                             showToast(describeMakeupEntries(entries).join(' · ') || 'Make-up slot')
@@ -4129,7 +4170,7 @@ function App() {
                         }
 
                         if (arg.event.extendedProps.isCancelledOccurrence) {
-                          if (isAdminView) {
+                          if (canEditCalendar) {
                             openCancelledOccurrenceOptions(scheduleId, occurrenceDate)
                           }
                           return
@@ -4150,7 +4191,7 @@ function App() {
                         if (arg.event.extendedProps.classKind === 'trial') {
                           // Admins manage who's booked; teachers go straight
                           // to attendance, same as every other class type.
-                          if (isAdminView) {
+                          if (canEditCalendar) {
                             openTrialBooking(scheduleId, occurrenceDate)
                           } else {
                             void openAttendanceForEvent(
@@ -4162,7 +4203,7 @@ function App() {
                           return
                         }
 
-                        if (isAdminView) {
+                        if (canEditCalendar) {
                           openEditSchedule(scheduleId, occurrenceDate)
                           return
                         }
@@ -4180,24 +4221,24 @@ function App() {
               </>
             )}
 
-            {activeSection === 'classrooms' && (
+            {visibleSection === 'classrooms' && (
               <ClassListingSection
                 classrooms={visibleClassrooms}
                 classroomStudentMap={classroomStudentMap}
                 deletingClassroomId={deletingClassroomId}
                 restoringClassroomId={restoringClassroomId}
-                isAdminView={isAdminView}
-                onDeleteClassroom={handleDeleteClassroom}
+                canEdit={can('classrooms', 'edit')}
+                onDeleteClassroom={can('classrooms', 'delete') ? handleDeleteClassroom : undefined}
                 onEditClassroom={openEditClassroom}
                 onEditSchedule={openEditSchedule}
-                onOpenCreateClassroom={isAdminView ? openCreateClassroom : undefined}
+                onOpenCreateClassroom={can('classrooms', 'edit') ? openCreateClassroom : undefined}
                 onOpenCreateRegularSchedule={
-                  isAdminView
+                  can('classrooms', 'edit')
                     ? (classroomId) => openCreateSchedule(undefined, classroomId)
                     : undefined
                 }
                 onOpenStudentDetail={openStudentDetail}
-                onRestoreClassroom={handleRestoreClassroom}
+                onRestoreClassroom={can('classrooms', 'delete') ? handleRestoreClassroom : undefined}
                 onSelectAgeGroup={setSelectedAgeGroup}
                 schedules={activeClassroomSchedules}
                 selectedAgeGroup={selectedAgeGroup}
@@ -4208,9 +4249,11 @@ function App() {
               />
             )}
 
-            {activeSection === 'students' && (
+            {visibleSection === 'students' && (
               <StudentDashboardSection
                 activeFilter={studentFilter}
+                canEdit={can('students', 'edit')}
+                canDelete={can('students', 'delete')}
                 deactivatingStudentId={deactivatingStudentId}
                 isLoading={isLoading}
                 students={students}
@@ -4229,7 +4272,7 @@ function App() {
               />
             )}
 
-            {activeSection === 'teachers' && isAdminView && (
+            {visibleSection === 'teachers' && (
               <TeacherManagementSection
                 deletingTeacherId={deletingTeacherId}
                 isLoading={isLoading}
@@ -4241,10 +4284,13 @@ function App() {
               />
             )}
 
-            {activeSection === 'leads' && isAdminView && (
+            {visibleSection === 'leads' && (
               <LeadsSection
                 isLoading={isLoading}
                 leads={leads}
+                canEdit={can('leads', 'edit')}
+                canDelete={can('leads', 'delete')}
+                canConvert={can('leads', 'edit') && can('students', 'edit')}
                 onChangeStatus={handleChangeLeadStatus}
                 onConvertLead={handleConvertLead}
                 onEditLead={openEditLeadModal}
@@ -4260,11 +4306,16 @@ function App() {
               />
             )}
 
-            {activeSection === 'forms' && isAdminView && (
-              <FormsSection teacherMap={teacherMap} onSubmissionsSeen={markFormSubmissionsSeen} />
+            {visibleSection === 'forms' && (
+              <FormsSection
+                teacherMap={teacherMap}
+                onSubmissionsSeen={markFormSubmissionsSeen}
+                canEdit={can('forms', 'edit')}
+                canDelete={can('forms', 'delete')}
+              />
             )}
 
-            {activeSection === 'activity' && isAdminView && (
+            {visibleSection === 'activity' && (
               <AdminActivitySection
                 activities={adminActivities}
                 teacherMap={teacherMap}
@@ -4333,6 +4384,7 @@ function App() {
           onClose={closeCreateTeacherModal}
           onSubmit={handleCreateTeacherSubmit}
           onFieldChange={updateCreateTeacherForm}
+          onPermissionsChange={(permissions) => updateCreateTeacherForm('permissions', permissions)}
           loginPassword={teacherLoginPassword}
           onLoginPasswordChange={setTeacherLoginPassword}
           onProvisionLogin={handleProvisionTeacherLogin}
@@ -4374,6 +4426,7 @@ function App() {
           formSubmissions={editingLeadFormSubmissions}
           isLoadingFormSubmissions={isLoadingEditingLeadForms}
           focusFormAnswers={focusFormAnswers}
+          readOnly={Boolean(editingLead) && !can('leads', 'edit')}
         />
       )}
 
@@ -4430,14 +4483,14 @@ function App() {
               (plan.studentId === null && plan.classroomId === selectedStudentDetail.classroomId),
           )}
           onArrangeMakeup={
-            isAdminView &&
+            canEditCalendar &&
             selectedStudentDetail.studentType === 'regular' &&
             selectedStudentDetail.classroomId !== null &&
             classroomMap.get(selectedStudentDetail.classroomId)?.category === 'regular'
               ? () => void openStudentMakeup(selectedStudentDetail)
               : undefined
           }
-          onEditMakeup={isAdminView ? openMakeupPlan : undefined}
+          onEditMakeup={canEditCalendar ? openMakeupPlan : undefined}
         />
       )}
 
@@ -4554,12 +4607,12 @@ function App() {
               trialBookingMap.get(getTrialSlotKey(slotSchedule.id, trialBookingSlot.dateKey)) ?? []
             }
             leads={leads}
-            canManage={isAdminView}
+            canManage={canEditCalendar}
             isSaving={isSavingTrialBooking}
             error={trialBookingError}
             onClose={closeTrialBooking}
             onBook={handleBookTrial}
-            onCancelBooking={handleCancelTrialBooking}
+            onCancelBooking={canDeleteCalendar ? handleCancelTrialBooking : undefined}
             onEditSlot={() => {
               const { scheduleId, dateKey } = trialBookingSlot
               closeTrialBooking()
@@ -4600,7 +4653,7 @@ function App() {
           onSubmit={handleScheduleSubmit}
           onFieldChange={updateScheduleForm}
           onToggleParticipant={toggleScheduleParticipant}
-          onCancelSchedule={handleCancelSchedule}
+          onCancelSchedule={canDeleteCalendar ? handleCancelSchedule : undefined}
           occurrenceDate={editingOccurrenceDate}
           isOccurrenceLogged={
             editingSchedule !== null &&
@@ -4617,13 +4670,14 @@ function App() {
           attendanceExistingLog={attendanceExistingLog}
           attendanceLocked={attendanceLocked}
           isUpcoming={attendanceUpcoming}
+          isViewOnly={attendanceViewOnly}
           teacherName={
             attendanceExistingLog
               ? teacherMap.get(attendanceExistingLog.teacherId)?.fullName ?? null
               : null
           }
           adminAction={
-            isAdminView ? getAttendanceAdminAction(attendanceModal) : undefined
+            canEditCalendar ? getAttendanceAdminAction(attendanceModal) : undefined
           }
           isLoadingAttendance={isLoadingAttendance}
           attendanceRoster={attendanceRoster}
@@ -4692,7 +4746,11 @@ function App() {
             error={makeupError}
             onClose={closeMakeupEditor}
             onSave={(input) => void handleSaveMakeup(input)}
-            onDelete={editingPlan ? () => void handleDeleteMakeup(editingPlan.id) : undefined}
+            onDelete={
+              editingPlan && canDeleteCalendar
+                ? () => void handleDeleteMakeup(editingPlan.id)
+                : undefined
+            }
           />
         )
       })()}

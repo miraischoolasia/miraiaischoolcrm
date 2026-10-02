@@ -42,9 +42,17 @@ type FormsSectionProps = {
   teacherMap: Map<number, Teacher>
   // Told the time of the newest submission once the admin has seen them all.
   onSubmissionsSeen?: (newestIso: string) => void
+  // From the account's Forms permission.
+  canEdit?: boolean
+  canDelete?: boolean
 }
 
-export function FormsSection({ teacherMap, onSubmissionsSeen }: FormsSectionProps) {
+export function FormsSection({
+  teacherMap,
+  onSubmissionsSeen,
+  canEdit = true,
+  canDelete = true,
+}: FormsSectionProps) {
   const [tab, setTab] = useState<FormsTab>('forms')
   const [forms, setForms] = useState<Form[]>([])
   const [submissions, setSubmissions] = useState<FormSubmission[]>([])
@@ -216,7 +224,7 @@ export function FormsSection({ teacherMap, onSubmissionsSeen }: FormsSectionProp
     }
   }
 
-  if (editingForm) {
+  if (editingForm && canEdit) {
     return (
       <>
         {dialog}
@@ -268,6 +276,7 @@ export function FormsSection({ teacherMap, onSubmissionsSeen }: FormsSectionProp
             </button>
           ))}
         </div>
+        {canEdit && (
         <button
           type="button"
           onClick={() => void handleCreate()}
@@ -277,6 +286,7 @@ export function FormsSection({ teacherMap, onSubmissionsSeen }: FormsSectionProp
           <Plus size={16} aria-hidden="true" />
           {isCreating ? 'Creating...' : 'Create form'}
         </button>
+        )}
       </div>
 
       {loadError && (
@@ -334,13 +344,17 @@ export function FormsSection({ teacherMap, onSubmissionsSeen }: FormsSectionProp
                   {visibleForms.map((form) => (
                     <tr key={form.id} className="align-middle">
                       <td className="px-6 py-4 text-sm">
+                        {canEdit ? (
                         <button
-                          type="button"
-                          onClick={() => setEditingId(form.id)}
-                          className="text-left font-medium text-slate-800 hover:text-[#be185d]"
-                        >
-                          {form.name}
-                        </button>
+                            type="button"
+                            onClick={() => setEditingId(form.id)}
+                            className="text-left font-medium text-slate-800 hover:text-[#be185d]"
+                          >
+                            {form.name}
+                          </button>
+                        ) : (
+                          <span className="font-medium text-slate-800">{form.name}</span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <span
@@ -387,10 +401,14 @@ export function FormsSection({ teacherMap, onSubmissionsSeen }: FormsSectionProp
                             className="absolute right-6 top-12 z-10 w-44 rounded-xl border border-slate-200 bg-white py-1 text-left shadow-[0_12px_32px_rgba(15,23,42,0.12)]"
                           >
                             {[
-                              { label: 'Edit', run: () => setEditingId(form.id) },
+                              ...(canEdit ? [{ label: 'Edit', run: () => setEditingId(form.id) }] : []),
                               { label: 'Share / Embed', run: () => setEmbedId(form.id) },
-                              { label: 'Duplicate', run: () => void handleDuplicate(form) },
-                              { label: 'Delete', run: () => void handleDelete(form), danger: true },
+                              ...(canEdit
+                                ? [{ label: 'Duplicate', run: () => void handleDuplicate(form) }]
+                                : []),
+                              ...(canDelete
+                                ? [{ label: 'Delete', run: () => void handleDelete(form), danger: true }]
+                                : []),
                             ].map((item) => (
                               <button
                                 key={item.label}
@@ -423,7 +441,7 @@ export function FormsSection({ teacherMap, onSubmissionsSeen }: FormsSectionProp
           submissions={submissions}
           isCapped={submissions.length >= FORM_SUBMISSIONS_FETCH_LIMIT}
           deletingId={deletingSubmissionId}
-          onDelete={(submission) => void handleDeleteSubmission(submission)}
+          onDelete={canDelete ? (submission) => void handleDeleteSubmission(submission) : undefined}
         />
       )}
 
@@ -433,7 +451,7 @@ export function FormsSection({ teacherMap, onSubmissionsSeen }: FormsSectionProp
           formName={embedForm.name}
           isPublished={embedForm.isPublished}
           slug={embedForm.slug}
-          onSaveSlug={(slug) => handleSaveSlug(embedForm.id, slug)}
+          onSaveSlug={canEdit ? (slug) => handleSaveSlug(embedForm.id, slug) : undefined}
           onClose={() => setEmbedId(null)}
         />
       )}

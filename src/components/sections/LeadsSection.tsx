@@ -69,6 +69,10 @@ function formatChildren(children: LeadChild[]) {
 type LeadsSectionProps = {
   isLoading: boolean
   leads: Lead[]
+  // From the account's Leads permission. Converting also needs Students edit.
+  canEdit?: boolean
+  canDelete?: boolean
+  canConvert?: boolean
   onChangeStatus: (leadId: number, status: LeadStatus) => void
   onConvertLead: (leadId: number) => void
   onEditLead: (leadId: number) => void
@@ -87,6 +91,9 @@ type LeadsSectionProps = {
 export function LeadsSection({
   isLoading,
   leads,
+  canEdit = true,
+  canDelete = true,
+  canConvert = true,
   onChangeStatus,
   onConvertLead,
   onEditLead,
@@ -274,6 +281,8 @@ export function LeadsSection({
                   Dashboard
                 </button>
               </div>
+              {canEdit && (
+              <>
               <button
                 type="button"
                 onClick={onOpenLeadOptions}
@@ -298,6 +307,8 @@ export function LeadsSection({
                 <UserPlus size={16} weight="bold" aria-hidden="true" />
                 Add Lead
               </button>
+              </>
+              )}
             </div>
           </div>
 
@@ -394,6 +405,8 @@ export function LeadsSection({
             key={`${normalizedSearch}|${picFilter}|${dateFrom}|${dateTo}`}
             leads={datedLeads}
             picLabel={(lead) => (lead.picId === null ? null : picLabel(lead))}
+            canEdit={canEdit}
+            canConvert={canConvert}
             onChangeStatus={onChangeStatus}
             onConvertLead={onConvertLead}
             onEditLead={onEditLead}
@@ -525,7 +538,7 @@ export function LeadsSection({
                     onChange={(event) =>
                       onChangeStatus(lead.id, event.target.value as LeadStatus)
                     }
-                    disabled={lead.status === 'converted'}
+                    disabled={!canEdit || lead.status === 'converted'}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] disabled:bg-slate-50 disabled:text-slate-400"
                   >
                     {leadStatusOptions.map((option) => (
@@ -542,8 +555,9 @@ export function LeadsSection({
                       className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                     >
                       <PencilSimple size={16} aria-hidden="true" />
-                      Edit
+                      {canEdit ? 'Edit' : 'View'}
                     </button>
+                    {canEdit && (
                     <button
                       type="button"
                       onClick={() => onOpenFollowUp(lead.id)}
@@ -552,6 +566,8 @@ export function LeadsSection({
                       <Phone size={16} aria-hidden="true" />
                       Follow Up
                     </button>
+                    )}
+                    {canConvert && (
                     <button
                       type="button"
                       disabled={lead.status === 'converted'}
@@ -561,6 +577,8 @@ export function LeadsSection({
                       <ArrowRight size={16} aria-hidden="true" />
                       {lead.status === 'converted' ? 'Converted' : 'Convert'}
                     </button>
+                    )}
+                    {canDelete && (
                     <button
                       type="button"
                       disabled={deletingLeadId === lead.id}
@@ -570,6 +588,7 @@ export function LeadsSection({
                       <Trash size={16} aria-hidden="true" />
                       {deletingLeadId === lead.id ? 'Deleting...' : 'Delete'}
                     </button>
+                    )}
                   </div>
                 </li>
               ))}
@@ -616,7 +635,7 @@ export function LeadsSection({
                           onChange={(event) =>
                             onChangeStatus(lead.id, event.target.value as LeadStatus)
                           }
-                          disabled={lead.status === 'converted'}
+                          disabled={!canEdit || lead.status === 'converted'}
                           className={cn(
                             'rounded-full border-0 px-2.5 py-0.5 text-xs font-semibold outline-none disabled:cursor-not-allowed',
                             stageToneClass[lead.status],
@@ -640,8 +659,9 @@ export function LeadsSection({
                             className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                           >
                             <PencilSimple size={16} aria-hidden="true" />
-                            Edit
+                            {canEdit ? 'Edit' : 'View'}
                           </button>
+                          {canEdit && (
                           <button
                             type="button"
                             onClick={() => onOpenFollowUp(lead.id)}
@@ -650,6 +670,8 @@ export function LeadsSection({
                             <Phone size={16} aria-hidden="true" />
                             Follow Up
                           </button>
+                          )}
+                          {canConvert && (
                           <button
                             type="button"
                             disabled={lead.status === 'converted'}
@@ -659,6 +681,8 @@ export function LeadsSection({
                             <ArrowRight size={16} aria-hidden="true" />
                             {lead.status === 'converted' ? 'Converted' : 'Convert'}
                           </button>
+                          )}
+                          {canDelete && (
                           <button
                             type="button"
                             disabled={deletingLeadId === lead.id}
@@ -668,6 +692,7 @@ export function LeadsSection({
                           >
                             <Trash size={16} aria-hidden="true" />
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>

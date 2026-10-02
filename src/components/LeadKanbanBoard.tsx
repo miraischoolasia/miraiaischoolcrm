@@ -50,6 +50,9 @@ function getReminderBadge(lead: Lead, todayString: string) {
 
 type LeadKanbanBoardProps = {
   leads: Lead[]
+  // Without edit the cards cannot be dragged between stages.
+  canEdit?: boolean
+  canConvert?: boolean
   onChangeStatus: (leadId: number, status: LeadStatus) => void
   onConvertLead: (leadId: number) => void
   onEditLead: (leadId: number) => void
@@ -62,6 +65,8 @@ type LeadKanbanBoardProps = {
 
 export function LeadKanbanBoard({
   leads,
+  canEdit = true,
+  canConvert = true,
   onChangeStatus,
   onConvertLead,
   onEditLead,
@@ -145,8 +150,11 @@ export function LeadKanbanBoard({
                 return
               }
               const lead = leads.find((entry) => entry.id === leadId)
+              if (!canEdit) {
+                return
+              }
               if (stage.key === 'converted') {
-                if (lead && lead.status !== 'converted') {
+                if (canConvert && lead && lead.status !== 'converted') {
                   onConvertLead(leadId)
                 }
                 return
@@ -180,7 +188,7 @@ export function LeadKanbanBoard({
                 return (
                   <div
                     key={lead.id}
-                    draggable
+                    draggable={canEdit}
                     onDragStart={(event) => {
                       event.dataTransfer.setData('text/plain', String(lead.id))
                       event.dataTransfer.effectAllowed = 'move'
@@ -231,6 +239,7 @@ export function LeadKanbanBoard({
                       >
                         <PencilSimple size={14} aria-hidden="true" />
                       </button>
+                      {canEdit && (
                       <button
                         type="button"
                         onClick={() => onOpenFollowUp(lead.id)}
@@ -239,6 +248,7 @@ export function LeadKanbanBoard({
                       >
                         <Phone size={14} aria-hidden="true" />
                       </button>
+                      )}
                     </div>
                   </div>
                 )
