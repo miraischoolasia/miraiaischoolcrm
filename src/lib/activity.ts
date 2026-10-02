@@ -206,13 +206,16 @@ export function describeActivity(activity: AdminActivity, names: ActivityNames):
   }
 }
 
+export function addDays(dayKey: string, days: number) {
+  const [year, month, day] = dayKey.split('-').map(Number)
+  const next = new Date(year, month - 1, day + days)
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`
+}
+
 // Day headings: Today, Yesterday, then the date.
 export function getActivityDayLabel(dayKey: string, todayKey: string) {
   if (dayKey === todayKey) {
     return 'Today'
   }
-  const [year, month, day] = todayKey.split('-').map(Number)
-  const yesterday = new Date(year, month - 1, day - 1)
-  const yesterdayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`
-  return dayKey === yesterdayKey ? 'Yesterday' : formatDate(dayKey)
+  return dayKey === addDays(todayKey, -1) ? 'Yesterday' : formatDate(dayKey)
 }

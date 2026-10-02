@@ -83,8 +83,7 @@ import type { BulkLeadRow } from './lib/leadCsv'
 import type { BulkPreviewStudentRow } from './lib/studentCsv'
 import { provisionTeacherLogin, resetTeacherPassword } from './lib/teacherAuth'
 import {
-  ADMIN_ACTIVITY_PAGE_SIZE,
-  fetchAdminActivityFromSupabase,
+  fetchAdminActivityForDay,
   fetchClassroomsFromSupabase,
   fetchLatestLessonLogStudents,
   fetchLeadOptionsFromSupabase,
@@ -256,9 +255,9 @@ function App() {
   const [lessonLogs, setLessonLogs] = useState<LessonLogSummary[]>([])
   const [lessonReviews, setLessonReviews] = useState<LessonLogStudentReview[]>([])
   const [adminActivities, setAdminActivities] = useState<AdminActivity[]>([])
-  // Set once a 'load older' page comes back short: nothing older is left.
-  const [isActivityExhausted, setIsActivityExhausted] = useState(false)
-  const [isLoadingOlderActivity, setIsLoadingOlderActivity] = useState(false)
+  // The Activity Log shows one day at a time, loaded only while it is open.
+  const [activityDay, setActivityDay] = useState(todayString)
+  const [isLoadingActivity, setIsLoadingActivity] = useState(false)
 
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -678,6 +677,34 @@ function App() {
   }, [authSession, currentTeacher, isLoading, loadError, loadedUserId])
 
   useEffect(() => {
+    if (visibleSection !== 'activity') {
+      return
+    }
+    let cancelled = false
+    setIsLoadingActivity(true)
+    fetchAdminActivityForDay(activityDay)
+      .then((rows) => {
+        if (!cancelled) {
+          setAdminActivities(rows)
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setAdminActivities([])
+          showToast(getErrorMessage(error, 'Failed to load the activity log.'))
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingActivity(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [visibleSection, activityDay, showToast])
+
+  useEffect(() => {
     if (allowedSections.length > 0 && !allowedSections.includes(activeSection)) {
       setActiveSection(allowedSections.includes('calendar') ? 'calendar' : allowedSections[0])
     }
@@ -841,7 +868,6 @@ function App() {
           nextTrialBookings,
           nextLessonLogs,
           nextLessonReviews,
-          nextAdminActivities,
           nextLeads,
           nextMakeupPlans,
           nextLeadOptions,
@@ -856,7 +882,6 @@ function App() {
           fetchTrialBookingsFromSupabase(),
           fetchLessonLogSummariesFromSupabase(),
           fetchLessonLogStudentReviewsFromSupabase(),
-          fetchAdminActivityFromSupabase(),
           fetchLeadsFromSupabase(),
           fetchMakeupPlansFromSupabase(),
           fetchLeadOptionsFromSupabase(),
@@ -873,7 +898,6 @@ function App() {
           setTrialBookings(nextTrialBookings)
           setLessonLogs(nextLessonLogs)
           setLessonReviews(nextLessonReviews)
-          setAdminActivities(nextAdminActivities)
           setLeads(nextLeads)
           setMakeupPlans(nextMakeupPlans)
           setLeadOptions(nextLeadOptions)
@@ -2171,26 +2195,13 @@ function App() {
     setLeads(nextLeads)
   }
 
+  // Called after every change; only reloads while the Activity Log is open
+  // (it loads fresh when opened anyway).
   async function refreshAdminActivities() {
-    const nextActivities = await fetchAdminActivityFromSupabase()
-    setAdminActivities(nextActivities)
-  }
-
-  async function loadOlderActivity() {
-    const oldest = adminActivities[adminActivities.length - 1]
-    if (!oldest) {
+    if (visibleSection !== 'activity') {
       return
     }
-    try {
-      setIsLoadingOlderActivity(true)
-      const older = await fetchAdminActivityFromSupabase({ beforeId: oldest.id })
-      setAdminActivities((current) => [...current, ...older])
-      setIsActivityExhausted(older.length < ADMIN_ACTIVITY_PAGE_SIZE)
-    } catch (error) {
-      showToast(getErrorMessage(error, 'Failed to load older activity.'))
-    } finally {
-      setIsLoadingOlderActivity(false)
-    }
+    setAdminActivities(await fetchAdminActivityForDay(activityDay))
   }
 
   async function recordAdminActivity(
@@ -4726,9 +4737,9 @@ function App() {
                 teacherMap={teacherMap}
                 classroomMap={classroomMap}
                 todayString={todayString}
-                onLoadMore={() => void loadOlderActivity()}
-                isLoadingMore={isLoadingOlderActivity}
-                hasMore={!isActivityExhausted && adminActivities.length >= ADMIN_ACTIVITY_PAGE_SIZE}
+                day={activityDay}
+                onChangeDay={setActivityDay}
+                isLoading={isLoadingActivity}
               />
             )}
           </div>

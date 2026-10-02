@@ -42,7 +42,7 @@ vi.mock('./lib/api', async (importOriginal) => ({
   fetchTrialBookingsFromSupabase: async () => [],
   fetchLessonLogSummariesFromSupabase: async () => [],
   fetchLessonLogStudentReviewsFromSupabase: async () => [],
-  fetchAdminActivityFromSupabase: async () => [],
+  fetchAdminActivityForDay: async () => [],
 }))
 
 const csv = 'Parent Name,Phone,Source,Stage,Added Date,Notes\nJane Tan,+65 9123 4567,referral,new,2026-09-01,\n'

@@ -2,11 +2,13 @@ import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { getTodayString } from './domain/studentStatus'
 import type { AccountPermissions, TeacherRole } from './types/domain'
 
 const mocks = vi.hoisted(() => ({
   listener: null as null | ((event: string, session: unknown) => void),
   account: { role: 'staff', permissions: {} } as { role: string; permissions: object },
+  activityForDay: vi.fn(async () => [] as unknown[]),
 }))
 
 vi.mock('./lib/supabase', () => ({
@@ -66,7 +68,7 @@ vi.mock('./lib/api', async (importOriginal) => ({
   fetchTrialBookingsFromSupabase: async () => [],
   fetchLessonLogSummariesFromSupabase: async () => [],
   fetchLessonLogStudentReviewsFromSupabase: async () => [],
-  fetchAdminActivityFromSupabase: async () => [],
+  fetchAdminActivityForDay: mocks.activityForDay,
 }))
 
 async function signInAs(role: TeacherRole, permissions: AccountPermissions) {
@@ -131,5 +133,16 @@ describe('account permissions', () => {
     await signInAs('teacher', { leads: { level: 'edit', delete: true } })
 
     expect(navLabels()).toEqual(['Calendar', 'Marketing', 'My Classroom'])
+  })
+
+  it('loads the activity log only when it is opened, one day at a time', async () => {
+    await signInAs('staff', { activity: { level: 'view' }, leads: { level: 'view' } })
+    expect(mocks.activityForDay).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Activity Log' })[0])
+
+    expect(await screen.findByRole('heading', { name: /Today/ })).toBeInTheDocument()
+    expect(mocks.activityForDay).toHaveBeenCalledTimes(1)
+    expect(mocks.activityForDay).toHaveBeenCalledWith(getTodayString())
   })
 })

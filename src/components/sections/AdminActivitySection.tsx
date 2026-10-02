@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { MagnifyingGlass } from '@phosphor-icons/react'
+import { CaretLeft, CaretRight, MagnifyingGlass } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import {
   activityAreaLabels,
@@ -8,7 +8,7 @@ import {
   getActivityDayLabel,
   type ActivityArea,
 } from '../../lib/activity'
-import { getDateKeyFromDate } from '../../lib/schedule'
+import { addDays } from '../../lib/activity'
 import type { AdminActivity, Classroom, Teacher } from '../../types/domain'
 
 type AdminActivitySectionProps = {
@@ -16,9 +16,10 @@ type AdminActivitySectionProps = {
   teacherMap: Map<number, Teacher>
   classroomMap?: Map<number, Classroom>
   todayString: string
-  onLoadMore?: () => void
-  isLoadingMore?: boolean
-  hasMore?: boolean
+  // The day shown (YYYY-MM-DD); the parent loads that day's entries.
+  day: string
+  onChangeDay: (day: string) => void
+  isLoading?: boolean
 }
 
 const areaTone: Record<ActivityArea, string> = {
@@ -36,9 +37,9 @@ export function AdminActivitySection({
   teacherMap,
   classroomMap = new Map(),
   todayString,
-  onLoadMore,
-  isLoadingMore,
-  hasMore,
+  day,
+  onChangeDay,
+  isLoading = false,
 }: AdminActivitySectionProps) {
   const [area, setArea] = useState<ActivityArea | 'all'>('all')
   const [actorId, setActorId] = useState<string>('all')
@@ -59,7 +60,6 @@ export function AdminActivitySection({
           activity,
           view,
           area: getActivityArea(activity),
-          dayKey: getDateKeyFromDate(createdAt),
           time: createdAt.toLocaleTimeString('en-MY', { hour: 'numeric', minute: '2-digit' }),
         }
       }),
@@ -82,16 +82,6 @@ export function AdminActivitySection({
         entry.view.title.toLowerCase().includes(term) ||
         entry.activity.entityLabel.toLowerCase().includes(term)),
   )
-
-  const days: { dayKey: string; items: typeof visible }[] = []
-  for (const entry of visible) {
-    const last = days[days.length - 1]
-    if (last?.dayKey === entry.dayKey) {
-      last.items.push(entry)
-    } else {
-      days.push({ dayKey: entry.dayKey, items: [entry] })
-    }
-  }
 
   return (
     <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
@@ -120,8 +110,44 @@ export function AdminActivitySection({
             </button>
           ))}
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <div className="relative sm:w-72">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <div className="flex items-center gap-1" role="group" aria-label="Pick a day">
+            <button
+              type="button"
+              onClick={() => onChangeDay(addDays(day, -1))}
+              aria-label="Previous day"
+              className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
+            >
+              <CaretLeft size={16} aria-hidden="true" />
+            </button>
+            <input
+              type="date"
+              value={day}
+              max={todayString}
+              onChange={(event) => event.target.value && onChangeDay(event.target.value)}
+              aria-label="Day"
+              className={fieldClass}
+            />
+            <button
+              type="button"
+              onClick={() => onChangeDay(addDays(day, 1))}
+              disabled={day >= todayString}
+              aria-label="Next day"
+              className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+            >
+              <CaretRight size={16} aria-hidden="true" />
+            </button>
+            {day !== todayString && (
+              <button
+                type="button"
+                onClick={() => onChangeDay(todayString)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Today
+              </button>
+            )}
+          </div>
+          <div className="relative sm:w-64">
             <MagnifyingGlass
               size={16}
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -152,65 +178,49 @@ export function AdminActivitySection({
         </div>
       </div>
 
-      {visible.length === 0 ? (
+      <h3 className="border-b border-slate-200 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+        {getActivityDayLabel(day, todayString)}
+        {!isLoading && ` · ${activities.length} ${activities.length === 1 ? 'change' : 'changes'}`}
+      </h3>
+
+      {isLoading ? (
+        <div className="px-6 py-16 text-center text-sm text-slate-500">Loading...</div>
+      ) : visible.length === 0 ? (
         <div className="px-6 py-16 text-center text-sm text-slate-500">
-          {activities.length === 0 ? 'No activity has been recorded yet.' : 'Nothing matches these filters.'}
+          {activities.length === 0 ? 'No changes on this day.' : 'Nothing matches these filters.'}
         </div>
       ) : (
-        days.map((day) => (
-          <div key={day.dayKey}>
-            <h3 className="sticky top-0 border-b border-slate-200 bg-white/95 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-              {getActivityDayLabel(day.dayKey, todayString)}
-            </h3>
-            <ul className="divide-y divide-slate-100">
-              {day.items.map(({ activity, view, area: entryArea, time }) => (
-                <li key={activity.id} className="flex gap-3 px-4 py-3">
-                  <div className="w-16 shrink-0 pt-0.5 text-xs font-medium text-slate-400">{time}</div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={cn(
-                          'rounded-full px-2 py-0.5 text-[11px] font-semibold',
-                          areaTone[entryArea],
-                        )}
-                      >
-                        {activityAreaLabels[entryArea]}
-                      </span>
-                      <span className="text-sm font-semibold text-slate-900">{view.title}</span>
-                    </div>
-                    {view.changes.length > 0 && (
-                      <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
-                        {view.changes.map((item) => (
-                          <li key={item.label}>
-                            {item.label}: <span className="text-slate-400">{item.from}</span> →{' '}
-                            <span className="font-medium text-slate-800">{item.to}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {view.notes.length > 0 && (
-                      <div className="mt-1 text-sm text-slate-500">{view.notes.join(' · ')}</div>
-                    )}
-                    <div className="mt-1 text-xs text-slate-400">by {actorName(activity.actorTeacherId)}</div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))
-      )}
-
-      {onLoadMore && hasMore && (
-        <div className="border-t border-slate-200 px-4 py-4 text-center">
-          <button
-            type="button"
-            onClick={onLoadMore}
-            disabled={isLoadingMore}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isLoadingMore ? 'Loading...' : 'Load older activity'}
-          </button>
-        </div>
+        <ul className="divide-y divide-slate-100">
+          {visible.map(({ activity, view, area: entryArea, time }) => (
+            <li key={activity.id} className="flex gap-3 px-4 py-3">
+              <div className="w-16 shrink-0 pt-0.5 text-xs font-medium text-slate-400">{time}</div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', areaTone[entryArea])}
+                  >
+                    {activityAreaLabels[entryArea]}
+                  </span>
+                  <span className="text-sm font-semibold text-slate-900">{view.title}</span>
+                </div>
+                {view.changes.length > 0 && (
+                  <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
+                    {view.changes.map((item) => (
+                      <li key={item.label}>
+                        {item.label}: <span className="text-slate-400">{item.from}</span> →{' '}
+                        <span className="font-medium text-slate-800">{item.to}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {view.notes.length > 0 && (
+                  <div className="mt-1 text-sm text-slate-500">{view.notes.join(' · ')}</div>
+                )}
+                <div className="mt-1 text-xs text-slate-400">by {actorName(activity.actorTeacherId)}</div>
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   )

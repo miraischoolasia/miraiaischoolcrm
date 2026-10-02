@@ -201,29 +201,26 @@ export async function fetchLeadOptionsFromSupabase() {
   return data.map(mapLeadOptionRow)
 }
 
-export const ADMIN_ACTIVITY_PAGE_SIZE = 250
-
-export async function fetchAdminActivityFromSupabase(options?: {
-  limit?: number
-  beforeId?: number
-}) {
+// One day of the activity log (the viewer's local day), newest first.
+// Loading a day at a time keeps the page light however long the log gets.
+export async function fetchAdminActivityForDay(dayKey: string) {
   if (!supabase) {
     return []
   }
 
-  let query = supabase
+  const [year, month, day] = dayKey.split('-').map(Number)
+  const dayStart = new Date(year, month - 1, day)
+  const nextDayStart = new Date(year, month - 1, day + 1)
+
+  const { data, error } = await supabase
     .from('admin_activity_logs')
     .select(
       'id, actor_teacher_id, action_type, entity_type, entity_id, entity_label, details, created_at',
     )
+    .gte('created_at', dayStart.toISOString())
+    .lt('created_at', nextDayStart.toISOString())
     .order('created_at', { ascending: false })
-    .limit(options?.limit ?? ADMIN_ACTIVITY_PAGE_SIZE)
-
-  if (options?.beforeId !== undefined) {
-    query = query.lt('id', options.beforeId)
-  }
-
-  const { data, error } = await query
+    .limit(1000)
 
   if (error) {
     throw error
