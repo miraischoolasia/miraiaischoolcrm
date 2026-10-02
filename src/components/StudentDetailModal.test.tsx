@@ -78,4 +78,38 @@ describe('StudentDetailModal', () => {
       'Trial 1 MonthOct 1, 2026 - Nov 1, 2026 · 4 classes',
     ])
   })
+
+  it('shows the lesson and Mirai Club expiry, or that the package has no fees', () => {
+    const { unmount } = render(
+      <StudentDetailModal
+        classrooms={[]}
+        student={{ ...student, miraiClubExpiryDate: '2026-11-30' }}
+        lessonLogs={[]}
+        lessonReviews={[]}
+        onClose={vi.fn()}
+        schedules={[]}
+        teacherMap={new Map()}
+      />,
+    )
+    expect(screen.getByText('Lesson Expiry')).toBeInTheDocument()
+    expect(screen.getByText('Mirai Club Expiry')).toBeInTheDocument()
+    expect(screen.getByText('Nov 30, 2026')).toBeInTheDocument()
+    unmount()
+
+    render(
+      <StudentDetailModal
+        classrooms={[]}
+        student={{ ...student, packageId: 1 }}
+        lessonLogs={[]}
+        lessonReviews={[]}
+        onClose={vi.fn()}
+        schedules={[]}
+        teacherMap={new Map()}
+        packages={[
+          { id: 1, name: 'Trial 1 Month', kind: 'trial', classCount: 4, durationMonths: 1, includesFees: false, isActive: true, sortOrder: 1 },
+        ]}
+      />,
+    )
+    expect(screen.getByText('Not in this package')).toBeInTheDocument()
+  })
 })

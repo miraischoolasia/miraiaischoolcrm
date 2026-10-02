@@ -131,7 +131,10 @@ describe('StudentDashboardSection', () => {
     const row = (name: string) =>
       [...document.querySelectorAll('tbody tr')].find((r) => r.textContent?.includes(name)) as HTMLElement
     expect(within(row('On Trial')).getByText('Trial 1 Month')).toBeInTheDocument()
-    expect(within(row('On Trial')).getAllByText('—')).toHaveLength(2)
+    // Only the Account Fee column is listed now; Mirai Club is in the details.
+    expect(within(row('On Trial')).getAllByText('—')).toHaveLength(1)
+    const headers = [...document.querySelectorAll('thead th')].map((cell) => cell.textContent)
+    expect(headers).toEqual(['Student Name', 'Package', 'Account Fee Expiry', 'Membership Status', 'Classes', 'Action'])
     expect(within(row('Not Tagged')).getByText('No package')).toBeInTheDocument()
     expect(within(row('Six Months')).queryByText('—')).not.toBeInTheDocument()
   })

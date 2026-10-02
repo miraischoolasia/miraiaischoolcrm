@@ -269,7 +269,6 @@ export function StudentDashboardSection({
                             {getStudentTypeLabel(student)}
                           </span>
                         )}
-                        <PackageTag student={student} pkg={pkg} />
                       </div>
                       <div className="mt-1 text-xs text-slate-500">
                         Student ID #{student.id.toString().padStart(3, '0')}
@@ -314,13 +313,10 @@ export function StudentDashboardSection({
                   <dl className="space-y-2 rounded-xl bg-slate-50 p-3">
                     <div className="flex items-start justify-between gap-3">
                       <dt className="pt-0.5 text-xs font-medium text-slate-500">
-                        Lesson Expiry
+                        Package
                       </dt>
                       <dd>
-                        <ExpiryCell
-                          date={student.lessonExpiryDate}
-                          meta={status.lessonExpiry}
-                        />
+                        <PackageTag student={student} pkg={pkg} />
                       </dd>
                     </div>
                     <div className="flex items-start justify-between gap-3">
@@ -329,14 +325,6 @@ export function StudentDashboardSection({
                       </dt>
                       <dd>
                         <FeeCell pkg={pkg} date={student.accountFeeExpiryDate} meta={status.accountFeeExpiry} />
-                      </dd>
-                    </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <dt className="pt-0.5 text-xs font-medium text-slate-500">
-                        Mirai Club
-                      </dt>
-                      <dd>
-                        <FeeCell pkg={pkg} date={student.miraiClubExpiryDate} meta={status.miraiClubExpiry} />
                       </dd>
                     </div>
                   </dl>
@@ -382,9 +370,8 @@ export function StudentDashboardSection({
                 <thead className="bg-slate-50">
                   <tr className="text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                     <th className="px-6 py-4">Student Name</th>
-                    <th className="px-6 py-4">Lesson Expiry</th>
+                    <th className="px-6 py-4">Package</th>
                     <th className="px-6 py-4">Account Fee Expiry</th>
-                    <th className="px-6 py-4">Mirai Club Expiry</th>
                     <th className="px-6 py-4">Membership Status</th>
                     <th className="px-6 py-4">Classes</th>
                     <th className="px-6 py-4 text-right">Action</th>
@@ -412,7 +399,6 @@ export function StudentDashboardSection({
                                 {getStudentTypeLabel(student)}
                               </span>
                             )}
-                            <PackageTag student={student} pkg={pkg} />
                           </div>
                           <div className="text-xs text-slate-500">
                             Student ID #{student.id.toString().padStart(3, '0')}
@@ -421,16 +407,10 @@ export function StudentDashboardSection({
                         </div>
                       </td>
                       <td className="px-6 py-5">
-                        <ExpiryCell
-                          date={student.lessonExpiryDate}
-                          meta={status.lessonExpiry}
-                        />
+                        <PackageTag student={student} pkg={pkg} />
                       </td>
                       <td className="px-6 py-5">
                         <FeeCell pkg={pkg} date={student.accountFeeExpiryDate} meta={status.accountFeeExpiry} />
-                      </td>
-                      <td className="px-6 py-5">
-                        <FeeCell pkg={pkg} date={student.miraiClubExpiryDate} meta={status.miraiClubExpiry} />
                       </td>
                       <td className="px-6 py-5">
                         <div className="flex max-w-[320px] flex-wrap gap-2">
@@ -547,7 +527,11 @@ function matchesFilter(
 
 function PackageTag({ student, pkg }: { student: Student; pkg: Package | null }) {
   if (student.studentType !== 'regular') {
-    return null
+    return (
+      <span className="text-sm text-slate-400">
+        {student.studentType === 'preview' ? 'Preview' : 'HOA'}
+      </span>
+    )
   }
   return pkg ? (
     <span className="rounded-full bg-[#fff1f8] px-2 py-0.5 text-[11px] font-semibold text-[#be185d]">

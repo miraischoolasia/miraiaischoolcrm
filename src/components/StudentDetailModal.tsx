@@ -1,10 +1,11 @@
 import { useMemo } from 'react'
 import { PencilSimple, X } from '@phosphor-icons/react'
-import { formatDate } from '../domain/studentStatus'
+import { formatDate, getDateMeta, getTodayString } from '../domain/studentStatus'
 import { getLatestLessonLogMap } from '../lib/mappers'
 import { performanceMetricDefinitions } from '../lib/constants'
 import { weekdayLabels } from '../lib/schedule'
 import { buildPathway } from '../lib/pathway'
+import { ExpiryCell } from './ExpiryCell'
 import { ModalShell } from './ModalShell'
 import { PathwaySection } from './PathwaySection'
 import { PerformanceRadarChart } from './PerformanceRadarChart'
@@ -175,6 +176,8 @@ export function StudentDetailModal({
     )
   }, [schedules, student.classroomId])
 
+  const currentPackage = packages.find((pkg) => pkg.id === student.packageId) ?? null
+
   return (
     <ModalShell maxWidth="760" onClose={onClose}>
       <div className="border-b border-slate-200 bg-white px-6 py-5 sm:px-8">
@@ -255,8 +258,26 @@ export function StudentDetailModal({
               {!isPreviewStudent && (
               <div>
                 <div className="text-sm text-slate-500">Lesson Expiry</div>
-                <div className="mt-1 text-lg font-semibold text-slate-900">
-                  {formatDate(student.lessonExpiryDate)}
+                <div className="mt-1 text-lg">
+                  <ExpiryCell
+                    date={student.lessonExpiryDate}
+                    meta={getDateMeta(student.lessonExpiryDate, getTodayString())}
+                  />
+                </div>
+              </div>
+              )}
+              {!isPreviewStudent && (
+              <div>
+                <div className="text-sm text-slate-500">Mirai Club Expiry</div>
+                <div className="mt-1 text-lg">
+                  {currentPackage && !currentPackage.includesFees ? (
+                    <span className="text-sm text-slate-400">Not in this package</span>
+                  ) : (
+                    <ExpiryCell
+                      date={student.miraiClubExpiryDate}
+                      meta={getDateMeta(student.miraiClubExpiryDate, getTodayString())}
+                    />
+                  )}
                 </div>
               </div>
               )}
