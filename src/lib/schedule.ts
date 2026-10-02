@@ -22,17 +22,19 @@ export const weekdayLabels = [
 ] as const
 export const weekdayToRRule = ['su', 'mo', 'tu', 'we', 'th', 'fr', 'sa'] as const
 
-export type CalendarClassFilter = 'all' | 'regular' | 'trial' | 'replacement'
+export type CalendarClassFilter = 'all' | 'regular' | 'trial' | 'camp' | 'replacement'
 
 export const calendarClassFilterOptions: { value: CalendarClassFilter; label: string }[] = [
   { value: 'all', label: 'All Classes' },
   { value: 'regular', label: 'Regular Class' },
   { value: 'trial', label: 'Trial Class' },
+  { value: 'camp', label: 'Camp Class' },
   { value: 'replacement', label: 'Replacement Class' },
 ]
 
 // A weekly schedule takes its kind from the classroom it is bound to
-// (regular vs trial); replacement classes have no classroom and stand alone.
+// (regular, trial or camp); replacement classes have no classroom and stand
+// alone. Camp classes otherwise follow every regular-class rule.
 export function getScheduleClassKind(
   schedule: Schedule,
   classroomMap: Map<number, Classroom>,
@@ -42,7 +44,9 @@ export function getScheduleClassKind(
   }
 
   const classroom = schedule.classroomId ? classroomMap.get(schedule.classroomId) : null
-  return classroom?.category === 'trial' ? 'trial' : 'regular'
+  return classroom?.category === 'trial' || classroom?.category === 'camp'
+    ? classroom.category
+    : 'regular'
 }
 
 export function filterSchedulesByClassKind(

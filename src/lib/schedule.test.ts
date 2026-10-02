@@ -224,9 +224,11 @@ describe('buildScheduleEvents', () => {
 
   describe('class kind filter', () => {
     const trialClassroom: Classroom = { ...classroom, id: 2, name: 'Trial A', category: 'trial' }
+    const campClassroom: Classroom = { ...classroom, id: 3, name: 'Camp A', category: 'camp' }
     const kindClassroomMap = new Map([
       [classroom.id, classroom],
       [trialClassroom.id, trialClassroom],
+      [campClassroom.id, campClassroom],
     ])
     const base: Schedule = {
       id: 200,
@@ -256,7 +258,15 @@ describe('buildScheduleEvents', () => {
       scheduledDate: '2026-09-10',
       startRecur: null,
     }
+    const campSchedule: Schedule = { ...base, id: 203, classroomId: 3, title: 'Camp A' }
     const all = [regularSchedule, trialSchedule, replacementSchedule]
+
+    it('classifies a camp classroom schedule as camp', () => {
+      expect(getScheduleClassKind(campSchedule, kindClassroomMap)).toBe('camp')
+      expect(
+        filterSchedulesByClassKind([...all, campSchedule], kindClassroomMap, 'camp').map((schedule) => schedule.id),
+      ).toEqual([203])
+    })
 
     it('classifies schedules as regular, trial or replacement', () => {
       expect(getScheduleClassKind(regularSchedule, kindClassroomMap)).toBe('regular')

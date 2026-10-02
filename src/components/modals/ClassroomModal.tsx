@@ -79,6 +79,7 @@ export function ClassroomModal({
             <select value={formState.category} onChange={(event) => onFieldChange('category', event.target.value as ClassroomCategory)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900">
               <option value="regular">Regular Class</option>
               <option value="trial">Trial Class</option>
+              <option value="camp">Camp Class (Holiday Camp)</option>
             </select>
           </label>
           <label className="space-y-2 sm:col-span-2">

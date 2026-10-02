@@ -3391,7 +3391,7 @@ function App() {
   // rules the move RPCs enforce, so a bad drop never reaches the confirm step.
   function checkClassDrop(event: EventApi, dropStart: Date, droppedAllDay: boolean) {
     const scheduleId = Number(event.extendedProps.scheduleId)
-    const classKind = event.extendedProps.classKind as 'regular' | 'trial' | 'replacement'
+    const classKind = event.extendedProps.classKind as 'regular' | 'trial' | 'camp' | 'replacement'
     const fromDate = event.start ? getDateKeyFromDate(event.start) : ''
     const toDate = getDateKeyFromDate(dropStart)
 
@@ -3422,7 +3422,7 @@ function App() {
       return
     }
 
-    const classKind = oldEvent.extendedProps.classKind as 'regular' | 'trial' | 'replacement'
+    const classKind = oldEvent.extendedProps.classKind as 'regular' | 'trial' | 'camp' | 'replacement'
     const fromDate = getDateKeyFromDate(oldEvent.start)
     const toDate = getDateKeyFromDate(newEvent.start)
     const startTime = getTimeFromDate(newEvent.start)
@@ -3462,7 +3462,8 @@ function App() {
 
     setMoveError(null)
     setMoveDraft({
-      kind: classKind,
+      // A camp class moves exactly like a regular one.
+      kind: classKind === 'camp' ? 'regular' : classKind,
       scheduleId,
       title: oldEvent.title,
       fromDate,
@@ -3897,6 +3898,7 @@ function App() {
     const classKind = eventInfo.event.extendedProps.classKind as
       | 'regular'
       | 'trial'
+      | 'camp'
       | 'replacement'
 
     if (classKind === 'trial') {
@@ -3991,6 +3993,10 @@ function App() {
         className={cn(
           'rounded-lg border px-2 py-1.5 shadow-sm',
           classKind === 'regular' && !completed && 'border-sky-200 bg-sky-500 text-white',
+          classKind === 'camp' && !completed && 'border-emerald-200 bg-emerald-600 text-white',
+          classKind === 'camp' &&
+            completed &&
+            'border-emerald-200 bg-emerald-100 text-emerald-700 opacity-75',
           classKind === 'replacement' &&
             !completed &&
             'border-orange-200 bg-orange-500 text-white',
@@ -4007,6 +4013,7 @@ function App() {
             className={cn(
               'rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em]',
               classKind === 'regular' && !completed && 'bg-sky-100 text-sky-700',
+              classKind === 'camp' && !completed && 'bg-emerald-100 text-emerald-700',
               classKind === 'replacement' &&
                 !completed &&
                 'bg-orange-100 text-orange-700',
@@ -4017,7 +4024,9 @@ function App() {
               ? 'Completed'
               : classKind === 'regular'
                 ? 'Regular'
-                : 'Replacement'}
+                : classKind === 'camp'
+                  ? 'Camp'
+                  : 'Replacement'}
           </span>
           <span
             className={cn(
@@ -4321,6 +4330,10 @@ function App() {
                         <div className="flex items-center gap-2 text-sm text-slate-600">
                           <span className="h-3 w-3 rounded-full bg-teal-500" />
                           <span>Trial - Booked</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                          <span className="h-3 w-3 rounded-full bg-emerald-600" />
+                          <span>Camp Class</span>
                         </div>
                         <div className="flex items-center gap-2 text-sm text-slate-600">
                           <span className="h-3 w-3 rounded-full bg-orange-500" />

@@ -69,7 +69,7 @@ export function ClassListingSection({
   teacherMap,
   todayString,
 }: ClassListingSectionProps) {
-  const [category, setCategory] = useState<'all' | 'regular' | 'trial'>('all')
+  const [category, setCategory] = useState<'all' | 'regular' | 'trial' | 'camp'>('all')
   const activeClassrooms = classrooms.filter(
     (classroom) => classroom.status === 'active',
   )
@@ -180,9 +180,9 @@ export function ClassListingSection({
         ) : (
           <div className="space-y-4 p-4">
             <div className="flex flex-wrap gap-2" aria-label="Classroom category">
-              {(['all', 'regular', 'trial'] as const).map((value) => (
+              {(['all', 'regular', 'trial', 'camp'] as const).map((value) => (
                 <button key={value} type="button" aria-pressed={category === value} onClick={() => setCategory(value)} className={cn('rounded-xl border px-4 py-2 text-sm font-semibold', category === value ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]' : 'border-slate-200 text-slate-600')}>
-                  {value === 'all' ? 'All Classes' : value === 'trial' ? 'Trial Class' : 'Regular Class'}
+                  {value === 'all' ? 'All Classes' : value === 'trial' ? 'Trial Class' : value === 'camp' ? 'Camp Class' : 'Regular Class'}
                 </button>
               ))}
             </div>
@@ -258,7 +258,7 @@ export function ClassListingSection({
                           )}
                         >
                           <div className="text-base font-semibold text-slate-900">
-                            {classroom.name}{classroom.category === 'trial' && <span className="ml-2 text-xs text-[#be185d]">Trial Class</span>}
+                            {classroom.name}{classroom.category === 'trial' && <span className="ml-2 text-xs text-[#be185d]">Trial Class</span>}{classroom.category === 'camp' && <span className="ml-2 text-xs text-emerald-700">Camp Class</span>}
                           </div>
                           <div className="mt-1 text-sm text-slate-500">
                             {teacherMap.get(classroom.teacherId ?? -1)?.fullName ??
@@ -289,7 +289,7 @@ export function ClassListingSection({
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div>
                       <h3 className="text-2xl font-semibold text-slate-900">
-                        {selectedClassroom.name}{selectedClassroom.category === 'trial' && <span className="ml-2 text-xs text-[#be185d]">Trial Class</span>}
+                        {selectedClassroom.name}{selectedClassroom.category === 'trial' && <span className="ml-2 text-xs text-[#be185d]">Trial Class</span>}{selectedClassroom.category === 'camp' && <span className="ml-2 text-xs text-emerald-700">Camp Class</span>}
                       </h3>
                       <div className="mt-1 text-sm text-slate-500">
                         Teacher:{' '}

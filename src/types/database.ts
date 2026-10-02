@@ -11,7 +11,7 @@ export type Database = {
     Tables: {
       classrooms: {
         Row: {
-          category: 'regular' | 'trial'
+          category: 'regular' | 'trial' | 'camp'
           id: number
           name: string
           age_group:
@@ -34,7 +34,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          category?: 'regular' | 'trial'
+          category?: 'regular' | 'trial' | 'camp'
           id?: number
           name: string
           age_group:
@@ -57,7 +57,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          category?: 'regular' | 'trial'
+          category?: 'regular' | 'trial' | 'camp'
           id?: number
           name?: string
           age_group?:

@@ -105,7 +105,7 @@ export type StudentEnrollment = {
   createdAt: string
 }
 
-export type ClassroomCategory = 'regular' | 'trial'
+export type ClassroomCategory = 'regular' | 'trial' | 'camp'
 
 export type Classroom = {
   category: ClassroomCategory

@@ -28,7 +28,7 @@ export function getTrialSlotsOnDate(
 }
 
 export type DragCheck = {
-  classKind: 'regular' | 'trial' | 'replacement'
+  classKind: 'regular' | 'trial' | 'camp' | 'replacement'
   fromDate: string
   toDate: string
   todayString: string
