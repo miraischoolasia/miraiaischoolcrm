@@ -71,7 +71,7 @@ export function TeacherManagementSection({
         <div className="border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">My Teacher</h2>
+              <h2 className="text-lg font-semibold text-slate-900">My Team</h2>
               <p className="mt-1 text-sm text-slate-500">
                 Review teacher basic information and add new teacher records.
               </p>

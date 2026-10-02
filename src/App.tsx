@@ -913,7 +913,7 @@ function App() {
       { key: 'calendar', label: 'Calendar', icon: CalendarBlank },
       { key: 'classrooms', label: 'My Classroom', icon: Chalkboard },
       { key: 'students', label: 'Students', icon: GraduationCap },
-      { key: 'teachers', label: 'My Teacher', icon: IdentificationBadge },
+      { key: 'teachers', label: 'My Team', icon: IdentificationBadge },
       { key: 'activity', label: 'Activity Log', icon: ClockCounterClockwise },
     ] satisfies NavItem[]
   ).filter((item) => allowedSections.includes(item.key))
@@ -3847,7 +3847,7 @@ function App() {
                     : activeSection === 'classrooms'
                       ? 'Classroom Board'
                       : activeSection === 'teachers'
-                        ? 'Teacher Board'
+                        ? 'Team Board'
                         : activeSection === 'leads'
                           ? 'Sales Pipeline'
                           : activeSection === 'forms'
@@ -3862,7 +3862,7 @@ function App() {
                     : activeSection === 'classrooms'
                       ? 'My Classroom'
                       : activeSection === 'teachers'
-                        ? 'My Teacher'
+                        ? 'My Team'
                         : activeSection === 'leads'
                           ? 'Leads'
                           : activeSection === 'forms'
