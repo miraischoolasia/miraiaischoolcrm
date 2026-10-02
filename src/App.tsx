@@ -83,6 +83,7 @@ import type { BulkLeadRow } from './lib/leadCsv'
 import type { BulkPreviewStudentRow } from './lib/studentCsv'
 import { provisionTeacherLogin, resetTeacherPassword } from './lib/teacherAuth'
 import {
+  ADMIN_ACTIVITY_PAGE_SIZE,
   fetchAdminActivityFromSupabase,
   fetchClassroomsFromSupabase,
   fetchLatestLessonLogStudents,
@@ -255,6 +256,9 @@ function App() {
   const [lessonLogs, setLessonLogs] = useState<LessonLogSummary[]>([])
   const [lessonReviews, setLessonReviews] = useState<LessonLogStudentReview[]>([])
   const [adminActivities, setAdminActivities] = useState<AdminActivity[]>([])
+  // Set once a 'load older' page comes back short: nothing older is left.
+  const [isActivityExhausted, setIsActivityExhausted] = useState(false)
+  const [isLoadingOlderActivity, setIsLoadingOlderActivity] = useState(false)
 
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -2170,6 +2174,23 @@ function App() {
   async function refreshAdminActivities() {
     const nextActivities = await fetchAdminActivityFromSupabase()
     setAdminActivities(nextActivities)
+  }
+
+  async function loadOlderActivity() {
+    const oldest = adminActivities[adminActivities.length - 1]
+    if (!oldest) {
+      return
+    }
+    try {
+      setIsLoadingOlderActivity(true)
+      const older = await fetchAdminActivityFromSupabase({ beforeId: oldest.id })
+      setAdminActivities((current) => [...current, ...older])
+      setIsActivityExhausted(older.length < ADMIN_ACTIVITY_PAGE_SIZE)
+    } catch (error) {
+      showToast(getErrorMessage(error, 'Failed to load older activity.'))
+    } finally {
+      setIsLoadingOlderActivity(false)
+    }
   }
 
   async function recordAdminActivity(
@@ -4243,7 +4264,7 @@ function App() {
                           : activeSection === 'forms'
                             ? 'Forms'
                             : activeSection === 'activity'
-                              ? 'Admin Activity Log'
+                              ? 'Activity Log'
                               : 'Student Classes & Expiry'}
                 </h1>
               </div>
@@ -4703,6 +4724,11 @@ function App() {
               <AdminActivitySection
                 activities={adminActivities}
                 teacherMap={teacherMap}
+                classroomMap={classroomMap}
+                todayString={todayString}
+                onLoadMore={() => void loadOlderActivity()}
+                isLoadingMore={isLoadingOlderActivity}
+                hasMore={!isActivityExhausted && adminActivities.length >= ADMIN_ACTIVITY_PAGE_SIZE}
               />
             )}
           </div>

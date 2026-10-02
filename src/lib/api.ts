@@ -201,7 +201,7 @@ export async function fetchLeadOptionsFromSupabase() {
   return data.map(mapLeadOptionRow)
 }
 
-const ADMIN_ACTIVITY_PAGE_SIZE = 250
+export const ADMIN_ACTIVITY_PAGE_SIZE = 250
 
 export async function fetchAdminActivityFromSupabase(options?: {
   limit?: number
