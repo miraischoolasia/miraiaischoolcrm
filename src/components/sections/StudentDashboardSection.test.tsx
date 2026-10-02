@@ -1,8 +1,8 @@
-import { render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { StudentDashboardSection } from './StudentDashboardSection'
-import type { FilterKey, Student } from '../../types/domain'
+import type { FilterKey, Package, Student } from '../../types/domain'
 
 const student: Student = {
   id: 1,
@@ -49,10 +49,11 @@ describe('StudentDashboardSection', () => {
     expect(cards).toHaveLength(1)
   })
 
-  function renderWithFilter(activeFilter: FilterKey, students: Student[]) {
+  function renderWithFilter(activeFilter: FilterKey, students: Student[], packages: Package[] = []) {
     render(
       <StudentDashboardSection
         activeFilter={activeFilter}
+        packages={packages}
         deactivatingStudentId={null}
         isLoading={false}
         students={students}
@@ -83,9 +84,56 @@ describe('StudentDashboardSection', () => {
     expect(shown()).toEqual(['Ada Lovelace', 'Low Classes', 'Fee Due Soon', 'Lesson Expired', 'Gone Low'])
   })
 
-  it('puts trial and preview students under Trial', () => {
-    renderWithFilter('trial', mixed)
+  it('puts trial-slot and preview students under HOA', () => {
+    renderWithFilter('hoa', mixed)
     expect(shown()).toEqual(['Preview Learner', 'Trial Kid'])
+  })
+
+  const pkg = (id: number, name: string, kind: Package['kind'], includesFees: boolean): Package => ({
+    id,
+    name,
+    kind,
+    classCount: 4,
+    durationMonths: 1,
+    includesFees,
+    isActive: true,
+    sortOrder: id,
+  })
+  const packages = [
+    pkg(1, 'Trial 1 Month', 'trial', false),
+    pkg(2, '6 Months', 'regular', true),
+    pkg(3, 'Holiday Camp', 'camp', false),
+  ]
+  const enrolled: Student[] = [
+    { ...student, id: 11, name: 'On Trial', packageId: 1, accountFeeExpiryDate: '2025-01-01' },
+    { ...student, id: 12, name: 'Six Months', packageId: 2 },
+    { ...student, id: 13, name: 'At Camp', packageId: 3, miraiClubExpiryDate: '2025-01-01' },
+    { ...student, id: 14, name: 'Not Tagged' },
+  ]
+
+  it('sorts regular students by package type, untagged ones under Regular', () => {
+    renderWithFilter('trial', enrolled, packages)
+    expect(shown()).toEqual(['On Trial'])
+    cleanup()
+    renderWithFilter('camp', enrolled, packages)
+    expect(shown()).toEqual(['At Camp'])
+    cleanup()
+    renderWithFilter('regular', enrolled, packages)
+    expect(shown()).toEqual(['Six Months', 'Not Tagged'])
+  })
+
+  it('shows the package, and no fee dates or fee alerts for no-fee packages', () => {
+    renderWithFilter('followUp', enrolled, packages)
+    // Their old fee dates have passed, but their packages carry no fees.
+    expect(shown()).toEqual([])
+    cleanup()
+    renderWithFilter('all', enrolled, packages)
+    const row = (name: string) =>
+      [...document.querySelectorAll('tbody tr')].find((r) => r.textContent?.includes(name)) as HTMLElement
+    expect(within(row('On Trial')).getByText('Trial 1 Month')).toBeInTheDocument()
+    expect(within(row('On Trial')).getAllByText('—')).toHaveLength(2)
+    expect(within(row('Not Tagged')).getByText('No package')).toBeInTheDocument()
+    expect(within(row('Six Months')).queryByText('—')).not.toBeInTheDocument()
   })
 
   it('lists 2 or fewer classes and expiring dates under Need Follow Up, not deactivated ones', () => {

@@ -8,7 +8,7 @@ export type AppSection =
   | 'leads'
   | 'forms'
   | 'activity'
-export type FilterKey = 'all' | 'regular' | 'trial' | 'followUp'
+export type FilterKey = 'all' | 'hoa' | 'trial' | 'regular' | 'camp' | 'followUp'
 export type AttendanceStatus = 'present' | 'absent' | 'leave'
 export type StudentType = 'trial' | 'preview' | 'regular'
 export type LeadOptionKind = 'source' | 'pic'

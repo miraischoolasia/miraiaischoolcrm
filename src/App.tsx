@@ -709,6 +709,28 @@ function App() {
     })
   }, [selectedStudent, todayString])
 
+  // Package history shown in the open student's details.
+  const [detailEnrollments, setDetailEnrollments] = useState<StudentEnrollment[]>([])
+  useEffect(() => {
+    setDetailEnrollments([])
+    if (selectedStudentDetailId === null) {
+      return
+    }
+    let cancelled = false
+    fetchStudentEnrollments(selectedStudentDetailId)
+      .then((rows) => {
+        if (!cancelled) {
+          setDetailEnrollments(rows)
+        }
+      })
+      .catch(() => {
+        // The history is extra; the details still open without it.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedStudentDetailId])
+
   // The renewing student's past packages, for the fee-year rules.
   const [renewalHistory, setRenewalHistory] = useState<StudentEnrollment[]>([])
   const renewingStudentId = selectedStudent?.id ?? null
@@ -4562,6 +4584,7 @@ function App() {
                 activeFilter={studentFilter}
                 canEdit={can('students', 'edit')}
                 canDelete={can('students', 'delete')}
+                packages={packages}
                 onOpenPackages={isAdmin ? () => setIsPackagesOpen(true) : undefined}
                 deactivatingStudentId={deactivatingStudentId}
                 isLoading={isLoading}
@@ -4808,6 +4831,8 @@ function App() {
               : undefined
           }
           onEditMakeup={canEditCalendar ? openMakeupPlan : undefined}
+          enrollments={detailEnrollments}
+          packages={packages}
           onEdit={
             can('students', 'edit')
               ? () => {

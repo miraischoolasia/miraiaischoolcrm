@@ -6,11 +6,11 @@ import { SummaryBar } from '../SummaryBar'
 import { StatusChip } from '../StatusChip'
 import { ExpiryCell } from '../ExpiryCell'
 import mascotGordo from '../../assets/mascot-gordo.png'
-import type { FilterKey, Student } from '../../types/domain'
+import type { FilterKey, Package, Student } from '../../types/domain'
 import {
   ArrowsClockwise,
   MagnifyingGlass,
-  Package,
+  Package as PackageIcon,
   Prohibit,
   UploadSimple,
   UserPlus,
@@ -25,6 +25,8 @@ type StudentDashboardSectionProps = {
   // Edit covers add, edit and renew; delete covers deactivate.
   canEdit?: boolean
   canDelete?: boolean
+  // For the package tag, the filters, and whether fees are tracked.
+  packages?: Package[]
   // Admin only: opens the course packages settings.
   onOpenPackages?: () => void
   onDeactivateStudent: (studentId: number) => void
@@ -43,6 +45,7 @@ export function StudentDashboardSection({
   todayString,
   canEdit = true,
   canDelete = true,
+  packages = [],
   onOpenPackages,
   onDeactivateStudent,
   onOpenBulkImportPreviewStudents,
@@ -53,18 +56,23 @@ export function StudentDashboardSection({
 }: StudentDashboardSectionProps) {
   const [searchTerm, setSearchTerm] = useState('')
 
-  const studentsWithStatus = students.map((student) => ({
-    student,
-    status: getStudentStatus(student, todayString),
-  }))
+  const packageById = new Map(packages.map((pkg) => [pkg.id, pkg]))
+  const studentsWithStatus = students.map((student) => {
+    const pkg = student.packageId ? packageById.get(student.packageId) ?? null : null
+    return {
+      student,
+      pkg,
+      status: getStudentStatus({ ...student, feesApply: pkg ? pkg.includesFees : true }, todayString),
+    }
+  })
 
   const normalizedSearch = searchTerm.trim().toLowerCase()
 
-  const filteredStudents = studentsWithStatus.filter(({ student, status }) => {
+  const filteredStudents = studentsWithStatus.filter(({ student, status, pkg }) => {
     if (normalizedSearch && !student.name.toLowerCase().includes(normalizedSearch)) {
       return false
     }
-    return matchesFilter(student, status, activeFilter)
+    return matchesFilter(student, status, pkg, activeFilter)
   })
 
   const totalStudents = studentsWithStatus.length
@@ -128,7 +136,7 @@ export function StudentDashboardSection({
                   onClick={onOpenPackages}
                   className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                 >
-                  <Package size={16} aria-hidden="true" />
+                  <PackageIcon size={16} aria-hidden="true" />
                   Packages
                 </button>
               )}
@@ -189,8 +197,8 @@ export function StudentDashboardSection({
                 >
                   {option.label}
                   <span className="ml-1.5 text-xs font-medium text-slate-400">
-                    {studentsWithStatus.filter(({ student, status }) =>
-                      matchesFilter(student, status, option.key),
+                    {studentsWithStatus.filter(({ student, status, pkg }) =>
+                      matchesFilter(student, status, pkg, option.key),
                     ).length}
                   </span>
                 </button>
@@ -218,7 +226,7 @@ export function StudentDashboardSection({
         {!isLoading && filteredStudents.length > 0 && (
           <>
             <ul className="divide-y divide-slate-200 md:hidden">
-              {filteredStudents.map(({ student, status }) => (
+              {filteredStudents.map(({ student, status, pkg }) => (
                 <li
                   key={student.id}
                   onClick={(event) => openFromRow(event, student.id)}
@@ -239,6 +247,7 @@ export function StudentDashboardSection({
                             {getStudentTypeLabel(student)}
                           </span>
                         )}
+                        <PackageTag student={student} pkg={pkg} />
                       </div>
                       <div className="mt-1 text-xs text-slate-500">
                         Student ID #{student.id.toString().padStart(3, '0')}
@@ -297,10 +306,7 @@ export function StudentDashboardSection({
                         Account Fee
                       </dt>
                       <dd>
-                        <ExpiryCell
-                          date={student.accountFeeExpiryDate}
-                          meta={status.accountFeeExpiry}
-                        />
+                        <FeeCell pkg={pkg} date={student.accountFeeExpiryDate} meta={status.accountFeeExpiry} />
                       </dd>
                     </div>
                     <div className="flex items-start justify-between gap-3">
@@ -308,10 +314,7 @@ export function StudentDashboardSection({
                         Mirai Club
                       </dt>
                       <dd>
-                        <ExpiryCell
-                          date={student.miraiClubExpiryDate}
-                          meta={status.miraiClubExpiry}
-                        />
+                        <FeeCell pkg={pkg} date={student.miraiClubExpiryDate} meta={status.miraiClubExpiry} />
                       </dd>
                     </div>
                   </dl>
@@ -366,7 +369,7 @@ export function StudentDashboardSection({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {filteredStudents.map(({ student, status }) => (
+                  {filteredStudents.map(({ student, status, pkg }) => (
                     <tr
                       key={student.id}
                       onClick={(event) => openFromRow(event, student.id)}
@@ -387,6 +390,7 @@ export function StudentDashboardSection({
                                 {getStudentTypeLabel(student)}
                               </span>
                             )}
+                            <PackageTag student={student} pkg={pkg} />
                           </div>
                           <div className="text-xs text-slate-500">
                             Student ID #{student.id.toString().padStart(3, '0')}
@@ -401,16 +405,10 @@ export function StudentDashboardSection({
                         />
                       </td>
                       <td className="px-6 py-5">
-                        <ExpiryCell
-                          date={student.accountFeeExpiryDate}
-                          meta={status.accountFeeExpiry}
-                        />
+                        <FeeCell pkg={pkg} date={student.accountFeeExpiryDate} meta={status.accountFeeExpiry} />
                       </td>
                       <td className="px-6 py-5">
-                        <ExpiryCell
-                          date={student.miraiClubExpiryDate}
-                          meta={status.miraiClubExpiry}
-                        />
+                        <FeeCell pkg={pkg} date={student.miraiClubExpiryDate} meta={status.miraiClubExpiry} />
                       </td>
                       <td className="px-6 py-5">
                         <div className="flex max-w-[320px] flex-wrap gap-2">
@@ -492,19 +490,26 @@ export function StudentDashboardSection({
   )
 }
 
+// HOA: the trial-slot (and old preview-class) students. Trial / Regular /
+// Camp: by package type; regular students with no package yet count as
+// Regular until one is picked.
 // Need Follow Up: classes at 2 or fewer, the lesson package expired, or the
-// account fee / Mirai Club expired or due within 14 days. Deactivated
-// students are not renewing, so they are left out.
+// account fee / Mirai Club expired or due within 14 days (only for packages
+// with fees). Deactivated students are not renewing, so they are left out.
 function matchesFilter(
   student: Student,
   status: ReturnType<typeof getStudentStatus>,
+  pkg: Package | null,
   filter: FilterKey,
 ) {
-  if (filter === 'regular') {
-    return student.studentType === 'regular'
-  }
-  if (filter === 'trial') {
+  if (filter === 'hoa') {
     return student.studentType === 'trial' || student.studentType === 'preview'
+  }
+  if (filter === 'trial' || filter === 'camp') {
+    return student.studentType === 'regular' && pkg?.kind === filter
+  }
+  if (filter === 'regular') {
+    return student.studentType === 'regular' && (pkg === null || pkg.kind === 'regular')
   }
   if (filter === 'followUp') {
     return (
@@ -516,4 +521,39 @@ function matchesFilter(
     )
   }
   return true
+}
+
+function PackageTag({ student, pkg }: { student: Student; pkg: Package | null }) {
+  if (student.studentType !== 'regular') {
+    return null
+  }
+  return pkg ? (
+    <span className="rounded-full bg-[#fff1f8] px-2 py-0.5 text-[11px] font-semibold text-[#be185d]">
+      {pkg.name}
+    </span>
+  ) : (
+    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+      No package
+    </span>
+  )
+}
+
+// Packages without fees do not track the Account Fee / Mirai Club dates.
+function FeeCell({
+  pkg,
+  date,
+  meta,
+}: {
+  pkg: Package | null
+  date: string
+  meta: ReturnType<typeof getStudentStatus>['accountFeeExpiry']
+}) {
+  if (pkg && !pkg.includesFees) {
+    return (
+      <span className="text-sm text-slate-400" title="No fee for this package">
+        —
+      </span>
+    )
+  }
+  return <ExpiryCell date={date} meta={meta} />
 }

@@ -62,8 +62,10 @@ export const pathwayMetricColors: Record<PerformanceMetricKey, string> = {
 
 export const studentFilterOptions: Array<{ key: FilterKey; label: string }> = [
   { key: 'all', label: 'All' },
-  { key: 'regular', label: 'Regular' },
+  { key: 'hoa', label: 'HOA' },
   { key: 'trial', label: 'Trial' },
+  { key: 'regular', label: 'Regular' },
+  { key: 'camp', label: 'Camp' },
   { key: 'followUp', label: 'Need Follow Up' },
 ]
 

@@ -12,6 +12,9 @@ export type StudentStatusInput = {
   miraiClubExpiryDate: string
   isActive: boolean
   studentType?: 'trial' | 'preview' | 'regular'
+  // False for a package without Account Fee / Mirai Club (Trial 1 Month,
+  // Camp): those dates are not tracked, so they raise no alerts.
+  feesApply?: boolean
 }
 
 export function getTodayString() {
@@ -99,8 +102,14 @@ export function getStudentStatus(
 
   const hoursLow = student.remainingHours <= 2
   const lessonExpiry = getDateMeta(student.lessonExpiryDate, todayString)
-  const accountFeeExpiry = getDateMeta(student.accountFeeExpiryDate, todayString)
-  const miraiClubExpiry = getDateMeta(student.miraiClubExpiryDate, todayString)
+  const feesApply = student.feesApply ?? true
+  const noFee = { daysUntil: 0, expired: false, dueSoon: false }
+  const accountFeeExpiry = feesApply
+    ? getDateMeta(student.accountFeeExpiryDate, todayString)
+    : noFee
+  const miraiClubExpiry = feesApply
+    ? getDateMeta(student.miraiClubExpiryDate, todayString)
+    : noFee
   const isDeactivated = !student.isActive
 
   const tags: StatusTag[] = []

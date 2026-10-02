@@ -17,6 +17,8 @@ import type {
   Schedule,
   Student,
   Teacher,
+  Package,
+  StudentEnrollment,
 } from '../types/domain'
 
 type StudentDetailModalProps = {
@@ -36,6 +38,9 @@ type StudentDetailModalProps = {
   onEditMakeup?: (planId: number) => void
   // Left out when the account may not edit students.
   onEdit?: () => void
+  // Package history, newest first, and the packages to name them.
+  enrollments?: StudentEnrollment[]
+  packages?: Package[]
 }
 
 export function StudentDetailModal({
@@ -51,6 +56,8 @@ export function StudentDetailModal({
   onArrangeMakeup,
   onEditMakeup,
   onEdit,
+  enrollments = [],
+  packages = [],
 }: StudentDetailModalProps) {
   const isPreviewStudent = student.studentType === 'preview'
   const latestLessonLogIds = useMemo(() => {
@@ -317,6 +324,40 @@ export function StudentDetailModal({
           </div>
           )}
         </section>
+
+        {student.studentType === 'regular' && (student.packageId || enrollments.length > 0) && (
+          <section className="rounded-2xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h3 className="text-lg font-semibold text-slate-900">Packages</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Now on{' '}
+                <span className="font-semibold text-[#be185d]">
+                  {packages.find((pkg) => pkg.id === student.packageId)?.name ?? 'no package'}
+                </span>
+                . Every sign-up and renewal with a package is listed here.
+              </p>
+            </div>
+            <ul className="divide-y divide-slate-200">
+              {enrollments.length === 0 && (
+                <li className="px-5 py-3 text-sm text-slate-500">No package sign-ups recorded yet.</li>
+              )}
+              {enrollments.map((enrollment) => (
+                <li
+                  key={enrollment.id}
+                  className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-sm"
+                >
+                  <span className="font-semibold text-slate-900">
+                    {packages.find((pkg) => pkg.id === enrollment.packageId)?.name ?? 'Package'}
+                  </span>
+                  <span className="text-slate-500">
+                    {formatDate(enrollment.startDate)} - {formatDate(enrollment.endDate)} ·{' '}
+                    {enrollment.classCount} classes
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {(makeupPlans.length > 0 || onArrangeMakeup) && (
           <section className="rounded-2xl border border-slate-200 bg-white">

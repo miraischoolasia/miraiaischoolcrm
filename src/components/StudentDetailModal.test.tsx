@@ -49,4 +49,33 @@ describe('StudentDetailModal', () => {
 
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
   })
+
+  it('lists the package history with the current package', () => {
+    render(
+      <StudentDetailModal
+        classrooms={[]}
+        student={{ ...student, packageId: 2 }}
+        lessonLogs={[]}
+        lessonReviews={[]}
+        onClose={vi.fn()}
+        schedules={[]}
+        teacherMap={new Map()}
+        packages={[
+          { id: 1, name: 'Trial 1 Month', kind: 'trial', classCount: 4, durationMonths: 1, includesFees: false, isActive: true, sortOrder: 1 },
+          { id: 2, name: '6 Months', kind: 'regular', classCount: 24, durationMonths: 6, includesFees: true, isActive: true, sortOrder: 2 },
+        ]}
+        enrollments={[
+          { id: 9, studentId: 1, packageId: 2, startDate: '2026-11-01', endDate: '2027-05-01', classCount: 24, remark: null, createdAt: '' },
+          { id: 8, studentId: 1, packageId: 1, startDate: '2026-10-01', endDate: '2026-11-01', classCount: 4, remark: null, createdAt: '' },
+        ]}
+      />,
+    )
+
+    const section = screen.getByRole('heading', { name: 'Packages' }).closest('section') as HTMLElement
+    expect(section).toHaveTextContent('Now on 6 Months')
+    expect([...section.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
+      '6 MonthsNov 1, 2026 - May 1, 2027 · 24 classes',
+      'Trial 1 MonthOct 1, 2026 - Nov 1, 2026 · 4 classes',
+    ])
+  })
 })
