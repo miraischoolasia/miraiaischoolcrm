@@ -76,9 +76,13 @@ describe('PublicFormPage', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Submit' }))
     expect(await screen.findByText('This field is required.')).toBeInTheDocument()
 
+    // Letters never get into the box, so it is still empty.
     await userEvent.type(screen.getByLabelText(/Phone/), 'abc')
+    expect(screen.getByLabelText(/Phone/)).toHaveValue('')
+
+    await userEvent.type(screen.getByLabelText(/Phone/), '123')
     await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
-    expect(await screen.findByText('Enter a valid phone number.')).toBeInTheDocument()
+    expect(await screen.findByText(/Enter a Malaysian phone number without the 0/)).toBeInTheDocument()
     expect(api.submitPublicForm).not.toHaveBeenCalled()
   })
 
@@ -93,7 +97,7 @@ describe('PublicFormPage', () => {
     await waitFor(() =>
       expect(api.submitPublicForm).toHaveBeenCalledWith(
         'form-1',
-        { p: '012-345 6789', d: ['Mon', 'Tue'] },
+        { p: '+60123456789', d: ['Mon', 'Tue'] },
         '',
         // Every submission carries its session token now, even on a one-page form.
         expect.any(String),
@@ -152,7 +156,7 @@ describe('PublicFormPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('This form is not available.')
-    expect(screen.getByLabelText(/Phone/)).toHaveValue('012-345 6789')
+    expect(screen.getByLabelText(/Phone/)).toHaveValue('123456789')
   })
 })
 
@@ -174,7 +178,7 @@ describe('PublicFormPage with a poster', () => {
     await userEvent.type(screen.getByLabelText(/Phone/), '012-345 6789')
     await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
     await waitFor(() =>
-      expect(api.submitPublicForm).toHaveBeenCalledWith('form-1', { p: '012-345 6789' }, '', expect.any(String), null),
+      expect(api.submitPublicForm).toHaveBeenCalledWith('form-1', { p: '+60123456789' }, '', expect.any(String), null),
     )
   })
 
@@ -438,7 +442,7 @@ describe('PublicFormPage with several children', () => {
     expect(api.submitPublicForm.mock.calls[0][1]).toEqual({
       [parent.id]: 'Mrs Lim',
       [child.id]: 'Ken',
-      [parentPhone.id]: '0123456789',
+      [parentPhone.id]: '+60123456789',
       [age.id]: '9',
       [`${child.id}#2`]: 'Mei',
       [`${age.id}#2`]: '12',
@@ -700,7 +704,7 @@ describe('PublicFormPage title', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Free AI Class for Kids' })).toBeInTheDocument()
     expect(screen.queryByText(/internal/)).not.toBeInTheDocument()
-    expect(document.title).toBe('Free AI Class for Kids')
+    await waitFor(() => expect(document.title).toBe('Free AI Class for Kids'))
   })
 
   it('falls back to the form name when no title was written', async () => {
@@ -845,5 +849,35 @@ describe('PublicFormPage tracking and alerts', () => {
 
     release()
     await waitFor(() => expect(assign).toHaveBeenCalledWith('https://mirai.my/thanks'))
+  })
+})
+
+describe('PublicFormPage phone with the Malaysia code', () => {
+  it('shows +60 in front of the box and does not need the 0', async () => {
+    render(<PublicFormPage formKey="form-1" />)
+
+    const box = await screen.findByLabelText(/Phone/)
+    expect(box.parentElement).toHaveTextContent('+60')
+    await userEvent.type(box, '12 345 6789')
+    expect(box).toHaveValue('123456789')
+    await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
+
+    await waitFor(() => expect(api.submitPublicForm).toHaveBeenCalledTimes(1))
+    expect(api.submitPublicForm.mock.calls[0][1]).toMatchObject({ p: '+60123456789' })
+  })
+
+  it.each([
+    ['0123456789', '+60123456789'],
+    ['+60 12-345 6789', '+60123456789'],
+    ['60123456789', '+60123456789'],
+  ])('also copes with %s typed or pasted in full', async (typed, kept) => {
+    render(<PublicFormPage formKey="form-1" />)
+
+    await userEvent.click(await screen.findByLabelText(/Phone/))
+    await userEvent.paste(typed)
+    await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
+
+    await waitFor(() => expect(api.submitPublicForm).toHaveBeenCalledTimes(1))
+    expect(api.submitPublicForm.mock.calls[0][1]).toMatchObject({ p: kept })
   })
 })

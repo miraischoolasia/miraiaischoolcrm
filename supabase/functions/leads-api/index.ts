@@ -22,10 +22,16 @@ function jsonResponse(body: unknown, status: number) {
 
 const VALID_SOURCES = ['walk_in', 'referral', 'social_media', 'advertisement', 'other']
 
-// Loose match key for dedupe: keep only digits and a leading '+', so
-// "+6012-345 6789" and "60123456789" are treated as the same number.
+// Leads keep their phone as the country code and number, digits only
+// (60123456789; see to_lead_phone in the database). The same rule is used as
+// the match key for dedupe, so "012-345 6789", "+6012-345 6789" and
+// "60123456789" are all the same number.
 function normalizePhone(phone: string): string {
-  return phone.trim().replace(/(?!^\+)[^\d]/g, '')
+  const digits = phone.replace(/\D/g, '')
+  if (digits.startsWith('00')) {
+    return digits.slice(2)
+  }
+  return digits.startsWith('0') ? `60${digits.slice(1)}` : digits
 }
 
 type LeadPayload = {

@@ -33,6 +33,9 @@ import {
   moveField,
   normalizeFields,
   normalizeSettings,
+  getPhoneBoxText,
+  toMalaysianLocalPart,
+  toMalaysianPhone,
   validateAnswers,
 } from './forms'
 import type { FormField } from '../types/domain'
@@ -587,5 +590,43 @@ describe('where a submission came from', () => {
     // Still one iframe followed by one script.
     expect(code.match(/<iframe/g)).toHaveLength(1)
     expect(code.match(/<script>/g)).toHaveLength(1)
+  })
+})
+
+describe('Malaysian phone numbers', () => {
+  it('keeps only the digits after +60, without a leading 0', () => {
+    expect(toMalaysianLocalPart('12-345 6789')).toBe('123456789')
+    expect(toMalaysianLocalPart('012-345 6789')).toBe('123456789')
+    expect(toMalaysianLocalPart('+60 12-345 6789')).toBe('123456789')
+    expect(toMalaysianLocalPart('60123456789')).toBe('123456789')
+    expect(toMalaysianLocalPart('abc')).toBe('')
+    expect(toMalaysianLocalPart('0')).toBe('')
+    expect(toMalaysianLocalPart('1234567890123')).toBe('1234567890')
+  })
+
+  it('does not mistake a number that begins with 60 for a country code while it is typed', () => {
+    expect(toMalaysianLocalPart('60')).toBe('60')
+    expect(toMalaysianLocalPart('6012')).toBe('6012')
+  })
+
+  it('keeps the answer with the code, and nothing for an empty box', () => {
+    expect(toMalaysianPhone('012-345 6789')).toBe('+60123456789')
+    expect(toMalaysianPhone('')).toBe('')
+    expect(toMalaysianPhone('0')).toBe('')
+  })
+
+  it('shows a kept answer without the code', () => {
+    expect(getPhoneBoxText('+60123456789')).toBe('123456789')
+    expect(getPhoneBoxText('012-345 6789')).toBe('123456789')
+    expect(getPhoneBoxText('')).toBe('')
+  })
+
+  it('wants 8 to 10 digits after +60, but leaves other numbers alone', () => {
+    const phone = { ...createField('phone'), id: 'p' }
+    expect(validateAnswers([phone], { p: '+60123456789' })).toEqual({})
+    expect(validateAnswers([phone], { p: '+6038765432' })).toEqual({})
+    expect(validateAnswers([phone], { p: '+60123' })).toHaveProperty('p')
+    expect(validateAnswers([phone], { p: '+60123456789012' })).toHaveProperty('p')
+    expect(validateAnswers([phone], { p: '+65 9123 4567' })).toEqual({})
   })
 })

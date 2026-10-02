@@ -1,4 +1,10 @@
-import { isSafeRedirectUrl, type FormAnswerValue } from '../../lib/forms'
+import {
+  MALAYSIA_CODE,
+  getPhoneBoxText,
+  isSafeRedirectUrl,
+  toMalaysianPhone,
+  type FormAnswerValue,
+} from '../../lib/forms'
 import { cn } from '../../lib/cn'
 import { RichText } from './RichText'
 import type { FormField } from '../../types/domain'
@@ -142,19 +148,46 @@ export function FormFieldInput({ field, value, error, disabled, onChange }: Form
                 </option>
               ))}
             </select>
+          ) : field.type === 'phone' ? (
+            <div
+              className={cn(
+                'flex items-stretch overflow-hidden rounded-xl border border-slate-200 bg-white focus-within:border-[#fc0c97] focus-within:ring-2 focus-within:ring-[#fc0c97]/15',
+                disabled && 'bg-slate-50',
+              )}
+            >
+              <span
+                aria-hidden="true"
+                className="flex select-none items-center gap-1.5 border-r border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-600"
+              >
+                <span>🇲🇾</span>
+                {MALAYSIA_CODE}
+              </span>
+              <input
+                id={inputId}
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel-national"
+                value={getPhoneBoxText(text)}
+                disabled={disabled}
+                maxLength={20}
+                placeholder={field.placeholder || '12 345 6789'}
+                aria-describedby={describedBy}
+                aria-invalid={Boolean(error)}
+                onChange={(event) => onChange(toMalaysianPhone(event.target.value))}
+                className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none disabled:bg-slate-50"
+              />
+            </div>
           ) : (
             <input
               id={inputId}
               type={
                 field.type === 'email'
                   ? 'email'
-                  : field.type === 'phone'
-                    ? 'tel'
-                    : field.type === 'number'
-                      ? 'number'
-                      : field.type === 'date'
-                        ? 'date'
-                        : 'text'
+                  : field.type === 'number'
+                    ? 'number'
+                    : field.type === 'date'
+                      ? 'date'
+                      : 'text'
               }
               inputMode={field.type === 'number' ? 'decimal' : undefined}
               value={text}

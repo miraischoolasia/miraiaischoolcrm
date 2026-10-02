@@ -529,6 +529,34 @@ export function getFormProblem(
 
 export type FormAnswerValue = string | string[]
 
+// Phone questions show Malaysia's code (+60) in front of the box, so a parent
+// types 12 345 6789 and not 012-345 6789. The answer is kept with the code.
+export const MALAYSIA_CODE = '+60'
+const MALAYSIA_MAX_DIGITS = 10
+
+// What was typed or pasted, as the part after +60: digits only, no leading 0,
+// and no country code even if it was pasted in (+60..., 60...).
+export function toMalaysianLocalPart(raw: string) {
+  let digits = raw.replace(/\D/g, '')
+  // A local number never starts with 60 and has 11 or more digits, so that is
+  // a number pasted with its country code.
+  if (digits.startsWith('60') && (raw.trim().startsWith('+') || digits.length >= 11)) {
+    digits = digits.slice(2)
+  }
+  return digits.replace(/^0+/, '').slice(0, MALAYSIA_MAX_DIGITS)
+}
+
+// The answer to keep: +60 and the number, or nothing when the box is empty.
+export function toMalaysianPhone(raw: string) {
+  const local = toMalaysianLocalPart(raw)
+  return local ? `${MALAYSIA_CODE}${local}` : ''
+}
+
+// What to show in the box for a kept answer.
+export function getPhoneBoxText(value: string) {
+  return value.startsWith(MALAYSIA_CODE) ? value.slice(MALAYSIA_CODE.length) : toMalaysianLocalPart(value)
+}
+
 // Same rules as submit_form on the server, so the visitor sees problems
 // before sending. The server stays the one that decides.
 export function validateAnswers(fields: FormField[], answers: Record<string, FormAnswerValue>) {
@@ -553,6 +581,12 @@ export function validateAnswers(fields: FormField[], answers: Record<string, For
       errors[field.id] = 'Enter a valid email.'
     } else if (field.type === 'phone' && !/^[0-9+()\-\s.]{6,30}$/.test(value)) {
       errors[field.id] = 'Enter a valid phone number.'
+    } else if (
+      field.type === 'phone' &&
+      value.startsWith(MALAYSIA_CODE) &&
+      !/^\+60[0-9]{8,10}$/.test(value)
+    ) {
+      errors[field.id] = 'Enter a Malaysian phone number without the 0, for example 12 345 6789.'
     } else if (field.type === 'number' && !/^-?[0-9]+(\.[0-9]+)?$/.test(value)) {
       errors[field.id] = 'Enter a number.'
     }
