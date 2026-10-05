@@ -3685,6 +3685,24 @@ function App() {
     }
   }
 
+  // A make-up slot on the 29th-31st, when the class doesn't normally meet:
+  // the day exists only because a make-up session lands there. Returns that
+  // day's make-up entries (empty when it's an ordinary class day).
+  function getMakeupOnlyEntries(scheduleId: number, occurrenceDate: string) {
+    const schedule = schedules.find((entry) => entry.id === scheduleId)
+    if (
+      !schedule ||
+      schedule.eventType !== 'regular' ||
+      schedule.classroomId === null ||
+      classroomMap.get(schedule.classroomId)?.category === 'trial' ||
+      parseLocalDate(occurrenceDate).getDate() < 29
+    ) {
+      return []
+    }
+
+    return makeupMap.get(makeupKey(schedule.classroomId, occurrenceDate)) ?? []
+  }
+
   function getScheduleRosterStudentIds(scheduleId: number, occurrenceDate: string) {
     const schedule = schedules.find((entry) => entry.id === scheduleId)
     if (!schedule) {
@@ -3693,6 +3711,17 @@ function App() {
 
     if (schedule.eventType === 'regular') {
       const classroom = schedule.classroomId ? classroomMap.get(schedule.classroomId) : null
+
+      // Mirrors submit_lesson_attendance: a whole-class make-up session
+      // brings the whole class, otherwise only the students whose own
+      // make-up plans land that day.
+      const makeupEntries = getMakeupOnlyEntries(scheduleId, occurrenceDate)
+      if (makeupEntries.length > 0 && !makeupEntries.some((entry) => entry.studentId === null)) {
+        const planStudentIds = new Set(makeupEntries.map((entry) => entry.studentId))
+        return (classroomStudentMap.get(schedule.classroomId!) ?? [])
+          .filter((student) => planStudentIds.has(student.id))
+          .map((student) => student.id)
+      }
 
       // A trial classroom never has students assigned to it directly — the
       // roster for one occurrence is whoever is trial_booked for that exact
@@ -3795,6 +3824,20 @@ function App() {
     const schedule = schedules.find((entry) => entry.id === modal.scheduleId)
     const classroom = schedule?.classroomId ? classroomMap.get(schedule.classroomId) : null
     const isTrial = classroom?.category === 'trial'
+
+    // On a make-up-only day there is no timetable entry to edit — the day
+    // belongs to its make-up plan.
+    const makeupPlanId = getMakeupOnlyEntries(modal.scheduleId, modal.occurrenceDate)[0]?.planId
+
+    if (makeupPlanId !== undefined) {
+      return {
+        label: 'Edit Make-up Plan',
+        onClick: () => {
+          closeAttendanceModal()
+          openMakeupPlan(makeupPlanId)
+        },
+      }
+    }
 
     return {
       label: isTrial ? 'Manage Bookings' : 'Edit Schedule',
@@ -3946,19 +3989,58 @@ function App() {
 
     // A make-up slot on the 29th-31st, when the class doesn't normally meet.
     if (eventInfo.event.extendedProps.isMakeupOnly) {
+      const makeupCompleted = latestLessonLogMap.has(
+        `${Number(eventInfo.event.extendedProps.scheduleId)}:${eventOccurrenceDate}`,
+      )
+
       return (
-        <div className="rounded-lg border border-violet-200 bg-violet-500 px-2 py-1.5 text-white shadow-sm">
+        <div
+          className={cn(
+            'rounded-lg border px-2 py-1.5 shadow-sm',
+            makeupCompleted
+              ? 'border-violet-200 bg-violet-100 text-violet-700 opacity-75'
+              : 'border-violet-200 bg-violet-500 text-white',
+          )}
+        >
           <div className="flex items-center justify-between gap-2">
-            <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-violet-800">
-              Make-up
+            <span
+              className={cn(
+                'rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em]',
+                makeupCompleted ? 'bg-white/80 text-slate-600' : 'bg-violet-100 text-violet-800',
+              )}
+            >
+              {makeupCompleted ? 'Completed' : 'Make-up'}
             </span>
-            <span className="text-[10px] font-medium text-white/90">{eventInfo.timeText}</span>
+            <span
+              className={cn(
+                'text-[10px] font-medium',
+                makeupCompleted ? 'text-slate-500' : 'text-white/90',
+              )}
+            >
+              {eventInfo.timeText}
+            </span>
           </div>
-          <div className="mt-1 text-[11px] font-semibold leading-snug">{eventInfo.event.title}</div>
-          <div className="mt-0.5 text-[10px] text-white/90">
+          <div
+            className={cn(
+              'mt-1 text-[11px] font-semibold leading-snug',
+              makeupCompleted && 'text-slate-700',
+            )}
+          >
+            {eventInfo.event.title}
+          </div>
+          <div
+            className={cn('mt-0.5 text-[10px]', makeupCompleted ? 'text-slate-500' : 'text-white/90')}
+          >
             {eventInfo.event.extendedProps.teacherName as string}
           </div>
-          <div className="mt-0.5 truncate text-[10px] text-white/80">{makeupNotes.join(' · ')}</div>
+          <div
+            className={cn(
+              'mt-0.5 truncate text-[10px]',
+              makeupCompleted ? 'text-slate-400' : 'text-white/80',
+            )}
+          >
+            {makeupNotes.join(' · ')}
+          </div>
         </div>
       )
     }
@@ -4565,6 +4647,21 @@ function App() {
                           : todayString
 
                         if (arg.event.extendedProps.isMakeupOnly) {
+                          // Once the day has come (or has a report), it opens
+                          // like any class: attendance and feedback. Before
+                          // that there's nothing to record yet.
+                          if (
+                            occurrenceDate <= todayString ||
+                            latestLessonLogMap.has(`${scheduleId}:${occurrenceDate}`)
+                          ) {
+                            void openAttendanceForEvent(
+                              scheduleId,
+                              occurrenceDate,
+                              arg.event.title,
+                            )
+                            return
+                          }
+
                           const entries =
                             makeupMap.get(
                               makeupKey(
