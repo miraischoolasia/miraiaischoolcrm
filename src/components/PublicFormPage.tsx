@@ -19,6 +19,7 @@ import {
   getPageFields,
 } from '../lib/formPages'
 import { readTracking } from '../lib/formInsights'
+import { preloadImages } from '../lib/preloadImages'
 import {
   MAX_CHILDREN,
   childAnswerKey,
@@ -37,6 +38,10 @@ type LoadState =
   | { status: 'missing' }
   | { status: 'failed' }
   | { status: 'ready'; form: PublicForm }
+
+// How long the spinner is kept up after sending someone to another address
+// before the page admits it is still here and offers a link instead.
+const REDIRECT_PATIENCE_MS = 6000
 
 // Count a visit once per browser session, so reloading does not inflate it.
 function countViewOnce(formId: string) {
@@ -57,6 +62,29 @@ function countViewOnce(formId: string) {
 function getChildPageId(form: PublicForm) {
   const children = getChildFields(form.fields)
   return children.length > 0 ? children[children.length - 1].pageId : null
+}
+
+// Shown until the form and every picture on the page have arrived, so the page
+// appears all at once instead of the words first and the pictures later.
+function PageLoader({ embedded }: { embedded: boolean }) {
+  const spinner = (
+    <div role="status" aria-live="polite" className="flex flex-col items-center gap-4">
+      <span
+        aria-hidden="true"
+        className="h-12 w-12 animate-spin rounded-full border-4 border-pink-100 border-t-[#fc0c97]"
+      />
+      <p className="text-sm font-medium text-slate-600">Loading...</p>
+    </div>
+  )
+
+  if (embedded) {
+    return <main className="flex min-h-[320px] items-center justify-center">{spinner}</main>
+  }
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-[#ffd9ee] via-[#fff3fa] to-white">
+      {spinner}
+    </main>
+  )
 }
 
 // On its own the form gets a branded page. Inside another website's iframe it
@@ -123,6 +151,11 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
   const [outcome, setOutcome] = useState<
     { kind: 'message'; text: string } | { kind: 'redirecting'; url: string } | null
   >(null)
+  // Every picture the page shows has arrived (or given up), so it can appear.
+  const [assetsReady, setAssetsReady] = useState(false)
+  // Still on this page a few seconds after being sent elsewhere: the other
+  // address opened an app (WhatsApp) or refused to open inside a frame.
+  const [redirectStuck, setRedirectStuck] = useState(false)
   const [pageIndex, setPageIndex] = useState(0)
   // The pages already passed, so Back returns to where the visitor really was
   // (a rule may have skipped pages in between).
@@ -189,9 +222,42 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
     }
   }, [formKey, preview])
 
+  // The branded page's logos and the form's own pictures load first, with the
+  // loading screen up, so nothing pops in afterwards.
+  useEffect(() => {
+    if (state.status !== 'ready') {
+      return
+    }
+    let cancelled = false
+    const pictures = state.form.fields
+      .filter((field) => field.type === 'image' && isSafeRedirectUrl(field.imageUrl))
+      .map((field) => field.imageUrl)
+    void preloadImages([...(embedded ? [] : [miraiLogo, miraiSeal]), ...pictures]).then(() => {
+      if (!cancelled) {
+        setAssetsReady(true)
+      }
+    })
+    // The thank-you picture is only needed later; fetch it quietly meanwhile.
+    new Image().src = mascotEggy
+    return () => {
+      cancelled = true
+    }
+  }, [state, embedded])
+
+  const visibleId = assetsReady ? readyId : null
+
+  const redirecting = outcome?.kind === 'redirecting'
+  useEffect(() => {
+    if (!redirecting || preview) {
+      return
+    }
+    const timer = setTimeout(() => setRedirectStuck(true), REDIRECT_PATIENCE_MS)
+    return () => clearTimeout(timer)
+  }, [redirecting, preview])
+
   useEffect(() => {
     if (
-      !readyId ||
+      !visibleId ||
       window.parent === window ||
       !rootRef.current ||
       typeof ResizeObserver === 'undefined'
@@ -200,13 +266,13 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
     }
     const observer = new ResizeObserver(() => {
       window.parent.postMessage(
-        { type: 'mirai-form-height', formId: readyId, height: document.documentElement.scrollHeight },
+        { type: 'mirai-form-height', formId: visibleId, height: document.documentElement.scrollHeight },
         '*',
       )
     })
     observer.observe(rootRef.current)
     return () => observer.disconnect()
-  }, [readyId])
+  }, [visibleId])
 
   const firstRender = useRef(true)
   useEffect(() => {
@@ -367,6 +433,10 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
   const isFinalStep = step ? step.kind !== 'page' : true
   const shownFields = form && page ? getPageFields(form.fields, page.id) : []
 
+  if (state.status === 'loading' || (state.status === 'ready' && !assetsReady)) {
+    return <PageLoader embedded={embedded} />
+  }
+
   return (
     <PageShell embedded={embedded} rootRef={rootRef}>
       {preview && (
@@ -378,7 +448,6 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
           Preview: this is how visitors will see the form. Nothing you fill in here is sent.
         </p>
       )}
-      {state.status === 'loading' && <p className="text-sm text-slate-500">Loading...</p>}
       {state.status === 'missing' && (
         <p className="text-sm text-slate-600">
           {preview
@@ -391,7 +460,23 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
           This form could not be loaded. Please try again later.
         </p>
       )}
-      {form && outcome?.kind === 'redirecting' && (
+      {form && outcome?.kind === 'redirecting' && redirectStuck && (
+        <div role="status" className="flex flex-col items-center gap-4 py-6 text-center">
+          <img src={mascotEggy} alt="" aria-hidden="true" className="h-28 w-auto" />
+          <CheckCircle size={28} weight="fill" className="text-emerald-500" aria-hidden="true" />
+          <p className="text-sm text-slate-800">{form.settings.successMessage || 'Thank you!'}</p>
+          <a
+            href={outcome.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#fc0c97] px-5 py-3 font-heading text-base font-bold text-white shadow-[0_10px_24px_rgba(252,12,151,0.32)] transition hover:bg-[#de0a84]"
+          >
+            Continue
+            <ArrowRight size={16} aria-hidden="true" />
+          </a>
+        </div>
+      )}
+      {form && outcome?.kind === 'redirecting' && !redirectStuck && (
         <div role="status" className="flex flex-col items-center gap-4 py-10 text-center">
           <span
             aria-hidden="true"

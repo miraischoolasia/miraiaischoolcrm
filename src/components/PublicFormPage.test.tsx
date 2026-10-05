@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PublicFormPage } from './PublicFormPage'
@@ -36,7 +36,32 @@ const form: FormFixture = {
 
 const originalLocation = window.location
 
+// Pictures load instantly unless a test says otherwise, so the page does not
+// wait for them. `created` lists every picture the page asked for.
+const pictures = { auto: true, created: [] as FakeImage[] }
+
+class FakeImage {
+  onload: (() => void) | null = null
+  onerror: (() => void) | null = null
+  private address = ''
+
+  get src() {
+    return this.address
+  }
+
+  set src(value: string) {
+    this.address = value
+    pictures.created.push(this)
+    if (pictures.auto) {
+      queueMicrotask(() => this.onload?.())
+    }
+  }
+}
+
 beforeEach(() => {
+  pictures.auto = true
+  pictures.created = []
+  vi.stubGlobal('Image', FakeImage)
   window.sessionStorage.clear()
   api.fetchPublicForm.mockReset().mockResolvedValue(form)
   api.submitPublicForm.mockReset().mockResolvedValue(undefined)
@@ -46,6 +71,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.unstubAllGlobals()
   Object.defineProperty(window, 'location', { value: originalLocation, writable: true })
 })
 
@@ -879,5 +905,160 @@ describe('PublicFormPage phone with the Malaysia code', () => {
 
     await waitFor(() => expect(api.submitPublicForm).toHaveBeenCalledTimes(1))
     expect(api.submitPublicForm.mock.calls[0][1]).toMatchObject({ p: kept })
+  })
+})
+
+describe('PublicFormPage loading screen', () => {
+  const poster = {
+    ...createField('image'),
+    id: 'img',
+    label: 'Class poster',
+    imageUrl: 'https://img.test/poster.png',
+  }
+  const withPoster = { ...form, fields: [poster, phone] }
+  const addresses = () => pictures.created.map((image) => image.src)
+
+  it('shows only a loading screen until the form and its pictures have arrived', async () => {
+    pictures.auto = false
+    api.fetchPublicForm.mockResolvedValue(withPoster)
+    render(<PublicFormPage formKey="form-1" />)
+
+    // The form has arrived but its pictures have not: still only the spinner.
+    await waitFor(() => expect(addresses()).toContain('https://img.test/poster.png'))
+    expect(screen.getByRole('status')).toHaveTextContent('Loading...')
+    expect(screen.queryByLabelText(/Phone/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Submit' })).not.toBeInTheDocument()
+
+    // One picture still on its way: still waiting.
+    const [first, ...rest] = pictures.created.filter((image) => !image.src.includes('eggy'))
+    first.onload?.()
+    expect(screen.queryByLabelText(/Phone/)).not.toBeInTheDocument()
+
+    // The last one arrives and the whole page shows at once.
+    rest.forEach((image) => image.onload?.())
+    expect(await screen.findByLabelText(/Phone/)).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Class poster' })).toBeInTheDocument()
+    expect(screen.queryByText('Loading...')).not.toBeInTheDocument()
+  })
+
+  it('waits for the school logos as well as the form pictures', async () => {
+    pictures.auto = false
+    render(<PublicFormPage formKey="form-1" />)
+
+    await waitFor(() => expect(pictures.created.length).toBeGreaterThanOrEqual(2))
+    expect(screen.queryByLabelText(/Phone/)).not.toBeInTheDocument()
+
+    pictures.created.forEach((image) => image.onload?.())
+    expect(await screen.findByLabelText(/Phone/)).toBeInTheDocument()
+  })
+
+  it('does not stay stuck on a picture that cannot be loaded', async () => {
+    pictures.auto = false
+    api.fetchPublicForm.mockResolvedValue(withPoster)
+    render(<PublicFormPage formKey="form-1" />)
+
+    await waitFor(() => expect(addresses()).toContain('https://img.test/poster.png'))
+    pictures.created.forEach((image) => image.onerror?.())
+
+    expect(await screen.findByLabelText(/Phone/)).toBeInTheDocument()
+  })
+
+  it('shows the loading screen while the form itself is still being fetched', async () => {
+    let arrive: (value: typeof form) => void = () => {}
+    api.fetchPublicForm.mockReturnValue(new Promise((resolve) => (arrive = resolve)))
+    render(<PublicFormPage formKey="form-1" />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('Loading...')
+    expect(screen.queryByText('Contact Us')).not.toBeInTheDocument()
+
+    arrive(form)
+    expect(await screen.findByLabelText(/Phone/)).toBeInTheDocument()
+  })
+
+  it('does not hold back the message when the form cannot be shown', async () => {
+    pictures.auto = false
+    api.fetchPublicForm.mockResolvedValue(null)
+    render(<PublicFormPage formKey="nope" />)
+
+    expect(await screen.findByText('This form is not available.')).toBeInTheDocument()
+  })
+
+  it('inside another website it waits only for the form pictures, not the school logos', async () => {
+    const originalParent = Object.getOwnPropertyDescriptor(window, 'parent')
+    Object.defineProperty(window, 'parent', { value: { postMessage: vi.fn() }, configurable: true })
+    try {
+      pictures.auto = false
+      api.fetchPublicForm.mockResolvedValue(withPoster)
+      render(<PublicFormPage formKey="form-1" />)
+
+      await waitFor(() => expect(addresses()).toContain('https://img.test/poster.png'))
+      expect(addresses().filter((address) => address.includes('mirai'))).toEqual([])
+      pictures.created.find((image) => image.src.includes('poster'))?.onload?.()
+      expect(await screen.findByLabelText(/Phone/)).toBeInTheDocument()
+    } finally {
+      if (originalParent) {
+        Object.defineProperty(window, 'parent', originalParent)
+      }
+    }
+  })
+})
+
+describe('PublicFormPage when the other address does not open here', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function submitToRedirect(preview = false) {
+    const assign = vi.fn()
+    Object.defineProperty(window, 'location', { value: { ...originalLocation, assign }, writable: true })
+    api.fetchPublicForm.mockResolvedValue({
+      ...form,
+      settings: { ...form.settings, afterSubmit: 'redirect', redirectUrl: 'https://wa.link/abc' },
+    })
+    if (preview) {
+      savePreviewDraft('form-1', {
+        name: 'Contact Us',
+        fields: form.fields,
+        settings: { ...form.settings, afterSubmit: 'redirect', redirectUrl: 'https://wa.link/abc' },
+      })
+    }
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    render(<PublicFormPage formKey="form-1" preview={preview} />)
+    await user.type(await screen.findByLabelText(/Phone/), '12 345 6789')
+    await user.click(screen.getByRole('button', { name: 'Submit' }))
+    return assign
+  }
+
+  it('keeps the spinner for a few seconds, then thanks the visitor and offers a link', async () => {
+    const assign = await submitToRedirect()
+
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://wa.link/abc'))
+    expect(screen.getByRole('status')).toHaveTextContent('Loading be taken around 3 sec...')
+    expect(screen.queryByRole('link', { name: /Continue/ })).not.toBeInTheDocument()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000)
+    })
+
+    expect(document.querySelector('.animate-spin')).not.toBeInTheDocument()
+    expect(screen.getByText('Got it, thanks!')).toBeInTheDocument()
+    const link = screen.getByRole('link', { name: /Continue/ })
+    expect(link).toHaveAttribute('href', 'https://wa.link/abc')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
+  })
+
+  it('does not do this in the preview, which has its own way back', async () => {
+    await submitToRedirect(true)
+    await screen.findByText(/then be taken to https:\/\/wa.link\/abc/)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000)
+    })
+
+    expect(document.querySelector('.animate-spin')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Continue/ })).not.toBeInTheDocument()
   })
 })
