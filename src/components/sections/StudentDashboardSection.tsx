@@ -60,7 +60,8 @@ export function StudentDashboardSection({
   const [searchTerm, setSearchTerm] = useState('')
 
   const packageById = new Map(packages.map((pkg) => [pkg.id, pkg]))
-  const studentsWithStatus = students.map((student) => {
+  // Listed by student ID, oldest first.
+  const studentsWithStatus = [...students].sort((a, b) => a.id - b.id).map((student) => {
     const pkg = student.packageId ? packageById.get(student.packageId) ?? null : null
     return {
       student,
@@ -272,7 +273,6 @@ export function StudentDashboardSection({
                       </div>
                       <div className="mt-1 text-xs text-slate-500">
                         Student ID #{student.id.toString().padStart(3, '0')}
-                        {student.phone ? ` - ${student.phone}` : ''}
                       </div>
                     </div>
                     <div className="text-right">
@@ -402,7 +402,6 @@ export function StudentDashboardSection({
                           </div>
                           <div className="text-xs text-slate-500">
                             Student ID #{student.id.toString().padStart(3, '0')}
-                            {student.phone ? ` - ${student.phone}` : ''}
                           </div>
                         </div>
                       </td>

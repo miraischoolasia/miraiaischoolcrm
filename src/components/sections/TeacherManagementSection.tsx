@@ -32,21 +32,22 @@ export function TeacherManagementSection({
   protectedTeacherIds,
 }: TeacherManagementSectionProps) {
   const [searchTerm, setSearchTerm] = useState('')
+  const [roleFilter, setRoleFilter] = useState<Teacher['role'] | 'all'>('all')
   const normalizedSearch = searchTerm.trim().toLowerCase()
-  const filteredTeachers = normalizedSearch
-    ? teachers.filter(
-        (teacher) =>
-          teacher.fullName.toLowerCase().includes(normalizedSearch) ||
-          teacher.username.toLowerCase().includes(normalizedSearch),
-      )
-    : teachers
+  const filteredTeachers = teachers.filter(
+    (teacher) =>
+      (roleFilter === 'all' || teacher.role === roleFilter) &&
+      (!normalizedSearch ||
+        teacher.fullName.toLowerCase().includes(normalizedSearch) ||
+        teacher.username.toLowerCase().includes(normalizedSearch)),
+  )
 
   return (
     <div className="space-y-4">
       <SummaryBar
         metrics={[
           {
-            label: 'Total Teachers',
+            label: 'Total Accounts',
             value: teachers.length,
           },
           {
@@ -73,7 +74,7 @@ export function TeacherManagementSection({
             <div>
               <h2 className="text-lg font-semibold text-slate-900">My Team</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Review teacher basic information and add new teacher records.
+                Teachers, staff and admins, and what each account can use.
               </p>
             </div>
             <button
@@ -86,7 +87,29 @@ export function TeacherManagementSection({
             </button>
           </div>
 
-          <div className="relative mt-4">
+          <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Filter by role">
+            {(['all', 'admin', 'teacher', 'staff'] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={roleFilter === value}
+                onClick={() => setRoleFilter(value)}
+                className={cn(
+                  'rounded-xl border px-3 py-1.5 text-sm font-semibold',
+                  roleFilter === value
+                    ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]'
+                    : 'border-slate-200 bg-white text-slate-600',
+                )}
+              >
+                {value === 'all' ? 'All' : roleLabel[value]}
+                <span className="ml-1.5 text-xs font-medium text-slate-400">
+                  {value === 'all' ? teachers.length : teachers.filter((teacher) => teacher.role === value).length}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="relative mt-3">
             <MagnifyingGlass
               size={16}
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -96,7 +119,7 @@ export function TeacherManagementSection({
               type="search"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search teachers by name or username..."
+              placeholder="Search by name or username..."
               className="w-full max-w-xs rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#fc0c97] focus:outline-none"
             />
           </div>
@@ -107,8 +130,8 @@ export function TeacherManagementSection({
             <img src={mascotGordo} alt="" aria-hidden="true" className="h-24 w-auto" />
             <p className="text-sm text-slate-500">
               {teachers.length === 0
-                ? 'No teachers found yet.'
-                : 'No teachers match this search.'}
+                ? 'No accounts yet.'
+                : 'No accounts match these filters.'}
             </p>
           </div>
         )}
@@ -124,7 +147,7 @@ export function TeacherManagementSection({
                         {teacher.fullName}
                       </div>
                       <div className="mt-1 text-xs text-slate-500">
-                        Teacher ID #{String(teacher.id).padStart(3, '0')} ·{' '}
+                        {roleLabel[teacher.role]} ID #{String(teacher.id).padStart(3, '0')} ·{' '}
                         {teacher.username}
                       </div>
                       {!teacher.authUserId && (
@@ -215,7 +238,7 @@ export function TeacherManagementSection({
                           {teacher.fullName}
                         </div>
                         <div className="mt-1 text-sm text-slate-500">
-                          Teacher ID #{String(teacher.id).padStart(3, '0')}
+                          {roleLabel[teacher.role]} ID #{String(teacher.id).padStart(3, '0')}
                         </div>
                       </td>
                       <td className="px-6 py-5 text-sm font-medium text-slate-700">

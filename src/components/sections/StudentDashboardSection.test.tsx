@@ -204,4 +204,16 @@ describe('StudentDashboardSection', () => {
     expect(screen.getAllByText('—')).toHaveLength(2)
     expect(screen.getAllByText('Not billed')).toHaveLength(2)
   })
+
+  it('lists students by student ID, without the phone number', () => {
+    renderWithFilter('all', [
+      { ...student, id: 39, name: 'Chong Kai Qing', phone: '60166119153' },
+      { ...student, id: 10, name: 'Albee' },
+      { ...student, id: 15, name: 'Chee' },
+    ])
+
+    expect(shown()).toEqual(['Albee', 'Chee', 'Chong Kai Qing'])
+    expect(screen.queryByText(/60166119153/)).not.toBeInTheDocument()
+    expect(screen.getAllByText('Student ID #039').length).toBeGreaterThan(0)
+  })
 })
