@@ -46,6 +46,7 @@ import type {
   Lead,
   LeadFormState,
   LeadOption,
+  LeadBulkAction,
   LeadCheckSlot,
   LeadOptionKind,
   Package,
@@ -114,7 +115,12 @@ import {
   getTrialSlotKey,
   type CalendarClassFilter,
 } from './lib/schedule'
-import { MAX_LEAD_FOLLOW_UPS, ageGroupOptions, programLevelOptions } from './lib/constants'
+import {
+  MAX_LEAD_FOLLOW_UPS,
+  ageGroupOptions,
+  leadStatusOptions,
+  programLevelOptions,
+} from './lib/constants'
 import { cn } from './lib/cn'
 import { getErrorMessage } from './lib/errors'
 import { useIsMobile } from './hooks/useIsMobile'
@@ -2777,6 +2783,136 @@ function App() {
     await refreshLeads()
   }
 
+  // Does one action to the ticked leads of the list, after asking. Only the
+  // leads it would really change are touched; the rest are left alone and
+  // mentioned. Returns true when it went through.
+  async function handleBulkLeadAction(action: LeadBulkAction, leadIds: number[]) {
+    if (!supabase) {
+      return false
+    }
+
+    const chosen = leads.filter((entry) => leadIds.includes(entry.id))
+    const nameOf = (id: number | null) => leadOptions.find((option) => option.id === id)?.label ?? ''
+    const plural = (count: number) => `${count} lead${count === 1 ? '' : 's'}`
+
+    let affected = chosen
+    let question = ''
+    let note = ''
+    let activityValue = ''
+    let confirmLabel = 'Confirm'
+
+    switch (action.type) {
+      case 'stage': {
+        const open = chosen.filter((entry) => entry.status !== 'converted')
+        affected = open.filter((entry) => entry.status !== action.status)
+        const stage = leadStatusOptions.find((option) => option.key === action.status)?.label ?? ''
+        activityValue = action.status
+        question = `Move ${plural(affected.length)} to ${stage}?`
+        note =
+          chosen.length - open.length > 0
+            ? `Left as they are: ${chosen.length - open.length} already converted.`
+            : ''
+        break
+      }
+      case 'pic':
+        affected = chosen.filter((entry) => entry.picId !== action.picId)
+        activityValue = nameOf(action.picId)
+        question =
+          action.picId === null
+            ? `Clear the PIC of ${plural(affected.length)}?`
+            : `Assign ${plural(affected.length)} to ${activityValue}?`
+        break
+      case 'source':
+        affected = chosen.filter((entry) => entry.sourceId !== action.sourceId)
+        activityValue = nameOf(action.sourceId)
+        question = `Set the source of ${plural(affected.length)} to ${activityValue}?`
+        break
+      case 'tag-add':
+        affected = chosen.filter((entry) => !entry.tagIds.includes(action.tagId))
+        activityValue = nameOf(action.tagId)
+        question = `Add the tag ${activityValue} to ${plural(affected.length)}?`
+        break
+      case 'tag-remove':
+        affected = chosen.filter((entry) => entry.tagIds.includes(action.tagId))
+        activityValue = nameOf(action.tagId)
+        question = `Remove the tag ${activityValue} from ${plural(affected.length)}?`
+        break
+      case 'delete':
+        question = `Delete ${plural(chosen.length)}?\nThis permanently removes the leads, their follow-up logs and their tasks. This cannot be undone.`
+        confirmLabel = `Delete ${plural(chosen.length)}`
+        break
+    }
+
+    if (affected.length === 0) {
+      showToast('Nothing to change: the selected leads are already like that.')
+      return false
+    }
+    if (affected.length < chosen.length && action.type !== 'stage' && action.type !== 'delete') {
+      note = `Left as they are: ${chosen.length - affected.length} already like that.`
+    }
+    if (!(await confirm(note ? `${question}\n${note}` : question, { confirmLabel }))) {
+      return false
+    }
+
+    const ids = affected.map((entry) => entry.id)
+    // A long list is sent in pieces, so the request address stays short.
+    const pieces = Array.from({ length: Math.ceil(ids.length / 200) }, (_, index) =>
+      ids.slice(index * 200, index * 200 + 200),
+    )
+    let changed = 0
+
+    try {
+      for (const piece of pieces) {
+        if (action.type === 'tag-add' || action.type === 'tag-remove') {
+          const { data, error } = await supabase.rpc('bulk_set_lead_tag', {
+            p_lead_ids: piece,
+            p_tag_id: action.tagId,
+            p_add: action.type === 'tag-add',
+          })
+          if (error) {
+            throw error
+          }
+          changed += data ?? 0
+          continue
+        }
+
+        const query =
+          action.type === 'delete'
+            ? supabase.from('leads').delete().in('id', piece)
+            : supabase
+                .from('leads')
+                .update(
+                  action.type === 'stage'
+                    ? { status: action.status }
+                    : action.type === 'pic'
+                      ? { pic_id: action.picId }
+                      : { source_id: action.sourceId },
+                )
+                .in('id', piece)
+        const { data, error } = await query.select('id')
+        if (error) {
+          throw error
+        }
+        changed += data?.length ?? 0
+      }
+    } catch (error) {
+      showToast(getErrorMessage(error, 'The change could not be finished.'))
+      await refreshLeads()
+      return false
+    }
+
+    await recordAdminActivity(
+      action.type === 'delete' ? 'lead_bulk_deleted' : 'lead_bulk_updated',
+      'lead',
+      null,
+      plural(changed),
+      { bulk_action: action.type, value: activityValue, count: changed },
+    )
+    await Promise.all([refreshLeads(), refreshAdminActivities()])
+    showToast(`${action.type === 'delete' ? 'Deleted' : 'Updated'} ${plural(changed)}.`)
+    return true
+  }
+
   function handleConvertLead(leadId: number) {
     const lead = leads.find((entry) => entry.id === leadId)
     if (!lead) {
@@ -4944,6 +5080,7 @@ function App() {
                 onOpenFormAnswers={openLeadFormAnswers}
                 onToggleCheck={handleToggleLeadCheck}
                 teacherNames={teacherNames}
+                onBulkAction={handleBulkLeadAction}
               />
             )}
 

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { CaretLeft, CaretRight, DownloadSimple, MagnifyingGlass, Trash, X } from '@phosphor-icons/react'
 import { FormInsights } from './FormInsights'
+import { downloadCsv } from '../../lib/downloadFile'
 import { ModalShell } from '../ModalShell'
 import { trafficSourceLabel } from '../../lib/formInsights'
 import {
@@ -21,15 +22,6 @@ type FormSubmissionsPanelProps = {
   deletingId: number | null
   // Left out when the account may not delete responses.
   onDelete?: (submission: FormSubmission) => void
-}
-
-function downloadCsv(filename: string, content: string) {
-  const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  URL.revokeObjectURL(url)
 }
 
 export function FormSubmissionsPanel({

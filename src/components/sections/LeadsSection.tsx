@@ -6,7 +6,10 @@ import { getCheckColumns, type CheckFilter } from '../../lib/leadTags'
 import { SummaryBar } from '../SummaryBar'
 import { LeadTrendChart } from '../LeadTrendChart'
 import { LeadKanbanBoard } from '../LeadKanbanBoard'
+import { LeadBulkBar } from '../LeadBulkBar'
 import { LeadTagChip } from '../LeadTagChip'
+import { downloadCsv } from '../../lib/downloadFile'
+import { buildLeadsExportCsv } from '../../lib/leadExport'
 import { WhatsAppLink } from '../WhatsAppLink'
 import mascotGordo from '../../assets/mascot-gordo.png'
 import {
@@ -22,7 +25,14 @@ import {
   UploadSimple,
   UserPlus,
 } from '@phosphor-icons/react'
-import type { Lead, LeadCheckSlot, LeadChild, LeadOption, LeadStatus } from '../../types/domain'
+import type {
+  Lead,
+  LeadBulkAction,
+  LeadCheckSlot,
+  LeadChild,
+  LeadOption,
+  LeadStatus,
+} from '../../types/domain'
 
 const stageToneClass: Record<LeadStatus, string> = {
   new: 'bg-slate-100 text-slate-700',
@@ -99,6 +109,9 @@ type LeadsSectionProps = {
   onToggleCheck?: (leadId: number, slot: LeadCheckSlot, checked: boolean) => void
   // Who ticked a box, shown when the pointer rests on it.
   teacherNames?: Map<number, string>
+  // Does one action to the selected leads (the page asks to confirm first) and
+  // says whether it went through.
+  onBulkAction?: (action: LeadBulkAction, leadIds: number[]) => Promise<boolean>
 }
 
 export function LeadsSection({
@@ -121,6 +134,7 @@ export function LeadsSection({
   onOpenFormAnswers,
   onToggleCheck,
   teacherNames,
+  onBulkAction,
 }: LeadsSectionProps) {
   const [view, setView] = useState<'pipeline' | 'board' | 'dashboard'>('pipeline')
   const [searchTerm, setSearchTerm] = useState('')
@@ -138,6 +152,12 @@ export function LeadsSection({
     3: 'all',
   })
   const [page, setPage] = useState(1)
+  // The ticked leads. A selection belongs to the filters it was made with: once
+  // they change it is gone, so nothing hidden is ever acted on.
+  const [selection, setSelection] = useState<{ key: string; ids: Set<number> }>({
+    key: '',
+    ids: new Set(),
+  })
 
   const optionLabelById = new Map(leadOptions.map((option) => [option.id, option.label]))
   const sourceOptions = leadOptions.filter((option) => option.kind === 'source')
@@ -206,6 +226,55 @@ export function LeadsSection({
   const currentPage = Math.min(page, pageCount)
   const pageStart = (currentPage - 1) * LEADS_PAGE_SIZE
   const pagedLeads = filteredLeads.slice(pageStart, pageStart + LEADS_PAGE_SIZE)
+  const filterKey = JSON.stringify([
+    searchTerm,
+    picFilter,
+    tagFilter,
+    stageFilter,
+    dateFrom,
+    dateTo,
+    checkFilters,
+  ])
+  // Only leads still in the list count (one just deleted, say, no longer does).
+  const selectedLeads =
+    selection.key === filterKey ? filteredLeads.filter((lead) => selection.ids.has(lead.id)) : []
+  const selectedIds = new Set(selectedLeads.map((lead) => lead.id))
+  const pageSelectedCount = pagedLeads.filter((lead) => selectedIds.has(lead.id)).length
+  const allOnPageSelected = pagedLeads.length > 0 && pageSelectedCount === pagedLeads.length
+
+  function select(ids: Set<number>) {
+    setSelection({ key: filterKey, ids })
+  }
+  function toggleLead(leadId: number) {
+    const next = new Set(selectedIds)
+    if (!next.delete(leadId)) {
+      next.add(leadId)
+    }
+    select(next)
+  }
+  function togglePage() {
+    const next = new Set(selectedIds)
+    for (const lead of pagedLeads) {
+      if (allOnPageSelected) {
+        next.delete(lead.id)
+      } else {
+        next.add(lead.id)
+      }
+    }
+    select(next)
+  }
+
+  async function runBulkAction(action: LeadBulkAction) {
+    if (onBulkAction && (await onBulkAction(action, selectedLeads.map((lead) => lead.id)))) {
+      select(new Set())
+    }
+  }
+
+  function exportSelected() {
+    const day = getTodayString()
+    downloadCsv(`leads-${day}.csv`, buildLeadsExportCsv(selectedLeads, leadOptions, checkColumns))
+  }
+
   // Any filter change starts again from page 1.
   function withPageReset<T>(setter: (value: T) => void) {
     return (value: T) => {
@@ -541,6 +610,23 @@ export function LeadsSection({
 
         {view === 'pipeline' && filteredLeads.length > 0 && (
           <>
+            {selectedLeads.length > 0 && (
+              <div className="hidden md:block">
+                <LeadBulkBar
+                  count={selectedLeads.length}
+                  total={filteredLeads.length}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
+                  pics={picOptions.filter((option) => option.isActive)}
+                  sources={sourceOptions.filter((option) => option.isActive)}
+                  tags={tagOptions.filter((option) => option.isActive)}
+                  onSelectAll={() => select(new Set(filteredLeads.map((lead) => lead.id)))}
+                  onClear={() => select(new Set())}
+                  onAction={(action) => void runBulkAction(action)}
+                  onExport={exportSelected}
+                />
+              </div>
+            )}
             <ul className="divide-y divide-slate-200 md:hidden">
               {pagedLeads.map((lead) => (
                 <li key={lead.id} className="space-y-3 p-4">
@@ -651,6 +737,21 @@ export function LeadsSection({
               <table data-compact-table className="min-w-full divide-y divide-slate-200 text-left">
                 <thead className="bg-white text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                   <tr>
+                    <th className="w-8" style={{ padding: '0.625rem 0 0.625rem 1rem' }}>
+                      <input
+                        type="checkbox"
+                        aria-label="Select all leads on this page"
+                        checked={allOnPageSelected}
+                        ref={(box) => {
+                          if (box) {
+                            box.indeterminate = pageSelectedCount > 0 && !allOnPageSelected
+                          }
+                        }}
+                        onChange={togglePage}
+                        style={{ width: 16, height: 16, minHeight: 0, padding: 0 }}
+                        className="cursor-pointer rounded accent-[#fc0c97]"
+                      />
+                    </th>
                     <th className="px-6 py-4">Date</th>
                     <th className="px-6 py-4">Contact</th>
                     <th className="px-6 py-4" style={{ paddingRight: '0.5rem' }}>
@@ -711,8 +812,21 @@ export function LeadsSection({
                           onEditLead(lead.id)
                         }
                       }}
-                      className="cursor-pointer align-top transition hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none"
+                      className={cn(
+                        'cursor-pointer align-top transition hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none',
+                        selectedIds.has(lead.id) && 'bg-[#fff8fc]',
+                      )}
                     >
+                      <td className="w-8 align-top" style={{ padding: '1.25rem 0 0 1rem' }}>
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${lead.fullName || lead.phone || 'this lead'}`}
+                          checked={selectedIds.has(lead.id)}
+                          onChange={() => toggleLead(lead.id)}
+                          style={{ width: 16, height: 16, minHeight: 0, padding: 0 }}
+                          className="cursor-pointer rounded accent-[#fc0c97]"
+                        />
+                      </td>
                       <td className="whitespace-nowrap text-slate-600">
                         <div className="text-sm leading-5">{formatDayMonth(lead.addedDate)}</div>
                         <div className="text-[11px] leading-4 text-slate-400">

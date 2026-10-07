@@ -87,6 +87,12 @@ export function csvEscape(value: string): string {
   return value
 }
 
+// A cell for a file a spreadsheet opens: text that starts like a formula gets a
+// quote in front, so it is shown as text and never run.
+export function csvCell(value: string): string {
+  return csvEscape(/^[=@\t\r]|^[+-][^0-9\s().+-]/.test(value) ? `'${value}` : value)
+}
+
 export function getLeadCsvHeaders(): string[] {
   const headers = ['Parent Name', 'Phone', 'Source', 'Stage', 'Added Date', 'Notes']
   for (let index = 1; index <= MAX_LEAD_CHILDREN; index += 1) {

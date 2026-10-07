@@ -1,4 +1,4 @@
-import { csvEscape } from './leadCsv'
+import { csvCell } from './leadCsv'
 import { getPagesProblem, isWebAddress, normalizePages } from './formPages'
 import { trafficSourceLabel } from './formInsights'
 import type {
@@ -716,12 +716,6 @@ export function getSubmissionColumns(submissions: FormSubmission[]) {
     }
   }
   return [...columns].map(([id, label]) => ({ id, label }))
-}
-
-// Answers come from the public, so keep a spreadsheet from running one that
-// starts like a formula.
-function csvCell(value: string) {
-  return csvEscape(/^[=@\t\r]|^[+-][^0-9\s().+-]/.test(value) ? `'${value}` : value)
 }
 
 export function buildSubmissionsCsv(submissions: FormSubmission[], formNameById: Map<string, string>) {

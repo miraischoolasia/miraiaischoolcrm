@@ -29,6 +29,16 @@ export type LeadOption = {
 // The three tick columns of the Leads list, by position.
 export type LeadCheckSlot = 1 | 2 | 3
 export type LeadChecks = Partial<Record<LeadCheckSlot, { at: string | null; by: number | null }>>
+// What the bulk actions of the Leads list can do to the selected leads.
+export type LeadBulkAction =
+  | { type: 'stage'; status: LeadStatus }
+  // null clears the PIC.
+  | { type: 'pic'; picId: number | null }
+  | { type: 'source'; sourceId: number }
+  | { type: 'tag-add'; tagId: number }
+  | { type: 'tag-remove'; tagId: number }
+  | { type: 'delete' }
+
 export type LeadStatus =
   | 'new'
   | 'contacted'

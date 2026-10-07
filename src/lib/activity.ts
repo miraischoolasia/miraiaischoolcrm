@@ -96,6 +96,31 @@ export function describeActivity(activity: AdminActivity, names: ActivityNames):
       return { title: `Logged follow-up #${text(d.follow_up_number)} for ${label}`, changes, notes }
     case 'lead_bulk_imported':
       return { title: `Imported ${text(d.count)} leads`, changes, notes }
+    case 'lead_bulk_updated': {
+      const count = Number(d.count)
+      const who = `${count} lead${count === 1 ? '' : 's'}`
+      const value = text(d.value)
+      switch (d.bulk_action) {
+        case 'stage':
+          return { title: `Moved ${who} to ${stageLabel(value)}`, changes, notes }
+        case 'pic':
+          return {
+            title: value ? `Assigned ${who} to ${value}` : `Cleared the PIC of ${who}`,
+            changes,
+            notes,
+          }
+        case 'source':
+          return { title: `Set the source of ${who} to ${value}`, changes, notes }
+        case 'tag-add':
+          return { title: `Added the tag ${value} to ${who}`, changes, notes }
+        case 'tag-remove':
+          return { title: `Removed the tag ${value} from ${who}`, changes, notes }
+        default:
+          return { title: `Changed ${who}`, changes, notes }
+      }
+    }
+    case 'lead_bulk_deleted':
+      return { title: `Deleted ${text(d.count)} leads`, changes, notes }
 
     case 'student_created':
       note(d.classroom_id !== undefined ? `Classroom: ${classroom(d.classroom_id)}` : '')

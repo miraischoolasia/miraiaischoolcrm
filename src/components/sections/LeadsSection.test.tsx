@@ -1,7 +1,12 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { LeadsSection } from './LeadsSection'
+
+const downloads: { filename: string; content: string }[] = []
+vi.mock('../../lib/downloadFile', () => ({
+  downloadCsv: (filename: string, content: string) => downloads.push({ filename, content }),
+}))
 import { getTodayString } from '../../domain/studentStatus'
 import type { Lead, LeadCheckSlot, LeadOption } from '../../types/domain'
 
@@ -254,13 +259,13 @@ describe('LeadsSection', () => {
     renderSection([makeLead(1, null)])
 
     const cells = within(tableRows()[0]).getAllByRole('cell')
-    expect(cells[2]).toHaveTextContent('-')
+    expect(cells[3]).toHaveTextContent('-')
   })
 
   it('writes the date as day and month with the year smaller underneath', () => {
     renderSection([{ ...makeLead(1, null), addedDate: '2026-10-06' }])
 
-    const date = within(tableRows()[0]).getAllByRole('cell')[0]
+    const date = within(tableRows()[0]).getAllByRole('cell')[1]
     const [dayMonth, year] = Array.from(date.children)
     expect(dayMonth).toHaveTextContent('Oct 6')
     expect(year).toHaveTextContent('2026')
@@ -386,7 +391,7 @@ describe('LeadsSection tick columns', () => {
   it('shows no tick columns before the database has them', () => {
     renderSection([makeLead(1, null)])
 
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: / for / })).not.toBeInTheDocument()
   })
 
   it('shows which boxes are ticked, and says who ticked and when', () => {
@@ -423,9 +428,9 @@ describe('LeadsSection tick columns', () => {
   it('cannot be changed without edit access', () => {
     renderSection([makeLead(1, null)], { canEdit: false, onToggleCheck: vi.fn() }, allOptions)
 
-    within(tableRows()[0])
-      .getAllByRole('checkbox')
-      .forEach((box) => expect(box).toBeDisabled())
+    const ticks = within(tableRows()[0]).getAllByRole('checkbox', { name: / for / })
+    expect(ticks).toHaveLength(3)
+    ticks.forEach((box) => expect(box).toBeDisabled())
   })
 
   it('filters by ticked, not ticked or all, one column at a time', async () => {
@@ -512,5 +517,266 @@ describe('LeadsSection tags', () => {
     renderSection([makeLead(1, null)])
 
     expect(screen.queryByLabelText('Filter by tag')).not.toBeInTheDocument()
+  })
+})
+
+describe('LeadsSection bulk selection', () => {
+  const many = (count: number) => Array.from({ length: count }, (_, index) => makeLead(index + 1, null))
+  const rowBox = (row: HTMLElement) => within(row).getByRole('checkbox', { name: /^Select / })
+  const pageBox = () => screen.getByRole('checkbox', { name: 'Select all leads on this page' })
+
+  it('has no bulk bar until a lead is ticked, then says how many are selected', async () => {
+    renderSection(many(3), { onBulkAction: vi.fn() })
+    expect(screen.queryByRole('region', { name: 'Bulk actions' })).not.toBeInTheDocument()
+
+    await userEvent.click(rowBox(tableRows()[0]))
+    await userEvent.click(rowBox(tableRows()[2]))
+
+    const bar = within(screen.getByRole('region', { name: 'Bulk actions' }))
+    expect(bar.getByText('2 leads selected')).toBeInTheDocument()
+
+    await userEvent.click(rowBox(tableRows()[0]))
+    expect(bar.getByText('1 lead selected')).toBeInTheDocument()
+
+    await userEvent.click(rowBox(tableRows()[2]))
+    expect(screen.queryByRole('region', { name: 'Bulk actions' })).not.toBeInTheDocument()
+  })
+
+  it('ticking a lead does not open it', async () => {
+    const onEditLead = vi.fn()
+    renderSection(many(2), { onEditLead, onBulkAction: vi.fn() })
+
+    await userEvent.click(rowBox(tableRows()[0]))
+
+    expect(onEditLead).not.toHaveBeenCalled()
+  })
+
+  it('selects the whole page from the title row, and unselects it again', async () => {
+    renderSection(many(30), { onBulkAction: vi.fn() })
+
+    await userEvent.click(pageBox())
+    expect(within(screen.getByRole('region', { name: 'Bulk actions' })).getByText('25 leads selected')).toBeInTheDocument()
+    tableRows().forEach((row) => expect(rowBox(row)).toBeChecked())
+    expect(pageBox()).toBeChecked()
+
+    await userEvent.click(pageBox())
+    expect(screen.queryByRole('region', { name: 'Bulk actions' })).not.toBeInTheDocument()
+  })
+
+  it('shows the title-row box as half ticked when only some of the page is', async () => {
+    renderSection(many(3), { onBulkAction: vi.fn() })
+
+    await userEvent.click(rowBox(tableRows()[0]))
+
+    expect(pageBox()).not.toBeChecked()
+    expect((pageBox() as HTMLInputElement).indeterminate).toBe(true)
+  })
+
+  it('offers every lead that matches the filters, across the pages', async () => {
+    renderSection(many(30), { onBulkAction: vi.fn() })
+    await userEvent.click(pageBox())
+
+    await userEvent.click(screen.getByRole('button', { name: 'Select all 30 leads that match the filters' }))
+
+    const bar = within(screen.getByRole('region', { name: 'Bulk actions' }))
+    expect(bar.getByText('30 leads selected')).toBeInTheDocument()
+    expect(bar.getByText('That is every lead that matches the filters.')).toBeInTheDocument()
+    expect(bar.queryByRole('button', { name: /Select all/ })).not.toBeInTheDocument()
+
+    // The next page shows its leads ticked as well.
+    await userEvent.click(screen.getByRole('button', { name: 'Next page' }))
+    tableRows().forEach((row) => expect(rowBox(row)).toBeChecked())
+  })
+
+  it('keeps the selection when going to another page', async () => {
+    renderSection(many(30), { onBulkAction: vi.fn() })
+    await userEvent.click(rowBox(tableRows()[0]))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next page' }))
+    expect(within(screen.getByRole('region', { name: 'Bulk actions' })).getByText('1 lead selected')).toBeInTheDocument()
+    expect(pageBox()).not.toBeChecked()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Previous page' }))
+    expect(rowBox(tableRows()[0])).toBeChecked()
+  })
+
+  it('drops the selection when a filter changes, so nothing out of sight is touched', async () => {
+    renderSection([makeLead(1, 10), makeLead(2, null)], { onBulkAction: vi.fn() })
+    await userEvent.click(pageBox())
+    expect(screen.getByRole('region', { name: 'Bulk actions' })).toBeInTheDocument()
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Filter by PIC' }), 'Alex')
+
+    expect(screen.queryByRole('region', { name: 'Bulk actions' })).not.toBeInTheDocument()
+    expect(rowBox(tableRows()[0])).not.toBeChecked()
+  })
+
+  it('clears the selection on request', async () => {
+    renderSection(many(3), { onBulkAction: vi.fn() })
+    await userEvent.click(pageBox())
+
+    await userEvent.click(screen.getByRole('button', { name: /Clear selection/ }))
+
+    expect(screen.queryByRole('region', { name: 'Bulk actions' })).not.toBeInTheDocument()
+  })
+})
+
+describe('LeadsSection bulk actions', () => {
+  const picAndTag: LeadOption[] = [...allOptions, { id: 11, kind: 'pic', label: 'Mei', isActive: true, legacyKey: null, color: null }, { id: 12, kind: 'pic', label: 'Old PIC', isActive: false, legacyKey: null, color: null }]
+  const leadsList = [
+    { ...makeLead(1, null), fullName: 'Mrs Lim' },
+    { ...makeLead(2, null), fullName: 'Mr Tan' },
+    { ...makeLead(3, null), fullName: 'Ms Goh' },
+  ]
+
+  async function select(names: string[]) {
+    for (const name of names) {
+      await userEvent.click(screen.getByRole('checkbox', { name: `Select ${name}` }))
+    }
+    return within(screen.getByRole('region', { name: 'Bulk actions' }))
+  }
+
+  it('sends the chosen action with the ticked leads', async () => {
+    // Not going through, so the selection stays for the second choice.
+    const onBulkAction = vi.fn().mockResolvedValue(false)
+    renderSection(leadsList, { onBulkAction }, picAndTag)
+    const bar = await select(['Mrs Lim', 'Ms Goh'])
+
+    await userEvent.selectOptions(bar.getByLabelText('Change stage'), 'contacted')
+    expect(onBulkAction).toHaveBeenLastCalledWith({ type: 'stage', status: 'contacted' }, [1, 3])
+
+    await userEvent.selectOptions(bar.getByLabelText('Set PIC'), 'Mei')
+    expect(onBulkAction).toHaveBeenLastCalledWith({ type: 'pic', picId: 11 }, [1, 3])
+  })
+
+  it('can clear the PIC, change the source and add or remove a tag', async () => {
+    const onBulkAction = vi.fn().mockResolvedValue(false)
+    renderSection(leadsList, { onBulkAction }, picAndTag)
+    const bar = await select(['Mr Tan'])
+
+    await userEvent.selectOptions(bar.getByLabelText('Set PIC'), 'Not assigned')
+    expect(onBulkAction).toHaveBeenLastCalledWith({ type: 'pic', picId: null }, [2])
+
+    await userEvent.selectOptions(bar.getByLabelText('Set source'), 'Walk-in')
+    expect(onBulkAction).toHaveBeenLastCalledWith({ type: 'source', sourceId: 1 }, [2])
+
+    await userEvent.selectOptions(bar.getByLabelText('Add tag'), 'Hot')
+    expect(onBulkAction).toHaveBeenLastCalledWith({ type: 'tag-add', tagId: 201 }, [2])
+
+    await userEvent.selectOptions(bar.getByLabelText('Remove tag'), 'VIP')
+    expect(onBulkAction).toHaveBeenLastCalledWith({ type: 'tag-remove', tagId: 202 }, [2])
+  })
+
+  it('never offers Converted, hidden names, or a tag list when there are no tags', async () => {
+    renderSection(leadsList, { onBulkAction: vi.fn() }, picAndTag)
+    const bar = await select(['Mrs Lim'])
+
+    const stages = within(bar.getByLabelText('Change stage')).getAllByRole('option').map((option) => option.textContent)
+    expect(stages).not.toContain('Converted')
+    expect(stages).toContain('Contacted')
+    const pics = within(bar.getByLabelText('Set PIC')).getAllByRole('option').map((option) => option.textContent)
+    expect(pics).toEqual(['Set PIC...', 'Not assigned', 'Alex', 'Mei'])
+  })
+
+  it('has no tag lists without tags', async () => {
+    renderSection(leadsList, { onBulkAction: vi.fn() }, options)
+    const bar = await select(['Mrs Lim'])
+
+    expect(bar.queryByLabelText('Add tag')).not.toBeInTheDocument()
+    expect(bar.queryByLabelText('Remove tag')).not.toBeInTheDocument()
+  })
+
+  it('goes back to its title after a choice, ready for another', async () => {
+    renderSection(leadsList, { onBulkAction: vi.fn().mockResolvedValue(false) }, picAndTag)
+    const bar = await select(['Mrs Lim'])
+
+    await userEvent.selectOptions(bar.getByLabelText('Change stage'), 'lost')
+
+    expect(bar.getByLabelText('Change stage')).toHaveValue('')
+  })
+
+  it('clears the selection once an action went through, and keeps it when it did not', async () => {
+    const onBulkAction = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+    renderSection(leadsList, { onBulkAction }, picAndTag)
+    const bar = await select(['Mrs Lim'])
+
+    await userEvent.selectOptions(bar.getByLabelText('Change stage'), 'lost')
+    expect(screen.getByRole('region', { name: 'Bulk actions' })).toBeInTheDocument()
+
+    await userEvent.selectOptions(bar.getByLabelText('Change stage'), 'lost')
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Bulk actions' })).not.toBeInTheDocument(),
+    )
+  })
+
+  it('has Delete only for an account that may delete', async () => {
+    const onBulkAction = vi.fn().mockResolvedValue(false)
+    const { unmount } = render(
+      <LeadsSection
+        isLoading={false}
+        leads={leadsList}
+        onChangeStatus={vi.fn()}
+        onConvertLead={vi.fn()}
+        onEditLead={vi.fn()}
+        onOpenCreateLead={vi.fn()}
+        onOpenBulkImportLeads={vi.fn()}
+        onOpenFollowUp={vi.fn()}
+        onDeleteLead={vi.fn()}
+        deletingLeadId={null}
+        leadOptions={picAndTag}
+        onOpenLeadOptions={vi.fn()}
+        onBulkAction={onBulkAction}
+      />,
+    )
+    let bar = await select(['Mrs Lim', 'Mr Tan'])
+    await userEvent.click(bar.getByRole('button', { name: 'Delete' }))
+    expect(onBulkAction).toHaveBeenCalledWith({ type: 'delete' }, [1, 2])
+    unmount()
+
+    renderSection(leadsList, { canDelete: false, onBulkAction }, picAndTag)
+    bar = await select(['Mrs Lim'])
+    expect(bar.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
+  })
+
+  it('offers only Export to an account that cannot edit', async () => {
+    renderSection(leadsList, { canEdit: false, canDelete: false, onBulkAction: vi.fn() }, picAndTag)
+    const bar = await select(['Mrs Lim'])
+
+    expect(bar.queryByLabelText('Change stage')).not.toBeInTheDocument()
+    expect(bar.queryByLabelText('Set PIC')).not.toBeInTheDocument()
+    expect(bar.queryByLabelText('Set source')).not.toBeInTheDocument()
+    expect(bar.queryByLabelText('Add tag')).not.toBeInTheDocument()
+    expect(bar.getByRole('button', { name: /Export CSV/ })).toBeInTheDocument()
+  })
+
+  it('exports the ticked leads, and only them, as a file', async () => {
+    downloads.length = 0
+    renderSection(
+      [
+        { ...leadsList[0], children: [{ name: 'Ken', age: 9, phone: null }], tagIds: [201] },
+        leadsList[1],
+        leadsList[2],
+      ],
+      { onBulkAction: vi.fn() },
+      picAndTag,
+    )
+    const bar = await select(['Mrs Lim', 'Ms Goh'])
+
+    await userEvent.click(bar.getByRole('button', { name: /Export CSV/ }))
+
+    expect(downloads).toHaveLength(1)
+    expect(downloads[0].filename).toMatch(/^leads-\d{4}-\d{2}-\d{2}\.csv$/)
+    expect(downloads[0].content).toContain('Mrs Lim')
+    expect(downloads[0].content).toContain('Ms Goh')
+    expect(downloads[0].content).not.toContain('Mr Tan')
+    expect(downloads[0].content).toContain('Ken (9)')
+    expect(downloads[0].content).toContain('Hot')
+  })
+
+  it('has no selection boxes or bulk bar on the phone cards, which keep one lead at a time', () => {
+    renderSection(leadsList, { onBulkAction: vi.fn() })
+
+    const cards = screen.getAllByRole('listitem').filter((item) => item.className.includes('space-y-3'))
+    cards.forEach((card) => expect(within(card).queryByRole('checkbox', { name: /^Select / })).not.toBeInTheDocument())
   })
 })

@@ -1370,6 +1370,14 @@ export type Database = {
           updated_student_count: number
         }[]
       }
+      bulk_set_lead_tag: {
+        Args: {
+          p_lead_ids: number[]
+          p_tag_id: number
+          p_add: boolean
+        }
+        Returns: number
+      }
       set_lead_check: {
         Args: {
           p_lead_id: number
