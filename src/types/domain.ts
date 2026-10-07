@@ -78,6 +78,17 @@ export type Student = {
   studentType: StudentType
   // The package the student is on now (regular students only).
   packageId?: number | null
+  // Every stay in a class, for the roster of a given day. Undefined before
+  // the class history migration.
+  classPeriods?: ClassroomPeriod[]
+}
+
+// One stay in a class: from startDate (null = since the class began) up to,
+// not including, endDate (null = still in it).
+export type ClassroomPeriod = {
+  classroomId: number
+  startDate: string | null
+  endDate: string | null
 }
 
 export type PackageKind = 'trial' | 'regular' | 'camp'

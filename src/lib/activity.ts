@@ -113,6 +113,18 @@ export function describeActivity(activity: AdminActivity, names: ActivityNames):
       note(d.account_fee_expiry ? `Account Fee until ${date(d.account_fee_expiry)}` : '')
       note(d.mirai_club_expiry ? `Mirai Club until ${date(d.mirai_club_expiry)}` : '')
       return { title: `Renewed ${label}`, changes, notes }
+    case 'student_package_corrected':
+      change('Package', text(d.previous_package), text(d.new_package))
+      change('Classes left', text(d.previous_classes_left), text(d.new_classes_left))
+      note(d.start_date ? `Starts ${date(d.start_date)}` : '')
+      note(d.reason ? text(d.reason) : '')
+      return { title: `Corrected the package of ${label}`, changes, notes }
+    case 'student_class_start_changed': {
+      const since = (value: unknown) => (value ? date(value) : 'The class began')
+      change('In class since', since(d.previous_start_date), since(d.new_start_date))
+      note(`Classroom: ${classroom(d.classroom_id)}`)
+      return { title: `Changed when ${label} joined their class`, changes, notes }
+    }
     case 'student_deactivated':
       return { title: `Deactivated student ${label}`, changes, notes }
 

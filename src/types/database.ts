@@ -283,6 +283,33 @@ export type Database = {
         }
         Relationships: []
       }
+      student_classroom_periods: {
+        Row: {
+          id: number
+          student_id: number
+          classroom_id: number
+          start_date: string | null
+          end_date: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          student_id: number
+          classroom_id: number
+          start_date?: string | null
+          end_date?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          student_id?: number
+          classroom_id?: number
+          start_date?: string | null
+          end_date?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       student_enrollments: {
         Row: {
           id: number
@@ -1062,6 +1089,26 @@ export type Database = {
     }
     Views: Record<string, never>
     Functions: {
+      set_student_class_start: {
+        Args: {
+          p_student_id: number
+          p_start_date: string | null
+        }
+        Returns: undefined
+      }
+      change_student_package: {
+        Args: {
+          p_student_id: number
+          p_package_id: number
+          p_start_date: string
+          p_class_count: number
+          p_lesson_expiry_date: string
+          p_account_fee_expiry_date: string
+          p_mirai_club_expiry_date: string
+          p_remark?: string | null
+        }
+        Returns: number
+      }
       enroll_student_package: {
         Args: {
           p_student_id: number

@@ -132,6 +132,23 @@ vi.mock('./lib/api', async (importOriginal) => ({
       isActive: false,
       studentType: 'regular',
     },
+    // Joined the class on 1 Oct: not in its September lessons.
+    {
+      id: 503,
+      teacherId: 1,
+      classroomId: 1,
+      name: 'Late Joiner',
+      phone: null,
+      age: null,
+      remainingHours: 12,
+      lessonExpiryDate: '2026-12-31',
+      accountFeeExpiryDate: '2026-12-31',
+      miraiClubExpiryDate: '2026-12-31',
+      notes: null,
+      isActive: true,
+      studentType: 'regular',
+      classPeriods: [{ classroomId: 1, startDate: '2026-10-01', endDate: null }],
+    },
   ],
   fetchSchedulesFromSupabase: async () => [
     weekly,
@@ -319,6 +336,8 @@ describe('cancelling a single class day', () => {
     expect(screen.getByLabelText('End Time')).toHaveValue('21:30')
     expect(screen.getByRole('checkbox', { name: /Ada Lovelace/ })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: /Inactive Kid/ })).not.toBeChecked()
+    const lateJoiner = screen.queryByRole('checkbox', { name: /Late Joiner/ })
+    expect(lateJoiner === null || !(lateJoiner as HTMLInputElement).checked).toBe(true)
   })
 
   it('makes up a cancelled day by extending the next two classes', async () => {

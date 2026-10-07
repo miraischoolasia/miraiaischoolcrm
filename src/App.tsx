@@ -138,6 +138,7 @@ import { DeleteTeacherModal } from './components/modals/DeleteTeacherModal'
 import { LeadModal } from './components/modals/LeadModal'
 import { LeadOptionsModal } from './components/modals/LeadOptionsModal'
 import { PackagesModal, type PackageDraft } from './components/modals/PackagesModal'
+import { ChangePackageModal, type PackageChange } from './components/modals/ChangePackageModal'
 import {
   AssignPackagesModal,
   type PackageAssignment,
@@ -158,6 +159,7 @@ import {
 } from './components/modals/MoveClassModal'
 import { getDragBlockReason, getTimeFromDate, getTrialSlotsOnDate } from './lib/move'
 import { hasPermission } from './lib/permissions'
+import { getClassroomRosterOn } from './lib/roster'
 import {
   getOfferedPackages,
   getRenewalStartDate,
@@ -749,6 +751,11 @@ function App() {
 
   // Package history shown in the open student's details.
   const [detailEnrollments, setDetailEnrollments] = useState<StudentEnrollment[]>([])
+  // Bumped after a package change so the history reloads.
+  const [detailEnrollmentsVersion, setDetailEnrollmentsVersion] = useState(0)
+  const [isChangePackageOpen, setIsChangePackageOpen] = useState(false)
+  const [isSavingPackageChange, setIsSavingPackageChange] = useState(false)
+  const [changePackageError, setChangePackageError] = useState<string | null>(null)
   useEffect(() => {
     setDetailEnrollments([])
     if (selectedStudentDetailId === null) {
@@ -767,7 +774,49 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [selectedStudentDetailId])
+  }, [selectedStudentDetailId, detailEnrollmentsVersion])
+
+  // Corrects the day the open student joined their class.
+  async function handleSetClassStart(startDate: string | null) {
+    if (!supabase || !selectedStudentDetailId) {
+      return 'Not connected.'
+    }
+    const { error } = await supabase.rpc('set_student_class_start', {
+      p_student_id: selectedStudentDetailId,
+      p_start_date: startDate,
+    })
+    if (error) {
+      return getErrorMessage(error, 'Failed to save the day they joined.')
+    }
+    await Promise.all([refreshStudentsAndLogs(), refreshAdminActivities()])
+    return null
+  }
+
+  async function handleChangePackage(change: PackageChange) {
+    if (!supabase || !selectedStudentDetailId) {
+      return
+    }
+    setIsSavingPackageChange(true)
+    setChangePackageError(null)
+    const { error } = await supabase.rpc('change_student_package', {
+      p_student_id: selectedStudentDetailId,
+      p_package_id: change.packageId,
+      p_start_date: change.startDate,
+      p_class_count: change.classCount,
+      p_lesson_expiry_date: change.lessonExpiryDate,
+      p_account_fee_expiry_date: change.accountFeeExpiryDate,
+      p_mirai_club_expiry_date: change.miraiClubExpiryDate,
+      p_remark: change.remark || null,
+    })
+    setIsSavingPackageChange(false)
+    if (error) {
+      setChangePackageError(getErrorMessage(error, 'Failed to change the package.'))
+      return
+    }
+    setIsChangePackageOpen(false)
+    setDetailEnrollmentsVersion((version) => version + 1)
+    await Promise.all([refreshStudentsAndLogs(), refreshAdminActivities()])
+  }
 
   // The renewing student's past packages, for the fee-year rules.
   const [renewalHistory, setRenewalHistory] = useState<StudentEnrollment[]>([])
@@ -2125,7 +2174,7 @@ function App() {
     const classroom = schedule.classroomId ? classroomMap.get(schedule.classroomId) : null
     const label = classroom?.name ?? schedule.title
     const rosterIds = (
-      schedule.classroomId ? classroomStudentMap.get(schedule.classroomId) ?? [] : []
+      schedule.classroomId ? getClassroomRosterOn(students, schedule.classroomId, occurrenceDate) : []
     )
       .filter((student) => student.isActive)
       .map((student) => String(student.id))
@@ -3523,7 +3572,7 @@ function App() {
         .map((studentId) => studentMap.get(studentId)?.name)
         .filter((name): name is string => Boolean(name))
     } else {
-      names = (classroomStudentMap.get(schedule.classroomId ?? 0) ?? [])
+      names = getClassroomRosterOn(students, schedule.classroomId ?? 0, fromDate)
         .filter((student) => student.isActive)
         .map((student) => student.name)
     }
@@ -3718,7 +3767,7 @@ function App() {
       const makeupEntries = getMakeupOnlyEntries(scheduleId, occurrenceDate)
       if (makeupEntries.length > 0 && !makeupEntries.some((entry) => entry.studentId === null)) {
         const planStudentIds = new Set(makeupEntries.map((entry) => entry.studentId))
-        return (classroomStudentMap.get(schedule.classroomId!) ?? [])
+        return getClassroomRosterOn(students, schedule.classroomId!, occurrenceDate)
           .filter((student) => planStudentIds.has(student.id))
           .map((student) => student.id)
       }
@@ -3732,8 +3781,10 @@ function App() {
           .filter((studentId): studentId is number => studentId !== null)
       }
 
+      // Only the students in the class that day: a student who joined
+      // later is not in its earlier lessons, one who left still is.
       return schedule.classroomId
-        ? (classroomStudentMap.get(schedule.classroomId) ?? []).map(
+        ? getClassroomRosterOn(students, schedule.classroomId, occurrenceDate).map(
             (student) => student.id,
           )
         : []
@@ -4131,11 +4182,18 @@ function App() {
     }
 
     const teacherName = eventInfo.event.extendedProps.teacherName as string
-    const participantNames = eventInfo.event.extendedProps.participantNames as string
     const scheduleId = Number(eventInfo.event.extendedProps.scheduleId)
     const occurrenceDate = eventInfo.event.start
       ? getDateKeyFromDate(eventInfo.event.start)
       : ''
+    const cardClassroomId = eventInfo.event.extendedProps.classroomId as number | null
+    // A class card lists who was in the class that day, not everyone in it now.
+    const participantNames =
+      eventInfo.event.extendedProps.eventType === 'regular' && cardClassroomId && occurrenceDate
+        ? getClassroomRosterOn(students, cardClassroomId, occurrenceDate)
+            .map((student) => student.name)
+            .join(', ') || 'No students assigned'
+        : (eventInfo.event.extendedProps.participantNames as string)
     const completed = latestLessonLogMap.has(`${scheduleId}:${occurrenceDate}`)
 
     return (
@@ -4962,6 +5020,18 @@ function App() {
         />
       )}
 
+      {isChangePackageOpen && selectedStudentDetail && detailEnrollments[0] && (
+        <ChangePackageModal
+          student={selectedStudentDetail}
+          enrollment={[...detailEnrollments].sort((a, b) => b.id - a.id)[0]}
+          packages={packages}
+          isSaving={isSavingPackageChange}
+          error={changePackageError}
+          onClose={() => setIsChangePackageOpen(false)}
+          onSave={(change) => void handleChangePackage(change)}
+        />
+      )}
+
       {isPackagesOpen && (
         <PackagesModal
           packages={packages}
@@ -5034,7 +5104,16 @@ function App() {
           }
           onEditMakeup={canEditCalendar ? openMakeupPlan : undefined}
           enrollments={detailEnrollments}
+          onChangePackage={
+            can('students', 'edit')
+              ? () => {
+                  setChangePackageError(null)
+                  setIsChangePackageOpen(true)
+                }
+              : undefined
+          }
           packages={packages}
+          onSetClassStart={can('students', 'edit') ? handleSetClassStart : undefined}
           onEdit={
             can('students', 'edit')
               ? () => {

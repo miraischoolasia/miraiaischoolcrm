@@ -45,12 +45,22 @@ export async function fetchStudentsFromSupabase() {
   const select = async (selected: string) => {
     const result = await supabase!.from('students').select(selected).order('full_name')
     return result as unknown as {
-      data: (Omit<StudentRow, 'package_id'> & { package_id?: number | null })[] | null
+      data:
+        | (Omit<StudentRow, 'package_id'> & {
+            package_id?: number | null
+            student_classroom_periods?: ClassroomPeriodRow[]
+          })[]
+        | null
       error: { code?: string } | null
     }
   }
-  let { data, error } = await select(`${columns}, package_id`)
+  const history = 'student_classroom_periods(classroom_id, start_date, end_date)'
+  let { data, error } = await select(`${columns}, package_id, ${history}`)
 
+  // Before the class history migration there is no history to embed.
+  if (error && (error.code === 'PGRST200' || isMissingTableError(error))) {
+    ;({ data, error } = await select(`${columns}, package_id`))
+  }
   // Before the packages migration package_id does not exist yet.
   if (error?.code === '42703') {
     ;({ data, error } = await select(columns))
@@ -60,7 +70,23 @@ export async function fetchStudentsFromSupabase() {
     throw error
   }
 
-  return (data ?? []).map((row) => mapStudentRow({ ...row, package_id: row.package_id ?? null }))
+  return (data ?? []).map(({ student_classroom_periods: periods, ...row }) => {
+    const student = mapStudentRow({ ...row, package_id: row.package_id ?? null })
+    if (periods) {
+      student.classPeriods = periods.map((period) => ({
+        classroomId: period.classroom_id,
+        startDate: period.start_date,
+        endDate: period.end_date,
+      }))
+    }
+    return student
+  })
+}
+
+type ClassroomPeriodRow = {
+  classroom_id: number
+  start_date: string | null
+  end_date: string | null
 }
 
 export async function fetchPackagesFromSupabase() {

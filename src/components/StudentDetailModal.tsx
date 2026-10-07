@@ -1,10 +1,11 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { PencilSimple, X } from '@phosphor-icons/react'
 import { formatDate, getDateMeta, getTodayString } from '../domain/studentStatus'
 import { getLatestLessonLogMap } from '../lib/mappers'
 import { performanceMetricDefinitions } from '../lib/constants'
 import { weekdayLabels } from '../lib/schedule'
 import { buildPathway } from '../lib/pathway'
+import { getCurrentClassPeriod } from '../lib/roster'
 import { ExpiryCell } from './ExpiryCell'
 import { ModalShell } from './ModalShell'
 import { PathwaySection } from './PathwaySection'
@@ -42,6 +43,12 @@ type StudentDetailModalProps = {
   // Package history, newest first, and the packages to name them.
   enrollments?: StudentEnrollment[]
   packages?: Package[]
+  // Fixes a package picked by mistake; left out without Students edit.
+  onChangePackage?: () => void
+  // Corrects the day the student started in their class (null = since the
+  // class began). Resolves to an error message, or null when saved. Left
+  // out without Students edit.
+  onSetClassStart?: (startDate: string | null) => Promise<string | null>
 }
 
 export function StudentDetailModal({
@@ -59,6 +66,8 @@ export function StudentDetailModal({
   onEdit,
   enrollments = [],
   packages = [],
+  onChangePackage,
+  onSetClassStart,
 }: StudentDetailModalProps) {
   const isPreviewStudent = student.studentType === 'preview'
   const latestLessonLogIds = useMemo(() => {
@@ -177,6 +186,10 @@ export function StudentDetailModal({
   }, [schedules, student.classroomId])
 
   const currentPackage = packages.find((pkg) => pkg.id === student.packageId) ?? null
+  // Classes the student has left, most recent first.
+  const earlierClasses = (student.classPeriods ?? [])
+    .filter((period) => period.endDate !== null)
+    .sort((a, b) => b.endDate!.localeCompare(a.endDate!))
 
   return (
     <ModalShell maxWidth="760" onClose={onClose}>
@@ -289,7 +302,22 @@ export function StudentDetailModal({
                 </div>
               </div>
               )}
+              {!isPreviewStudent && assignedClassroom && (
+                <ClassStartField student={student} onSave={onSetClassStart} />
+              )}
             </div>
+
+            {!isPreviewStudent && earlierClasses.length > 0 && (
+              <div className="mt-4 text-sm text-slate-500">
+                Earlier:{' '}
+                {earlierClasses
+                  .map(
+                    (period) =>
+                      `${classrooms.find((classroom) => classroom.id === period.classroomId)?.name ?? 'A class'} until ${formatDate(period.endDate!)}`,
+                  )
+                  .join(' · ')}
+              </div>
+            )}
 
             {!isPreviewStudent && (
             <div className="mt-5 flex flex-wrap gap-2">
@@ -348,15 +376,26 @@ export function StudentDetailModal({
 
         {student.studentType === 'regular' && (student.packageId || enrollments.length > 0) && (
           <section className="rounded-2xl border border-slate-200 bg-white">
-            <div className="border-b border-slate-200 px-5 py-4">
-              <h3 className="text-lg font-semibold text-slate-900">Packages</h3>
-              <p className="mt-1 text-sm text-slate-500">
-                Now on{' '}
-                <span className="font-semibold text-[#be185d]">
-                  {packages.find((pkg) => pkg.id === student.packageId)?.name ?? 'no package'}
-                </span>
-                . Every sign-up and renewal with a package is listed here.
-              </p>
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Packages</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Now on{' '}
+                  <span className="font-semibold text-[#be185d]">
+                    {packages.find((pkg) => pkg.id === student.packageId)?.name ?? 'no package'}
+                  </span>
+                  . Every sign-up and renewal with a package is listed here.
+                </p>
+              </div>
+              {onChangePackage && enrollments.length > 0 && (
+                <button
+                  type="button"
+                  onClick={onChangePackage}
+                  className="shrink-0 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Change Package
+                </button>
+              )}
             </div>
             <ul className="divide-y divide-slate-200">
               {enrollments.length === 0 && (
@@ -530,5 +569,107 @@ export function StudentDetailModal({
         )}
       </div>
     </ModalShell>
+  )
+}
+
+// The day the student started in their current class: they are only in the
+// class's lessons from then on.
+function ClassStartField({
+  student,
+  onSave,
+}: {
+  student: Student
+  onSave?: (startDate: string | null) => Promise<string | null>
+}) {
+  const period = getCurrentClassPeriod(student)
+  const [draft, setDraft] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Before the class history exists there is nothing to show.
+  if (!period) {
+    return null
+  }
+
+  async function save(startDate: string | null) {
+    if (!onSave) {
+      return
+    }
+    setIsSaving(true)
+    setError(null)
+    const message = await onSave(startDate)
+    setIsSaving(false)
+    if (message) {
+      setError(message)
+      return
+    }
+    setDraft(null)
+  }
+
+  return (
+    <div>
+      <div className="text-sm text-slate-500">In This Class Since</div>
+      {draft === null ? (
+        <div className="mt-1 flex items-center gap-2">
+          <span className="text-lg font-semibold text-slate-900">
+            {period.startDate ? formatDate(period.startDate) : 'The class began'}
+          </span>
+          {onSave && (
+            <button
+              type="button"
+              onClick={() => {
+                setError(null)
+                setDraft(period.startDate ?? getTodayString())
+              }}
+              aria-label="Change the day they joined"
+              className="rounded-lg p-1 text-slate-500 transition hover:bg-white hover:text-slate-700"
+            >
+              <PencilSimple size={16} aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="mt-1 space-y-2">
+          <input
+            type="date"
+            aria-label="Joined the class on"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#fc0c97]"
+          />
+          <div className="flex flex-wrap gap-2 text-sm">
+            <button
+              type="button"
+              disabled={!draft || isSaving}
+              onClick={() => void save(draft)}
+              className="rounded-lg bg-[#fc0c97] px-3 py-1.5 font-semibold text-white transition hover:bg-[#de0a84] disabled:opacity-50"
+            >
+              {isSaving ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={() => void save(null)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Since the class began
+            </button>
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={() => setDraft(null)}
+              className="rounded-lg px-3 py-1.5 font-semibold text-slate-500 transition hover:text-slate-700"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {error && (
+        <p role="alert" className="mt-1 text-sm text-red-600">
+          {error}
+        </p>
+      )}
+    </div>
   )
 }
