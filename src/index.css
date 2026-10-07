@@ -148,6 +148,11 @@ h3 {
   font-size: 0.8125rem;
 }
 
+/* The title row of every listing is pale blue, so it reads apart from the rows. */
+.compact-admin [data-compact-table] thead {
+  background-color: #eaf2ff;
+}
+
 .compact-admin [data-compact-table] th {
   padding: 0.625rem 1rem;
   font-size: 0.6875rem;

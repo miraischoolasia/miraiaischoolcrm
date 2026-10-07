@@ -11,7 +11,7 @@ export type AppSection =
 export type FilterKey = 'all' | 'hoa' | 'trial' | 'regular' | 'camp' | 'followUp'
 export type AttendanceStatus = 'present' | 'absent' | 'leave'
 export type StudentType = 'trial' | 'preview' | 'regular'
-export type LeadOptionKind = 'source' | 'pic'
+export type LeadOptionKind = 'source' | 'pic' | 'tag' | 'check'
 
 // A lead source or PIC name the admin manages (see lead_options).
 export type LeadOption = {
@@ -19,9 +19,16 @@ export type LeadOption = {
   kind: LeadOptionKind
   label: string
   isActive: boolean
-  // The old fixed source key (walk_in, referral, ...) for the first five.
+  // The old fixed source key (walk_in, referral, ...) for the first five;
+  // check_1 .. check_3 for the three tick columns.
   legacyKey: string | null
+  // Only tags have one: a #rrggbb colour.
+  color: string | null
 }
+
+// The three tick columns of the Leads list, by position.
+export type LeadCheckSlot = 1 | 2 | 3
+export type LeadChecks = Partial<Record<LeadCheckSlot, { at: string | null; by: number | null }>>
 export type LeadStatus =
   | 'new'
   | 'contacted'
@@ -183,6 +190,10 @@ export type Lead = {
   phone: string | null
   sourceId: number | null
   picId: number | null
+  // Ids of lead_options of kind 'tag'.
+  tagIds: number[]
+  // Which tick columns are ticked, and when and by whom.
+  checks: LeadChecks
   status: LeadStatus
   children: LeadChild[]
   notes: string | null
@@ -364,6 +375,7 @@ export type LeadFormState = {
   // Option ids as strings for the selects; '' = none picked.
   sourceId: string
   picId: string
+  tagIds: number[]
   status: LeadStatus
   children: LeadChildFormState[]
   notes: string
@@ -483,6 +495,8 @@ export type LeadRow = Pick<
   | 'phone'
   | 'source_id'
   | 'pic_id'
+  | 'tag_ids'
+  | 'checks'
   | 'status'
   | 'children'
   | 'notes'
@@ -613,7 +627,7 @@ export type StudentEnrollmentRow = Pick<
 
 export type LeadOptionRow = Pick<
   Database['public']['Tables']['lead_options']['Row'],
-  'id' | 'kind' | 'label' | 'is_active' | 'legacy_key'
+  'id' | 'kind' | 'label' | 'is_active' | 'legacy_key' | 'color'
 >
 
 export type FormFieldType =

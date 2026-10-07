@@ -46,6 +46,7 @@ import type {
   Lead,
   LeadFormState,
   LeadOption,
+  LeadCheckSlot,
   LeadOptionKind,
   Package,
   StudentEnrollment,
@@ -395,6 +396,7 @@ function App() {
     phone: '',
     sourceId: '',
     picId: '',
+    tagIds: [],
     status: 'new',
     children: [],
     notes: '',
@@ -441,6 +443,10 @@ function App() {
 
   const teacherMap = useMemo(
     () => new Map(teachers.map((teacher) => [teacher.id, teacher])),
+    [teachers],
+  )
+  const teacherNames = useMemo(
+    () => new Map(teachers.map((teacher) => [teacher.id, teacher.fullName])),
     [teachers],
   )
   const classroomMap = useMemo(
@@ -1525,6 +1531,7 @@ function App() {
       phone: '',
       sourceId: otherSource ? String(otherSource.id) : '',
       picId: '',
+      tagIds: [],
       status: 'new',
       children: [],
       notes: '',
@@ -1552,6 +1559,7 @@ function App() {
       phone: lead.phone ?? '',
       sourceId: lead.sourceId !== null ? String(lead.sourceId) : '',
       picId: lead.picId !== null ? String(lead.picId) : '',
+      tagIds: lead.tagIds,
       status: lead.status,
       children: lead.children.map((child) => ({
         name: child.name,
@@ -1569,16 +1577,17 @@ function App() {
     setLeadSaveError(null)
   }
 
-  // Adds a Source or PIC name; returns it so a picker can select it at once.
-  async function handleAddLeadOption(kind: LeadOptionKind, label: string) {
+  // Adds a Source, PIC or Tag name (a tag also gets its colour); returns it so a
+  // picker can select it at once.
+  async function handleAddLeadOption(kind: LeadOptionKind, label: string, color?: string) {
     if (!supabase) {
       return null
     }
 
     const { data, error } = await supabase
       .from('lead_options')
-      .insert({ kind, label: label.trim() })
-      .select('id, kind, label, is_active, legacy_key')
+      .insert({ kind, label: label.trim(), ...(color ? { color } : {}) })
+      .select('id, kind, label, is_active, legacy_key, color')
       .single()
 
     if (error) {
@@ -1619,6 +1628,23 @@ function App() {
       current.map((entry) => (entry.id === option.id ? { ...entry, label } : entry)),
     )
     return true
+  }
+
+  async function handleSetLeadOptionColor(option: LeadOption, color: string) {
+    if (!supabase) {
+      return
+    }
+
+    const { error } = await supabase.from('lead_options').update({ color }).eq('id', option.id)
+
+    if (error) {
+      showToast(getErrorMessage(error, 'Failed to change the colour.'))
+      return
+    }
+
+    setLeadOptions((current) =>
+      current.map((entry) => (entry.id === option.id ? { ...entry, color } : entry)),
+    )
   }
 
   // Hidden names leave the pickers but stay on existing leads.
@@ -2630,6 +2656,7 @@ function App() {
         phone: leadFormState.phone.trim() || null,
         source_id: leadFormState.sourceId ? Number(leadFormState.sourceId) : null,
         pic_id: leadFormState.picId ? Number(leadFormState.picId) : null,
+        tag_ids: leadFormState.tagIds,
         status: leadFormState.status,
         children,
         notes: leadFormState.notes.trim() || null,
@@ -2707,6 +2734,47 @@ function App() {
       { status },
     )
     await refreshAdminActivities()
+  }
+
+  // Ticks or unticks one of the three boxes. It shows at once and is put back
+  // if the database says no.
+  async function handleToggleLeadCheck(leadId: number, slot: LeadCheckSlot, checked: boolean) {
+    if (!supabase) {
+      return
+    }
+
+    const previousLeads = leads
+    setLeads((current) =>
+      current.map((entry) => {
+        if (entry.id !== leadId) {
+          return entry
+        }
+        const checks = { ...entry.checks }
+        if (checked) {
+          checks[slot] = { at: new Date().toISOString(), by: currentTeacher?.id ?? null }
+        } else {
+          delete checks[slot]
+        }
+        return { ...entry, checks }
+      }),
+    )
+
+    const { data, error } = await supabase.rpc('set_lead_check', {
+      p_lead_id: leadId,
+      p_slot: slot,
+      p_checked: checked,
+    })
+
+    if (error || data === false) {
+      setLeads(previousLeads)
+      showToast(
+        error ? getErrorMessage(error, 'Failed to update the tick.') : 'This lead could not be changed.',
+      )
+      return
+    }
+
+    // The database stamps the time and the person; load them back.
+    await refreshLeads()
   }
 
   function handleConvertLead(leadId: number) {
@@ -4874,6 +4942,8 @@ function App() {
                 onOpenLeadOptions={() => setIsLeadOptionsOpen(true)}
                 leadIdsWithForms={leadIdsWithForms}
                 onOpenFormAnswers={openLeadFormAnswers}
+                onToggleCheck={handleToggleLeadCheck}
+                teacherNames={teacherNames}
               />
             )}
 
@@ -5050,6 +5120,7 @@ function App() {
           onAdd={handleAddLeadOption}
           onRename={handleRenameLeadOption}
           onSetActive={(option, isActive) => void handleSetLeadOptionActive(option, isActive)}
+          onSetColor={(option, color) => void handleSetLeadOptionColor(option, color)}
         />
       )}
 

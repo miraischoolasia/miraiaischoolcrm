@@ -3,10 +3,10 @@ import { parseLeadCsv } from './leadCsv'
 import type { LeadOption } from '../types/domain'
 
 const options: LeadOption[] = [
-  { id: 1, kind: 'source', label: 'Walk-in', isActive: true, legacyKey: 'walk_in' },
-  { id: 5, kind: 'source', label: 'Other', isActive: true, legacyKey: 'other' },
-  { id: 9, kind: 'source', label: 'Facebook Ads', isActive: true, legacyKey: null },
-  { id: 20, kind: 'pic', label: 'Walk In', isActive: true, legacyKey: null },
+  { id: 1, kind: 'source', label: 'Walk-in', isActive: true, legacyKey: 'walk_in', color: null },
+  { id: 5, kind: 'source', label: 'Other', isActive: true, legacyKey: 'other', color: null },
+  { id: 9, kind: 'source', label: 'Facebook Ads', isActive: true, legacyKey: null, color: null },
+  { id: 20, kind: 'pic', label: 'Walk In', isActive: true, legacyKey: null, color: null },
 ]
 
 const csv = (source: string) => `Parent Name,Phone,Source\r\nJane,0123,${source}\r\n`

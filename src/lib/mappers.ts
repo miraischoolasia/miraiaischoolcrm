@@ -6,6 +6,7 @@ import type {
   Classroom,
   ClassroomRow,
   Lead,
+  LeadChecks,
   LeadOption,
   LeadOptionRow,
   LeadRow,
@@ -115,6 +116,8 @@ export function mapLeadRow(row: LeadRow): Lead {
     phone: row.phone,
     sourceId: row.source_id,
     picId: row.pic_id,
+    tagIds: row.tag_ids ?? [],
+    checks: mapLeadChecks(row.checks),
     status: row.status,
     children: row.children ?? [],
     notes: row.notes,
@@ -127,6 +130,26 @@ export function mapLeadRow(row: LeadRow): Lead {
   }
 }
 
+// { "1": { at, by } } as saved, for the boxes that are ticked.
+function mapLeadChecks(raw: unknown): LeadChecks {
+  const checks: LeadChecks = {}
+  if (typeof raw !== 'object' || raw === null) {
+    return checks
+  }
+  for (const slot of [1, 2, 3] as const) {
+    const entry = (raw as Record<string, unknown>)[String(slot)]
+    if (entry === undefined || entry === null || entry === false) {
+      continue
+    }
+    const stamp = typeof entry === 'object' ? (entry as Record<string, unknown>) : {}
+    checks[slot] = {
+      at: typeof stamp.at === 'string' ? stamp.at : null,
+      by: typeof stamp.by === 'number' ? stamp.by : null,
+    }
+  }
+  return checks
+}
+
 export function mapLeadOptionRow(row: LeadOptionRow): LeadOption {
   return {
     id: row.id,
@@ -134,6 +157,7 @@ export function mapLeadOptionRow(row: LeadOptionRow): LeadOption {
     label: row.label,
     isActive: row.is_active,
     legacyKey: row.legacy_key,
+    color: row.color ?? null,
   }
 }
 

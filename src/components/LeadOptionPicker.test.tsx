@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { LeadOptionPicker } from './LeadOptionPicker'
 import type { LeadOption } from '../types/domain'
 
-const alex: LeadOption = { id: 3, kind: 'pic', label: 'Alex', isActive: true, legacyKey: null }
-const gone: LeadOption = { id: 4, kind: 'pic', label: 'Old Staff', isActive: false, legacyKey: null }
+const alex: LeadOption = { id: 3, kind: 'pic', label: 'Alex', isActive: true, legacyKey: null, color: null }
+const gone: LeadOption = { id: 4, kind: 'pic', label: 'Old Staff', isActive: false, legacyKey: null, color: null }
 
 describe('LeadOptionPicker', () => {
   it('adds a new name from the dropdown and picks it', async () => {

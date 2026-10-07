@@ -46,6 +46,8 @@ vi.mock('./lib/api', async (importOriginal) => ({
       phone: '0123456789',
       sourceId: null,
       picId: null,
+      tagIds: [],
+      checks: {},
       status: 'new',
       children: [],
       notes: null,

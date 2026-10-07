@@ -9,6 +9,8 @@ function makeLead(overrides: Partial<Lead>): Lead {
     phone: null,
     sourceId: null,
     picId: null,
+    tagIds: [],
+    checks: {},
     status: 'new',
     children: [],
     notes: null,

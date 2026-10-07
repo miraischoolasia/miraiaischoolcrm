@@ -188,10 +188,14 @@ export async function fetchLeadsFromSupabase() {
 
   const columns =
     'id, full_name, phone, status, children, notes, follow_ups, tasks, converted_student_id, added_date, created_at, updated_at'
-  let { data, error } = await select(`${columns}, source_id, pic_id`)
+  let { data, error } = await select(`${columns}, source_id, pic_id, tag_ids, checks`)
 
-  // Before the lead options migration source_id / pic_id do not exist yet:
-  // load the leads without them rather than failing the workspace.
+  // Before the tags migration tag_ids / checks do not exist, and before the
+  // lead options migration neither do source_id / pic_id: load the leads
+  // without them rather than failing the workspace.
+  if (error?.code === '42703') {
+    ;({ data, error } = await select(`${columns}, source_id, pic_id`))
+  }
   if (error?.code === '42703') {
     ;({ data, error } = await select(columns))
   }
@@ -210,10 +214,20 @@ export async function fetchLeadOptionsFromSupabase() {
     return []
   }
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('lead_options')
-    .select('id, kind, label, is_active, legacy_key')
+    .select('id, kind, label, is_active, legacy_key, color')
     .order('id')
+
+  // Before the tags migration there is no colour column.
+  if (error?.code === '42703') {
+    const fallback = await supabase
+      .from('lead_options')
+      .select('id, kind, label, is_active, legacy_key')
+      .order('id')
+    data = fallback.data?.map((row) => ({ ...row, color: null })) ?? null
+    error = fallback.error
+  }
 
   if (error) {
     // Before the lead options migration there are no custom names yet.
@@ -224,7 +238,7 @@ export async function fetchLeadOptionsFromSupabase() {
     throw error
   }
 
-  return data.map(mapLeadOptionRow)
+  return (data ?? []).map(mapLeadOptionRow)
 }
 
 // One day of the activity log (the viewer's local day), newest first.

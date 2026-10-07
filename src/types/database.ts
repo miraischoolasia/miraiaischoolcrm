@@ -349,26 +349,29 @@ export type Database = {
       lead_options: {
         Row: {
           id: number
-          kind: 'source' | 'pic'
+          kind: 'source' | 'pic' | 'tag' | 'check'
           label: string
           is_active: boolean
           legacy_key: string | null
+          color: string | null
           created_at: string
         }
         Insert: {
           id?: number
-          kind: 'source' | 'pic'
+          kind: 'source' | 'pic' | 'tag' | 'check'
           label: string
           is_active?: boolean
           legacy_key?: string | null
+          color?: string | null
           created_at?: string
         }
         Update: {
           id?: number
-          kind?: 'source' | 'pic'
+          kind?: 'source' | 'pic' | 'tag' | 'check'
           label?: string
           is_active?: boolean
           legacy_key?: string | null
+          color?: string | null
           created_at?: string
         }
         Relationships: []
@@ -381,6 +384,8 @@ export type Database = {
           source: string
           source_id: number | null
           pic_id: number | null
+          tag_ids: number[]
+          checks: Record<string, { at: string | null; by: number | null }>
           status:
             | 'new'
             | 'contacted'
@@ -404,6 +409,8 @@ export type Database = {
           source?: string
           source_id?: number | null
           pic_id?: number | null
+          tag_ids?: number[]
+          checks?: Record<string, boolean | { at: string | null; by: number | null }>
           status?:
             | 'new'
             | 'contacted'
@@ -427,6 +434,8 @@ export type Database = {
           source?: string
           source_id?: number | null
           pic_id?: number | null
+          tag_ids?: number[]
+          checks?: Record<string, boolean | { at: string | null; by: number | null }>
           status?:
             | 'new'
             | 'contacted'
@@ -1360,6 +1369,14 @@ export type Database = {
           revision_number: number
           updated_student_count: number
         }[]
+      }
+      set_lead_check: {
+        Args: {
+          p_lead_id: number
+          p_slot: number
+          p_checked: boolean
+        }
+        Returns: boolean
       }
       get_public_form: {
         Args: {

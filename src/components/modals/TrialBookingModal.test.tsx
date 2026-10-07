@@ -10,6 +10,8 @@ const lead: Lead = {
   phone: '+60 12-345 6789',
   sourceId: null,
   picId: null,
+  tagIds: [],
+  checks: {},
   status: 'new',
   children: [
     { name: 'Ethan', age: 9, phone: null },

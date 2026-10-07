@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   getLatestLessonLogMap,
   mapClassroomRow,
+  mapLeadOptionRow,
+  mapLeadRow,
   mapStudentRow,
   mapTeacherRow,
   normalizeTimeInput,
@@ -151,5 +153,57 @@ describe('getLatestLessonLogMap', () => {
     expect(result.size).toBe(2)
     expect(result.get('10:2026-08-20')?.id).toBe(1)
     expect(result.get('11:2026-08-21')?.id).toBe(4)
+  })
+})
+
+describe('lead rows', () => {
+  const row = {
+    id: 1,
+    full_name: 'Mrs Lim',
+    phone: '60123456789',
+    source_id: 2,
+    pic_id: null,
+    tag_ids: [7, 9],
+    checks: {
+      '1': { at: '2026-10-05T03:00:00+00:00', by: 4 },
+      '3': true,
+      '2': false,
+      '9': { at: 'x', by: 1 },
+    },
+    status: 'new' as const,
+    children: [],
+    notes: null,
+    follow_ups: [],
+    tasks: [],
+    converted_student_id: null,
+    added_date: '2026-10-05',
+    created_at: '',
+    updated_at: '',
+  }
+
+  it('reads the tags and the ticked boxes with who ticked them and when', () => {
+    // The database only ever holds stamps, but a plain true is read as ticked too.
+    const lead = mapLeadRow(row as never)
+
+    expect(lead.tagIds).toEqual([7, 9])
+    expect(lead.checks).toEqual({
+      1: { at: '2026-10-05T03:00:00+00:00', by: 4 },
+      3: { at: null, by: null },
+    })
+  })
+
+  it('copes with a database that has no tags or ticks yet', () => {
+    const lead = mapLeadRow({ ...row, tag_ids: undefined, checks: undefined } as never)
+
+    expect(lead.tagIds).toEqual([])
+    expect(lead.checks).toEqual({})
+  })
+
+  it('reads a tag colour, and none for other options', () => {
+    const base = { id: 1, label: 'Hot', is_active: true, legacy_key: null }
+
+    expect(mapLeadOptionRow({ ...base, kind: 'tag', color: '#ef4444' }).color).toBe('#ef4444')
+    expect(mapLeadOptionRow({ ...base, kind: 'source', color: null }).color).toBeNull()
+    expect(mapLeadOptionRow({ ...base, kind: 'source' } as never).color).toBeNull()
   })
 })

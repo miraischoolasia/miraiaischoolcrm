@@ -7,6 +7,7 @@ import {
   leadStatusOptions,
 } from '../../lib/constants'
 import { LeadOptionPicker } from '../LeadOptionPicker'
+import { LeadTagPicker } from '../LeadTagPicker'
 import { WhatsAppLink } from '../WhatsAppLink'
 import { formatDateTime } from '../../lib/forms'
 import { trafficSourceLabel } from '../../lib/formInsights'
@@ -28,7 +29,11 @@ type LeadModalProps = {
   onSubmit: React.FormEventHandler<HTMLFormElement>
   onFieldChange: <K extends keyof LeadFormState>(field: K, value: LeadFormState[K]) => void
   leadOptions: LeadOption[]
-  onAddLeadOption: (kind: LeadOptionKind, label: string) => Promise<LeadOption | null>
+  onAddLeadOption: (
+    kind: LeadOptionKind,
+    label: string,
+    color?: string,
+  ) => Promise<LeadOption | null>
   // What this lead answered in forms (read-only), newest first.
   formSubmissions?: LeadFormSubmission[]
   isLoadingFormSubmissions?: boolean
@@ -267,6 +272,15 @@ export function LeadModal({
               </button>
             </div>
           ))}
+
+          <div className="border-t border-slate-200 pt-3">
+            <LeadTagPicker
+              tags={leadOptions.filter((option) => option.kind === 'tag')}
+              selectedIds={formState.tagIds}
+              onChange={(ids) => onFieldChange('tagIds', ids)}
+              onCreate={(label, color) => onAddLeadOption('tag', label, color)}
+            />
+          </div>
         </div>
 
         </fieldset>
