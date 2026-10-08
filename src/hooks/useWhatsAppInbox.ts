@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatwootClient, Sender } from '../lib/chatwootClient'
+import { startChat } from '../lib/startChat'
 import { CONFIRM_POLL_MS, CONFIRM_TIMEOUT_MS, fileKind, splitForSending } from '../lib/outbox'
 import {
   getOwner,
@@ -431,6 +432,19 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
     [outbox, selectedId, currentUser],
   )
 
+  // Opens the chat with a number, creating it first if the number is new.
+  const startNewChat = useCallback(
+    async (input: { phone: string; name: string }) => {
+      const result = await startChat(client, input)
+      if (result.error === null) {
+        await Promise.all([refreshStatus('open'), refreshStatus('resolved')])
+        setSelectedId(result.conversationId)
+      }
+      return result
+    },
+    [client, refreshStatus],
+  )
+
   const savePhone = useCallback(
     async (contactId: number, digits: string) => {
       setActionError(null)
@@ -466,5 +480,6 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
     send,
     dismissUnsent,
     savePhone,
+    startNewChat,
   }
 }

@@ -37,6 +37,7 @@ function renderList(conversations: ChatwootConversation[], overdueCount: number)
       onSearch={vi.fn()}
       onSelect={vi.fn()}
       onLoadMore={vi.fn()}
+      onNewChat={vi.fn()}
     />,
   )
 }

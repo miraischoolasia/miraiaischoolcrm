@@ -20,6 +20,7 @@ import { useSourceRules } from '../../hooks/useSourceRules'
 import { quickReplyValues, resolveChatLead } from '../../lib/chatLink'
 import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
+import { NewChatDialog } from './NewChatDialog'
 import { QuickReplyManager } from './QuickReplyManager'
 import { SourceRuleManager } from './SourceRuleManager'
 
@@ -63,6 +64,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
   // Set while the source rules window is open; phrase starts a new rule from a message.
   const [managingRules, setManagingRules] = useState<{ phrase: string } | null>(null)
   const [managingReplies, setManagingReplies] = useState(false)
+  const [startingChat, setStartingChat] = useState(false)
   // What {parent name}, {child name} and the like become in the open chat.
   const quickReplyFill = useMemo(() => {
     if (!inbox.selected) {
@@ -111,6 +113,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
           inbox.setSelectedId(id)
         }}
         onLoadMore={() => void inbox.loadMore(tab === 'done' ? 'resolved' : 'open')}
+        onNewChat={() => setStartingChat(true)}
       />
 
       {inbox.selected ? (
@@ -158,6 +161,24 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
         <div className="hidden items-center justify-center bg-slate-50 p-8 text-center text-sm text-slate-500 lg:col-span-1 lg:flex xl:col-span-2">
           Pick a chat on the left to read it and reply.
         </div>
+      )}
+      {startingChat && (
+        <NewChatDialog
+          leads={crm.leads}
+          onClose={() => setStartingChat(false)}
+          onStart={async ({ phone, name, leadId }) => {
+            const result = await inbox.startNewChat({ phone, name })
+            if (result.error !== null) {
+              return result.error
+            }
+            setTab('chats')
+            setDetailsOpen(false)
+            if (leadId !== null) {
+              await inbox.setLeadLink(result.conversationId, leadId)
+            }
+            return null
+          }}
+        />
       )}
       {managingRules && (
         <SourceRuleManager

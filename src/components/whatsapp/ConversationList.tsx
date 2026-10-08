@@ -6,6 +6,7 @@ import {
   ChatCircleDots,
   CheckCircle,
   MagnifyingGlass,
+  Plus,
   SpeakerHigh,
   SpeakerSlash,
 } from '@phosphor-icons/react'
@@ -70,6 +71,7 @@ type ConversationListProps = {
   onSearch: (value: string) => void
   onSelect: (id: number) => void
   onLoadMore: () => void
+  onNewChat: () => void
 }
 
 function AlertSettings() {
@@ -124,11 +126,22 @@ export function ConversationList({
   onSearch,
   onSelect,
   onLoadMore,
+  onNewChat,
 }: ConversationListProps) {
   return (
     <div className={cn('flex min-h-0 flex-col border-slate-200 bg-white lg:border-r', className)}>
       <div className="border-b border-slate-200 p-3">
-        <h2 className="mb-2 text-base font-semibold text-slate-900">WhatsApp</h2>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="text-base font-semibold text-slate-900">WhatsApp</h2>
+          <button
+            type="button"
+            onClick={onNewChat}
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <Plus size={14} aria-hidden="true" />
+            New chat
+          </button>
+        </div>
         <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-500 focus-within:border-[#fc0c97]">
           <MagnifyingGlass size={16} aria-hidden="true" />
           <input

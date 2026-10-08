@@ -84,6 +84,56 @@ export function createChatwootClient(apiUrl: string, accountId = '1') {
       await request(`/conversations/${conversationId}/update_last_seen`, { method: 'POST' })
     },
 
+    // The WhatsApp inbox: where new chats are created.
+    async getInboxId(): Promise<number> {
+      const data = await request<{ payload: { id: number; channel_type: string }[] }>('/inboxes')
+      const inbox = data.payload.find((entry) => entry.channel_type === 'Channel::Api') ?? data.payload[0]
+      if (!inbox) {
+        throw new Error('No WhatsApp inbox found')
+      }
+      return inbox.id
+    },
+
+    async findContactByPhone(digits: string): Promise<{ id: number } | null> {
+      const data = await request<{ payload: { id: number; phone_number: string | null; identifier: string | null }[] }>(
+        `/contacts/search?q=${digits}`,
+      )
+      const match = data.payload.find(
+        (contact) =>
+          (contact.phone_number ?? '').replace(/\D/g, '') === digits || (contact.identifier ?? '').startsWith(`${digits}@`),
+      )
+      return match ? { id: match.id } : null
+    },
+
+    // The identifier is the WhatsApp address, so a reply from this number lands in the same contact.
+    async createContact(inboxId: number, digits: string, name: string): Promise<{ id: number }> {
+      const data = await request<{ payload: { contact?: { id: number }; id?: number } }>(
+        '/contacts',
+        json('POST', {
+          inbox_id: inboxId,
+          name: name || `+${digits}`,
+          phone_number: `+${digits}`,
+          identifier: `${digits}@s.whatsapp.net`,
+        }),
+      )
+      const id = data.payload.contact?.id ?? data.payload.id
+      if (!id) {
+        throw new Error('Contact was not created')
+      }
+      return { id }
+    },
+
+    async listContactConversations(contactId: number): Promise<{ id: number; status: string; inbox_id: number }[]> {
+      const data = await request<{ payload: { id: number; status: string; inbox_id: number }[] }>(
+        `/contacts/${contactId}/conversations`,
+      )
+      return data.payload
+    },
+
+    async createConversation(contactId: number, inboxId: number): Promise<{ id: number }> {
+      return request<{ id: number }>('/conversations', json('POST', { contact_id: contactId, inbox_id: inboxId }))
+    },
+
     async setContactPhone(contactId: number, digits: string) {
       await request(`/contacts/${contactId}`, json('PUT', { phone_number: `+${digits}` }))
     },
