@@ -20,6 +20,8 @@ import { MessageBubble, type BubbleAvatar } from './MessageBubble'
 
 type ChatPanelProps = {
   conversation: ChatwootConversation
+  // The parent's name on the lead this chat belongs to, used when WhatsApp gave no name.
+  leadName?: string | null
   messages: ChatwootMessage[]
   // Messages still waiting their turn on this computer.
   waitingMessages: ChatwootMessage[]
@@ -44,6 +46,7 @@ type ChatPanelProps = {
 
 export function ChatPanel({
   conversation,
+  leadName,
   messages,
   waitingMessages,
   hasOlder,
@@ -62,7 +65,7 @@ export function ChatPanel({
   quickReplyValues,
   onManageQuickReplies,
 }: ChatPanelProps) {
-  const identity = getChatIdentity(conversation.meta.sender)
+  const identity = getChatIdentity(conversation.meta.sender, leadName)
   const owner = getOwner(conversation)
   const done = conversation.status === 'resolved'
   const scroller = useRef<HTMLDivElement>(null)

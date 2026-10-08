@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { cn } from '../../lib/cn'
+import type { ChatwootConversation } from '../../lib/chatwoot'
 import { createChatwootClient, type Sender } from '../../lib/chatwootClient'
 import { useMessageSearch } from '../../hooks/useMessageSearch'
 import { useWhatsAppInbox } from '../../hooks/useWhatsAppInbox'
@@ -53,6 +54,12 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
 
   // Which lead each chat belongs to, for the tag and source filters.
   const resolveLead = useMemo(() => makeLeadResolver(crm.leads), [crm.leads])
+  // The parent's name on a chat's lead, to title chats WhatsApp gave no name.
+  const leadNameOf = useCallback(
+    (conversation: ChatwootConversation) =>
+      resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))?.fullName ?? null,
+    [resolveLead],
+  )
   // How many open chats belong to a lead with each tag or source, so the menus can show it.
   const optionCounts = useMemo(() => {
     const tags = new Map<number, number>()
@@ -148,6 +155,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
         tags={tagOptions}
         sources={sourceOptions}
         snippets={messageHits}
+        leadNameOf={leadNameOf}
         selectedId={inbox.selectedId}
         nowSeconds={nowSeconds}
         overdueCount={overdueCount}
@@ -171,6 +179,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
           <ChatPanel
             className={cn(!hasChat && 'hidden lg:flex', detailsOpen && 'hidden xl:flex')}
             conversation={inbox.selected}
+            leadName={leadNameOf(inbox.selected)}
             messages={inbox.messages}
             waitingMessages={inbox.waitingMessages}
             hasOlder={inbox.hasOlder}

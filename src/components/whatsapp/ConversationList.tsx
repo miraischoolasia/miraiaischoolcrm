@@ -54,6 +54,8 @@ type ConversationListProps = {
   sources: FilterChoice[]
   // The message that matched the search, by chat.
   snippets: ReadonlyMap<number, string>
+  // The parent's name on the lead a chat belongs to, for chats WhatsApp gave no name.
+  leadNameOf?: (conversation: ChatwootConversation) => string | null
   selectedId: number | null
   // The clock, so a chat that has waited too long is flagged without a refresh.
   nowSeconds: number
@@ -115,6 +117,7 @@ export function ConversationList({
   tags,
   sources,
   snippets,
+  leadNameOf,
   selectedId,
   nowSeconds,
   overdueCount,
@@ -264,7 +267,7 @@ export function ConversationList({
           </p>
         )}
         {conversations.map((conversation) => {
-          const identity = getChatIdentity(conversation.meta.sender)
+          const identity = getChatIdentity(conversation.meta.sender, leadNameOf?.(conversation))
           const chatOwner = getOwner(conversation)
           const lastMessage = conversation.last_non_activity_message
           const preview = getPreview(conversation)

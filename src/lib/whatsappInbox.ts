@@ -99,22 +99,26 @@ export type ChatIdentity = {
   initials: string
 }
 
-export function getChatIdentity(sender: ChatwootSender): ChatIdentity {
+// leadName is the parent's name on the lead this chat belongs to. It names a chat that
+// WhatsApp gave no name, so a hidden-number parent can be called what the team calls them.
+export function getChatIdentity(sender: ChatwootSender, leadName?: string | null): ChatIdentity {
   const phone = getRealPhone(sender.phone_number)
   // The helper that adds numbers to names writes "Name +60123456789".
   const cleanName = (sender.name ?? '').replace(/\s*\+\d{10,12}$/, '').trim()
   const nameIsJustDigits = /^\+?\d+$/.test(cleanName)
   const hasName = cleanName.length > 0 && !nameIsJustDigits
 
-  const title = hasName ? cleanName : phone ? formatPhone(phone) : UNNAMED_CHAT
+  const ownName = leadName?.trim() ?? ''
+  const shownName = hasName ? cleanName : ownName
+  const title = shownName || (phone ? formatPhone(phone) : UNNAMED_CHAT)
   const subtitle = phone ? formatPhone(phone) : 'Number hidden by WhatsApp'
-  const initials = hasName
-    ? cleanName
+  const initials = shownName
+    ? shownName
         .split(/\s+/)
-        .map((part) => part[0])
+        .map((part) => part.replace(/^[^\p{L}\p{N}]+/u, '')[0] ?? '')
         .join('')
         .slice(0, 2)
-        .toUpperCase()
+        .toUpperCase() || '?'
     : phone
       ? phone.slice(-2)
       : '?'
@@ -239,7 +243,9 @@ export type InboxFilters = {
 }
 
 // The lead a chat belongs to, for the tag and source filters.
-export type LeadOfChat = (conversation: ChatwootConversation) => { tagIds: number[]; sourceId: number | null } | null
+export type LeadOfChat = (
+  conversation: ChatwootConversation,
+) => { tagIds: number[]; sourceId: number | null; fullName?: string | null } | null
 
 export function filterConversations(
   conversations: ChatwootConversation[],
@@ -272,9 +278,11 @@ export function filterConversations(
       const name = (sender.name ?? '').toLowerCase()
       const phone = (sender.phone_number ?? '').replace(/\D/g, '')
       const preview = getPreview(conversation).toLowerCase()
+      const leadName = (leadOf(conversation)?.fullName ?? '').toLowerCase()
       return (
         filters.matchedIds?.has(conversation.id) === true ||
         name.includes(query) ||
+        (leadName !== '' && leadName.includes(query)) ||
         preview.includes(query) ||
         (digitsQuery.length >= 3 && phone.includes(digitsQuery))
       )

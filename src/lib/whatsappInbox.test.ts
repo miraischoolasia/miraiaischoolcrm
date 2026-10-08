@@ -71,6 +71,23 @@ describe('getChatIdentity', () => {
     expect(identity.subtitle).toBe('Number hidden by WhatsApp')
     expect(identity.hasRealPhone).toBe(false)
   })
+
+  it('calls a chat WhatsApp gave no name by the parent name on its lead', () => {
+    const hidden = { id: 1, name: '1215643541729', phone_number: '+1215643541729', identifier: null }
+    const identity = getChatIdentity(hidden, '  @YYMDZ1973 ')
+    expect(identity.title).toBe('@YYMDZ1973')
+    expect(identity.initials).toBe('Y')
+    // The chat itself still has no name, and the number is still hidden.
+    expect(identity.name).toBeNull()
+    expect(identity.subtitle).toBe('Number hidden by WhatsApp')
+    expect(getChatIdentity(hidden, null).title).toBe('WhatsApp user')
+    expect(getChatIdentity(hidden, '   ').title).toBe('WhatsApp user')
+  })
+
+  it('keeps the WhatsApp name when the chat has one', () => {
+    const named = { id: 1, name: 'Lex +60126326319', phone_number: '+60126326319', identifier: null }
+    expect(getChatIdentity(named, 'Mr Lee').title).toBe('Lex')
+  })
 })
 
 describe('getTab', () => {
@@ -126,6 +143,13 @@ describe('filterConversations', () => {
   it('lists every open chat newest first, answered or not', () => {
     expect(filterConversations(list, base).map((c) => c.id)).toEqual([2, 3, 1])
     expect(filterConversations(list, { ...base, tab: 'done' }).map((c) => c.id)).toEqual([4])
+  })
+
+  it('finds a chat by the parent name on its lead', () => {
+    const leadOf = (c: ChatwootConversation) =>
+      c.id === 1 ? { tagIds: [], sourceId: null, fullName: '@YYMDZ1973' } : null
+    expect(filterConversations(list, { ...base, search: 'yymdz' }, leadOf).map((c) => c.id)).toEqual([1])
+    expect(filterConversations(list, { ...base, search: 'yymdz' }).map((c) => c.id)).toEqual([])
   })
 
   it('filters by the tag or source of the lead the chat belongs to', () => {
