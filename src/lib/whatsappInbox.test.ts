@@ -73,9 +73,9 @@ describe('getChatIdentity', () => {
 })
 
 describe('getTab', () => {
-  it('puts answered-by-us chats in progress and unanswered ones to reply', () => {
-    expect(getTab(conversation({ waiting_since: 500 }))).toBe('to_reply')
-    expect(getTab(conversation({ waiting_since: 0 }))).toBe('in_progress')
+  it('keeps every open chat in one list, answered or not', () => {
+    expect(getTab(conversation({ waiting_since: 500 }))).toBe('chats')
+    expect(getTab(conversation({ waiting_since: 0 }))).toBe('chats')
   })
 
   it('puts resolved chats in done', () => {
@@ -120,26 +120,27 @@ describe('filterConversations', () => {
     conversation({ id: 3, waiting_since: 0, last_activity_at: 20, name: 'Priya', custom_attributes: amy }),
     conversation({ id: 4, status: 'resolved', last_activity_at: 40, name: 'Done Dad' }),
   ]
-  const base = { tab: 'to_reply' as const, owner: 'everyone' as const, search: '', currentUserId: 7 }
+  const base = { tab: 'chats' as const, owner: 'everyone' as const, search: '', currentUserId: 7 }
 
-  it('lists a tab newest first', () => {
-    expect(filterConversations(list, base).map((c) => c.id)).toEqual([2, 1])
+  it('lists every open chat newest first, answered or not', () => {
+    expect(filterConversations(list, base).map((c) => c.id)).toEqual([2, 3, 1])
+    expect(filterConversations(list, { ...base, tab: 'done' }).map((c) => c.id)).toEqual([4])
   })
 
   it('filters by who handles it', () => {
-    expect(filterConversations(list, { ...base, owner: 'mine' }).map((c) => c.id)).toEqual([2])
+    expect(filterConversations(list, { ...base, owner: 'mine' }).map((c) => c.id)).toEqual([2, 3])
     expect(filterConversations(list, { ...base, owner: 'unassigned' }).map((c) => c.id)).toEqual([1])
   })
 
   it('searches names, numbers and the last message', () => {
     expect(filterConversations(list, { ...base, search: 'lim' }).map((c) => c.id)).toEqual([2])
-    expect(filterConversations(list, { ...base, search: '12345' }).map((c) => c.id)).toEqual([2, 1])
-    expect(filterConversations(list, { ...base, search: 'hello' }).map((c) => c.id)).toEqual([2, 1])
+    expect(filterConversations(list, { ...base, search: '12345' }).map((c) => c.id)).toEqual([2, 3, 1])
+    expect(filterConversations(list, { ...base, search: 'hello' }).map((c) => c.id)).toEqual([2, 3, 1])
     expect(filterConversations(list, { ...base, search: 'nobody' })).toEqual([])
   })
 
-  it('counts every tab', () => {
-    expect(countByTab(list)).toEqual({ to_reply: 2, in_progress: 1, done: 1 })
+  it('counts both tabs', () => {
+    expect(countByTab(list)).toEqual({ chats: 3, done: 1 })
   })
 })
 

@@ -20,13 +20,14 @@ function renderList(conversations: ChatwootConversation[], overdueCount: number)
   render(
     <ConversationList
       conversations={conversations}
-      counts={{ to_reply: conversations.length, in_progress: 0, done: 0 }}
+      counts={{ chats: conversations.length, done: 0 }}
       hasMoreOpen={false}
-      tab="to_reply"
+      tab="chats"
       owner="everyone"
       search=""
       selectedId={null}
       nowSeconds={NOW}
+      waitingCount={conversations.length}
       overdueCount={overdueCount}
       isLoading={false}
       loadError={null}
@@ -47,6 +48,14 @@ describe('ConversationList waiting too long', () => {
     expect(screen.getByText('Waiting 45 min')).toBeInTheDocument()
     expect(screen.queryByText(/Waiting 5 min/)).not.toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('1 chat has waited over 30 minutes for a reply.')
+  })
+
+  it('tells a chat waiting under 30 minutes needs a reply, and shows the waiting count on the Chats tab', () => {
+    renderList([chat(1, 'Aisha', 5 * 60)], 0)
+
+    expect(screen.getByText('Needs reply')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Chats, 1, 1 waiting' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /In progress|To reply/ })).not.toBeInTheDocument()
   })
 
   it('shows no warning when nobody is late', () => {

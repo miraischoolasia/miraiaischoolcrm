@@ -1,7 +1,8 @@
 // What the WhatsApp inbox knows about a chat, kept apart from the screens so the
 // rules (which tab a chat sits in, whose number to show) are easy to test.
 
-export type InboxTab = 'to_reply' | 'in_progress' | 'done'
+// Every open chat is in one list; only a finished chat moves to Done.
+export type InboxTab = 'chats' | 'done'
 export type OwnerFilter = 'everyone' | 'mine' | 'unassigned'
 
 export type ChatwootAttachment = {
@@ -117,14 +118,8 @@ export function getChatIdentity(sender: ChatwootSender): ChatIdentity {
   return { title, subtitle, hasRealPhone: phone !== null, initials }
 }
 
-export function getTab(conversation: Pick<ChatwootConversation, 'status' | 'waiting_since' | 'last_non_activity_message'>): InboxTab {
-  if (conversation.status === 'resolved') {
-    return 'done'
-  }
-  if (conversation.waiting_since > 0 || conversation.last_non_activity_message?.message_type === 0) {
-    return 'to_reply'
-  }
-  return 'in_progress'
+export function getTab(conversation: Pick<ChatwootConversation, 'status'>): InboxTab {
+  return conversation.status === 'resolved' ? 'done' : 'chats'
 }
 
 // A parent who has waited this long for an answer is flagged.
@@ -263,11 +258,16 @@ export function filterConversations(conversations: ChatwootConversation[], filte
 }
 
 export function countByTab(conversations: ChatwootConversation[]) {
-  const counts: Record<InboxTab, number> = { to_reply: 0, in_progress: 0, done: 0 }
+  const counts: Record<InboxTab, number> = { chats: 0, done: 0 }
   for (const conversation of conversations) {
     counts[getTab(conversation)] += 1
   }
   return counts
+}
+
+// Open chats where the parent wrote last and nobody has answered.
+export function countWaiting(conversations: ChatwootConversation[], nowSeconds: number) {
+  return conversations.filter((conversation) => getWaitingSeconds(conversation, nowSeconds) !== null).length
 }
 
 // Open chats with something nobody has looked at yet.

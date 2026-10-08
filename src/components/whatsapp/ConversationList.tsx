@@ -5,7 +5,6 @@ import {
   CaretDown,
   ChatCircleDots,
   CheckCircle,
-  Clock,
   MagnifyingGlass,
   SpeakerHigh,
   SpeakerSlash,
@@ -33,14 +32,12 @@ import {
 } from '../../lib/whatsappInbox'
 
 const tabs: { key: InboxTab; label: string; icon: Icon }[] = [
-  { key: 'to_reply', label: 'To reply', icon: ChatCircleDots },
-  { key: 'in_progress', label: 'In progress', icon: Clock },
+  { key: 'chats', label: 'Chats', icon: ChatCircleDots },
   { key: 'done', label: 'Done', icon: CheckCircle },
 ]
 
 const tabHelp: Record<InboxTab, string> = {
-  to_reply: 'The parent is waiting for an answer',
-  in_progress: 'We answered, waiting for the parent',
+  chats: 'Every chat that is not finished',
   done: 'Finished chats',
 }
 
@@ -60,6 +57,8 @@ type ConversationListProps = {
   selectedId: number | null
   // The clock, so a chat that has waited too long is flagged without a refresh.
   nowSeconds: number
+  // Chats where the parent is waiting for an answer, shown on the Chats tab.
+  waitingCount: number
   // How many chats are past the limit, across every tab and filter.
   overdueCount: number
   isLoading: boolean
@@ -114,6 +113,7 @@ export function ConversationList({
   search,
   selectedId,
   nowSeconds,
+  waitingCount,
   overdueCount,
   isLoading,
   loadError,
@@ -141,7 +141,7 @@ export function ConversationList({
           />
         </label>
 
-        <div className="mt-2 grid grid-cols-3 gap-2">
+        <div className="mt-2 grid grid-cols-2 gap-2">
           {tabs.map(({ key, label, icon: TabIcon }) => {
             const active = tab === key
             const count = counts[key]
@@ -150,7 +150,7 @@ export function ConversationList({
                 key={key}
                 type="button"
                 onClick={() => onTab(key)}
-                aria-label={`${label}, ${count}`}
+                aria-label={key === 'chats' && waitingCount > 0 ? `${label}, ${count}, ${waitingCount} waiting` : `${label}, ${count}`}
                 aria-pressed={active}
                 title={label}
                 className={cn(
@@ -160,15 +160,14 @@ export function ConversationList({
                     : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
                 )}
               >
-                <TabIcon size={22} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
-                {key !== 'done' && count > 0 && (
+                <TabIcon size={20} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
+                <span className="ml-1.5 text-sm font-medium">{label}</span>
+                {key === 'chats' && waitingCount > 0 && (
                   <span
-                    className={cn(
-                      'absolute -right-1.5 -top-1.5 min-w-5 rounded-full px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white',
-                      key === 'to_reply' ? 'bg-[#fc0c97]' : 'bg-slate-500',
-                    )}
+                    title="Parents waiting for an answer"
+                    className="absolute -right-1.5 -top-1.5 min-w-5 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white"
                   >
-                    {count > 99 ? '99+' : count}
+                    {waitingCount > 99 ? '99+' : waitingCount}
                     {hasMoreOpen ? '+' : ''}
                   </span>
                 )}
@@ -210,7 +209,7 @@ export function ConversationList({
         {loadError && <p className="p-4 text-sm text-red-600">{loadError}</p>}
         {!isLoading && !loadError && conversations.length === 0 && (
           <p className="p-4 text-sm text-slate-500">
-            {search ? 'No chats match your search.' : 'Nothing here. New messages from parents will show up in To reply.'}
+            {search ? 'No chats match your search.' : 'Nothing here. New messages from parents will show up here.'}
           </p>
         )}
         {conversations.map((conversation) => {
@@ -270,10 +269,16 @@ export function ConversationList({
                       {chatOwner ? chatOwner.name : 'No one yet'}
                     </span>
                   )}
-                  {overdue && waiting !== null && (
+                  {overdue && waiting !== null ? (
                     <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white">
                       Waiting {formatWaiting(waiting)}
                     </span>
+                  ) : (
+                    waiting !== null && (
+                      <span className="rounded-full bg-pink-100 px-2 py-0.5 text-[11px] font-semibold text-pink-700">
+                        Needs reply
+                      </span>
+                    )
                   )}
                   {!identity.hasRealPhone && (
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">No number</span>

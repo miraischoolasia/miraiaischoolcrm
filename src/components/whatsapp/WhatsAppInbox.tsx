@@ -4,6 +4,7 @@ import { createChatwootClient, type Sender } from '../../lib/chatwootClient'
 import { useWhatsAppInbox } from '../../hooks/useWhatsAppInbox'
 import {
   countByTab,
+  countWaiting,
   filterConversations,
   getChatIdentity,
   getLinkedLeadId,
@@ -32,7 +33,7 @@ type WhatsAppInboxProps = {
 export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInboxProps) {
   const client = useMemo(() => createChatwootClient(apiUrl), [apiUrl])
   const inbox = useWhatsAppInbox(client, currentUser)
-  const [tab, setTab] = useState<InboxTab>('to_reply')
+  const [tab, setTab] = useState<InboxTab>('chats')
   const [owner, setOwner] = useState<OwnerFilter>('everyone')
   const [search, setSearch] = useState('')
   // On a small screen the side panel takes the place of the chat.
@@ -51,6 +52,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
     const timer = window.setInterval(() => setNowSeconds(Math.floor(Date.now() / 1000)), 30_000)
     return () => window.clearInterval(timer)
   }, [])
+  const waitingCount = useMemo(() => countWaiting(inbox.conversations, nowSeconds), [inbox.conversations, nowSeconds])
   const overdueCount = useMemo(
     () => inbox.conversations.filter((conversation) => isRecentlyOverdue(conversation, nowSeconds)).length,
     [inbox.conversations, nowSeconds],
@@ -96,6 +98,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
         search={search}
         selectedId={inbox.selectedId}
         nowSeconds={nowSeconds}
+        waitingCount={waitingCount}
         overdueCount={overdueCount}
         isLoading={inbox.isLoading}
         loadError={inbox.loadError}
