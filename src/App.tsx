@@ -26,6 +26,7 @@ import {
   IdentificationBadge,
   Megaphone,
   WarningCircle,
+  WhatsappLogo,
 } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
@@ -133,6 +134,10 @@ import { ClassListingSection } from './components/sections/ClassListingSection'
 import { StudentDashboardSection } from './components/sections/StudentDashboardSection'
 import { TeacherManagementSection } from './components/sections/TeacherManagementSection'
 import { FormsSection } from './components/sections/FormsSection'
+import { WhatsAppSection } from './components/sections/WhatsAppSection'
+import { getChatwootUrl } from './lib/chatwoot'
+import { createChatwootClient } from './lib/chatwootClient'
+import { useWhatsAppUnread } from './hooks/useWhatsAppUnread'
 import { useLeadFormAnswers } from './hooks/useLeadFormAnswers'
 import { useUnreadFormSubmissions } from './hooks/useUnreadFormSubmissions'
 import { LeadsSection } from './components/sections/LeadsSection'
@@ -187,13 +192,18 @@ import {
 
 type NavItem = { key: AppSection; label: string; icon: Icon; group?: 'marketing' }
 
-function UnreadBadge({ count }: { count: number }) {
+// The shared WhatsApp inbox only shows up once its address is set.
+const chatwootUrl = getChatwootUrl(import.meta.env.VITE_CHATWOOT_URL)
+// Where the school's own inbox page reads and sends WhatsApp chats through.
+const whatsAppApiUrl = getChatwootUrl(import.meta.env.VITE_WHATSAPP_API_URL)
+
+function UnreadBadge({ count, noun = 'new submissions' }: { count: number; noun?: string }) {
   if (count <= 0) {
     return null
   }
   return (
     <span
-      aria-label={`${count} new submissions`}
+      aria-label={`${count} ${noun}`}
       className="ml-2 min-w-5 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white"
     >
       {count > 99 ? '99+' : count}
@@ -565,6 +575,8 @@ function App() {
   const allowedSections = useMemo(() => {
     const sections: AppSection[] = []
     if (can('leads')) sections.push('leads')
+    // Same ticks as Leads: whoever follows up leads answers their WhatsApp.
+    if (can('leads') && chatwootUrl) sections.push('whatsapp')
     if (can('forms')) sections.push('forms')
     if (isTeacherAccount || can('calendar')) sections.push('calendar')
     if (isTeacherAccount || can('classrooms')) sections.push('classrooms')
@@ -576,6 +588,20 @@ function App() {
   const visibleSection = allowedSections.includes(activeSection) ? activeSection : null
   const { unread: unreadFormSubmissions, markSeen: markFormSubmissionsSeen } =
     useUnreadFormSubmissions(can('forms'))
+  const canUseWhatsApp = can('leads')
+  const whatsAppClient = useMemo(
+    () => (whatsAppApiUrl && canUseWhatsApp ? createChatwootClient(whatsAppApiUrl) : null),
+    [canUseWhatsApp],
+  )
+  const { unread: unreadWhatsApp } = useWhatsAppUnread(whatsAppClient)
+  const whatsAppUser = useMemo(
+    () => (effectiveTeacher ? { id: effectiveTeacher.id, name: effectiveTeacher.fullName } : null),
+    [effectiveTeacher],
+  )
+  const whatsAppStaff = useMemo(
+    () => teachers.filter((teacher) => teacher.isActive).map((teacher) => ({ id: teacher.id, name: teacher.fullName })),
+    [teachers],
+  )
   const {
     leadIdsWithForms,
     submissions: editingLeadFormSubmissions,
@@ -1132,6 +1158,7 @@ function App() {
   const navItems: NavItem[] = (
     [
       { key: 'leads', label: 'Leads', icon: Funnel, group: 'marketing' },
+      { key: 'whatsapp', label: 'WhatsApp', icon: WhatsappLogo, group: 'marketing' },
       { key: 'forms', label: 'Forms', icon: ClipboardText, group: 'marketing' },
       { key: 'calendar', label: 'Calendar', icon: CalendarBlank },
       { key: 'classrooms', label: 'My Classroom', icon: Chalkboard },
@@ -1160,6 +1187,7 @@ function App() {
         <item.icon size={18} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
         <span className="ml-3 flex-1">{item.label}</span>
         {item.key === 'forms' && <UnreadBadge count={unreadFormSubmissions} />}
+        {item.key === 'whatsapp' && <UnreadBadge count={unreadWhatsApp} noun="chats waiting" />}
       </button>
     )
   }
@@ -4643,7 +4671,9 @@ function App() {
                         ? 'Team Board'
                         : activeSection === 'leads'
                           ? 'Sales Pipeline'
-                          : activeSection === 'forms'
+                          : activeSection === 'whatsapp'
+                            ? 'Marketing'
+                            : activeSection === 'forms'
                             ? 'Marketing'
                             : activeSection === 'activity'
                               ? 'Admin Audit'
@@ -4658,7 +4688,9 @@ function App() {
                         ? 'My Team'
                         : activeSection === 'leads'
                           ? 'Leads'
-                          : activeSection === 'forms'
+                          : activeSection === 'whatsapp'
+                            ? 'WhatsApp'
+                            : activeSection === 'forms'
                             ? 'Forms'
                             : activeSection === 'activity'
                               ? 'Activity Log'
@@ -5161,6 +5193,15 @@ function App() {
                 onToggleCheck={handleToggleLeadCheck}
                 teacherNames={teacherNames}
                 onBulkAction={handleBulkLeadAction}
+              />
+            )}
+
+            {visibleSection === 'whatsapp' && chatwootUrl && (
+              <WhatsAppSection
+                chatwootUrl={chatwootUrl}
+                apiUrl={whatsAppApiUrl}
+                currentUser={whatsAppUser}
+                staff={whatsAppStaff}
               />
             )}
 
@@ -5699,6 +5740,12 @@ function App() {
                   {item.key === 'forms' && unreadFormSubmissions > 0 && (
                     <span
                       aria-label={`${unreadFormSubmissions} new submissions`}
+                      className="absolute -right-1.5 -top-1 h-2.5 w-2.5 rounded-full bg-[#fc0c97]"
+                    />
+                  )}
+                  {item.key === 'whatsapp' && unreadWhatsApp > 0 && (
+                    <span
+                      aria-label={`${unreadWhatsApp} chats waiting`}
                       className="absolute -right-1.5 -top-1 h-2.5 w-2.5 rounded-full bg-[#fc0c97]"
                     />
                   )}

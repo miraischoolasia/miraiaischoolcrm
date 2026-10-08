@@ -6,6 +6,7 @@ export type AppSection =
   | 'students'
   | 'teachers'
   | 'leads'
+  | 'whatsapp'
   | 'forms'
   | 'activity'
 export type FilterKey = 'all' | 'hoa' | 'trial' | 'regular' | 'camp' | 'followUp'
