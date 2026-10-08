@@ -1,4 +1,5 @@
 import type { Lead, LeadOption, Student } from '../types/domain'
+import type { VariableValues } from './quickReplies'
 import { attachmentLabel, type ChatwootMessage } from './whatsappInbox'
 
 // How a WhatsApp chat is tied to the school's own records: a phone number match,
@@ -31,6 +32,33 @@ export function findLeadsByPhone(phone: string | null | undefined, leads: Lead[]
       [lead.phone, ...lead.children.map((child) => child.phone)].some((value) => canonicalPhone(value) === wanted),
     )
     .sort((a, b) => b.id - a.id)
+}
+
+// The lead a chat belongs to: the one it was tied to, otherwise one with the
+// same phone number.
+export function resolveChatLead(linkedLeadId: number | null, phone: string | null, leads: Lead[]) {
+  const linked = linkedLeadId === null ? null : (leads.find((lead) => lead.id === linkedLeadId) ?? null)
+  if (linked) {
+    return { lead: linked, byPhone: false }
+  }
+  const matched = findLeadsByPhone(phone, leads)[0] ?? null
+  return { lead: matched, byPhone: matched !== null }
+}
+
+// The names a quick reply can fill in for this chat.
+export function quickReplyValues(input: {
+  lead: Lead | null
+  chatName: string
+  trialDate: string | null
+  myName: string
+}): VariableValues {
+  const { lead } = input
+  return {
+    '{parent name}': lead?.fullName || input.chatName,
+    '{child name}': lead?.children[0]?.name ?? '',
+    '{trial date}': input.trialDate ?? '',
+    '{my name}': input.myName,
+  }
 }
 
 export function findStudentsByPhone(phone: string | null | undefined, students: Student[]) {

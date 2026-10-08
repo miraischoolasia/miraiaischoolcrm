@@ -12,9 +12,12 @@ describe('splitForSending', () => {
     expect(splitForSending(' Hello ', [])).toEqual([{ content: 'Hello', files: [] }])
   })
 
-  it('keeps the text as the caption of a single file', () => {
+  it('sends a single file on its own and the text after it, never as a caption', () => {
     const video = file('a.mp4', 'video/mp4')
-    expect(splitForSending('Look', [video])).toEqual([{ content: 'Look', files: [video] }])
+    expect(splitForSending('Look', [video])).toEqual([
+      { content: '', files: [video] },
+      { content: 'Look', files: [] },
+    ])
   })
 
   it('sends several files one by one and the text last', () => {
@@ -24,6 +27,16 @@ describe('splitForSending', () => {
       { content: '', files: [one] },
       { content: '', files: [two] },
       { content: 'Here you go', files: [] },
+    ])
+  })
+
+  it('sends each of several texts as its own message, after the files', () => {
+    const photo = file('1.png')
+    expect(splitForSending(' First ', [photo], ['Second', '  ', 'Third'])).toEqual([
+      { content: '', files: [photo] },
+      { content: 'First', files: [] },
+      { content: 'Second', files: [] },
+      { content: 'Third', files: [] },
     ])
   })
 

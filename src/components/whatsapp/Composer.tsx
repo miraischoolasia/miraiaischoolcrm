@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import { Microphone, PaperPlaneTilt, Paperclip, Trash, X } from '@phosphor-icons/react'
+import { Lightning, Microphone, PaperPlaneTilt, Paperclip, Trash, X } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { useVoiceRecorder } from '../../hooks/useVoiceRecorder'
 import type { SendInput } from '../../hooks/useWhatsAppInbox'
+import { fillVariables, unfilledVariables, type QuickReply, type VariableValues } from '../../lib/quickReplies'
+import { downloadQuickReplyMedia } from '../../lib/quickRepliesApi'
+import { QuickReplyPicker } from './QuickReplyPicker'
 
 type ComposerProps = {
   onSend: (input: SendInput) => Promise<boolean>
+  quickReplies: { replies: QuickReply[]; isLoading: boolean; error: string | null; reload: () => Promise<void> }
+  // What {parent name}, {child name} and the like become in this chat.
+  variables: VariableValues
+  // Only given to people who may edit quick replies.
+  onManageQuickReplies?: () => void
 }
 
 function formatSeconds(total: number) {
@@ -14,11 +22,16 @@ function formatSeconds(total: number) {
 
 const isTouchDevice = () => window.matchMedia?.('(pointer: coarse)').matches ?? false
 
-export function Composer({ onSend }: ComposerProps) {
+export function Composer({ onSend, quickReplies, variables, onManageQuickReplies }: ComposerProps) {
   const [mode, setMode] = useState<'reply' | 'note'>('reply')
   const [text, setText] = useState('')
+  // Further messages from a quick reply, each sent on its own after the first.
+  const [extra, setExtra] = useState<string[]>([])
   const [files, setFiles] = useState<File[]>([])
   const [hint, setHint] = useState<string | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [isLoadingMedia, setIsLoadingMedia] = useState(false)
+  const { reload: reloadQuickReplies } = quickReplies
   const fileInput = useRef<HTMLInputElement>(null)
   const voice = useVoiceRecorder()
   const sendVoiceWhenReady = useRef(false)
@@ -37,32 +50,103 @@ export function Composer({ onSend }: ComposerProps) {
     setHint(null)
   }
 
+  function openPicker() {
+    setPickerOpen(true)
+    void reloadQuickReplies()
+  }
+
+  // The message goes into the box (names filled in) and its pictures or videos
+  // become attachments, so the person can still read and change it before sending.
+  async function applyQuickReply(reply: QuickReply) {
+    setPickerOpen(false)
+    setHint(null)
+    const [filled = '', ...rest] = reply.messages.map((message) => fillVariables(message, variables))
+    setText((current) => (current.trim() && filled ? `${current.trimEnd()}\n\n${filled}` : current.trim() ? current : filled))
+    setExtra(rest.filter((message) => message.trim()))
+    if (reply.media.length === 0) {
+      return
+    }
+    setIsLoadingMedia(true)
+    try {
+      addFiles(await Promise.all(reply.media.map(downloadQuickReplyMedia)))
+    } catch {
+      setHint("Couldn't load this quick reply's photo or video. Try again.")
+    } finally {
+      setIsLoadingMedia(false)
+    }
+  }
+
   async function submit() {
     if (voice.state === 'recording') {
       setHint('Send or cancel the voice message first.')
       return
     }
-    if (!text.trim() && files.length === 0) {
+    if (isLoadingMedia) {
+      setHint('Wait a moment, the photo or video is still loading.')
+      return
+    }
+    if (!text.trim() && !extra.some((message) => message.trim()) && files.length === 0) {
       setHint('Write a message or attach something first.')
       return
     }
-    const sent = await onSend({ content: text.trim(), isPrivate: mode === 'note', files })
+    const missing = mode === 'reply' ? unfilledVariables([text, ...extra].join(' ')) : []
+    if (missing.length > 0) {
+      setHint(`Fill in ${missing.join(', ')} before sending.`)
+      return
+    }
+    const sent = await onSend({ content: text.trim(), isPrivate: mode === 'note', files, moreTexts: extra })
     if (sent) {
       setText('')
+      setExtra([])
       setFiles([])
       setHint(null)
     }
   }
 
-  function insertNewLine(element: HTMLTextAreaElement) {
+  function insertNewLine(element: HTMLTextAreaElement, value: string, change: (next: string) => void) {
     const start = element.selectionStart
     const end = element.selectionEnd
-    setText(`${text.slice(0, start)}\n${text.slice(end)}`)
+    change(`${value.slice(0, start)}\n${value.slice(end)}`)
     window.requestAnimationFrame(() => element.setSelectionRange(start + 1, start + 1))
   }
 
+  // Enter sends, Ctrl+Enter (or Shift/Cmd) starts a new line; phones keep Enter for a new line.
+  function handleEnter(
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
+    value: string,
+    change: (next: string) => void,
+  ) {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) {
+      return
+    }
+    if (event.ctrlKey || event.metaKey || event.shiftKey) {
+      event.preventDefault()
+      insertNewLine(event.currentTarget, value, change)
+    } else if (!isTouchDevice()) {
+      event.preventDefault()
+      void submit()
+    }
+  }
+
   return (
-    <div className="border-t border-slate-200 bg-white px-3 py-3 sm:px-4">
+    <div className="relative border-t border-slate-200 bg-white px-3 py-3 sm:px-4">
+      {pickerOpen && (
+        <QuickReplyPicker
+          replies={quickReplies.replies}
+          isLoading={quickReplies.isLoading}
+          error={quickReplies.error}
+          onPick={(reply) => void applyQuickReply(reply)}
+          onClose={() => setPickerOpen(false)}
+          onManage={
+            onManageQuickReplies
+              ? () => {
+                  setPickerOpen(false)
+                  onManageQuickReplies()
+                }
+              : undefined
+          }
+        />
+      )}
       <div className="mb-2 flex gap-4 text-sm font-medium">
         {(
           [
@@ -107,6 +191,42 @@ export function Composer({ onSend }: ComposerProps) {
                 <X size={12} />
               </button>
             </span>
+          ))}
+        </div>
+      )}
+
+      {voice.state !== 'recording' && extra.length > 0 && (
+        <div className="mb-2 space-y-2">
+          {extra.map((message, index) => (
+            <div key={index} className="flex items-start gap-2">
+              <label className="min-w-0 flex-1">
+                <span className="mb-0.5 block text-[11px] font-medium text-slate-500">
+                  Message {index + 2}, sent after the one above
+                </span>
+                <textarea
+                  value={message}
+                  rows={2}
+                  onChange={(event) =>
+                    setExtra((current) => current.map((entry, position) => (position === index ? event.target.value : entry)))
+                  }
+                  onKeyDown={(event) =>
+                    handleEnter(event, message, (next) =>
+                      setExtra((current) => current.map((entry, position) => (position === index ? next : entry))),
+                    )
+                  }
+                  aria-label={`Message ${index + 2}`}
+                  className="max-h-28 w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#fc0c97]"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => setExtra((current) => current.filter((_, position) => position !== index))}
+                aria-label={`Remove message ${index + 2}`}
+                className="mt-5 rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
+              >
+                <X size={14} />
+              </button>
+            </div>
           ))}
         </div>
       )}
@@ -157,21 +277,15 @@ export function Composer({ onSend }: ComposerProps) {
             value={text}
             rows={1}
             onChange={(event) => {
+              // A "/" on an empty box is the shortcut for the quick reply list.
+              if (event.target.value === '/' && text === '') {
+                openPicker()
+                return
+              }
               setText(event.target.value)
               setHint(null)
             }}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' || event.nativeEvent.isComposing) {
-                return
-              }
-              if (event.ctrlKey || event.metaKey || event.shiftKey) {
-                event.preventDefault()
-                insertNewLine(event.currentTarget)
-              } else if (!isTouchDevice()) {
-                event.preventDefault()
-                void submit()
-              }
-            }}
+            onKeyDown={(event) => handleEnter(event, text, setText)}
             onPaste={(event) => {
               if (event.clipboardData.files.length > 0) {
                 addFiles(event.clipboardData.files)
@@ -195,6 +309,16 @@ export function Composer({ onSend }: ComposerProps) {
           />
           <button
             type="button"
+            onClick={() => (pickerOpen ? setPickerOpen(false) : openPicker())}
+            aria-label="Quick replies"
+            title="Quick replies (or type / )"
+            aria-expanded={pickerOpen}
+            className="rounded-lg border border-slate-200 p-2.5 text-slate-600 hover:bg-slate-50"
+          >
+            <Lightning size={18} />
+          </button>
+          <button
+            type="button"
             onClick={() => fileInput.current?.click()}
             aria-label="Attach a photo, video or file"
             title="Attach a photo, video or file"
@@ -214,7 +338,8 @@ export function Composer({ onSend }: ComposerProps) {
           <button
             type="button"
             onClick={() => void submit()}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#fc0c97] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#e00a87]"
+            disabled={isLoadingMedia}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#fc0c97] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#e00a87] disabled:opacity-60"
           >
             <PaperPlaneTilt size={16} weight="fill" aria-hidden="true" />
             {mode === 'note' ? 'Save note' : 'Send'}
@@ -222,7 +347,8 @@ export function Composer({ onSend }: ComposerProps) {
         </div>
       )}
 
-      {(hint || voice.error) && <p className="mt-2 text-xs text-red-600">{hint ?? voice.error}</p>}
+      {isLoadingMedia && <p className="mt-2 text-xs text-slate-500">Loading the photo or video...</p>}
+      {(hint || voice.error) &&<p className="mt-2 text-xs text-red-600">{hint ?? voice.error}</p>}
       {voice.state !== 'recording' && (
         <p className="mt-1.5 hidden text-[11px] text-slate-400 sm:block">Enter to send. Ctrl+Enter for a new line.</p>
       )}

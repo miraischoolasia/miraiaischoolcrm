@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from 'react'
+import type { VariableValues } from '../../lib/quickReplies'
 import { ArrowCounterClockwise, CaretDown, CaretLeft, CheckCircle, Info } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import type { Sender } from '../../lib/chatwootClient'
@@ -34,6 +35,9 @@ type ChatPanelProps = {
   onDismissUnsent: (tempId: number) => void
   onSetOwner: (owner: Sender | null) => void
   onSetStatus: (status: 'open' | 'resolved') => void
+  quickReplies: ComponentProps<typeof Composer>['quickReplies']
+  quickReplyValues: VariableValues
+  onManageQuickReplies?: () => void
 }
 
 export function ChatPanel({
@@ -51,6 +55,9 @@ export function ChatPanel({
   onDismissUnsent,
   onSetOwner,
   onSetStatus,
+  quickReplies,
+  quickReplyValues,
+  onManageQuickReplies,
 }: ChatPanelProps) {
   const identity = getChatIdentity(conversation.meta.sender)
   const owner = getOwner(conversation)
@@ -214,7 +221,13 @@ export function ChatPanel({
           {actionError}
         </p>
       )}
-      <Composer onSend={onSend} />
+      <Composer
+        key={conversation.id}
+        onSend={onSend}
+        quickReplies={quickReplies}
+        variables={quickReplyValues}
+        onManageQuickReplies={onManageQuickReplies}
+      />
     </div>
   )
 }

@@ -66,6 +66,7 @@ function makeCrm(patch: Partial<WhatsAppCrm> = {}): WhatsAppCrm {
     canBookMakeup: true,
     onCreateLead: vi.fn().mockResolvedValue({ leadId: 55, error: null }),
     onChangeLeadStatus: vi.fn().mockResolvedValue(undefined),
+    trialDateFor: () => null,
     onAddFollowUp: vi.fn().mockResolvedValue(null),
     onAddOption: vi.fn().mockResolvedValue(null),
     onRecordLeave: vi.fn().mockResolvedValue(null),

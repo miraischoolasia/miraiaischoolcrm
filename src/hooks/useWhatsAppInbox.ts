@@ -28,7 +28,8 @@ function mergeMessages(current: ChatwootMessage[], incoming: ChatwootMessage[]) 
   return [...byId.values()].sort((a, b) => a.id - b.id)
 }
 
-export type SendInput = { content: string; isPrivate: boolean; files: File[] }
+// moreTexts are extra messages sent after the first one, each on its own.
+export type SendInput = { content: string; isPrivate: boolean; files: File[]; moreTexts?: string[] }
 
 type OutboxItem = {
   tempId: number
@@ -374,7 +375,7 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
       if (selectedId === null) {
         return false
       }
-      const parts = splitForSending(input.content, input.files)
+      const parts = splitForSending(input.content, input.files, input.moreTexts)
       if (parts.length === 0) {
         return false
       }

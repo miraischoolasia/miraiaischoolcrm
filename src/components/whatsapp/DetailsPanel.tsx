@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
 import { CaretLeft } from '@phosphor-icons/react'
 import {
-  findLeadsByPhone,
   findStudentsByPhone,
   getFirstMessage,
   guessSourceAndTags,
+  resolveChatLead,
 } from '../../lib/chatLink'
 import { searchLeads } from '../../lib/leadSearch'
 import {
@@ -55,10 +55,7 @@ export function DetailsPanel({
   const [phoneError, setPhoneError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
 
-  const linkedId = getLinkedLeadId(conversation)
-  const linkedLead = linkedId === null ? null : (crm.leads.find((lead) => lead.id === linkedId) ?? null)
-  const matchedLead = linkedLead ? null : (findLeadsByPhone(phone, crm.leads)[0] ?? null)
-  const lead = linkedLead ?? matchedLead
+  const { lead, byPhone } = resolveChatLead(getLinkedLeadId(conversation), phone, crm.leads)
 
   const student =
     (lead?.convertedStudentId != null ? crm.students.find((entry) => entry.id === lead.convertedStudentId) : null) ??
@@ -133,7 +130,7 @@ export function DetailsPanel({
           <LeadCard
             lead={lead}
             crm={crm}
-            byPhone={linkedLead === null}
+            byPhone={byPhone}
             onUnlink={() => void onLinkLead(null)}
           />
         ) : (

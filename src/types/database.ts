@@ -397,6 +397,36 @@ export type Database = {
         }
         Relationships: []
       }
+      quick_replies: {
+        Row: {
+          id: number
+          title: string
+          messages: string[]
+          media: Json
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          title: string
+          messages?: string[]
+          media?: Json
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          title?: string
+          messages?: string[]
+          media?: Json
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           id: number

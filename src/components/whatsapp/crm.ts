@@ -27,6 +27,8 @@ export type WhatsAppCrm = {
   canBookMakeup: boolean
   onCreateLead: (input: NewLeadInput) => Promise<{ leadId: number | null; error: string | null }>
   onChangeLeadStatus: (leadId: number, status: LeadStatus) => Promise<void>
+  // The lead's next trial day (or last one), written the way a parent reads it.
+  trialDateFor: (leadId: number) => string | null
   onAddFollowUp: (leadId: number, note: string) => Promise<string | null>
   onAddOption: (kind: LeadOptionKind, label: string, color?: string) => Promise<LeadOption | null>
   onRecordLeave: (studentId: number, text: string) => Promise<string | null>

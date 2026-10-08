@@ -4,22 +4,15 @@
 
 export type OutgoingPart = { content: string; files: File[] }
 
-// One press of Send can hold a text and several files. One file keeps its text
-// as a caption; several files go one by one, and the text follows them last, the
-// way they are laid out above the message box.
-export function splitForSending(content: string, files: File[]): OutgoingPart[] {
-  const text = content.trim()
-  if (files.length === 0) {
-    return text ? [{ content: text, files: [] }] : []
-  }
-  if (files.length === 1) {
-    return [{ content: text, files }]
-  }
-  const parts: OutgoingPart[] = files.map((file) => ({ content: '', files: [file] }))
-  if (text) {
-    parts.push({ content: text, files: [] })
-  }
-  return parts
+// One press of Send can hold several files and up to three texts. Every file
+// goes as its own message, then each text as its own message, in the order
+// written. A text is never glued to a picture or video as its caption.
+export function splitForSending(content: string, files: File[], moreTexts: string[] = []): OutgoingPart[] {
+  const texts = [content, ...moreTexts].map((text) => text.trim()).filter(Boolean)
+  return [
+    ...files.map((file) => ({ content: '', files: [file] })),
+    ...texts.map((text) => ({ content: text, files: [] })),
+  ]
 }
 
 export function fileKind(file: Pick<File, 'type'>) {

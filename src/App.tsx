@@ -3153,6 +3153,14 @@ function App() {
     canBookMakeup: canEditCalendar,
     onCreateLead: createLeadFromChat,
     onChangeLeadStatus: handleChangeLeadStatus,
+    trialDateFor: (leadId: number) => {
+      const dates = trialBookings
+        .filter((booking) => booking.leadId === leadId)
+        .map((booking) => booking.bookingDate)
+        .sort()
+      const next = dates.find((date) => date >= todayString) ?? dates[dates.length - 1]
+      return next ? formatDate(next) : null
+    },
     onAddFollowUp: addFollowUpFromChat,
     onAddOption: handleAddLeadOption,
     onRecordLeave: recordLeaveFromChat,
