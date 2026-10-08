@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { cn } from '../../lib/cn'
-import type { ChatwootConversation } from '../../lib/chatwoot'
 import { createChatwootClient, type Sender } from '../../lib/chatwootClient'
 import { useMessageSearch } from '../../hooks/useMessageSearch'
 import { useWhatsAppInbox } from '../../hooks/useWhatsAppInbox'
 import {
+  type ChatwootConversation,
   countByTab,
   filterConversations,
   getChatIdentity,
