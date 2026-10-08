@@ -1,7 +1,8 @@
+import { getSupabaseAccessToken } from './accessToken'
 import type { ChatAttributes, ChatwootConversation, ChatwootMessage } from './whatsappInbox'
 
-// Talks to Chatwoot through the school's gateway, which adds the secret key.
-// The browser never holds that key.
+// Talks to Chatwoot through the school's gateway, which checks the login and adds
+// the secret key. The browser never holds that key.
 
 export type ConversationPage = {
   conversations: ChatwootConversation[]
@@ -12,11 +13,21 @@ export type Sender = { id: number; name: string }
 
 export type ChatwootClient = ReturnType<typeof createChatwootClient>
 
-export function createChatwootClient(apiUrl: string, accountId = '1') {
+export function createChatwootClient(
+  apiUrl: string,
+  accountId = '1',
+  getAccessToken: () => Promise<string | null> = getSupabaseAccessToken,
+) {
   const base = `${apiUrl}/api/v1/accounts/${accountId}`
 
-  async function request<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await fetch(`${base}${path}`, init)
+  async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    // The gateway lets a request through only for someone signed in who may see Leads.
+    const token = await getAccessToken()
+    const headers = new Headers(init.headers)
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`)
+    }
+    const response = await fetch(`${base}${path}`, { ...init, headers })
     if (!response.ok) {
       throw new Error(`WhatsApp inbox request failed (${response.status})`)
     }
