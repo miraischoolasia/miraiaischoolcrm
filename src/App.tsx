@@ -90,6 +90,7 @@ import {
   fetchLatestLessonLogStudents,
   fetchLeadOptionsFromSupabase,
   fetchPackagesFromSupabase,
+  fetchLateFeedbackEdit,
   fetchStudentEnrollments,
   fetchLeadsFromSupabase,
   fetchMakeupPlansFromSupabase,
@@ -442,6 +443,9 @@ function App() {
   const [attendanceExistingLog, setAttendanceExistingLog] =
     useState<LessonLogSummary | null>(null)
   const [attendanceLocked, setAttendanceLocked] = useState(false)
+  // Admin switch: past attendance and feedback stay editable after 24 hours.
+  const [lateFeedbackEdit, setLateFeedbackEdit] = useState(false)
+  const [isSavingLateFeedbackEdit, setIsSavingLateFeedbackEdit] = useState(false)
   // A class later than today opens read-only: who is coming, no attendance yet.
   const [attendanceUpcoming, setAttendanceUpcoming] = useState(false)
   const [attendanceViewOnly, setAttendanceViewOnly] = useState(false)
@@ -982,6 +986,44 @@ function App() {
       cancelled = true
     }
   }, [authUserId, loadAttempt])
+
+  useEffect(() => {
+    if (!authUserId) {
+      return
+    }
+    let cancelled = false
+    fetchLateFeedbackEdit()
+      .then((open) => {
+        if (!cancelled) {
+          setLateFeedbackEdit(open)
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [authUserId, loadAttempt])
+
+  async function handleToggleLateFeedbackEdit() {
+    if (!supabase) {
+      return
+    }
+    const next = !lateFeedbackEdit
+    setIsSavingLateFeedbackEdit(true)
+    const { error } = await supabase.rpc('set_late_feedback_edit', { p_open: next })
+    setIsSavingLateFeedbackEdit(false)
+    if (error) {
+      showToast(getErrorMessage(error, 'Failed to change late editing.'))
+      return
+    }
+    setLateFeedbackEdit(next)
+    showToast(
+      next
+        ? 'Late editing is on: teachers can edit past feedback.'
+        : 'Late editing is off: feedback locks 24 hours after it is submitted.',
+    )
+    await refreshAdminActivities()
+  }
 
   const visibleSchedules = useMemo(() => {
     if (!currentSession || seesAllClasses) {
@@ -4062,7 +4104,7 @@ function App() {
       if (summary && !isViewOnly) {
         const editableUntil =
           new Date(summary.submittedAt).getTime() + 24 * 60 * 60 * 1000
-        setAttendanceLocked(Date.now() > editableUntil)
+        setAttendanceLocked(!lateFeedbackEdit && Date.now() > editableUntil)
       }
     } catch (error) {
       setAttendanceSaveError(
@@ -4628,6 +4670,44 @@ function App() {
                 <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600">
                   Local Date: {formatDate(todayString)}
                 </div>
+                {isAdmin ? (
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={lateFeedbackEdit}
+                    disabled={isSavingLateFeedbackEdit}
+                    onClick={() => void handleToggleLateFeedbackEdit()}
+                    title="When on, teachers can edit attendance and feedback of past classes, not only within 24 hours."
+                    className={cn(
+                      'flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-60',
+                      lateFeedbackEdit
+                        ? 'border-amber-300 bg-amber-50 text-amber-800'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+                    )}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        'relative h-4 w-7 rounded-full transition',
+                        lateFeedbackEdit ? 'bg-amber-500' : 'bg-slate-300',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'absolute top-0.5 h-3 w-3 rounded-full bg-white transition',
+                          lateFeedbackEdit ? 'left-3.5' : 'left-0.5',
+                        )}
+                      />
+                    </span>
+                    Edit past feedback: {lateFeedbackEdit ? 'On' : 'Off'}
+                  </button>
+                ) : (
+                  lateFeedbackEdit && (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800">
+                      Past feedback can be edited now
+                    </div>
+                  )
+                )}
                 {import.meta.env.DEV && currentTeacher.role === 'admin' && (
                   <label className="flex items-center gap-2 rounded-lg border border-dashed border-amber-300 bg-amber-50 px-2.5 py-1 text-xs text-amber-800">
                     <span className="font-medium">View As (dev only)</span>
@@ -5511,6 +5591,7 @@ function App() {
           attendanceModal={attendanceModal}
           attendanceExistingLog={attendanceExistingLog}
           attendanceLocked={attendanceLocked}
+          lateEditOpen={lateFeedbackEdit}
           isUpcoming={attendanceUpcoming}
           isViewOnly={attendanceViewOnly}
           teacherName={

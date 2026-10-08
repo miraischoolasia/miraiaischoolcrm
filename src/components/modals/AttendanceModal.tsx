@@ -21,6 +21,8 @@ type AttendanceModalProps = {
   attendanceModal: AttendanceModalState
   attendanceExistingLog: LessonLogSummary | null
   attendanceLocked: boolean
+  // An admin has switched on late editing: past the 24 hours it stays open.
+  lateEditOpen?: boolean
   // A class after today: view the roster only, attendance opens on the day.
   isUpcoming?: boolean
   // Someone who is neither admin nor the class teacher: they can look, but
@@ -59,6 +61,7 @@ export function AttendanceModal({
   attendanceModal,
   attendanceExistingLog,
   attendanceLocked,
+  lateEditOpen = false,
   isUpcoming = false,
   isViewOnly = false,
   teacherName = null,
@@ -109,7 +112,9 @@ export function AttendanceModal({
                 : attendanceExistingLog
                 ? attendanceLocked
                   ? 'Locked after 24 hours'
-                  : `Editing revision ${attendanceExistingLog.revisionNumber} within 24 hours`
+                  : lateEditOpen
+                    ? `Editing revision ${attendanceExistingLog.revisionNumber} (late editing is on)`
+                    : `Editing revision ${attendanceExistingLog.revisionNumber} within 24 hours`
                 : 'New lesson attendance submission'}
             </p>
             {attendanceExistingLog && (

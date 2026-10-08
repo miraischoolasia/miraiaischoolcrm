@@ -89,6 +89,30 @@ type ClassroomPeriodRow = {
   end_date: string | null
 }
 
+// Whether an admin has switched on late editing of past attendance and
+// feedback (normally locked 24 hours after it is submitted).
+export async function fetchLateFeedbackEdit() {
+  if (!supabase) {
+    return false
+  }
+
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'late_feedback_edit')
+    .maybeSingle()
+
+  if (error) {
+    // Before the settings migration the switch does not exist: off.
+    if (isMissingTableError(error)) {
+      return false
+    }
+    throw error
+  }
+
+  return data?.value === true
+}
+
 export async function fetchPackagesFromSupabase() {
   if (!supabase) {
     return []

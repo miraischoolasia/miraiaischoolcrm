@@ -144,6 +144,10 @@ export function describeActivity(activity: AdminActivity, names: ActivityNames):
       note(d.start_date ? `Starts ${date(d.start_date)}` : '')
       note(d.reason ? text(d.reason) : '')
       return { title: `Corrected the package of ${label}`, changes, notes }
+    case 'late_feedback_edit_on':
+      return { title: 'Switched on late editing of past feedback', changes, notes }
+    case 'late_feedback_edit_off':
+      return { title: 'Switched off late editing of past feedback', changes, notes }
     case 'student_class_start_changed': {
       const since = (value: unknown) => (value ? date(value) : 'The class began')
       change('In class since', since(d.previous_start_date), since(d.new_start_date))

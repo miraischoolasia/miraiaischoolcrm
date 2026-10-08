@@ -247,6 +247,27 @@ export type Database = {
           },
         ]
       }
+      app_settings: {
+        Row: {
+          key: string
+          value: Json
+          updated_at: string
+          updated_by: number | null
+        }
+        Insert: {
+          key: string
+          value: Json
+          updated_at?: string
+          updated_by?: number | null
+        }
+        Update: {
+          key?: string
+          value?: Json
+          updated_at?: string
+          updated_by?: number | null
+        }
+        Relationships: []
+      }
       packages: {
         Row: {
           id: number
@@ -1098,6 +1119,12 @@ export type Database = {
     }
     Views: Record<string, never>
     Functions: {
+      set_late_feedback_edit: {
+        Args: {
+          p_open: boolean
+        }
+        Returns: undefined
+      }
       set_student_class_start: {
         Args: {
           p_student_id: number
