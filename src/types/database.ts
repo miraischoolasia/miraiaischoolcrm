@@ -397,6 +397,33 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_source_rules: {
+        Row: {
+          id: number
+          phrase: string
+          source_id: number | null
+          tag_ids: number[]
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          phrase: string
+          source_id?: number | null
+          tag_ids?: number[]
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          phrase?: string
+          source_id?: number | null
+          tag_ids?: number[]
+          is_active?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
       quick_replies: {
         Row: {
           id: number

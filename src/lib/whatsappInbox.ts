@@ -127,6 +127,56 @@ export function getTab(conversation: Pick<ChatwootConversation, 'status' | 'wait
   return 'in_progress'
 }
 
+// A parent who has waited this long for an answer is flagged.
+export const OVERDUE_SECONDS = 30 * 60
+// Past this the chat is most likely an old one nobody closed, so it is labelled but
+// not painted red, and not counted in the warning.
+export const STALE_SECONDS = 24 * 60 * 60
+
+// How long the parent has been waiting for a reply, or null when nobody is.
+export function getWaitingSeconds(
+  conversation: Pick<ChatwootConversation, 'status' | 'waiting_since' | 'last_non_activity_message'>,
+  nowSeconds: number,
+) {
+  if (conversation.status === 'resolved') {
+    return null
+  }
+  const last = conversation.last_non_activity_message
+  const since =
+    conversation.waiting_since > 0
+      ? conversation.waiting_since
+      : last?.message_type === 0 && !last.private
+        ? last.created_at
+        : 0
+  return since > 0 ? Math.max(0, nowSeconds - since) : null
+}
+
+export function isOverdue(
+  conversation: Pick<ChatwootConversation, 'status' | 'waiting_since' | 'last_non_activity_message'>,
+  nowSeconds: number,
+) {
+  const waiting = getWaitingSeconds(conversation, nowSeconds)
+  return waiting !== null && waiting >= OVERDUE_SECONDS
+}
+
+// Waited over 30 minutes but under a day: the chats that need someone now.
+export function isRecentlyOverdue(
+  conversation: Pick<ChatwootConversation, 'status' | 'waiting_since' | 'last_non_activity_message'>,
+  nowSeconds: number,
+) {
+  const waiting = getWaitingSeconds(conversation, nowSeconds)
+  return waiting !== null && waiting >= OVERDUE_SECONDS && waiting < STALE_SECONDS
+}
+
+export function formatWaiting(seconds: number) {
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) {
+    return `${minutes} min`
+  }
+  const hours = Math.floor(minutes / 60)
+  return hours < 24 ? `${hours} h` : `${Math.floor(hours / 24)} d`
+}
+
 export function getOwner(conversation: Pick<ChatwootConversation, 'custom_attributes'>) {
   const attributes = conversation.custom_attributes
   const id = attributes?.crm_owner_id

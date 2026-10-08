@@ -1,5 +1,6 @@
 import type { Lead, LeadOption, Student } from '../types/domain'
 import type { VariableValues } from './quickReplies'
+import { matchSourceRules, type SourceRule } from './sourceRules'
 import { attachmentLabel, type ChatwootMessage } from './whatsappInbox'
 
 // How a WhatsApp chat is tied to the school's own records: a phone number match,
@@ -86,7 +87,8 @@ export function getFirstMessage(messages: ChatwootMessage[]): FirstMessage | nul
   }
 }
 
-export type SourceGuess = { source: LeadOption | null; tags: LeadOption[] }
+// rule is the phrase of the first rule that matched, when a rule made the guess.
+export type SourceGuess = { source: LeadOption | null; tags: LeadOption[]; rule?: string }
 
 function wordsOf(label: string) {
   return label
@@ -108,7 +110,16 @@ function mentions(text: string, option: LeadOption) {
 
 // Guesses the source and tags by looking for their names in the first message.
 // "Other" is never guessed: it is what a lead gets when nothing fits.
-export function guessSourceAndTags(text: string, options: LeadOption[]): SourceGuess {
+export function guessSourceAndTags(text: string, options: LeadOption[], rules: SourceRule[] = []): SourceGuess {
+  const byRule = matchSourceRules(text, rules)
+  if (byRule.rules.length > 0) {
+    const active = options.filter((option) => option.isActive)
+    return {
+      source: active.find((option) => option.kind === 'source' && option.id === byRule.sourceId) ?? null,
+      tags: active.filter((option) => option.kind === 'tag' && byRule.tagIds.includes(option.id)),
+      rule: byRule.rules[0].phrase,
+    }
+  }
   const lowered = text.toLowerCase()
   if (!lowered.trim()) {
     return { source: null, tags: [] }

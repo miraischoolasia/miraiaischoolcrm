@@ -254,7 +254,7 @@ export function Composer({ onSend, quickReplies, variables, onManageQuickReplies
             onClick={voice.discard}
             aria-label="Cancel voice message"
             title="Cancel voice message"
-            className="rounded-lg border border-slate-200 p-2.5 text-slate-600 hover:bg-slate-50"
+            className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 sm:p-2.5"
           >
             <Trash size={18} />
           </button>
@@ -272,7 +272,7 @@ export function Composer({ onSend, quickReplies, variables, onManageQuickReplies
           </button>
         </div>
       ) : (
-        <div className="flex items-end gap-2">
+        <div className="flex items-end gap-1.5 sm:gap-2">
           <textarea
             value={text}
             rows={1}
@@ -313,7 +313,7 @@ export function Composer({ onSend, quickReplies, variables, onManageQuickReplies
             aria-label="Quick replies"
             title="Quick replies (or type / )"
             aria-expanded={pickerOpen}
-            className="rounded-lg border border-slate-200 p-2.5 text-slate-600 hover:bg-slate-50"
+            className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 sm:p-2.5"
           >
             <Lightning size={18} />
           </button>
@@ -322,7 +322,7 @@ export function Composer({ onSend, quickReplies, variables, onManageQuickReplies
             onClick={() => fileInput.current?.click()}
             aria-label="Attach a photo, video or file"
             title="Attach a photo, video or file"
-            className="rounded-lg border border-slate-200 p-2.5 text-slate-600 hover:bg-slate-50"
+            className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 sm:p-2.5"
           >
             <Paperclip size={18} />
           </button>
@@ -331,7 +331,7 @@ export function Composer({ onSend, quickReplies, variables, onManageQuickReplies
             onClick={() => void voice.start()}
             aria-label="Record a voice message"
             title="Record a voice message"
-            className="rounded-lg border border-slate-200 p-2.5 text-slate-600 hover:bg-slate-50"
+            className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 sm:p-2.5"
           >
             <Microphone size={18} />
           </button>
@@ -339,10 +339,10 @@ export function Composer({ onSend, quickReplies, variables, onManageQuickReplies
             type="button"
             onClick={() => void submit()}
             disabled={isLoadingMedia}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#fc0c97] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#e00a87] disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#fc0c97] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[#e00a87] disabled:opacity-60 sm:px-4"
           >
             <PaperPlaneTilt size={16} weight="fill" aria-hidden="true" />
-            {mode === 'note' ? 'Save note' : 'Send'}
+            <span className="max-sm:sr-only">{mode === 'note' ? 'Save note' : 'Send'}</span>
           </button>
         </div>
       )}

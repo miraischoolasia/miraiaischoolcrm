@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   countByTab,
+  formatWaiting,
+  getWaitingSeconds,
+  isOverdue,
+  isRecentlyOverdue,
   countUnread,
   filterConversations,
   formatDayLabel,
@@ -208,5 +212,39 @@ describe('getSenderLabel', () => {
 
   it('shows nothing for messages from the parent', () => {
     expect(getSenderLabel({ ...base, message_type: 0 })).toBeNull()
+  })
+})
+
+describe('waiting too long', () => {
+  const now = 1_800_000_000
+  const open = (patch: Record<string, unknown>) =>
+    ({ status: 'open', waiting_since: 0, last_non_activity_message: null, ...patch }) as Parameters<typeof getWaitingSeconds>[0]
+
+  it('counts from the parent message that is still unanswered', () => {
+    expect(getWaitingSeconds(open({ waiting_since: now - 600 }), now)).toBe(600)
+  })
+
+  it('falls back to the parent last message when the server has no waiting time', () => {
+    const last = { message_type: 0, private: false, created_at: now - 900 }
+    expect(getWaitingSeconds(open({ last_non_activity_message: last }), now)).toBe(900)
+  })
+
+  it('is nobody waiting when we spoke last, wrote a note, or the chat is done', () => {
+    expect(getWaitingSeconds(open({ last_non_activity_message: { message_type: 1, private: false, created_at: now } }), now)).toBeNull()
+    expect(getWaitingSeconds(open({ last_non_activity_message: { message_type: 0, private: true, created_at: now } }), now)).toBeNull()
+    expect(getWaitingSeconds(open({ status: 'resolved', waiting_since: now - 5000 }), now)).toBeNull()
+  })
+
+  it('flags 30 minutes and more, and calls a day or more old', () => {
+    expect(isOverdue(open({ waiting_since: now - 1799 }), now)).toBe(false)
+    expect(isOverdue(open({ waiting_since: now - 1800 }), now)).toBe(true)
+    expect(isRecentlyOverdue(open({ waiting_since: now - 3600 }), now)).toBe(true)
+    expect(isRecentlyOverdue(open({ waiting_since: now - 3 * 86400 }), now)).toBe(false)
+  })
+
+  it('writes the wait the way people say it', () => {
+    expect(formatWaiting(45 * 60)).toBe('45 min')
+    expect(formatWaiting(3 * 3600 + 100)).toBe('3 h')
+    expect(formatWaiting(2 * 86400 + 5)).toBe('2 d')
   })
 })

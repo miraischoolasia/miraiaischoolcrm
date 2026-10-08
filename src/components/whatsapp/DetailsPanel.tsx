@@ -7,6 +7,7 @@ import {
   resolveChatLead,
 } from '../../lib/chatLink'
 import { searchLeads } from '../../lib/leadSearch'
+import type { SourceRule } from '../../lib/sourceRules'
 import {
   getChatIdentity,
   getLinkedLeadId,
@@ -27,6 +28,8 @@ type DetailsPanelProps = {
   hasOlder: boolean
   crm: WhatsAppCrm
   className?: string
+  sourceRules: SourceRule[]
+  onManageRules?: (phrase: string) => void
   onLoadOlder: () => void
   onSavePhone: (contactId: number, digits: string) => Promise<boolean>
   onLinkLead: (leadId: number | null) => Promise<boolean>
@@ -42,6 +45,8 @@ export function DetailsPanel({
   hasOlder,
   crm,
   className,
+  sourceRules,
+  onManageRules,
   onLoadOlder,
   onSavePhone,
   onLinkLead,
@@ -63,7 +68,7 @@ export function DetailsPanel({
     null
 
   const first = useMemo(() => getFirstMessage(messages), [messages])
-  const guess = useMemo(() => guessSourceAndTags(first?.text ?? '', crm.leadOptions), [first, crm.leadOptions])
+  const guess = useMemo(() => guessSourceAndTags(first?.text ?? '', crm.leadOptions, sourceRules), [first, crm.leadOptions, sourceRules])
   const found = useMemo(() => searchLeads(crm.leads, query), [crm.leads, query])
 
   async function savePhone() {
@@ -135,10 +140,17 @@ export function DetailsPanel({
           />
         ) : (
           <>
-            <FirstMessageCard first={first} guess={guess} hasOlder={hasOlder} onLoadOlder={onLoadOlder} />
+            <FirstMessageCard
+              first={first}
+              guess={guess}
+              hasOlder={hasOlder}
+              onLoadOlder={onLoadOlder}
+              onManageRules={crm.canEditLeads ? onManageRules : undefined}
+            />
             {crm.canEditLeads ? (
               <NewLeadForm
-                key={conversation.id}
+                // Starts over if the guess changes after the form opened (messages or rules arriving late).
+                key={`${conversation.id}-${guess.source?.id ?? ''}-${guess.tags.map((tag) => tag.id).join(',')}`}
                 crm={crm}
                 initialName={initialName}
                 initialPhone={phone ? `+${phone}` : ''}

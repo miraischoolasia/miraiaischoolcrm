@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { cn } from '../../lib/cn'
 import { createChatwootClient, type Sender } from '../../lib/chatwootClient'
 import { useWhatsAppInbox } from '../../hooks/useWhatsAppInbox'
@@ -8,16 +8,19 @@ import {
   getChatIdentity,
   getLinkedLeadId,
   getRealPhone,
+  isRecentlyOverdue,
   type InboxTab,
   type OwnerFilter,
 } from '../../lib/whatsappInbox'
 import { ChatPanel } from './ChatPanel'
 import { ConversationList } from './ConversationList'
 import { useQuickReplies } from '../../hooks/useQuickReplies'
+import { useSourceRules } from '../../hooks/useSourceRules'
 import { quickReplyValues, resolveChatLead } from '../../lib/chatLink'
 import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
 import { QuickReplyManager } from './QuickReplyManager'
+import { SourceRuleManager } from './SourceRuleManager'
 
 type WhatsAppInboxProps = {
   apiUrl: string
@@ -42,7 +45,21 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
   )
   const hasChat = inbox.selected !== null
 
+  // Ticks every 30 seconds so a chat turns red the moment it passes 30 minutes.
+  const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000))
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowSeconds(Math.floor(Date.now() / 1000)), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
+  const overdueCount = useMemo(
+    () => inbox.conversations.filter((conversation) => isRecentlyOverdue(conversation, nowSeconds)).length,
+    [inbox.conversations, nowSeconds],
+  )
+
   const quickReplies = useQuickReplies(true)
+  const sourceRules = useSourceRules(true)
+  // Set while the source rules window is open; phrase starts a new rule from a message.
+  const [managingRules, setManagingRules] = useState<{ phrase: string } | null>(null)
   const [managingReplies, setManagingReplies] = useState(false)
   // What {parent name}, {child name} and the like become in the open chat.
   const quickReplyFill = useMemo(() => {
@@ -61,7 +78,14 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
   }, [inbox.selected, crm, currentUser.name])
 
   return (
-    <div className="grid h-[calc(100dvh-210px)] min-h-[520px] lg:h-[calc(100dvh-130px)] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_280px]">
+    <div
+      className={cn(
+        'grid h-[calc(100dvh-210px)] min-h-[520px] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white lg:h-[calc(100dvh-130px)] lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_280px]',
+        // On a phone an open chat takes the whole screen, above the page title and
+        // tools, and stops just above the bottom menu.
+        hasChat && 'max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-[5.7rem] max-lg:z-30 max-lg:h-auto max-lg:min-h-0 max-lg:rounded-none max-lg:border-0',
+      )}
+    >
       <ConversationList
         className={cn(hasChat && 'hidden lg:flex')}
         conversations={visible}
@@ -71,6 +95,8 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
         owner={owner}
         search={search}
         selectedId={inbox.selectedId}
+        nowSeconds={nowSeconds}
+        overdueCount={overdueCount}
         isLoading={inbox.isLoading}
         loadError={inbox.loadError}
         canLoadMore={tab === 'done' ? inbox.canLoadMore.resolved : inbox.canLoadMore.open}
@@ -117,6 +143,8 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
             messages={inbox.messages}
             hasOlder={inbox.hasOlder}
             crm={crm}
+            sourceRules={sourceRules.rules}
+            onManageRules={(phrase) => setManagingRules({ phrase })}
             onLoadOlder={() => void inbox.loadOlder()}
             onSavePhone={inbox.savePhone}
             onLinkLead={(leadId) => inbox.setLeadLink(inbox.selected!.id, leadId)}
@@ -127,6 +155,19 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
         <div className="hidden items-center justify-center bg-slate-50 p-8 text-center text-sm text-slate-500 lg:col-span-1 lg:flex xl:col-span-2">
           Pick a chat on the left to read it and reply.
         </div>
+      )}
+      {managingRules && (
+        <SourceRuleManager
+          rules={sourceRules.rules}
+          isLoading={sourceRules.isLoading}
+          loadError={sourceRules.error}
+          leadOptions={crm.leadOptions}
+          initialPhrase={managingRules.phrase}
+          onClose={() => setManagingRules(null)}
+          onSave={sourceRules.save}
+          onRemove={sourceRules.remove}
+          onAddOption={crm.onAddOption}
+        />
       )}
       {managingReplies && (
         <QuickReplyManager

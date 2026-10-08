@@ -8,11 +8,13 @@ type FirstMessageCardProps = {
   // The chat has older messages that are not loaded, so this may not be the very first.
   hasOlder: boolean
   onLoadOlder: () => void
+  // Only for people who may edit source rules. The phrase is what to start the rule from.
+  onManageRules?: (phrase: string) => void
 }
 
 // "How they first contacted you": what the parent wrote first, so whoever adds
 // the lead can tell which advert it came from.
-export function FirstMessageCard({ first, guess, hasOlder, onLoadOlder }: FirstMessageCardProps) {
+export function FirstMessageCard({ first, guess, hasOlder, onLoadOlder, onManageRules }: FirstMessageCardProps) {
   const guessed = [guess.source?.label, ...guess.tags.map((tag) => tag.label)].filter(Boolean)
 
   return (
@@ -40,10 +42,24 @@ export function FirstMessageCard({ first, guess, hasOlder, onLoadOlder }: FirstM
         </button>
       )}
       <p className="mt-2">
-        {guessed.length > 0
-          ? `Looks like it came from: ${guessed.join(', ')}.`
-          : "Can't tell where they came from. Choose the source yourself."}
+        {guess.rule
+          ? `Matched your rule "${guess.rule}": ${guessed.join(', ') || 'nothing to pick'}.`
+          : guessed.length > 0
+            ? `Looks like it came from: ${guessed.join(', ')}.`
+            : "Can't tell where they came from. Choose the source yourself."}
       </p>
+      {onManageRules && (
+        <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-medium">
+          {first?.text && !guess.rule && (
+            <button type="button" onClick={() => onManageRules(first.text)} className="underline hover:text-sky-700">
+              Make a rule from this message
+            </button>
+          )}
+          <button type="button" onClick={() => onManageRules('')} className="underline hover:text-sky-700">
+            Source rules
+          </button>
+        </p>
+      )}
     </section>
   )
 }

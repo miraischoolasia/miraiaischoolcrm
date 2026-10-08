@@ -20,6 +20,10 @@ import {
 } from '../../lib/inboxAlerts'
 import {
   formatListTime,
+  formatWaiting,
+  getWaitingSeconds,
+  OVERDUE_SECONDS,
+  STALE_SECONDS,
   getChatIdentity,
   getOwner,
   getPreview,
@@ -54,6 +58,10 @@ type ConversationListProps = {
   owner: OwnerFilter
   search: string
   selectedId: number | null
+  // The clock, so a chat that has waited too long is flagged without a refresh.
+  nowSeconds: number
+  // How many chats are past the limit, across every tab and filter.
+  overdueCount: number
   isLoading: boolean
   loadError: string | null
   canLoadMore: boolean
@@ -105,6 +113,8 @@ export function ConversationList({
   owner,
   search,
   selectedId,
+  nowSeconds,
+  overdueCount,
   isLoading,
   loadError,
   canLoadMore,
@@ -171,6 +181,11 @@ export function ConversationList({
           <span className="font-semibold text-slate-900">{tabs.find((item) => item.key === tab)?.label}</span>
           <span className="text-xs text-slate-500"> · {tabHelp[tab]}</span>
         </div>
+        {overdueCount > 0 && (
+          <p role="status" className="mt-2 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">
+            {overdueCount} {overdueCount === 1 ? 'chat has' : 'chats have'} waited over 30 minutes for a reply.
+          </p>
+        )}
         <div className="mt-2 flex items-center justify-between gap-2 text-sm">
           <label className="relative w-full">
             <span className="sr-only">Show chats of</span>
@@ -204,14 +219,19 @@ export function ConversationList({
           const lastMessage = conversation.last_non_activity_message
           const preview = getPreview(conversation)
           const selected = conversation.id === selectedId
+          const waiting = getWaitingSeconds(conversation, nowSeconds)
+          const overdue = waiting !== null && waiting >= OVERDUE_SECONDS
+          // Past a day it is most likely an old chat, so it gets the label but not the red row.
+          const redRow = overdue && waiting < STALE_SECONDS
           return (
             <button
               key={conversation.id}
               type="button"
               onClick={() => onSelect(conversation.id)}
               className={cn(
-                'grid w-full grid-cols-[36px_minmax(0,1fr)] gap-3 border-b border-slate-100 px-3 py-3 text-left transition',
-                selected ? 'bg-pink-50' : 'hover:bg-slate-50',
+                'grid w-full grid-cols-[36px_minmax(0,1fr)] gap-3 border-b border-l-4 border-b-slate-100 px-3 py-3 text-left transition',
+                redRow ? 'border-l-red-500' : 'border-l-transparent',
+                selected ? 'bg-pink-50' : redRow ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-slate-50',
               )}
             >
               <span
@@ -248,6 +268,11 @@ export function ConversationList({
                       )}
                     >
                       {chatOwner ? chatOwner.name : 'No one yet'}
+                    </span>
+                  )}
+                  {overdue && waiting !== null && (
+                    <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                      Waiting {formatWaiting(waiting)}
                     </span>
                   )}
                   {!identity.hasRealPhone && (

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { Lead, LeadOption } from '../../types/domain'
 import type { ChatwootConversation, ChatwootMessage } from '../../lib/whatsappInbox'
+import type { SourceRule } from '../../lib/sourceRules'
 import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
 
@@ -79,13 +80,19 @@ function makeCrm(patch: Partial<WhatsAppCrm> = {}): WhatsAppCrm {
   }
 }
 
-function renderPanel(crm: WhatsAppCrm, attributes?: ChatwootConversation['custom_attributes'], onLinkLead = vi.fn().mockResolvedValue(true)) {
+function renderPanel(
+  crm: WhatsAppCrm,
+  attributes?: ChatwootConversation['custom_attributes'],
+  onLinkLead = vi.fn().mockResolvedValue(true),
+  rules: SourceRule[] = [],
+) {
   render(
     <DetailsPanel
       conversation={conversation(attributes)}
       messages={[firstMessage]}
       hasOlder={false}
       crm={crm}
+      sourceRules={rules}
       onLoadOlder={vi.fn()}
       onSavePhone={vi.fn()}
       onLinkLead={onLinkLead}
@@ -102,6 +109,43 @@ describe('DetailsPanel', () => {
     expect(screen.getByText('Looks like it came from: Facebook.')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Add as a new lead' })).toBeInTheDocument()
     expect(screen.getByLabelText(/Where did they find us/)).toHaveValue('1')
+  })
+
+  it('picks the source and tags from a rule that matches the first message', () => {
+    const crm = makeCrm({
+      leadOptions: [
+        option(1, 'source', 'Facebook'),
+        option(2, 'source', 'Other', 'other'),
+        option(3, 'source', 'Google Ads'),
+        option(7, 'tag', 'Free HOA'),
+      ],
+    })
+    renderPanel(crm, undefined, undefined, [
+      { id: 1, phrase: 'i saw your facebook ad', sourceId: 3, tagIds: [7], isActive: true },
+    ])
+
+    expect(screen.getByText(/Matched your rule "i saw your facebook ad": Google Ads, Free HOA/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Where did they find us/)).toHaveValue('3')
+  })
+
+  it('lets an editor start a rule from the first message', async () => {
+    const onManageRules = vi.fn()
+    render(
+      <DetailsPanel
+        conversation={conversation()}
+        messages={[firstMessage]}
+        hasOlder={false}
+        crm={makeCrm()}
+        sourceRules={[]}
+        onManageRules={onManageRules}
+        onLoadOlder={vi.fn()}
+        onSavePhone={vi.fn()}
+        onLinkLead={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Make a rule from this message' }))
+    expect(onManageRules).toHaveBeenCalledWith('Hi, I saw your Facebook ad')
   })
 
   it('saves the lead and ties the chat to it', async () => {
