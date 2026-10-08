@@ -3,6 +3,7 @@ import { ArrowRight, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { formatDate } from '../../domain/studentStatus'
 import { cn } from '../../lib/cn'
+import type { TeacherClash } from '../../lib/clash'
 
 export type MoveClassDraft = {
   kind: 'regular' | 'replacement' | 'trial'
@@ -31,6 +32,10 @@ type MoveClassModalProps = {
   error: string | null
   onClose: () => void
   onConfirm: (input: MoveClassInput) => void
+  // The teacher's other classes at the chosen time, so the admin sees a clash
+  // as they adjust it.
+  getClashes?: (startTime: string, endTime: string) => TeacherClash[]
+  clashTeacherName?: string
 }
 
 const inputClassName =
@@ -48,6 +53,8 @@ export function MoveClassModal({
   error,
   onClose,
   onConfirm,
+  getClashes,
+  clashTeacherName = 'This teacher',
 }: MoveClassModalProps) {
   const [startTime, setStartTime] = useState(draft.startTime)
   const [endTime, setEndTime] = useState(draft.endTime)
@@ -72,6 +79,7 @@ export function MoveClassModal({
   }
 
   const shownError = validationError ?? error
+  const clashes = getClashes && startTime && endTime ? getClashes(startTime, endTime) : []
 
   return (
     <ModalShell maxWidth="sm" onClose={onClose}>
@@ -191,6 +199,21 @@ export function MoveClassModal({
               className={inputClassName}
             />
           </label>
+        )}
+
+        {clashes.length > 0 && (
+          <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <div className="font-semibold">
+              Time clash: {clashTeacherName} is already teaching at this time
+            </div>
+            <ul className="mt-1 list-disc space-y-0.5 pl-5">
+              {clashes.map((clash) => (
+                <li key={`${clash.scheduleId}-${clash.when}`}>
+                  {clash.title} - {clash.when}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {shownError && (

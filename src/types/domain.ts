@@ -334,6 +334,8 @@ export type LessonLogStudentReview = {
   expressivenessRemark: string | null
   sustainedFocusScore: number | null
   sustainedFocusRemark: string | null
+  // This student's own note on the lesson (progress, homework, ...).
+  lessonRemark: string | null
 }
 
 export type AttendanceReviewFormState = {
@@ -347,6 +349,7 @@ export type AttendanceReviewFormState = {
   expressivenessRemark: string
   sustainedFocusScore: number | null
   sustainedFocusRemark: string
+  lessonRemark: string
 }
 
 export type RenewalFormState = {
@@ -617,6 +620,7 @@ export type LessonLogStudentReviewRow = Pick<
   | 'expressiveness_remark'
   | 'sustained_focus_score'
   | 'sustained_focus_remark'
+  | 'lesson_remark'
 >
 
 export type PackageRow = Pick<

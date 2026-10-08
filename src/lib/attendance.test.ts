@@ -13,6 +13,7 @@ const fullReview = (overrides: Partial<AttendanceReviewFormState> = {}): Attenda
   expressivenessRemark: '',
   sustainedFocusScore: 4,
   sustainedFocusRemark: '',
+  lessonRemark: '',
   ...overrides,
 })
 
@@ -138,5 +139,24 @@ describe('buildAttendanceSubmission', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.reviewPayload[0].logicalThinkingRemark).toBeNull()
+  })
+
+  it("sends each present student's own lesson remark, trimmed, or null when blank", () => {
+    const result = buildAttendanceSubmission(
+      [1, 2],
+      { 1: 'present', 2: 'present' },
+      {
+        1: fullReview({ lessonRemark: '  Finished the maze game.  ' }),
+        2: fullReview({ lessonRemark: '   ' }),
+      },
+      new Map(),
+    )
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.reviewPayload.map((review) => review.lessonRemark)).toEqual([
+      'Finished the maze game.',
+      null,
+    ])
   })
 })

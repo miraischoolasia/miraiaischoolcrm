@@ -364,7 +364,24 @@ describe('trial slots on the calendar', () => {
     mocks.latestLessonLog.mockResolvedValue({
       summary: log,
       students: [{ id: 1, lessonLogId: 90, studentId: 501, attendanceStatus: 'present' }],
-      reviews: [],
+      reviews: [
+        {
+          id: 1,
+          lessonLogId: 90,
+          studentId: 501,
+          logicalThinkingScore: 4,
+          logicalThinkingRemark: null,
+          codingCreativityScore: 4,
+          codingCreativityRemark: null,
+          problemSolvingScore: 4,
+          problemSolvingRemark: null,
+          expressivenessScore: 4,
+          expressivenessRemark: null,
+          sustainedFocusScore: 4,
+          sustainedFocusRemark: null,
+          lessonRemark: 'Loved the loops',
+        },
+      ],
     })
     await signIn('admin')
 
@@ -372,7 +389,10 @@ describe('trial slots on the calendar', () => {
 
     expect(await screen.findByText('Attendance & Reviews')).toBeInTheDocument()
     const dialog = within(screen.getByRole('dialog'))
-    expect(await dialog.findByDisplayValue('Built a maze game')).toBeInTheDocument()
+    // The student's own remark sits in their card; the older class-wide note
+    // is kept as read-only history.
+    expect(await dialog.findByDisplayValue('Loved the loops')).toBeInTheDocument()
+    expect(dialog.getByText('Built a maze game')).toBeInTheDocument()
     expect(dialog.getByText(/Teacher: Jia Hui/)).toBeInTheDocument()
     expect(screen.queryByText('Trial slot')).not.toBeInTheDocument()
 
@@ -420,6 +440,34 @@ describe('trial slots on the calendar', () => {
         p_attendance: [{ student_id: 501, status: 'absent' }],
         p_student_reviews: [],
       }),
+    )
+  })
+
+  it("submits each present student's own lesson remark with their review", async () => {
+    await signIn('teacher')
+
+    await userEvent.click(slot('10:00'))
+    await screen.findByText('Attendance Submission')
+
+    const dialog = within(screen.getByRole('dialog'))
+    // Five metrics, rate each 4 out of 5.
+    for (const star of dialog.getAllByRole('button', { name: 'Rate 4 out of 5' })) {
+      await userEvent.click(star)
+    }
+    // The one-and-only "Lesson Remark" box belongs to Aiden, not the class.
+    await userEvent.type(dialog.getByLabelText('Lesson Remark'), 'Built a maze game')
+    await userEvent.click(dialog.getByRole('button', { name: 'Submit Attendance' }))
+
+    await waitFor(() =>
+      expect(mocks.rpc).toHaveBeenCalledWith(
+        'submit_lesson_attendance',
+        expect.objectContaining({
+          p_lesson_remark: null,
+          p_student_reviews: [
+            expect.objectContaining({ student_id: 501, lessonRemark: 'Built a maze game' }),
+          ],
+        }),
+      ),
     )
   })
 

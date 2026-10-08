@@ -514,9 +514,14 @@ export function StudentDetailModal({
                       {teacherMap.get(log.teacherId)?.fullName ?? 'Unknown Teacher'} - Revision{' '}
                       {log.revisionNumber}
                     </div>
+                    {review.lessonRemark && (
+                      <div className="mt-2 whitespace-pre-wrap text-sm text-slate-600">
+                        Lesson Remark: {review.lessonRemark}
+                      </div>
+                    )}
                     {log.lessonRemark && (
-                      <div className="mt-2 text-sm text-slate-600">
-                        Lesson Remark: {log.lessonRemark}
+                      <div className="mt-2 whitespace-pre-wrap text-sm text-slate-500">
+                        Class note: {log.lessonRemark}
                       </div>
                     )}
                   </div>

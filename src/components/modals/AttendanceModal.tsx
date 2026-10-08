@@ -37,6 +37,8 @@ type AttendanceModalProps = {
   attendanceRoster: Student[]
   attendanceStatuses: Record<number, AttendanceStatus>
   attendanceReviews: Record<number, AttendanceReviewFormState>
+  // A class-wide note from before each student had their own: shown as
+  // read-only history and carried along unchanged on an edit.
   attendanceRemark: string
   attendanceSaveError: string | null
   isSavingAttendance: boolean
@@ -54,7 +56,7 @@ type AttendanceModalProps = {
     remarkField: ReviewRemarkField,
     value: string,
   ) => void
-  onRemarkChange: (value: string) => void
+  onUpdateLessonRemark: (studentId: number, value: string) => void
 }
 
 export function AttendanceModal({
@@ -78,7 +80,7 @@ export function AttendanceModal({
   onSetStatus,
   onUpdateReviewScore,
   onUpdateReviewRemark,
-  onRemarkChange,
+  onUpdateLessonRemark,
   makeupNotes = [],
 }: AttendanceModalProps) {
   // Nothing has been submitted that this viewer could look at: roster only.
@@ -293,6 +295,22 @@ export function AttendanceModal({
                               )
                             })}
                           </div>
+
+                          <label className="mt-3 block space-y-2">
+                            <span className="text-sm font-semibold text-slate-900">
+                              Lesson Remark
+                            </span>
+                            <textarea
+                              rows={3}
+                              value={reviewForm.lessonRemark}
+                              disabled={attendanceLocked}
+                              onChange={(event) =>
+                                onUpdateLessonRemark(student.id, event.target.value)
+                              }
+                              placeholder={`Lesson progress, homework, or any note for ${student.name}.`}
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2] disabled:bg-slate-50"
+                            />
+                          </label>
                         </div>
                       )}
                     </div>
@@ -308,20 +326,13 @@ export function AttendanceModal({
               )}
             </div>
 
-            {!isRosterOnly && (
-            <label className="block space-y-2">
-              <span className="text-sm font-semibold text-slate-700">
-                Lesson Remark
-              </span>
-              <textarea
-                rows={5}
-                value={attendanceRemark}
-                disabled={attendanceLocked}
-                onChange={(event) => onRemarkChange(event.target.value)}
-                placeholder="Write the lesson progress, homework, or any important classroom note here."
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2] disabled:bg-slate-50"
-              />
-            </label>
+            {!isRosterOnly && attendanceRemark && (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  Class note (written before each student had their own)
+                </div>
+                <div className="mt-1 whitespace-pre-wrap">{attendanceRemark}</div>
+              </div>
             )}
           </>
         )}

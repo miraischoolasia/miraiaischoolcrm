@@ -469,7 +469,7 @@ export async function fetchLessonLogStudentReviewsFromSupabase() {
   const { data, error } = await supabase
     .from('lesson_log_student_reviews')
     .select(
-      'id, lesson_log_id, student_id, logical_thinking_score, logical_thinking_remark, coding_creativity_score, coding_creativity_remark, problem_solving_score, problem_solving_remark, expressiveness_score, expressiveness_remark, sustained_focus_score, sustained_focus_remark',
+      'id, lesson_log_id, student_id, logical_thinking_score, logical_thinking_remark, coding_creativity_score, coding_creativity_remark, problem_solving_score, problem_solving_remark, expressiveness_score, expressiveness_remark, sustained_focus_score, sustained_focus_remark, lesson_remark',
     )
     .order('lesson_log_id')
     .order('student_id')
@@ -522,7 +522,7 @@ export async function fetchLatestLessonLogStudents(scheduleId: number, lessonDat
   const { data: reviewRows, error: reviewError } = await supabase
     .from('lesson_log_student_reviews')
     .select(
-      'id, lesson_log_id, student_id, logical_thinking_score, logical_thinking_remark, coding_creativity_score, coding_creativity_remark, problem_solving_score, problem_solving_remark, expressiveness_score, expressiveness_remark, sustained_focus_score, sustained_focus_remark',
+      'id, lesson_log_id, student_id, logical_thinking_score, logical_thinking_remark, coding_creativity_score, coding_creativity_remark, problem_solving_score, problem_solving_remark, expressiveness_score, expressiveness_remark, sustained_focus_score, sustained_focus_remark, lesson_remark',
     )
     .eq('lesson_log_id', summaryRow.id)
     .order('student_id')

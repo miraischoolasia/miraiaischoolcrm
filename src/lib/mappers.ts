@@ -286,6 +286,7 @@ export function mapLessonLogStudentReviewRow(
     expressivenessRemark: row.expressiveness_remark,
     sustainedFocusScore: row.sustained_focus_score,
     sustainedFocusRemark: row.sustained_focus_remark,
+    lessonRemark: row.lesson_remark,
   }
 }
 
@@ -301,6 +302,7 @@ export function createEmptyAttendanceReviewForm(): AttendanceReviewFormState {
     expressivenessRemark: '',
     sustainedFocusScore: null,
     sustainedFocusRemark: '',
+    lessonRemark: '',
   }
 }
 
@@ -322,6 +324,7 @@ export function mapReviewToFormState(
     expressivenessRemark: review.expressivenessRemark ?? '',
     sustainedFocusScore: review.sustainedFocusScore,
     sustainedFocusRemark: review.sustainedFocusRemark ?? '',
+    lessonRemark: review.lessonRemark ?? '',
   }
 }
 

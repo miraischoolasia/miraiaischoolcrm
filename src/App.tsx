@@ -173,6 +173,7 @@ import {
   type MoveClassInput,
 } from './components/modals/MoveClassModal'
 import { getDragBlockReason, getTimeFromDate, getTrialSlotsOnDate } from './lib/move'
+import { describeClashes, findTeacherClashes, type ClashCandidate } from './lib/clash'
 import { hasPermission } from './lib/permissions'
 import { getClassroomRosterOn } from './lib/roster'
 import {
@@ -678,6 +679,55 @@ function App() {
     scheduleLinkedClassroom !== null
       ? classroomStudentMap.get(scheduleLinkedClassroom.id) ?? []
       : []
+
+  // The teacher this timetable form would book, and whether they are already
+  // teaching something else at that time. A regular timetable is always taught
+  // by its classroom's teacher; a replacement class picks its own.
+  const scheduleClashTeacherId =
+    scheduleFormState.eventType === 'regular'
+      ? (scheduleLinkedClassroom?.teacherId ?? null)
+      : scheduleFormState.teacherId
+        ? Number(scheduleFormState.teacherId)
+        : null
+  const scheduleClashes = useMemo(() => {
+    if (scheduleClashTeacherId === null || (!isCreatingSchedule && !editingScheduleId)) {
+      return []
+    }
+
+    const base = {
+      teacherId: scheduleClashTeacherId,
+      startTime: scheduleFormState.startTime,
+      endTime: scheduleFormState.endTime,
+      excludeScheduleId: editingScheduleId,
+    }
+    let candidate: ClashCandidate | null = null
+
+    if (scheduleFormState.eventType === 'regular') {
+      if (scheduleFormState.startRecur) {
+        candidate = {
+          ...base,
+          kind: 'weekly',
+          dayOfWeek: Number(scheduleFormState.dayOfWeek),
+          startRecur: scheduleFormState.startRecur,
+          endRecur: scheduleFormState.endRecur.trim() || null,
+        }
+      }
+    } else if (scheduleFormState.scheduledDate) {
+      candidate = { ...base, kind: 'single', date: scheduleFormState.scheduledDate }
+    }
+
+    return candidate
+      ? findTeacherClashes(candidate, schedules, scheduleExceptions, classroomMap)
+      : []
+  }, [
+    classroomMap,
+    editingScheduleId,
+    isCreatingSchedule,
+    scheduleClashTeacherId,
+    scheduleExceptions,
+    scheduleFormState,
+    schedules,
+  ])
 
   useEffect(() => {
     if (!supabase) {
@@ -3419,6 +3469,48 @@ function App() {
             throw new Error('Please pick the date the new teacher starts.')
           }
 
+          // The new teacher takes over this class's weekly times from that
+          // day: warn if they already teach something at any of them.
+          const takeoverClashes = schedules
+            .filter(
+              (entry) =>
+                entry.status === 'active' &&
+                entry.eventType === 'regular' &&
+                entry.classroomId === editingClassroom.id &&
+                entry.dayOfWeek !== null &&
+                entry.startRecur !== null &&
+                (!entry.endRecur || entry.endRecur >= classroomFormState.teacherEffectiveDate),
+            )
+            .flatMap((entry) =>
+              findTeacherClashes(
+                {
+                  kind: 'weekly',
+                  teacherId,
+                  dayOfWeek: entry.dayOfWeek!,
+                  startTime: entry.startTime,
+                  endTime: entry.endTime,
+                  startRecur:
+                    entry.startRecur! > classroomFormState.teacherEffectiveDate
+                      ? entry.startRecur!
+                      : classroomFormState.teacherEffectiveDate,
+                  endRecur: entry.endRecur,
+                  excludeScheduleId: entry.id,
+                },
+                schedules,
+                scheduleExceptions,
+                classroomMap,
+              ),
+            )
+          if (takeoverClashes.length > 0) {
+            const proceed = await confirm(
+              `${describeClashes(teacherMap.get(teacherId)?.fullName ?? 'This teacher', takeoverClashes)}.\n\nTaking over ${editingClassroom.name} overlaps. Change the teacher anyway?`,
+              { confirmLabel: 'Change anyway', cancelLabel: 'Go back' },
+            )
+            if (!proceed) {
+              return
+            }
+          }
+
           const { error: reassignError } = await supabase.rpc('reassign_classroom_teacher', {
             p_classroom_id: editingClassroom.id,
             p_new_teacher_id: teacherId,
@@ -3750,6 +3842,16 @@ function App() {
       }
     }
 
+    if (scheduleClashes.length > 0) {
+      const proceed = await confirm(
+        `${describeClashes(teacherMap.get(teacherId)?.fullName ?? 'This teacher', scheduleClashes)}.\n\nThis time overlaps. Save it anyway?`,
+        { confirmLabel: 'Save anyway', cancelLabel: 'Go back' },
+      )
+      if (!proceed) {
+        return
+      }
+    }
+
     const payload: Database['public']['Tables']['schedules']['Update'] = {
       teacher_id: teacherId,
       student_id:
@@ -3994,9 +4096,44 @@ function App() {
     })
   }
 
+  // The teacher's other classes at the new time of a move. A trial move
+  // follows the target slot's teacher instead, so it isn't checked here.
+  function getMoveClashes(startTime: string, endTime: string) {
+    const schedule = moveDraft ? schedules.find((entry) => entry.id === moveDraft.scheduleId) : null
+    if (!moveDraft || !schedule || moveDraft.kind === 'trial') {
+      return []
+    }
+
+    return findTeacherClashes(
+      {
+        kind: 'single',
+        teacherId: schedule.teacherId,
+        date: moveDraft.toDate,
+        startTime,
+        endTime,
+        excludeScheduleId: schedule.id,
+      },
+      schedules,
+      scheduleExceptions,
+      classroomMap,
+    )
+  }
+
   async function handleConfirmMove(input: MoveClassInput) {
     if (!moveDraft || !supabase) {
       return
+    }
+
+    const moveClashes = getMoveClashes(input.startTime, input.endTime)
+    if (moveClashes.length > 0) {
+      const moveTeacherId = schedules.find((entry) => entry.id === moveDraft.scheduleId)?.teacherId
+      const proceed = await confirm(
+        `${describeClashes(moveTeacherId ? (teacherMap.get(moveTeacherId)?.fullName ?? 'This teacher') : 'This teacher', moveClashes)}.\n\nThis time overlaps. Move it anyway?`,
+        { confirmLabel: 'Move anyway', cancelLabel: 'Go back' },
+      )
+      if (!proceed) {
+        return
+      }
     }
 
     try {
@@ -4343,6 +4480,16 @@ function App() {
       [studentId]: {
         ...(currentState[studentId] ?? createEmptyAttendanceReviewForm()),
         [remarkField]: remark,
+      },
+    }))
+  }
+
+  function updateAttendanceLessonRemark(studentId: number, remark: string) {
+    setAttendanceReviews((currentState) => ({
+      ...currentState,
+      [studentId]: {
+        ...(currentState[studentId] ?? createEmptyAttendanceReviewForm()),
+        lessonRemark: remark,
       },
     }))
   }
@@ -5752,6 +5899,12 @@ function App() {
             latestLessonLogMap.has(`${editingSchedule.id}:${editingOccurrenceDate}`)
           }
           onCancelOccurrence={handleCancelOccurrence}
+          clashes={scheduleClashes}
+          clashTeacherName={
+            scheduleClashTeacherId !== null
+              ? (teacherMap.get(scheduleClashTeacherId)?.fullName ?? 'This teacher')
+              : 'This teacher'
+          }
         />
       )}
 
@@ -5788,7 +5941,7 @@ function App() {
           }
           onUpdateReviewScore={updateAttendanceReviewScore}
           onUpdateReviewRemark={updateAttendanceReviewRemark}
-          onRemarkChange={setAttendanceRemark}
+          onUpdateLessonRemark={updateAttendanceLessonRemark}
           makeupNotes={getClassroomMakeupNotes(
             schedules.find((schedule) => schedule.id === attendanceModal.scheduleId)
               ?.classroomId ?? null,
@@ -5808,6 +5961,12 @@ function App() {
             setMoveError(null)
           }}
           onConfirm={(input) => void handleConfirmMove(input)}
+          getClashes={getMoveClashes}
+          clashTeacherName={
+            teacherMap.get(
+              schedules.find((entry) => entry.id === moveDraft.scheduleId)?.teacherId ?? -1,
+            )?.fullName ?? 'This teacher'
+          }
         />
       )}
 

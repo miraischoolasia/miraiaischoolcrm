@@ -933,6 +933,7 @@ export type Database = {
           expressiveness_remark: string | null
           sustained_focus_score: number | null
           sustained_focus_remark: string | null
+          lesson_remark: string | null
           created_at: string
         }
         Insert: {
@@ -949,6 +950,7 @@ export type Database = {
           expressiveness_remark?: string | null
           sustained_focus_score?: number | null
           sustained_focus_remark?: string | null
+          lesson_remark?: string | null
           created_at?: string
         }
         Update: {
@@ -965,6 +967,7 @@ export type Database = {
           expressiveness_remark?: string | null
           sustained_focus_score?: number | null
           sustained_focus_remark?: string | null
+          lesson_remark?: string | null
           created_at?: string
         }
         Relationships: [
@@ -1446,6 +1449,7 @@ export type Database = {
             expressivenessRemark: string | null
             sustainedFocusScore: number
             sustainedFocusRemark: string | null
+            lessonRemark?: string | null
           }[]
         }
         Returns: {

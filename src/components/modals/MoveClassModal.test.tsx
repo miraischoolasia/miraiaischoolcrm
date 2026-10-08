@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { MoveClassModal, type MoveClassDraft } from './MoveClassModal'
@@ -72,5 +72,33 @@ describe('MoveClassModal', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Confirm Move' }))
 
     expect(onConfirm).toHaveBeenCalledWith({ startTime: '14:00', endTime: '16:00', reason: null })
+  })
+
+  it('shows the teacher’s clash for the chosen time, and re-checks as the time changes', () => {
+    const getClashes = vi.fn((startTime: string) =>
+      startTime === '20:30'
+        ? [{ scheduleId: 7, title: 'Thu Class', when: 'Friday 8:00pm-9:00pm' }]
+        : [],
+    )
+    render(
+      <MoveClassModal
+        draft={regular}
+        isSaving={false}
+        error={null}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        getClashes={getClashes}
+        clashTeacherName="Jia Hui"
+      />,
+    )
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Jia Hui is already teaching at this time')
+    expect(alert).toHaveTextContent('Thu Class - Friday 8:00pm-9:00pm')
+    expect(getClashes).toHaveBeenCalledWith('20:30', '21:30')
+
+    fireEvent.change(screen.getByLabelText('Start'), { target: { value: '18:00' } })
+    fireEvent.change(screen.getByLabelText('End'), { target: { value: '19:00' } })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })

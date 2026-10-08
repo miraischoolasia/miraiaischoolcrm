@@ -5,6 +5,7 @@ import { cn } from '../../lib/cn'
 import { getStudentStatus } from '../../domain/studentStatus'
 import { ageGroupOptions, programLevelOptions } from '../../lib/constants'
 import { weekdayLabels } from '../../lib/schedule'
+import type { TeacherClash } from '../../lib/clash'
 import type { Classroom, Schedule, ScheduleFormState, Student, Teacher } from '../../types/domain'
 
 type ScheduleModalProps = {
@@ -31,6 +32,9 @@ type ScheduleModalProps = {
   occurrenceDate: string | null
   isOccurrenceLogged: boolean
   onCancelOccurrence: (reason: string) => void
+  // The teacher's other classes that overlap this time (empty when none).
+  clashes?: TeacherClash[]
+  clashTeacherName?: string
 }
 
 export function ScheduleModal({
@@ -54,6 +58,8 @@ export function ScheduleModal({
   occurrenceDate,
   isOccurrenceLogged,
   onCancelOccurrence,
+  clashes = [],
+  clashTeacherName = 'This teacher',
 }: ScheduleModalProps) {
   const [occurrenceReason, setOccurrenceReason] = useState('')
   const canCancelOccurrence =
@@ -450,6 +456,27 @@ export function ScheduleModal({
                 </div>
               </div>
             </>
+          )}
+
+          {clashes.length > 0 && (
+            <div
+              role="alert"
+              className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:col-span-2"
+            >
+              <div className="font-semibold">
+                Time clash: {clashTeacherName} is already teaching at this time
+              </div>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                {clashes.map((clash) => (
+                  <li key={`${clash.scheduleId}-${clash.when}`}>
+                    {clash.title} - {clash.when}
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-1 text-amber-800">
+                You can still save, but you will be asked to confirm.
+              </div>
+            </div>
           )}
 
           <label className="space-y-2 sm:col-span-2">

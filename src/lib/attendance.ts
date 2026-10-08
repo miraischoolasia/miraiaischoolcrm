@@ -15,7 +15,10 @@ export type AttendanceStatusPayload = {
 export type AttendanceReviewPayload = {
   student_id: number
 } & Record<ReviewScoreField, number> &
-  Record<ReviewRemarkField, string | null>
+  Record<ReviewRemarkField, string | null> & {
+    // This student's own note on the lesson.
+    lessonRemark: string | null
+  }
 
 export type AttendanceSubmissionResult =
   | { ok: true; payload: AttendanceStatusPayload[]; reviewPayload: AttendanceReviewPayload[] }
@@ -78,6 +81,7 @@ export function buildAttendanceSubmission(
       expressivenessRemark: reviewForm.expressivenessRemark.trim() || null,
       sustainedFocusScore: reviewForm.sustainedFocusScore ?? 3,
       sustainedFocusRemark: reviewForm.sustainedFocusRemark.trim() || null,
+      lessonRemark: reviewForm.lessonRemark.trim() || null,
     })
   }
 
