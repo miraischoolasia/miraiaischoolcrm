@@ -20,6 +20,8 @@ import {
   Chalkboard,
   ClockCounterClockwise,
   CaretDown,
+  CaretDoubleLeft,
+  CaretDoubleRight,
   ClipboardText,
   Funnel,
   GraduationCap,
@@ -200,14 +202,36 @@ const chatwootUrl = getChatwootUrl(import.meta.env.VITE_CHATWOOT_URL)
 // Where the school's own inbox page reads and sends WhatsApp chats through.
 const whatsAppApiUrl = getChatwootUrl(import.meta.env.VITE_WHATSAPP_API_URL)
 
-function UnreadBadge({ count, noun = 'new submissions' }: { count: number; noun?: string }) {
+const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed'
+
+function readSidebarCollapsed() {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'yes'
+  } catch {
+    return false
+  }
+}
+
+function UnreadBadge({
+  count,
+  noun = 'new submissions',
+  corner = false,
+}: {
+  count: number
+  noun?: string
+  // On a menu that shows only icons, the number sits on the icon's corner.
+  corner?: boolean
+}) {
   if (count <= 0) {
     return null
   }
   return (
     <span
       aria-label={`${count} ${noun}`}
-      className="ml-2 min-w-5 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white"
+      className={cn(
+        'min-w-5 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white',
+        corner ? 'absolute right-1 top-0.5 min-w-4 px-1 text-[10px]' : 'ml-2',
+      )}
     >
       {count > 99 ? '99+' : count}
     </span>
@@ -312,6 +336,19 @@ function App() {
   const [studentFilter, setStudentFilter] = useState<FilterKey>('all')
   const [activeSection, setActiveSection] = useState<AppSection>('calendar')
   const [isMarketingOpen, setIsMarketingOpen] = useState(false)
+  // The menu can shrink to icons so the page beside it (the WhatsApp inbox) gets the room.
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readSidebarCollapsed)
+
+  function toggleSidebar() {
+    setIsSidebarCollapsed((collapsed) => {
+      try {
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? 'no' : 'yes')
+      } catch {
+        // Private windows can refuse storage; the choice just won't be remembered.
+      }
+      return !collapsed
+    })
+  }
   const [authSession, setAuthSession] = useState<Session | null>(null)
   // supabase-js hands onAuthStateChange a brand-new session object on every
   // TOKEN_REFRESHED event, including the proactive refresh it runs whenever
@@ -1229,17 +1266,22 @@ function App() {
         key={item.key}
         type="button"
         onClick={() => setActiveSection(item.key)}
+        title={isSidebarCollapsed ? item.label : undefined}
+        aria-label={isSidebarCollapsed ? item.label : undefined}
         className={cn(
-          'flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium transition',
+          'relative flex w-full items-center rounded-lg py-2 text-left text-sm font-medium transition',
+          isSidebarCollapsed ? 'justify-center px-0' : 'px-3',
           active
             ? 'bg-white text-[#be185d]'
             : 'text-white/70 hover:bg-white/5 hover:text-white',
         )}
       >
-        <item.icon size={18} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
-        <span className="ml-3 flex-1">{item.label}</span>
-        {item.key === 'forms' && <UnreadBadge count={unreadFormSubmissions} />}
-        {item.key === 'whatsapp' && <UnreadBadge count={unreadWhatsApp} noun="chats waiting" />}
+        <item.icon size={isSidebarCollapsed ? 22 : 18} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
+        {!isSidebarCollapsed && <span className="ml-3 flex-1">{item.label}</span>}
+        {item.key === 'forms' && <UnreadBadge count={unreadFormSubmissions} corner={isSidebarCollapsed} />}
+        {item.key === 'whatsapp' && (
+          <UnreadBadge count={unreadWhatsApp} noun="chats waiting" corner={isSidebarCollapsed} />
+        )}
       </button>
     )
   }
@@ -4862,14 +4904,37 @@ function App() {
       {confirmDialog}
       {toastHost}
       <div className="flex min-h-screen">
-        <aside className="hidden w-[220px] shrink-0 bg-[#0a0a0a] text-white lg:flex lg:flex-col">
-          <div className="flex flex-col items-center gap-1 border-b border-white/10 px-4 py-4">
-            <img src={miraiLogo} alt="Mirai AI School" className="h-24 w-auto" />
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/60">
-              Teaching System
-            </div>
+        <aside
+          className={cn(
+            'hidden shrink-0 bg-[#0a0a0a] text-white transition-[width] lg:flex lg:flex-col',
+            isSidebarCollapsed ? 'w-[64px]' : 'w-[220px]',
+          )}
+        >
+          <div className={cn('flex border-b border-white/10 px-2 pt-2', isSidebarCollapsed ? 'justify-center pb-2' : 'justify-end')}>
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              aria-label={isSidebarCollapsed ? 'Show the menu names' : 'Shrink the menu to icons'}
+              title={isSidebarCollapsed ? 'Show the menu names' : 'Shrink the menu to icons'}
+              className="rounded-lg p-1.5 text-white/60 transition hover:bg-white/10 hover:text-white"
+            >
+              {isSidebarCollapsed ? (
+                <CaretDoubleRight size={18} aria-hidden="true" />
+              ) : (
+                <CaretDoubleLeft size={18} aria-hidden="true" />
+              )}
+            </button>
           </div>
+          {!isSidebarCollapsed && (
+            <div className="flex flex-col items-center gap-1 border-b border-white/10 px-4 pb-4">
+              <img src={miraiLogo} alt="Mirai AI School" className="h-24 w-auto" />
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/60">
+                Teaching System
+              </div>
+            </div>
+          )}
 
+          {!isSidebarCollapsed && (
           <div className="px-3 py-3">
             <div className="rounded-xl bg-[#fc0c97] px-3 py-2.5">
               <div className="text-sm font-semibold">
@@ -4888,12 +4953,18 @@ function App() {
               </div>
             </div>
           </div>
+          )}
 
-          <nav className="flex-1 space-y-1 px-3">
+          <nav className={cn('flex-1 space-y-1', isSidebarCollapsed ? 'px-2 pt-3' : 'px-3')}>
             {navItems
               .filter((item) => !item.group && item.key === 'calendar')
               .map((item) => renderDesktopNavButton(item))}
-            {marketingNavItems.length > 0 && (
+            {marketingNavItems.length > 0 && isSidebarCollapsed && (
+              <div className="space-y-1 border-y border-white/10 py-1">
+                {marketingNavItems.map((item) => renderDesktopNavButton(item))}
+              </div>
+            )}
+            {marketingNavItems.length > 0 && !isSidebarCollapsed && (
               <div>
                 <button
                   type="button"
@@ -4927,9 +4998,11 @@ function App() {
               .map((item) => renderDesktopNavButton(item))}
           </nav>
 
-          <div className="border-t border-white/10 px-6 py-5 text-xs text-white/50">
-            Phase 4 attendance flow - mobile ready
-          </div>
+          {!isSidebarCollapsed && (
+            <div className="border-t border-white/10 px-6 py-5 text-xs text-white/50">
+              Phase 4 attendance flow - mobile ready
+            </div>
+          )}
         </aside>
 
         <section className="min-w-0 flex-1">
