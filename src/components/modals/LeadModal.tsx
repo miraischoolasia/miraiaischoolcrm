@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Plus, Trash, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import {
+  MALAYSIAN_STATES,
   MAX_LEAD_CHILDREN,
   leadChildAgeOptions,
   leadStatusOptions,
@@ -187,6 +188,22 @@ export function LeadModal({
             onChange={(value) => onFieldChange('picId', value)}
             onAdd={(label) => onAddLeadOption('pic', label)}
           />
+
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-slate-700">State</span>
+            <select
+              value={formState.state}
+              onChange={(event) => onFieldChange('state', event.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+            >
+              <option value="">- Not set -</option>
+              {MALAYSIAN_STATES.map((state) => (
+                <option key={state} value={state}>
+                  {state}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">Stage</span>

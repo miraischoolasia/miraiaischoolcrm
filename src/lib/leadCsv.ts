@@ -1,4 +1,4 @@
-import { MAX_LEAD_CHILDREN, leadStatusOptions } from './constants'
+import { MALAYSIAN_STATES, MAX_LEAD_CHILDREN, leadStatusOptions } from './constants'
 import type { LeadOption, LeadStatus } from '../types/domain'
 
 export type BulkLeadChild = { name: string; age: number; phone: string | null }
@@ -12,6 +12,8 @@ export type BulkLeadRow = {
   children: BulkLeadChild[]
   notes: string | null
   added_date: string
+  // Only present when the file named a state.
+  state?: string
 }
 
 export type LeadCsvParseResult = {
@@ -94,7 +96,7 @@ export function csvCell(value: string): string {
 }
 
 export function getLeadCsvHeaders(): string[] {
-  const headers = ['Parent Name', 'Phone', 'Source', 'Stage', 'Added Date', 'Notes']
+  const headers = ['Parent Name', 'Phone', 'State', 'Source', 'Stage', 'Added Date', 'Notes']
   for (let index = 1; index <= MAX_LEAD_CHILDREN; index += 1) {
     headers.push(`Child ${index} Name`, `Child ${index} Age`, `Child ${index} Phone`)
   }
@@ -107,6 +109,7 @@ export function buildLeadCsvTemplate(): string {
     [
       'Jane Tan',
       '+65 9123 4567',
+      'Selangor',
       'referral',
       'new',
       '2026-09-01',
@@ -124,6 +127,7 @@ export function buildLeadCsvTemplate(): string {
     [
       'Wei Ling',
       '+65 8123 9988',
+      'Pulau Pinang',
       'walk_in',
       'contacted',
       '2026-09-03',
@@ -166,6 +170,7 @@ export function parseLeadCsv(
 
   const fullNameIdx = columnIndex('Parent Name')
   const phoneIdx = columnIndex('Phone')
+  const stateIdx = columnIndex('State')
   const sourceIdx = columnIndex('Source')
   const stageIdx = columnIndex('Stage')
   const addedDateIdx = columnIndex('Added Date')
@@ -187,6 +192,11 @@ export function parseLeadCsv(
       sourceByName.set(normalizeSource(option.legacyKey), option.id)
     }
   }
+  // A state matches by its name, ignoring case and spacing; two common short forms work too.
+  const stateKey = (value: string) => value.toLowerCase().replace(/\s+/g, '')
+  const stateByName = new Map<string, string>(MALAYSIAN_STATES.map((state) => [stateKey(state), state]))
+  stateByName.set('penang', 'Pulau Pinang')
+  stateByName.set('kl', 'Kuala Lumpur')
   const statusKeys = new Set(leadStatusOptions.map((option) => option.key as string))
   const statusByLabel = new Map(
     leadStatusOptions.map((option) => [option.label.toLowerCase(), option.key]),
@@ -217,6 +227,15 @@ export function parseLeadCsv(
         errors.push(
           `Row ${lineNumber}: unknown source "${rawSource}". Add it under Leads > Sources & PIC first.`,
         )
+      }
+    }
+
+    let state: string | undefined
+    const rawState = (stateIdx >= 0 ? cells[stateIdx] : '')?.trim() ?? ''
+    if (rawState) {
+      state = stateByName.get(stateKey(rawState))
+      if (!state) {
+        errors.push(`Row ${lineNumber}: unknown state "${rawState}". Use a Malaysian state such as Selangor.`)
       }
     }
 
@@ -269,6 +288,7 @@ export function parseLeadCsv(
       children,
       notes,
       added_date: addedDate,
+      ...(state ? { state } : {}),
     })
   })
 

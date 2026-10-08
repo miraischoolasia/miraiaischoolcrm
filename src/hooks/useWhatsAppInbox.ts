@@ -224,6 +224,23 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
     })
   }, [])
 
+  // Opening a chat reads it. This undoes that (for a chat opened by mistake) and
+  // closes it, so it is not read again at once.
+  const markUnread = useCallback(
+    async (conversationId: number) => {
+      setActionError(null)
+      try {
+        await client.markUnread(conversationId)
+        const conversation = mapRef.current.get(conversationId)
+        patchConversation(conversationId, { unread_count: Math.max(1, conversation?.unread_count ?? 0) })
+        setSelectedId(null)
+      } catch {
+        setActionError("Couldn't mark this chat as unread. Try again.")
+      }
+    },
+    [client, patchConversation],
+  )
+
   // Saves the owner and the linked lead together, because Chatwoot replaces the whole set.
   const saveAttributes = useCallback(
     async (conversationId: number, change: ChatAttributes) => {
@@ -432,6 +449,22 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
     [outbox, selectedId, currentUser],
   )
 
+  // Brings in chats that a search found but the list has not loaded (older ones).
+  const loadMissingConversations = useCallback(
+    async (ids: number[]) => {
+      const missing = ids.filter((id) => !mapRef.current.has(id)).slice(0, 10)
+      if (missing.length === 0) {
+        return
+      }
+      const found = await Promise.all(missing.map((id) => client.getConversation(id).catch(() => null)))
+      const loaded = found.filter((conversation): conversation is ChatwootConversation => conversation !== null)
+      if (loaded.length > 0) {
+        setConversationMap((current) => mergeConversations(current, loaded))
+      }
+    },
+    [client],
+  )
+
   // Opens the chat with a number, creating it first if the number is new.
   const startNewChat = useCallback(
     async (input: { phone: string; name: string }) => {
@@ -475,11 +508,13 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
     canLoadMore,
     loadMore,
     setOwner,
+    markUnread,
     setLeadLink,
     setStatus,
     send,
     dismissUnsent,
     savePhone,
     startNewChat,
+    loadMissingConversations,
   }
 }

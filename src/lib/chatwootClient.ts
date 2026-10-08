@@ -91,8 +91,25 @@ export function createChatwootClient(
       await request(`/conversations/${conversationId}/toggle_status`, json('POST', { status }))
     },
 
+    // Puts the chat back to "nobody has opened it", the way a phone does.
+    async markUnread(conversationId: number) {
+      await request(`/conversations/${conversationId}/unread`, { method: 'POST' })
+    },
+
     async markSeen(conversationId: number) {
       await request(`/conversations/${conversationId}/update_last_seen`, { method: 'POST' })
+    },
+
+    // Chats with a message containing these words, and the message that matched.
+    async searchMessages(query: string): Promise<{ conversationId: number; snippet: string }[]> {
+      const data = await request<{ payload: { id: number; messages?: { content: string | null }[] }[] }>(
+        `/conversations/search?q=${encodeURIComponent(query)}&page=1`,
+      )
+      return data.payload.map((item) => ({ conversationId: item.id, snippet: (item.messages?.[0]?.content ?? '').trim() }))
+    },
+
+    async getConversation(conversationId: number): Promise<ChatwootConversation> {
+      return request<ChatwootConversation>(`/conversations/${conversationId}`)
     },
 
     // The WhatsApp inbox: where new chats are created.

@@ -120,6 +120,21 @@ describe('Composer quick replies', () => {
     expect(onSend).not.toHaveBeenCalled()
   })
 
+  it('adds an emoji where the cursor is, and keeps the box open for more', async () => {
+    window.localStorage.clear()
+    setup()
+    const box = screen.getByLabelText('Message to parent')
+
+    await userEvent.type(box, 'Hi  there')
+    ;(box as HTMLTextAreaElement).setSelectionRange(3, 3)
+    await userEvent.click(screen.getByRole('button', { name: 'Add an emoji' }))
+    await userEvent.click(screen.getByRole('button', { name: '😀' }))
+    await userEvent.click(screen.getByRole('button', { name: '😃' }))
+
+    expect(box).toHaveValue('Hi 😀😃 there')
+    expect(screen.getByRole('dialog', { name: 'Emoji' })).toBeInTheDocument()
+  })
+
   it('offers the manage link only when it is allowed', async () => {
     const { onManage } = setup()
 

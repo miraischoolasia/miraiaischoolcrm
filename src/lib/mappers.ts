@@ -116,6 +116,7 @@ export function mapLeadRow(row: LeadRow): Lead {
     phone: row.phone,
     sourceId: row.source_id,
     picId: row.pic_id,
+    state: row.state ?? null,
     tagIds: row.tag_ids ?? [],
     checks: mapLeadChecks(row.checks),
     status: row.status,

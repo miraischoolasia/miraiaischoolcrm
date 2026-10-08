@@ -3,14 +3,17 @@ import type { Classroom, Lead, LeadOption, LeadOptionKind, LeadStatus, Package, 
 // What the WhatsApp page needs from the rest of the CRM: the records to match a
 // chat against, and the few things the team can do to them from the side panel.
 
-export type NewLeadInput = {
+// Everything the side panel can set on a lead, to create one or to save changes.
+export type LeadFormValues = {
   fullName: string
   phone: string
+  // One of the Malaysian states, '' when not set.
+  state: string
   sourceId: number | null
   picId: number | null
   tagIds: number[]
-  childName: string
-  childAge: number | null
+  status: LeadStatus
+  children: { name: string; age: number; phone: string | null }[]
   notes: string
 }
 
@@ -25,8 +28,8 @@ export type WhatsAppCrm = {
   canEditStudents: boolean
   // Make-up classes are arranged with the calendar's permission.
   canBookMakeup: boolean
-  onCreateLead: (input: NewLeadInput) => Promise<{ leadId: number | null; error: string | null }>
-  onChangeLeadStatus: (leadId: number, status: LeadStatus) => Promise<void>
+  onCreateLead: (input: LeadFormValues) => Promise<{ leadId: number | null; error: string | null }>
+  onUpdateLead: (leadId: number, input: LeadFormValues) => Promise<string | null>
   // The lead's next trial day (or last one), written the way a parent reads it.
   trialDateFor: (leadId: number) => string | null
   onAddFollowUp: (leadId: number, note: string) => Promise<string | null>

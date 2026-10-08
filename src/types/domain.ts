@@ -201,6 +201,8 @@ export type Lead = {
   phone: string | null
   sourceId: number | null
   picId: number | null
+  // One of the Malaysian states, or null when not known.
+  state: string | null
   // Ids of lead_options of kind 'tag'.
   tagIds: number[]
   // Which tick columns are ticked, and when and by whom.
@@ -389,6 +391,8 @@ export type LeadFormState = {
   // Option ids as strings for the selects; '' = none picked.
   sourceId: string
   picId: string
+  // '' = not set.
+  state: string
   tagIds: number[]
   status: LeadStatus
   children: LeadChildFormState[]
@@ -509,6 +513,7 @@ export type LeadRow = Pick<
   | 'phone'
   | 'source_id'
   | 'pic_id'
+  | 'state'
   | 'tag_ids'
   | 'checks'
   | 'status'

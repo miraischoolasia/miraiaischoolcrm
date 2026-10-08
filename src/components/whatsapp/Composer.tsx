@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Lightning, Microphone, PaperPlaneTilt, Paperclip, Trash, X } from '@phosphor-icons/react'
+import { Lightning, Microphone, PaperPlaneTilt, Paperclip, Smiley, Trash, X } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { useVoiceRecorder } from '../../hooks/useVoiceRecorder'
 import type { SendInput } from '../../hooks/useWhatsAppInbox'
 import { fillVariables, unfilledVariables, type QuickReply, type VariableValues } from '../../lib/quickReplies'
 import { downloadQuickReplyMedia } from '../../lib/quickRepliesApi'
+import { EmojiPicker } from './EmojiPicker'
+import { insertAt, rememberEmoji } from '../../lib/emoji'
 import { QuickReplyPicker } from './QuickReplyPicker'
 
 type ComposerProps = {
@@ -30,6 +32,8 @@ export function Composer({ onSend, quickReplies, variables, onManageQuickReplies
   const [files, setFiles] = useState<File[]>([])
   const [hint, setHint] = useState<string | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [emojiOpen, setEmojiOpen] = useState(false)
+  const textarea = useRef<HTMLTextAreaElement>(null)
   const [isLoadingMedia, setIsLoadingMedia] = useState(false)
   const { reload: reloadQuickReplies } = quickReplies
   const fileInput = useRef<HTMLInputElement>(null)
@@ -48,6 +52,19 @@ export function Composer({ onSend, quickReplies, variables, onManageQuickReplies
   function addFiles(list: FileList | File[]) {
     setFiles((current) => [...current, ...Array.from(list)])
     setHint(null)
+  }
+
+  // Puts the emoji where the cursor is, and leaves the cursor after it.
+  function addEmoji(emoji: string) {
+    const field = textarea.current
+    const next = insertAt(text, emoji, field?.selectionStart ?? text.length, field?.selectionEnd ?? text.length)
+    setText(next.text)
+    setHint(null)
+    rememberEmoji(emoji)
+    window.requestAnimationFrame(() => {
+      field?.focus()
+      field?.setSelectionRange(next.cursor, next.cursor)
+    })
   }
 
   function openPicker() {
@@ -273,7 +290,9 @@ export function Composer({ onSend, quickReplies, variables, onManageQuickReplies
         </div>
       ) : (
         <div className="flex items-end gap-1.5 sm:gap-2">
+          <div className="relative min-w-0 flex-1">
           <textarea
+            ref={textarea}
             value={text}
             rows={1}
             onChange={(event) => {
@@ -293,8 +312,21 @@ export function Composer({ onSend, quickReplies, variables, onManageQuickReplies
             }}
             placeholder={mode === 'note' ? 'Write a note for your team' : 'Write a message'}
             aria-label={mode === 'note' ? 'Private note' : 'Message to parent'}
-            className="max-h-32 min-h-[40px] flex-1 resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#fc0c97]"
+            className="max-h-32 min-h-[40px] w-full resize-none rounded-lg border border-slate-200 py-2 pl-3 pr-10 text-sm outline-none focus:border-[#fc0c97]"
           />
+          <button
+            type="button"
+            data-emoji-toggle
+            onClick={() => setEmojiOpen((open) => !open)}
+            aria-label="Add an emoji"
+            aria-expanded={emojiOpen}
+            title="Add an emoji"
+            className="absolute bottom-1.5 right-1.5 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          >
+            <Smiley size={20} />
+          </button>
+          {emojiOpen && <EmojiPicker onPick={addEmoji} onClose={() => setEmojiOpen(false)} />}
+          </div>
           <input
             ref={fileInput}
             type="file"

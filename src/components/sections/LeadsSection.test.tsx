@@ -22,6 +22,7 @@ function makeLead(id: number, picId: number | null): Lead {
     phone: `01${String(id).padStart(8, '0')}`,
     sourceId: 1,
     picId,
+    state: null,
     tagIds: [],
     checks: {},
     status: 'new',

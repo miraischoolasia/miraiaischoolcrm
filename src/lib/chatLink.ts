@@ -46,6 +46,29 @@ export function resolveChatLead(linkedLeadId: number | null, phone: string | nul
   return { lead: matched, byPhone: matched !== null }
 }
 
+// The same lookup as resolveChatLead, built once so a long list of chats is cheap.
+export function makeLeadResolver(leads: Lead[]) {
+  const byId = new Map(leads.map((lead) => [lead.id, lead]))
+  const byPhone = new Map<string, Lead>()
+  // Oldest first, so when two leads share a number the newest one wins.
+  for (const lead of [...leads].sort((a, b) => a.id - b.id)) {
+    for (const phone of [lead.phone, ...lead.children.map((child) => child.phone)]) {
+      const key = canonicalPhone(phone)
+      if (key) {
+        byPhone.set(key, lead)
+      }
+    }
+  }
+  return (linkedLeadId: number | null, phone: string | null): Lead | null => {
+    const linked = linkedLeadId === null ? undefined : byId.get(linkedLeadId)
+    if (linked) {
+      return linked
+    }
+    const key = canonicalPhone(phone)
+    return key ? (byPhone.get(key) ?? null) : null
+  }
+}
+
 // The names a quick reply can fill in for this chat.
 export function quickReplyValues(input: {
   lead: Lead | null
@@ -60,6 +83,38 @@ export function quickReplyValues(input: {
     '{trial date}': input.trialDate ?? '',
     '{my name}': input.myName,
   }
+}
+
+function nameKey(value: string | null | undefined) {
+  return (value ?? '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+}
+
+// Two letters are enough for a Chinese name, an English name needs three.
+function longEnough(key: string) {
+  return /\p{Script=Han}/u.test(key) ? key.length >= 2 : key.length >= 3
+}
+
+// Leads whose parent or child name matches the name this chat shows. WhatsApp hides
+// some people's numbers, so a name is all there is to go on. Closest match first.
+export function suggestLeadsByName(chatName: string, leads: Lead[], limit = 3) {
+  const wanted = nameKey(chatName)
+  if (!longEnough(wanted)) {
+    return []
+  }
+  const scored = leads.flatMap((lead) => {
+    const names = [lead.fullName, ...lead.children.map((child) => child.name)].map(nameKey).filter(longEnough)
+    if (names.some((name) => name === wanted)) {
+      return [{ lead, score: 2 }]
+    }
+    if (names.some((name) => name.includes(wanted) || wanted.includes(name))) {
+      return [{ lead, score: 1 }]
+    }
+    return []
+  })
+  return scored.sort((a, b) => b.score - a.score || b.lead.id - a.lead.id).slice(0, limit).map((entry) => entry.lead)
 }
 
 export function findStudentsByPhone(phone: string | null | undefined, students: Student[]) {

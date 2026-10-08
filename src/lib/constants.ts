@@ -96,6 +96,26 @@ export const leadStatusOptions: Array<{ key: LeadStatus; label: string }> = [
 
 export const leadChildAgeOptions = Array.from({ length: 15 }, (_, index) => index + 4)
 
+// The 13 states and 3 federal territories of Malaysia, as stored on a lead.
+export const MALAYSIAN_STATES = [
+  'Johor',
+  'Kedah',
+  'Kelantan',
+  'Melaka',
+  'Negeri Sembilan',
+  'Pahang',
+  'Perak',
+  'Perlis',
+  'Pulau Pinang',
+  'Sabah',
+  'Sarawak',
+  'Selangor',
+  'Terengganu',
+  'Kuala Lumpur',
+  'Labuan',
+  'Putrajaya',
+] as const
+
 export const MAX_LEAD_CHILDREN = 3
 
 export const MAX_LEAD_FOLLOW_UPS = 7

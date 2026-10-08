@@ -20,6 +20,7 @@ function lead(patch: Partial<Lead>): Lead {
     phone: '60123456789',
     sourceId: 1,
     picId: 10,
+    state: null,
     tagIds: [],
     checks: {},
     status: 'contacted',
@@ -41,7 +42,7 @@ describe('buildLeadsExportCsv', () => {
   it('has a title row with the names the admin gave the tick columns', () => {
     const [header] = lines(buildLeadsExportCsv([], options, columns))
 
-    expect(header).toBe('Added,Name,Phone,Children,Source,PIC,Stage,Tags,RM99 pack,Joined event,Notes')
+    expect(header).toBe('Added,Name,Phone,State,Children,Source,PIC,Stage,Tags,RM99 pack,Joined event,Notes')
   })
 
   it('writes one row per lead with names instead of ids', () => {
@@ -52,6 +53,7 @@ describe('buildLeadsExportCsv', () => {
             { name: 'Ken', age: 9, phone: null },
             { name: '', age: 7, phone: '60111112222' },
           ],
+          state: 'Selangor',
           tagIds: [20, 21],
           checks: { 2: { at: '2026-10-06T00:00:00Z', by: 4 } },
           notes: 'Wants Saturday',
@@ -62,7 +64,7 @@ describe('buildLeadsExportCsv', () => {
     )
 
     expect(lines(csv)[1]).toBe(
-      '2026-10-06,Mrs Lim,60123456789,Ken (9); Child (7) 60111112222,Walk-in,Alex,Contacted,"Hot; VIP, gold",,Yes,Wants Saturday',
+      '2026-10-06,Mrs Lim,60123456789,Selangor,Ken (9); Child (7) 60111112222,Walk-in,Alex,Contacted,"Hot; VIP, gold",,Yes,Wants Saturday',
     )
   })
 
@@ -73,13 +75,13 @@ describe('buildLeadsExportCsv', () => {
       columns,
     )
 
-    expect(lines(csv)[1]).toBe('2026-10-06,,,,,,Contacted,,,,')
+    expect(lines(csv)[1]).toBe('2026-10-06,,,,,,,Contacted,,,,')
   })
 
   it('has no tick columns before the database has them', () => {
     const csv = buildLeadsExportCsv([lead({})], options, [])
 
-    expect(lines(csv)[0]).toBe('Added,Name,Phone,Children,Source,PIC,Stage,Tags,Notes')
+    expect(lines(csv)[0]).toBe('Added,Name,Phone,State,Children,Source,PIC,Stage,Tags,Notes')
   })
 
   it('keeps a spreadsheet from running a name or note that starts like a formula', () => {

@@ -212,11 +212,15 @@ export async function fetchLeadsFromSupabase() {
 
   const columns =
     'id, full_name, phone, status, children, notes, follow_ups, tasks, converted_student_id, added_date, created_at, updated_at'
-  let { data, error } = await select(`${columns}, source_id, pic_id, tag_ids, checks`)
+  let { data, error } = await select(`${columns}, source_id, pic_id, tag_ids, checks, state`)
 
-  // Before the tags migration tag_ids / checks do not exist, and before the
-  // lead options migration neither do source_id / pic_id: load the leads
-  // without them rather than failing the workspace.
+  // Before the state migration the state column does not exist, before the tags
+  // migration tag_ids / checks do not, and before the lead options migration
+  // neither do source_id / pic_id: load the leads without them rather than
+  // failing the workspace.
+  if (error?.code === '42703') {
+    ;({ data, error } = await select(`${columns}, source_id, pic_id, tag_ids, checks`))
+  }
   if (error?.code === '42703') {
     ;({ data, error } = await select(`${columns}, source_id, pic_id`))
   }
@@ -229,7 +233,7 @@ export async function fetchLeadsFromSupabase() {
   }
 
   return (data ?? []).map((row) =>
-    mapLeadRow({ ...row, source_id: row.source_id ?? null, pic_id: row.pic_id ?? null }),
+    mapLeadRow({ ...row, source_id: row.source_id ?? null, pic_id: row.pic_id ?? null, state: row.state ?? null }),
   )
 }
 

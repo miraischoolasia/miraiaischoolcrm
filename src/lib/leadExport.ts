@@ -16,6 +16,7 @@ export function buildLeadsExportCsv(
     'Added',
     'Name',
     'Phone',
+    'State',
     'Children',
     'Source',
     'PIC',
@@ -29,6 +30,7 @@ export function buildLeadsExportCsv(
     lead.addedDate,
     lead.fullName ?? '',
     lead.phone ?? '',
+    lead.state ?? '',
     lead.children
       .map((child) => `${child.name || 'Child'} (${child.age})${child.phone ? ` ${child.phone}` : ''}`)
       .join('; '),

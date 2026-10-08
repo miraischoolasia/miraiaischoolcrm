@@ -8,6 +8,8 @@ import {
   findStudentsByPhone,
   getFirstMessage,
   guessSourceAndTags,
+  makeLeadResolver,
+  suggestLeadsByName,
 } from './chatLink'
 
 const lead = (id: number, phone: string | null, childPhone: string | null = null): Lead =>
@@ -129,5 +131,50 @@ describe('appendLeaveNote', () => {
     expect(appendLeaveNote('Likes Scratch', { date: '2026-10-12', text: 'Trip', by: 'Amy' })).toBe(
       'Likes Scratch\nLeave (noted 2026-10-12 by Amy): Trip',
     )
+  })
+})
+
+describe('suggestLeadsByName', () => {
+  const named = (id: number, fullName: string | null, child?: string) =>
+    ({ id, fullName, phone: null, children: child ? [{ name: child, age: 8, phone: null }] : [] }) as Lead
+
+  it('finds the lead with the same name, ignoring capitals and punctuation', () => {
+    const found = suggestLeadsByName('Mei-Ling Tan', [named(1, 'mei ling tan'), named(2, 'Aisha')])
+    expect(found.map((lead) => lead.id)).toEqual([1])
+  })
+
+  it('also matches the child name and a name that holds the other', () => {
+    const found = suggestLeadsByName('Ethan', [named(1, 'Mei Ling', 'Ethan Tan'), named(2, 'Ethan')])
+    expect(found.map((lead) => lead.id)).toEqual([2, 1])
+  })
+
+  it('works for a Chinese name of two characters', () => {
+    expect(suggestLeadsByName('奕婷', [named(1, '陈奕婷')]).map((lead) => lead.id)).toEqual([1])
+  })
+
+  it('does not guess from a name too short to mean anything', () => {
+    expect(suggestLeadsByName('Al', [named(1, 'Alice')])).toEqual([])
+    expect(suggestLeadsByName('', [named(1, 'Alice')])).toEqual([])
+  })
+
+  it('returns at most three, closest first', () => {
+    const leads = [1, 2, 3, 4].map((id) => named(id, `Sam ${id}`))
+    expect(suggestLeadsByName('Sam', leads)).toHaveLength(3)
+  })
+})
+
+describe('makeLeadResolver', () => {
+  it('finds the linked lead first, then a lead by phone, the newest when two share it', () => {
+    const resolve = makeLeadResolver([lead(1, '0123456789'), lead(2, '012-345 6789'), lead(3, '0199999999')])
+
+    expect(resolve(3, '60123456789')?.id).toBe(3)
+    expect(resolve(null, '60123456789')?.id).toBe(2)
+    expect(resolve(99, '60123456789')?.id).toBe(2)
+    expect(resolve(null, '60100000000')).toBeNull()
+    expect(resolve(null, null)).toBeNull()
+  })
+
+  it('matches a child phone too', () => {
+    expect(makeLeadResolver([lead(4, null, '0161234567')])(null, '60161234567')?.id).toBe(4)
   })
 })

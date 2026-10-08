@@ -1,23 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import { cn } from '../../lib/cn'
 import { createChatwootClient, type Sender } from '../../lib/chatwootClient'
+import { useMessageSearch } from '../../hooks/useMessageSearch'
 import { useWhatsAppInbox } from '../../hooks/useWhatsAppInbox'
 import {
   countByTab,
-  countWaiting,
   filterConversations,
   getChatIdentity,
   getLinkedLeadId,
   getRealPhone,
   isRecentlyOverdue,
   type InboxTab,
-  type OwnerFilter,
 } from '../../lib/whatsappInbox'
 import { ChatPanel } from './ChatPanel'
 import { ConversationList } from './ConversationList'
 import { useQuickReplies } from '../../hooks/useQuickReplies'
 import { useSourceRules } from '../../hooks/useSourceRules'
-import { quickReplyValues, resolveChatLead } from '../../lib/chatLink'
+import { makeLeadResolver, quickReplyValues, resolveChatLead } from '../../lib/chatLink'
 import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
 import { NewChatDialog } from './NewChatDialog'
@@ -35,15 +34,63 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
   const client = useMemo(() => createChatwootClient(apiUrl), [apiUrl])
   const inbox = useWhatsAppInbox(client, currentUser)
   const [tab, setTab] = useState<InboxTab>('chats')
-  const [owner, setOwner] = useState<OwnerFilter>('everyone')
+  const [tagId, setTagId] = useState<number | null>(null)
+  const [sourceId, setSourceId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   // On a small screen the side panel takes the place of the chat.
   const [detailsOpen, setDetailsOpen] = useState(false)
 
   const counts = useMemo(() => countByTab(inbox.conversations), [inbox.conversations])
+  // Words typed in the search are also looked for inside the messages of every chat.
+  const messageHits = useMessageSearch(client, search)
+  const matchedIds = useMemo(() => new Set(messageHits.keys()), [messageHits])
+  const { loadMissingConversations } = inbox
+  useEffect(() => {
+    if (messageHits.size > 0) {
+      void loadMissingConversations([...messageHits.keys()])
+    }
+  }, [messageHits, loadMissingConversations])
+
+  // Which lead each chat belongs to, for the tag and source filters.
+  const resolveLead = useMemo(() => makeLeadResolver(crm.leads), [crm.leads])
+  // How many open chats belong to a lead with each tag or source, so the menus can show it.
+  const optionCounts = useMemo(() => {
+    const tags = new Map<number, number>()
+    const sources = new Map<number, number>()
+    for (const conversation of inbox.conversations) {
+      if (conversation.status === 'resolved') {
+        continue
+      }
+      const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
+      if (!lead) {
+        continue
+      }
+      if (lead.sourceId !== null) {
+        sources.set(lead.sourceId, (sources.get(lead.sourceId) ?? 0) + 1)
+      }
+      for (const id of lead.tagIds) {
+        tags.set(id, (tags.get(id) ?? 0) + 1)
+      }
+    }
+    return { tags, sources }
+  }, [inbox.conversations, resolveLead])
+  // Every option that is on offer, plus hidden ones that leads still use (a hidden
+  // option can still be on many leads, so it must stay filterable).
+  const choicesFor = (kind: 'tag' | 'source', counts: Map<number, number>) =>
+    crm.leadOptions
+      .filter((option) => option.kind === kind && (option.isActive || (counts.get(option.id) ?? 0) > 0))
+      .map((option) => ({ id: option.id, label: `${option.label} (${counts.get(option.id) ?? 0})` }))
+  const tagOptions = choicesFor('tag', optionCounts.tags)
+  const sourceOptions = choicesFor('source', optionCounts.sources)
   const visible = useMemo(
-    () => filterConversations(inbox.conversations, { tab, owner, search, currentUserId: currentUser.id }),
-    [inbox.conversations, tab, owner, search, currentUser.id],
+    () =>
+      filterConversations(
+        inbox.conversations,
+        { tab, search, tagId, sourceId, matchedIds },
+        (conversation) =>
+          resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number)),
+      ),
+    [inbox.conversations, tab, search, tagId, sourceId, matchedIds, resolveLead],
   )
   const hasChat = inbox.selected !== null
 
@@ -53,7 +100,6 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
     const timer = window.setInterval(() => setNowSeconds(Math.floor(Date.now() / 1000)), 30_000)
     return () => window.clearInterval(timer)
   }, [])
-  const waitingCount = useMemo(() => countWaiting(inbox.conversations, nowSeconds), [inbox.conversations, nowSeconds])
   const overdueCount = useMemo(
     () => inbox.conversations.filter((conversation) => isRecentlyOverdue(conversation, nowSeconds)).length,
     [inbox.conversations, nowSeconds],
@@ -75,7 +121,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
     const { lead } = resolveChatLead(getLinkedLeadId(inbox.selected), getRealPhone(sender.phone_number), crm.leads)
     return quickReplyValues({
       lead,
-      chatName: identity.title === 'Hidden number' || identity.title.startsWith('+') ? '' : identity.title,
+      chatName: identity.name ?? '',
       trialDate: lead ? crm.trialDateFor(lead.id) : null,
       myName: currentUser.name,
     })
@@ -96,17 +142,21 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
         counts={counts}
         hasMoreOpen={inbox.canLoadMore.open}
         tab={tab}
-        owner={owner}
         search={search}
+        tagId={tagId}
+        sourceId={sourceId}
+        tags={tagOptions}
+        sources={sourceOptions}
+        snippets={messageHits}
         selectedId={inbox.selectedId}
         nowSeconds={nowSeconds}
-        waitingCount={waitingCount}
         overdueCount={overdueCount}
         isLoading={inbox.isLoading}
         loadError={inbox.loadError}
         canLoadMore={tab === 'done' ? inbox.canLoadMore.resolved : inbox.canLoadMore.open}
         onTab={setTab}
-        onOwner={setOwner}
+        onTag={setTagId}
+        onSource={setSourceId}
         onSearch={setSearch}
         onSelect={(id) => {
           setDetailsOpen(false)
@@ -136,6 +186,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
             onDismissUnsent={inbox.dismissUnsent}
             onSetOwner={(person) => void inbox.setOwner(inbox.selected!.id, person)}
             onSetStatus={(status) => void inbox.setStatus(inbox.selected!.id, status)}
+            onMarkUnread={() => void inbox.markUnread(inbox.selected!.id)}
             quickReplies={quickReplies}
             quickReplyValues={quickReplyFill}
             onManageQuickReplies={crm.canEditLeads ? () => setManagingReplies(true) : undefined}

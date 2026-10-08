@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChatwootClient } from '../lib/chatwootClient'
-import { isSoundOn, playBeep, showDesktopAlert } from '../lib/inboxAlerts'
+import { isSoundOn, playAlertSound, showDesktopAlert } from '../lib/inboxAlerts'
 import { countUnread, getChatIdentity, getPreview, isOverdue } from '../lib/whatsappInbox'
 
 const REFRESH_MS = 10_000
@@ -40,7 +40,7 @@ export function useWhatsAppUnread(client: ChatwootClient | null) {
         seenUnread.current = next
         if (newlyLate.length > 0) {
           if (isSoundOn()) {
-            playBeep()
+            playAlertSound()
           }
           showDesktopAlert(
             `Waiting over 30 minutes: ${getChatIdentity(newlyLate[0].meta.sender).title}`,
@@ -53,7 +53,7 @@ export function useWhatsAppUnread(client: ChatwootClient | null) {
         const fresh = conversations.filter((c) => c.unread_count > (previous.get(c.id) ?? 0))
         if (fresh.length > 0) {
           if (isSoundOn()) {
-            playBeep()
+            playAlertSound()
           }
           const newest = fresh[0]
           showDesktopAlert(

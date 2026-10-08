@@ -18,6 +18,7 @@ const formState: LeadFormState = {
   phone: '60123456789',
   sourceId: '',
   picId: '',
+  state: '',
   tagIds: [1],
   status: 'new',
   children: [{ name: 'Ken', age: '9', phone: '' }],

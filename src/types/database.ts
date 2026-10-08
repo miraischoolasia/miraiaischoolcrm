@@ -462,6 +462,7 @@ export type Database = {
           source: string
           source_id: number | null
           pic_id: number | null
+          state: string | null
           tag_ids: number[]
           checks: Record<string, { at: string | null; by: number | null }>
           status:
@@ -487,6 +488,7 @@ export type Database = {
           source?: string
           source_id?: number | null
           pic_id?: number | null
+          state?: string | null
           tag_ids?: number[]
           checks?: Record<string, boolean | { at: string | null; by: number | null }>
           status?:
@@ -512,6 +514,7 @@ export type Database = {
           source?: string
           source_id?: number | null
           pic_id?: number | null
+          state?: string | null
           tag_ids?: number[]
           checks?: Record<string, boolean | { at: string | null; by: number | null }>
           status?:

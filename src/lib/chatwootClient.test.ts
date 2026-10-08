@@ -57,6 +57,21 @@ describe('createChatwootClient', () => {
     expect(new Headers(fetchMock.mock.calls[0][1].headers).has('Content-Type')).toBe(false)
   })
 
+  it('searches the words inside messages and returns the matching message', async () => {
+    const fetchMock = stubFetch({ payload: [{ id: 5, messages: [{ content: '  The fees are RM100 ' }] }, { id: 6, messages: [] }] })
+    const client = createChatwootClient('https://wa.example.com', '1', async () => 'login-token')
+
+    const found = await client.searchMessages('fees & more')
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'https://wa.example.com/api/v1/accounts/1/conversations/search?q=fees%20%26%20more&page=1',
+    )
+    expect(found).toEqual([
+      { conversationId: 5, snippet: 'The fees are RM100' },
+      { conversationId: 6, snippet: '' },
+    ])
+  })
+
   it('fails with the status when the gateway refuses', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 403 })))
     const client = createChatwootClient('https://wa.example.com', '1', async () => 'login-token')

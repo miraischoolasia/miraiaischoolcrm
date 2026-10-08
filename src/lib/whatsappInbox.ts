@@ -1,10 +1,9 @@
 // What the WhatsApp inbox knows about a chat, kept apart from the screens so the
 // rules (which tab a chat sits in, whose number to show) are easy to test.
 
-// Every open chat is in one list; only a finished chat moves to Done.
-export type InboxTab = 'chats' | 'done'
-export type OwnerFilter = 'everyone' | 'mine' | 'unassigned'
-
+// Every open chat is in Chats; Unread shows only the ones nobody has opened yet.
+// A finished chat moves to Done.
+export type InboxTab = 'chats' | 'unread' | 'done'
 export type ChatwootAttachment = {
   id: number
   file_type: string
@@ -87,7 +86,12 @@ export function formatPhone(digits: string) {
   return `+${digits}`
 }
 
+// What a chat is called when WhatsApp gives neither a name nor a number.
+export const UNNAMED_CHAT = 'WhatsApp user'
+
 export type ChatIdentity = {
+  // The name the person gave WhatsApp, or null when there is none.
+  name: string | null
   title: string
   // The number, or a plain reason there is none.
   subtitle: string
@@ -102,7 +106,7 @@ export function getChatIdentity(sender: ChatwootSender): ChatIdentity {
   const nameIsJustDigits = /^\+?\d+$/.test(cleanName)
   const hasName = cleanName.length > 0 && !nameIsJustDigits
 
-  const title = hasName ? cleanName : phone ? formatPhone(phone) : 'Hidden number'
+  const title = hasName ? cleanName : phone ? formatPhone(phone) : UNNAMED_CHAT
   const subtitle = phone ? formatPhone(phone) : 'Number hidden by WhatsApp'
   const initials = hasName
     ? cleanName
@@ -115,11 +119,18 @@ export function getChatIdentity(sender: ChatwootSender): ChatIdentity {
       ? phone.slice(-2)
       : '?'
 
-  return { title, subtitle, hasRealPhone: phone !== null, initials }
+  return { name: hasName ? cleanName : null, title, subtitle, hasRealPhone: phone !== null, initials }
 }
 
-export function getTab(conversation: Pick<ChatwootConversation, 'status'>): InboxTab {
+export function getTab(conversation: Pick<ChatwootConversation, 'status'>): 'chats' | 'done' {
   return conversation.status === 'resolved' ? 'done' : 'chats'
+}
+
+function isInTab(conversation: Pick<ChatwootConversation, 'status' | 'unread_count'>, tab: InboxTab) {
+  if (tab === 'unread') {
+    return conversation.status !== 'resolved' && conversation.unread_count > 0
+  }
+  return getTab(conversation) === tab
 }
 
 // A parent who has waited this long for an answer is flagged.
@@ -219,26 +230,39 @@ export function getPreview(conversation: Pick<ChatwootConversation, 'last_non_ac
 
 export type InboxFilters = {
   tab: InboxTab
-  owner: OwnerFilter
   search: string
-  currentUserId: number
+  // Only chats of a lead that carries this tag, or came from this source.
+  tagId: number | null
+  sourceId: number | null
+  // Chats whose messages contain the search words (found by the server).
+  matchedIds?: ReadonlySet<number>
 }
 
-export function filterConversations(conversations: ChatwootConversation[], filters: InboxFilters) {
+// The lead a chat belongs to, for the tag and source filters.
+export type LeadOfChat = (conversation: ChatwootConversation) => { tagIds: number[]; sourceId: number | null } | null
+
+export function filterConversations(
+  conversations: ChatwootConversation[],
+  filters: InboxFilters,
+  leadOf: LeadOfChat = () => null,
+) {
   const query = filters.search.trim().toLowerCase()
   const digitsQuery = query.replace(/\D/g, '')
 
   return conversations
-    .filter((conversation) => getTab(conversation) === filters.tab)
+    .filter((conversation) => isInTab(conversation, filters.tab))
     .filter((conversation) => {
-      const owner = getOwner(conversation)
-      if (filters.owner === 'mine') {
-        return owner?.id === filters.currentUserId
+      if (filters.tagId === null && filters.sourceId === null) {
+        return true
       }
-      if (filters.owner === 'unassigned') {
-        return owner === null
+      const lead = leadOf(conversation)
+      if (!lead) {
+        return false
       }
-      return true
+      return (
+        (filters.tagId === null || lead.tagIds.includes(filters.tagId)) &&
+        (filters.sourceId === null || lead.sourceId === filters.sourceId)
+      )
     })
     .filter((conversation) => {
       if (!query) {
@@ -249,6 +273,7 @@ export function filterConversations(conversations: ChatwootConversation[], filte
       const phone = (sender.phone_number ?? '').replace(/\D/g, '')
       const preview = getPreview(conversation).toLowerCase()
       return (
+        filters.matchedIds?.has(conversation.id) === true ||
         name.includes(query) ||
         preview.includes(query) ||
         (digitsQuery.length >= 3 && phone.includes(digitsQuery))
@@ -258,16 +283,14 @@ export function filterConversations(conversations: ChatwootConversation[], filte
 }
 
 export function countByTab(conversations: ChatwootConversation[]) {
-  const counts: Record<InboxTab, number> = { chats: 0, done: 0 }
+  const counts: Record<InboxTab, number> = { chats: 0, unread: 0, done: 0 }
   for (const conversation of conversations) {
     counts[getTab(conversation)] += 1
+    if (isInTab(conversation, 'unread')) {
+      counts.unread += 1
+    }
   }
   return counts
-}
-
-// Open chats where the parent wrote last and nobody has answered.
-export function countWaiting(conversations: ChatwootConversation[], nowSeconds: number) {
-  return conversations.filter((conversation) => getWaitingSeconds(conversation, nowSeconds) !== null).length
 }
 
 // Open chats with something nobody has looked at yet.

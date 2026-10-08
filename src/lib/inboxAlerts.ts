@@ -18,7 +18,21 @@ export function setSoundOn(on: boolean) {
   }
 }
 
-export function playBeep() {
+const ALERT_SOUND_URL = '/sounds/new-message.mp3'
+let alertSound: HTMLAudioElement | null = null
+
+// The team's notification sound. If the file cannot play (blocked or missing), a plain beep is used.
+export function playAlertSound() {
+  try {
+    alertSound ??= new Audio(ALERT_SOUND_URL)
+    alertSound.currentTime = 0
+    void alertSound.play().catch(playBeep)
+  } catch {
+    playBeep()
+  }
+}
+
+function playBeep() {
   try {
     const AudioContextClass =
       window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext

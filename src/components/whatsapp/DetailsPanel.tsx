@@ -5,6 +5,7 @@ import {
   getFirstMessage,
   guessSourceAndTags,
   resolveChatLead,
+  suggestLeadsByName,
 } from '../../lib/chatLink'
 import { searchLeads } from '../../lib/leadSearch'
 import type { SourceRule } from '../../lib/sourceRules'
@@ -18,8 +19,8 @@ import {
 } from '../../lib/whatsappInbox'
 import type { WhatsAppCrm } from './crm'
 import { FirstMessageCard } from './FirstMessageCard'
-import { LeadCard } from './LeadCard'
-import { NewLeadForm } from './NewLeadForm'
+import { LeadForm } from './LeadForm'
+import { LeadExtras, LeadHeader } from './LeadCard'
 import { StudentCard } from './StudentCard'
 
 type DetailsPanelProps = {
@@ -84,7 +85,12 @@ export function DetailsPanel({
     }
   }
 
-  const initialName = identity.title === 'Hidden number' || identity.title.startsWith('+') ? '' : identity.title
+  const initialName = identity.name ?? ''
+  // No number matched, so offer the leads with a similar name for someone to confirm.
+  const nameSuggestions = useMemo(
+    () => (lead ? [] : suggestLeadsByName(initialName, crm.leads)),
+    [lead, initialName, crm.leads],
+  )
 
   return (
     <aside className={className}>
@@ -131,70 +137,96 @@ export function DetailsPanel({
       )}
 
       <div className="mt-5 space-y-5 border-t border-slate-100 pt-4">
-        {lead ? (
-          <LeadCard
-            lead={lead}
+        {/* The slots below keep their place whether or not the chat is a lead yet, so the
+            form is the same one before and after saving and only says "Saved". */}
+        {lead ? <LeadHeader lead={lead} byPhone={byPhone} onUnlink={() => void onLinkLead(null)} /> : null}
+        {!lead ? (
+          <FirstMessageCard
+            first={first}
+            guess={guess}
+            hasOlder={hasOlder}
+            onLoadOlder={onLoadOlder}
+            onManageRules={crm.canEditLeads ? onManageRules : undefined}
+          />
+        ) : null}
+    {!lead && nameSuggestions.length > 0 && (
+      <section className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+        <h4 className="font-semibold">Could this parent be one of your leads?</h4>
+        <p className="mt-1">
+          {identity.hasRealPhone
+            ? "Their WhatsApp number is not in any lead, but the name is similar."
+            : "WhatsApp hides this number, but the name is similar."}
+        </p>
+        <ul className="mt-2 space-y-1.5">
+          {nameSuggestions.map((suggestion) => (
+            <li key={suggestion.id}>
+              <button
+                type="button"
+                onClick={() => void onLinkLead(suggestion.id)}
+                className="w-full rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-left hover:bg-amber-100"
+              >
+                <span className="block truncate text-sm font-medium text-slate-900">
+                  {suggestion.fullName || suggestion.children[0]?.name || 'Unnamed lead'}
+                </span>
+                <span className="block truncate text-slate-600">
+                  {suggestion.phone ?? 'No phone number'} · This is them
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+        {lead || crm.canEditLeads ? (
+          <LeadForm
+            key={conversation.id}
             crm={crm}
-            byPhone={byPhone}
-            onUnlink={() => void onLinkLead(null)}
+            lead={lead}
+            initialName={initialName}
+            initialPhone={phone ? `+${phone}` : ''}
+            guess={guess}
+            onCreated={async (leadId) => {
+              await onLinkLead(leadId)
+            }}
           />
         ) : (
-          <>
-            <FirstMessageCard
-              first={first}
-              guess={guess}
-              hasOlder={hasOlder}
-              onLoadOlder={onLoadOlder}
-              onManageRules={crm.canEditLeads ? onManageRules : undefined}
-            />
-            {crm.canEditLeads ? (
-              <NewLeadForm
-                // Starts over if the guess changes after the form opened (messages or rules arriving late).
-                key={`${conversation.id}-${guess.source?.id ?? ''}-${guess.tags.map((tag) => tag.id).join(',')}`}
-                crm={crm}
-                initialName={initialName}
-                initialPhone={phone ? `+${phone}` : ''}
-                guess={guess}
-                onCreated={async (leadId) => {
-                  await onLinkLead(leadId)
-                }}
-              />
-            ) : (
-              <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
-                This parent is not a lead yet. You can look but not add leads.
-              </p>
-            )}
-            <div className="text-xs">
-              <label className="block">
-                <span className="font-semibold text-slate-700">Already a lead? Find them</span>
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Name or phone number"
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-[#fc0c97]"
-                />
-              </label>
-              {query.trim() && found.length === 0 && <p className="mt-1 text-slate-500">No lead found.</p>}
-              {found.length > 0 && (
-                <ul className="mt-1 space-y-1">
-                  {found.map((entry) => (
-                    <li key={entry.id}>
-                      <button
-                        type="button"
-                        onClick={() => void onLinkLead(entry.id)}
-                        className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-left hover:bg-slate-50"
-                      >
-                        <span className="block truncate text-sm text-slate-900">
-                          {entry.fullName || entry.children[0]?.name || 'Unnamed lead'}
-                        </span>
-                        <span className="block truncate text-slate-500">{entry.phone ?? 'No phone number'}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </>
+          <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
+            This parent is not a lead yet. You can look but not add leads.
+          </p>
+        )}
+        {lead ? (
+          <LeadExtras lead={lead} crm={crm} />
+        ) : (
+      <div className="text-xs">
+        <label className="block">
+          <span className="font-semibold text-slate-700">Already a lead? Find them</span>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Name or phone number"
+            className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-[#fc0c97]"
+          />
+        </label>
+        {query.trim() && found.length === 0 && <p className="mt-1 text-slate-500">No lead found.</p>}
+        {found.length > 0 && (
+          <ul className="mt-1 space-y-1">
+            {found.map((entry) => (
+              <li key={entry.id}>
+                <button
+                  type="button"
+                  onClick={() => void onLinkLead(entry.id)}
+                  className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-left hover:bg-slate-50"
+                >
+                  <span className="block truncate text-sm text-slate-900">
+                    {entry.fullName || entry.children[0]?.name || 'Unnamed lead'}
+                  </span>
+                  <span className="block truncate text-slate-500">{entry.phone ?? 'No phone number'}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
         )}
 
         {student && <StudentCard key={student.id} student={student} crm={crm} />}

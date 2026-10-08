@@ -658,6 +658,12 @@ export function LeadsSection({
                   </div>
 
                   <dl className="space-y-1 rounded-xl bg-slate-50 p-3 text-sm">
+                    {lead.state && (
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-xs font-medium text-slate-500">State</dt>
+                        <dd className="text-slate-700">{lead.state}</dd>
+                      </div>
+                    )}
                     <div className="flex justify-between gap-3">
                       <dt className="text-xs font-medium text-slate-500">Phone</dt>
                       <dd className="inline-flex items-center gap-1 text-slate-700">
@@ -756,6 +762,9 @@ export function LeadsSection({
                     <th className="px-6 py-4">Contact</th>
                     <th className="px-6 py-4" style={{ paddingRight: '0.5rem' }}>
                       Children
+                    </th>
+                    <th className="px-6 py-4" style={{ paddingLeft: '0.25rem', paddingRight: '0.5rem' }}>
+                      State
                     </th>
                     <th className="px-6 py-4" style={{ paddingLeft: '0.25rem' }}>
                       PIC
@@ -863,6 +872,12 @@ export function LeadsSection({
                           </ul>
                         )}
                         <LeadTags tags={tagsOf(lead)} />
+                      </td>
+                      <td
+                        className="whitespace-nowrap px-6 py-5 text-sm text-slate-600"
+                        style={{ paddingLeft: '0.25rem', paddingRight: '0.5rem' }}
+                      >
+                        {lead.state ?? '-'}
                       </td>
                       <td
                         className="whitespace-nowrap px-6 py-5 text-sm text-slate-600"

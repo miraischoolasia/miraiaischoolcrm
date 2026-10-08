@@ -66,7 +66,8 @@ describe('getChatIdentity', () => {
 
   it('says so plainly when WhatsApp hides the number', () => {
     const identity = getChatIdentity({ id: 1, name: '1215643541729', phone_number: '+1215643541729', identifier: null })
-    expect(identity.title).toBe('Hidden number')
+    expect(identity.title).toBe('WhatsApp user')
+    expect(identity.name).toBeNull()
     expect(identity.subtitle).toBe('Number hidden by WhatsApp')
     expect(identity.hasRealPhone).toBe(false)
   })
@@ -120,16 +121,33 @@ describe('filterConversations', () => {
     conversation({ id: 3, waiting_since: 0, last_activity_at: 20, name: 'Priya', custom_attributes: amy }),
     conversation({ id: 4, status: 'resolved', last_activity_at: 40, name: 'Done Dad' }),
   ]
-  const base = { tab: 'chats' as const, owner: 'everyone' as const, search: '', currentUserId: 7 }
+  const base = { tab: 'chats' as const, search: '', tagId: null, sourceId: null }
 
   it('lists every open chat newest first, answered or not', () => {
     expect(filterConversations(list, base).map((c) => c.id)).toEqual([2, 3, 1])
     expect(filterConversations(list, { ...base, tab: 'done' }).map((c) => c.id)).toEqual([4])
   })
 
-  it('filters by who handles it', () => {
-    expect(filterConversations(list, { ...base, owner: 'mine' }).map((c) => c.id)).toEqual([2, 3])
-    expect(filterConversations(list, { ...base, owner: 'unassigned' }).map((c) => c.id)).toEqual([1])
+  it('filters by the tag or source of the lead the chat belongs to', () => {
+    const leads: Record<number, { tagIds: number[]; sourceId: number | null }> = {
+      1: { tagIds: [10, 11], sourceId: 5 },
+      2: { tagIds: [11], sourceId: 6 },
+    }
+    const leadOf = (c: { id: number }) => leads[c.id] ?? null
+
+    expect(filterConversations(list, { ...base, tagId: 11 }, leadOf).map((c) => c.id)).toEqual([2, 1])
+    expect(filterConversations(list, { ...base, tagId: 10 }, leadOf).map((c) => c.id)).toEqual([1])
+    expect(filterConversations(list, { ...base, sourceId: 6 }, leadOf).map((c) => c.id)).toEqual([2])
+    expect(filterConversations(list, { ...base, tagId: 11, sourceId: 5 }, leadOf).map((c) => c.id)).toEqual([1])
+  })
+
+  it('hides chats with no lead while a tag or source is chosen', () => {
+    expect(filterConversations(list, { ...base, tagId: 11 }).map((c) => c.id)).toEqual([])
+  })
+
+  it('also shows chats whose messages the server found for the search', () => {
+    const withMatch = { ...base, search: 'fees', matchedIds: new Set([3]) }
+    expect(filterConversations(list, withMatch).map((c) => c.id)).toEqual([3])
   })
 
   it('searches names, numbers and the last message', () => {
@@ -139,8 +157,19 @@ describe('filterConversations', () => {
     expect(filterConversations(list, { ...base, search: 'nobody' })).toEqual([])
   })
 
-  it('counts both tabs', () => {
-    expect(countByTab(list)).toEqual({ chats: 3, done: 1 })
+  it('lists only the open chats nobody has opened in Unread', () => {
+    const withUnread = [
+      conversation({ id: 1, unread_count: 2, last_activity_at: 10 }),
+      conversation({ id: 2, unread_count: 0, last_activity_at: 30 }),
+      conversation({ id: 3, status: 'resolved', unread_count: 5, last_activity_at: 40 }),
+    ]
+
+    expect(filterConversations(withUnread, { ...base, tab: 'unread' }).map((c) => c.id)).toEqual([1])
+    expect(countByTab(withUnread)).toEqual({ chats: 2, unread: 1, done: 1 })
+  })
+
+  it('counts the tabs', () => {
+    expect(countByTab(list)).toEqual({ chats: 3, unread: 0, done: 1 })
   })
 })
 

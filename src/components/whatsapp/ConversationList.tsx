@@ -5,6 +5,7 @@ import {
   CaretDown,
   ChatCircleDots,
   CheckCircle,
+  EnvelopeSimple,
   MagnifyingGlass,
   Plus,
   SpeakerHigh,
@@ -29,37 +30,33 @@ import {
   getPreview,
   type ChatwootConversation,
   type InboxTab,
-  type OwnerFilter,
 } from '../../lib/whatsappInbox'
 
 const tabs: { key: InboxTab; label: string; icon: Icon }[] = [
   { key: 'chats', label: 'Chats', icon: ChatCircleDots },
+  { key: 'unread', label: 'Unread', icon: EnvelopeSimple },
   { key: 'done', label: 'Done', icon: CheckCircle },
 ]
 
-const tabHelp: Record<InboxTab, string> = {
-  chats: 'Every chat that is not finished',
-  done: 'Finished chats',
-}
-
-const ownerLabels: Record<OwnerFilter, string> = {
-  everyone: 'Everyone',
-  mine: 'Mine',
-  unassigned: 'Not handled by anyone',
-}
+// A tag or source to filter by, already worded for the menu (with how many chats it has).
+export type FilterChoice = { id: number; label: string }
 
 type ConversationListProps = {
   conversations: ChatwootConversation[]
   counts: Record<InboxTab, number>
   hasMoreOpen: boolean
   tab: InboxTab
-  owner: OwnerFilter
   search: string
+  // Show only chats of leads with this tag, or from this source.
+  tagId: number | null
+  sourceId: number | null
+  tags: FilterChoice[]
+  sources: FilterChoice[]
+  // The message that matched the search, by chat.
+  snippets: ReadonlyMap<number, string>
   selectedId: number | null
   // The clock, so a chat that has waited too long is flagged without a refresh.
   nowSeconds: number
-  // Chats where the parent is waiting for an answer, shown on the Chats tab.
-  waitingCount: number
   // How many chats are past the limit, across every tab and filter.
   overdueCount: number
   isLoading: boolean
@@ -67,7 +64,8 @@ type ConversationListProps = {
   canLoadMore: boolean
   className?: string
   onTab: (tab: InboxTab) => void
-  onOwner: (owner: OwnerFilter) => void
+  onTag: (tagId: number | null) => void
+  onSource: (sourceId: number | null) => void
   onSearch: (value: string) => void
   onSelect: (id: number) => void
   onLoadMore: () => void
@@ -111,18 +109,22 @@ export function ConversationList({
   counts,
   hasMoreOpen,
   tab,
-  owner,
   search,
+  tagId,
+  sourceId,
+  tags,
+  sources,
+  snippets,
   selectedId,
   nowSeconds,
-  waitingCount,
   overdueCount,
   isLoading,
   loadError,
   canLoadMore,
   className,
   onTab,
-  onOwner,
+  onTag,
+  onSource,
   onSearch,
   onSelect,
   onLoadMore,
@@ -142,7 +144,7 @@ export function ConversationList({
             New chat
           </button>
         </div>
-        <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-500 focus-within:border-[#fc0c97]">
+        <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-[4.5px] text-sm text-slate-500 focus-within:border-[#fc0c97]">
           <MagnifyingGlass size={16} aria-hidden="true" />
           <input
             type="search"
@@ -150,11 +152,13 @@ export function ConversationList({
             onChange={(event) => onSearch(event.target.value)}
             placeholder="Search name or number"
             aria-label="Search chats"
+            // The app's default input is tall; this one is kept slim.
+            style={{ minHeight: 0, height: 30, padding: 0 }}
             className="min-w-0 flex-1 bg-transparent text-slate-900 outline-none placeholder:text-slate-400"
           />
         </label>
 
-        <div className="mt-2 grid grid-cols-2 gap-2">
+        <div className="mt-2 grid grid-cols-3 gap-2">
           {tabs.map(({ key, label, icon: TabIcon }) => {
             const active = tab === key
             const count = counts[key]
@@ -163,7 +167,7 @@ export function ConversationList({
                 key={key}
                 type="button"
                 onClick={() => onTab(key)}
-                aria-label={key === 'chats' && waitingCount > 0 ? `${label}, ${count}, ${waitingCount} waiting` : `${label}, ${count}`}
+                aria-label={`${label}, ${count}`}
                 aria-pressed={active}
                 title={label}
                 className={cn(
@@ -175,12 +179,12 @@ export function ConversationList({
               >
                 <TabIcon size={20} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
                 <span className="ml-1.5 text-sm font-medium">{label}</span>
-                {key === 'chats' && waitingCount > 0 && (
+                {key === 'unread' && count > 0 && (
                   <span
-                    title="Parents waiting for an answer"
+                    title="Chats nobody has opened yet"
                     className="absolute -right-1.5 -top-1.5 min-w-5 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white"
                   >
-                    {waitingCount > 99 ? '99+' : waitingCount}
+                    {count > 99 ? '99+' : count}
                     {hasMoreOpen ? '+' : ''}
                   </span>
                 )}
@@ -189,32 +193,66 @@ export function ConversationList({
           })}
         </div>
 
-        <div className="mt-2 text-sm">
-          <span className="font-semibold text-slate-900">{tabs.find((item) => item.key === tab)?.label}</span>
-          <span className="text-xs text-slate-500"> · {tabHelp[tab]}</span>
-        </div>
         {overdueCount > 0 && (
           <p role="status" className="mt-2 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">
             {overdueCount} {overdueCount === 1 ? 'chat has' : 'chats have'} waited over 30 minutes for a reply.
           </p>
         )}
-        <div className="mt-2 flex items-center justify-between gap-2 text-sm">
-          <label className="relative w-full">
-            <span className="sr-only">Show chats of</span>
+        <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+          <label className="relative min-w-0">
+            <span className="sr-only">Filter by tag</span>
             <select
-              value={owner}
-              onChange={(event) => onOwner(event.target.value as OwnerFilter)}
-              className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-1.5 pl-2.5 pr-7 text-xs text-slate-700 outline-none focus:border-[#fc0c97]"
+              value={tagId ?? ''}
+              onChange={(event) => onTag(event.target.value ? Number(event.target.value) : null)}
+              className={cn(
+                'w-full appearance-none rounded-lg border bg-white py-1.5 pl-2.5 pr-7 text-xs outline-none focus:border-[#fc0c97]',
+                tagId === null ? 'border-slate-200 text-slate-700' : 'border-[#fc0c97] text-slate-900',
+              )}
             >
-              {(Object.keys(ownerLabels) as OwnerFilter[]).map((key) => (
-                <option key={key} value={key}>
-                  Show: {ownerLabels[key]}
+              <option value="">All tags</option>
+              {tags.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <CaretDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" />
+          </label>
+          <label className="relative min-w-0">
+            <span className="sr-only">Filter by source</span>
+            <select
+              value={sourceId ?? ''}
+              onChange={(event) => onSource(event.target.value ? Number(event.target.value) : null)}
+              className={cn(
+                'w-full appearance-none rounded-lg border bg-white py-1.5 pl-2.5 pr-7 text-xs outline-none focus:border-[#fc0c97]',
+                sourceId === null ? 'border-slate-200 text-slate-700' : 'border-[#fc0c97] text-slate-900',
+              )}
+            >
+              <option value="">All sources</option>
+              {sources.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
                 </option>
               ))}
             </select>
             <CaretDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" />
           </label>
         </div>
+        {(tagId !== null || sourceId !== null) && (
+          <p className="mt-1 text-[11px] text-slate-500">
+            Only chats tied to a lead are shown.{' '}
+            <button
+              type="button"
+              onClick={() => {
+                onTag(null)
+                onSource(null)
+              }}
+              className="font-medium text-[#be185d] underline"
+            >
+              Clear filters
+            </button>
+          </p>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -222,7 +260,7 @@ export function ConversationList({
         {loadError && <p className="p-4 text-sm text-red-600">{loadError}</p>}
         {!isLoading && !loadError && conversations.length === 0 && (
           <p className="p-4 text-sm text-slate-500">
-            {search ? 'No chats match your search.' : 'Nothing here. New messages from parents will show up here.'}
+            {search || tagId !== null || sourceId !== null ? 'No chats match.' : 'Nothing here. New messages from parents will show up here.'}
           </p>
         )}
         {conversations.map((conversation) => {
@@ -259,11 +297,18 @@ export function ConversationList({
                 </span>
                 <span className="flex items-center justify-between gap-2">
                   <span className="truncate text-sm text-slate-500">
-                    {lastMessage?.private && preview
-                      ? `Note: ${preview}`
-                      : lastMessage?.message_type === 1 && preview
-                        ? `You: ${preview}`
-                        : preview}
+                    {snippets.get(conversation.id) ? (
+                      <>
+                        <span className="font-medium text-[#be185d]">Found: </span>
+                        {snippets.get(conversation.id)}
+                      </>
+                    ) : lastMessage?.private && preview ? (
+                      `Note: ${preview}`
+                    ) : lastMessage?.message_type === 1 && preview ? (
+                      `You: ${preview}`
+                    ) : (
+                      preview
+                    )}
                   </span>
                   {conversation.unread_count > 0 && conversation.status !== 'resolved' && (
                     <span className="min-w-5 shrink-0 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white">

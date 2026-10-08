@@ -27,3 +27,30 @@ describe('parseLeadCsv sources', () => {
     expect(result.errors[0]).toMatch(/unknown source "TikTok"/)
   })
 })
+
+describe('the State column', () => {
+  const csv = (state: string) => `Parent Name,Phone,State,Stage\r\nMei Ling,0123456789,${state},new\r\n`
+
+  it('reads a state by name, ignoring capitals and spacing', () => {
+    expect(parseLeadCsv(csv('negeri  sembilan'), '2026-10-09').rows[0].state).toBe('Negeri Sembilan')
+  })
+
+  it('understands Penang and KL', () => {
+    expect(parseLeadCsv(csv('Penang'), '2026-10-09').rows[0].state).toBe('Pulau Pinang')
+    expect(parseLeadCsv(csv('KL'), '2026-10-09').rows[0].state).toBe('Kuala Lumpur')
+  })
+
+  it('reports a state that does not exist and leaves the row without one', () => {
+    const { rows, errors } = parseLeadCsv(csv('Atlantis'), '2026-10-09')
+
+    expect(errors[0]).toMatch(/unknown state "Atlantis"/)
+    expect(rows[0].state).toBeUndefined()
+  })
+
+  it('still reads a file that has no State column', () => {
+    const { rows, errors } = parseLeadCsv('Parent Name,Phone\r\nMei Ling,0123456789\r\n', '2026-10-09')
+
+    expect(errors).toEqual([])
+    expect(rows[0]).not.toHaveProperty('state')
+  })
+})

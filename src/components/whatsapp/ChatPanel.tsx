@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from 'react'
 import type { VariableValues } from '../../lib/quickReplies'
-import { ArrowCounterClockwise, CaretDown, CaretLeft, CheckCircle, Info } from '@phosphor-icons/react'
+import { ArrowCounterClockwise, CaretDown, CaretLeft, CheckCircle, EnvelopeSimple, Info } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import type { Sender } from '../../lib/chatwootClient'
 import type { SendInput } from '../../hooks/useWhatsAppInbox'
@@ -35,6 +35,8 @@ type ChatPanelProps = {
   onDismissUnsent: (tempId: number) => void
   onSetOwner: (owner: Sender | null) => void
   onSetStatus: (status: 'open' | 'resolved') => void
+  // Puts the chat back as not opened yet and closes it.
+  onMarkUnread: () => void
   quickReplies: ComponentProps<typeof Composer>['quickReplies']
   quickReplyValues: VariableValues
   onManageQuickReplies?: () => void
@@ -55,6 +57,7 @@ export function ChatPanel({
   onDismissUnsent,
   onSetOwner,
   onSetStatus,
+  onMarkUnread,
   quickReplies,
   quickReplyValues,
   onManageQuickReplies,
@@ -107,7 +110,7 @@ export function ChatPanel({
 
   return (
     <div className={cn('flex min-h-0 min-w-0 flex-col bg-slate-50', className)}>
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-3 sm:px-4">
+      <div className="flex flex-wrap items-center gap-2 border-b border-pink-100 bg-pink-50 px-3 py-3 sm:px-4">
         <button
           type="button"
           onClick={onBack}
@@ -154,6 +157,18 @@ export function ChatPanel({
           </select>
           <CaretDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" />
         </label>
+        {!done && (
+          <button
+            type="button"
+            onClick={onMarkUnread}
+            aria-label="Mark as unread"
+            title="Mark as unread, for a chat you opened by mistake"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <EnvelopeSimple size={14} aria-hidden="true" />
+            <span className="hidden sm:inline">Mark as unread</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={() => onSetStatus(done ? 'open' : 'resolved')}

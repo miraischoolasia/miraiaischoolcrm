@@ -137,7 +137,7 @@ import { StudentDashboardSection } from './components/sections/StudentDashboardS
 import { TeacherManagementSection } from './components/sections/TeacherManagementSection'
 import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
-import type { NewLeadInput, WhatsAppCrm } from './components/whatsapp/crm'
+import type { LeadFormValues, WhatsAppCrm } from './components/whatsapp/crm'
 import { appendLeaveNote } from './lib/chatLink'
 import { getChatwootUrl } from './lib/chatwoot'
 import { createChatwootClient } from './lib/chatwootClient'
@@ -453,6 +453,7 @@ function App() {
     phone: '',
     sourceId: '',
     picId: '',
+    state: '',
     tagIds: [],
     status: 'new',
     children: [],
@@ -1701,6 +1702,7 @@ function App() {
       phone: '',
       sourceId: otherSource ? String(otherSource.id) : '',
       picId: '',
+      state: '',
       tagIds: [],
       status: 'new',
       children: [],
@@ -1729,6 +1731,7 @@ function App() {
       phone: lead.phone ?? '',
       sourceId: lead.sourceId !== null ? String(lead.sourceId) : '',
       picId: lead.picId !== null ? String(lead.picId) : '',
+      state: lead.state ?? '',
       tagIds: lead.tagIds,
       status: lead.status,
       children: lead.children.map((child) => ({
@@ -2826,6 +2829,7 @@ function App() {
         phone: leadFormState.phone.trim() || null,
         source_id: leadFormState.sourceId ? Number(leadFormState.sourceId) : null,
         pic_id: leadFormState.picId ? Number(leadFormState.picId) : null,
+        state: leadFormState.state || null,
         tag_ids: leadFormState.tagIds,
         status: leadFormState.status,
         children,
@@ -3152,26 +3156,23 @@ function App() {
   }
 
   // The few lead and student changes the WhatsApp side panel can make.
-  async function createLeadFromChat(input: NewLeadInput) {
+  async function createLeadFromChat(input: LeadFormValues) {
     if (!supabase) {
       return { leadId: null, error: 'Not connected to the database.' }
     }
-    const childName = input.childName.trim()
-    if (childName && input.childAge === null) {
-      return { leadId: null, error: "Add the child's age too." }
-    }
     const fullName = input.fullName.trim()
-    const children = input.childAge === null ? [] : [{ name: childName, age: input.childAge, phone: null }]
+    const children = input.children.map((child) => ({ ...child, name: child.name.trim() }))
 
     const { data, error } = await supabase
       .from('leads')
       .insert({
         full_name: fullName || null,
         phone: input.phone.trim() || null,
+        state: input.state || null,
         source_id: input.sourceId,
         pic_id: input.picId,
         tag_ids: input.tagIds,
-        status: 'new',
+        status: input.status,
         children,
         notes: input.notes.trim() || null,
         added_date: todayString,
@@ -3192,6 +3193,46 @@ function App() {
     )
     await Promise.all([refreshLeads(), refreshAdminActivities()])
     return { leadId: data.id as number, error: null }
+  }
+
+  // Saves the changes made on a lead in the WhatsApp side panel.
+  async function updateLeadFromChat(leadId: number, input: LeadFormValues) {
+    const lead = leads.find((entry) => entry.id === leadId)
+    if (!supabase || !lead) {
+      return 'That lead is no longer in the list.'
+    }
+    const fullName = input.fullName.trim()
+    const children = input.children.map((child) => ({ ...child, name: child.name.trim() }))
+
+    const { error } = await supabase
+      .from('leads')
+      .update({
+        full_name: fullName || null,
+        phone: input.phone.trim() || null,
+        state: input.state || null,
+        source_id: input.sourceId,
+        pic_id: input.picId,
+        tag_ids: input.tagIds,
+        status: input.status,
+        children,
+        notes: input.notes.trim() || null,
+      })
+      .eq('id', leadId)
+
+    if (error) {
+      return getErrorMessage(error, 'Failed to save lead record.')
+    }
+
+    const label = fullName || children[0]?.name || input.phone.trim() || 'Unnamed Lead'
+    await recordAdminActivity(
+      input.status !== lead.status ? 'lead_stage_changed' : 'lead_updated',
+      'lead',
+      leadId,
+      label,
+      { status: input.status },
+    )
+    await Promise.all([refreshLeads(), refreshAdminActivities()])
+    return null
   }
 
   async function addFollowUpFromChat(leadId: number, note: string) {
@@ -3244,7 +3285,7 @@ function App() {
     canEditStudents: can('students', 'edit'),
     canBookMakeup: canEditCalendar,
     onCreateLead: createLeadFromChat,
-    onChangeLeadStatus: handleChangeLeadStatus,
+    onUpdateLead: updateLeadFromChat,
     trialDateFor: (leadId: number) => {
       const dates = trialBookings
         .filter((booking) => booking.leadId === leadId)
