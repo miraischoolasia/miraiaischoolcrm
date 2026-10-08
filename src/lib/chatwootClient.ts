@@ -1,4 +1,4 @@
-import type { ChatwootConversation, ChatwootMessage } from './whatsappInbox'
+import type { ChatAttributes, ChatwootConversation, ChatwootMessage } from './whatsappInbox'
 
 // Talks to Chatwoot through the school's gateway, which adds the secret key.
 // The browser never holds that key.
@@ -71,13 +71,9 @@ export function createChatwootClient(apiUrl: string, accountId = '1') {
       return request<ChatwootMessage>(path, { method: 'POST', body: form })
     },
 
-    async setOwner(conversationId: number, owner: Sender | null) {
-      await request(
-        `/conversations/${conversationId}/custom_attributes`,
-        json('POST', {
-          custom_attributes: { crm_owner_id: owner?.id ?? null, crm_owner_name: owner?.name ?? null },
-        }),
-      )
+    // Chatwoot swaps in whatever it is given, so callers pass the complete set.
+    async setAttributes(conversationId: number, attributes: ChatAttributes) {
+      await request(`/conversations/${conversationId}/custom_attributes`, json('POST', { custom_attributes: attributes }))
     },
 
     async setStatus(conversationId: number, status: 'open' | 'resolved') {

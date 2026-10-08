@@ -1,5 +1,6 @@
 import { ArrowSquareOut } from '@phosphor-icons/react'
 import type { Sender } from '../../lib/chatwootClient'
+import type { WhatsAppCrm } from '../whatsapp/crm'
 import { WhatsAppInbox } from '../whatsapp/WhatsAppInbox'
 
 type WhatsAppSectionProps = {
@@ -10,11 +11,12 @@ type WhatsAppSectionProps = {
   apiUrl: string | null
   currentUser: Sender | null
   staff: Sender[]
+  crm: WhatsAppCrm
 }
 
-export function WhatsAppSection({ chatwootUrl, apiUrl, currentUser, staff }: WhatsAppSectionProps) {
+export function WhatsAppSection({ chatwootUrl, apiUrl, currentUser, staff, crm }: WhatsAppSectionProps) {
   if (apiUrl && currentUser) {
-    return <WhatsAppInbox apiUrl={apiUrl} currentUser={currentUser} staff={staff} />
+    return <WhatsAppInbox apiUrl={apiUrl} currentUser={currentUser} staff={staff} crm={crm} />
   }
 
   const inboxUrl = `${chatwootUrl}/app/`

@@ -10,20 +10,24 @@ import {
 } from '../../lib/whatsappInbox'
 import { ChatPanel } from './ChatPanel'
 import { ConversationList } from './ConversationList'
+import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
 
 type WhatsAppInboxProps = {
   apiUrl: string
   currentUser: Sender
   staff: Sender[]
+  crm: WhatsAppCrm
 }
 
-export function WhatsAppInbox({ apiUrl, currentUser, staff }: WhatsAppInboxProps) {
+export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInboxProps) {
   const client = useMemo(() => createChatwootClient(apiUrl), [apiUrl])
   const inbox = useWhatsAppInbox(client, currentUser)
   const [tab, setTab] = useState<InboxTab>('to_reply')
   const [owner, setOwner] = useState<OwnerFilter>('everyone')
   const [search, setSearch] = useState('')
+  // On a small screen the side panel takes the place of the chat.
+  const [detailsOpen, setDetailsOpen] = useState(false)
 
   const counts = useMemo(() => countByTab(inbox.conversations), [inbox.conversations])
   const visible = useMemo(
@@ -33,7 +37,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff }: WhatsAppInboxProps
   const hasChat = inbox.selected !== null
 
   return (
-    <div className="grid h-[calc(100dvh-210px)] min-h-[520px] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_280px]">
+    <div className="grid h-[calc(100dvh-210px)] min-h-[520px] lg:h-[calc(100dvh-130px)] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_280px]">
       <ConversationList
         className={cn(hasChat && 'hidden lg:flex')}
         conversations={visible}
@@ -49,21 +53,28 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff }: WhatsAppInboxProps
         onTab={setTab}
         onOwner={setOwner}
         onSearch={setSearch}
-        onSelect={inbox.setSelectedId}
+        onSelect={(id) => {
+          setDetailsOpen(false)
+          inbox.setSelectedId(id)
+        }}
         onLoadMore={() => void inbox.loadMore(tab === 'done' ? 'resolved' : 'open')}
       />
 
       {inbox.selected ? (
         <>
           <ChatPanel
-            className={!hasChat ? 'hidden lg:flex' : undefined}
+            className={cn(!hasChat && 'hidden lg:flex', detailsOpen && 'hidden xl:flex')}
             conversation={inbox.selected}
             messages={inbox.messages}
             waitingMessages={inbox.waitingMessages}
             hasOlder={inbox.hasOlder}
             staff={staff}
             actionError={inbox.actionError}
-            onBack={() => inbox.setSelectedId(null)}
+            onBack={() => {
+              setDetailsOpen(false)
+              inbox.setSelectedId(null)
+            }}
+            onOpenDetails={() => setDetailsOpen(true)}
             onLoadOlder={() => void inbox.loadOlder()}
             onSend={inbox.send}
             onDismissUnsent={inbox.dismissUnsent}
@@ -71,9 +82,18 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff }: WhatsAppInboxProps
             onSetStatus={(status) => void inbox.setStatus(inbox.selected!.id, status)}
           />
           <DetailsPanel
-            className="hidden overflow-y-auto border-l border-slate-200 bg-white p-4 xl:block"
+            className={cn(
+              'min-h-0 overflow-y-auto border-l border-slate-200 bg-white p-4',
+              detailsOpen ? 'block' : 'hidden xl:block',
+            )}
             conversation={inbox.selected}
+            messages={inbox.messages}
+            hasOlder={inbox.hasOlder}
+            crm={crm}
+            onLoadOlder={() => void inbox.loadOlder()}
             onSavePhone={inbox.savePhone}
+            onLinkLead={(leadId) => inbox.setLeadLink(inbox.selected!.id, leadId)}
+            onBack={() => setDetailsOpen(false)}
           />
         </>
       ) : (

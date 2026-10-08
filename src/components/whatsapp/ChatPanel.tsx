@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowCounterClockwise, CaretDown, CaretLeft, CheckCircle } from '@phosphor-icons/react'
+import { ArrowCounterClockwise, CaretDown, CaretLeft, CheckCircle, Info } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import type { Sender } from '../../lib/chatwootClient'
 import type { SendInput } from '../../hooks/useWhatsAppInbox'
@@ -27,6 +27,8 @@ type ChatPanelProps = {
   actionError: string | null
   className?: string
   onBack: () => void
+  // Opens the side panel; only shown where the panel is not already beside the chat.
+  onOpenDetails: () => void
   onLoadOlder: () => void
   onSend: (input: SendInput) => Promise<boolean>
   onDismissUnsent: (tempId: number) => void
@@ -43,6 +45,7 @@ export function ChatPanel({
   actionError,
   className,
   onBack,
+  onOpenDetails,
   onLoadOlder,
   onSend,
   onDismissUnsent,
@@ -113,6 +116,15 @@ export function ChatPanel({
             {identity.subtitle}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={onOpenDetails}
+          aria-label="Lead and student details"
+          title="Lead and student details"
+          className="rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50 xl:hidden"
+        >
+          <Info size={16} />
+        </button>
         <label className="relative">
           <span className="sr-only">Handled by</span>
           <select

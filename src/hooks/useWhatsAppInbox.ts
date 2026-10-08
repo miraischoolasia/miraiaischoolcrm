@@ -3,6 +3,7 @@ import type { ChatwootClient, Sender } from '../lib/chatwootClient'
 import { CONFIRM_POLL_MS, CONFIRM_TIMEOUT_MS, fileKind, splitForSending } from '../lib/outbox'
 import {
   getOwner,
+  type ChatAttributes,
   type ChatwootConversation,
   type ChatwootMessage,
 } from '../lib/whatsappInbox'
@@ -221,19 +222,41 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
     })
   }, [])
 
+  // Saves the owner and the linked lead together, because Chatwoot replaces the whole set.
+  const saveAttributes = useCallback(
+    async (conversationId: number, change: ChatAttributes) => {
+      const current = mapRef.current.get(conversationId)?.custom_attributes ?? {}
+      const next: ChatAttributes = { ...current, ...change }
+      await client.setAttributes(conversationId, next)
+      patchConversation(conversationId, { custom_attributes: next })
+    },
+    [client, patchConversation],
+  )
+
   const setOwner = useCallback(
     async (conversationId: number, owner: Sender | null) => {
       setActionError(null)
       try {
-        await client.setOwner(conversationId, owner)
-        patchConversation(conversationId, {
-          custom_attributes: { crm_owner_id: owner?.id ?? null, crm_owner_name: owner?.name ?? null },
-        })
+        await saveAttributes(conversationId, { crm_owner_id: owner?.id ?? null, crm_owner_name: owner?.name ?? null })
       } catch {
         setActionError("Couldn't change who handles this chat. Try again.")
       }
     },
-    [client, patchConversation],
+    [saveAttributes],
+  )
+
+  const setLeadLink = useCallback(
+    async (conversationId: number, leadId: number | null) => {
+      setActionError(null)
+      try {
+        await saveAttributes(conversationId, { crm_lead_id: leadId })
+        return true
+      } catch {
+        setActionError("Couldn't link this chat to the lead. Try again.")
+        return false
+      }
+    },
+    [saveAttributes],
   )
 
   const setStatus = useCallback(
@@ -437,6 +460,7 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
     canLoadMore,
     loadMore,
     setOwner,
+    setLeadLink,
     setStatus,
     send,
     dismissUnsent,

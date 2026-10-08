@@ -135,6 +135,8 @@ import { StudentDashboardSection } from './components/sections/StudentDashboardS
 import { TeacherManagementSection } from './components/sections/TeacherManagementSection'
 import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
+import type { NewLeadInput, WhatsAppCrm } from './components/whatsapp/crm'
+import { appendLeaveNote } from './lib/chatLink'
 import { getChatwootUrl } from './lib/chatwoot'
 import { createChatwootClient } from './lib/chatwootClient'
 import { useWhatsAppUnread } from './hooks/useWhatsAppUnread'
@@ -3007,6 +3009,34 @@ function App() {
     })
   }
 
+  // Saves one more follow-up on a lead; throws when it could not be saved.
+  async function saveLeadFollowUp(lead: Lead, note: string) {
+    if (!supabase || lead.followUps.length >= MAX_LEAD_FOLLOW_UPS) {
+      return
+    }
+
+    const nextFollowUps = [...lead.followUps, { date: todayString, note }]
+
+    const { error } = await supabase
+      .from('leads')
+      .update({ follow_ups: nextFollowUps })
+      .eq('id', lead.id)
+
+    if (error) {
+      throw error
+    }
+
+    await recordAdminActivity(
+      'lead_follow_up_logged',
+      'lead',
+      lead.id,
+      lead.fullName || lead.children[0]?.name || 'Unnamed Lead',
+      { follow_up_number: nextFollowUps.length },
+    )
+
+    await Promise.all([refreshLeads(), refreshAdminActivities()])
+  }
+
   async function handleAddFollowUp(note: string) {
     if (!supabase || !followUpLead) {
       return
@@ -3019,27 +3049,7 @@ function App() {
     try {
       setIsSavingFollowUp(true)
       setFollowUpSaveError(null)
-
-      const nextFollowUps = [...followUpLead.followUps, { date: todayString, note }]
-
-      const { error } = await supabase
-        .from('leads')
-        .update({ follow_ups: nextFollowUps })
-        .eq('id', followUpLead.id)
-
-      if (error) {
-        throw error
-      }
-
-      await recordAdminActivity(
-        'lead_follow_up_logged',
-        'lead',
-        followUpLead.id,
-        followUpLead.fullName || followUpLead.children[0]?.name || 'Unnamed Lead',
-        { follow_up_number: nextFollowUps.length },
-      )
-
-      await Promise.all([refreshLeads(), refreshAdminActivities()])
+      await saveLeadFollowUp(followUpLead, note)
     } catch (error) {
       setFollowUpSaveError(
         error instanceof Error ? error.message : 'Failed to log follow-up.',
@@ -3047,6 +3057,115 @@ function App() {
     } finally {
       setIsSavingFollowUp(false)
     }
+  }
+
+  // The few lead and student changes the WhatsApp side panel can make.
+  async function createLeadFromChat(input: NewLeadInput) {
+    if (!supabase) {
+      return { leadId: null, error: 'Not connected to the database.' }
+    }
+    const childName = input.childName.trim()
+    if (childName && input.childAge === null) {
+      return { leadId: null, error: "Add the child's age too." }
+    }
+    const fullName = input.fullName.trim()
+    const children = input.childAge === null ? [] : [{ name: childName, age: input.childAge, phone: null }]
+
+    const { data, error } = await supabase
+      .from('leads')
+      .insert({
+        full_name: fullName || null,
+        phone: input.phone.trim() || null,
+        source_id: input.sourceId,
+        pic_id: input.picId,
+        tag_ids: input.tagIds,
+        status: 'new',
+        children,
+        notes: input.notes.trim() || null,
+        added_date: todayString,
+      })
+      .select('id')
+      .single()
+
+    if (error || !data) {
+      return { leadId: null, error: getErrorMessage(error, 'Failed to save lead record.') }
+    }
+
+    await recordAdminActivity(
+      'lead_created',
+      'lead',
+      data.id,
+      fullName || children[0]?.name || input.phone.trim() || 'Unnamed Lead',
+      { source_id: input.sourceId },
+    )
+    await Promise.all([refreshLeads(), refreshAdminActivities()])
+    return { leadId: data.id as number, error: null }
+  }
+
+  async function addFollowUpFromChat(leadId: number, note: string) {
+    const lead = leads.find((entry) => entry.id === leadId)
+    if (!lead) {
+      return 'That lead is no longer in the list.'
+    }
+    try {
+      await saveLeadFollowUp(lead, note)
+      return null
+    } catch (error) {
+      return getErrorMessage(error, 'Failed to log follow-up.')
+    }
+  }
+
+  // Leave is recorded as a dated line in the student's notes; attendance is
+  // marked on the day itself.
+  async function recordLeaveFromChat(studentId: number, text: string) {
+    const student = students.find((entry) => entry.id === studentId)
+    if (!supabase || !student) {
+      return 'That student is no longer in the list.'
+    }
+    const { error } = await supabase.rpc('update_student_record', {
+      p_student_id: student.id,
+      p_full_name: student.name,
+      p_phone: student.phone,
+      p_teacher_id: student.classroomId ? (classroomMap.get(student.classroomId)?.teacherId ?? null) : null,
+      p_classroom_id: student.classroomId,
+      p_notes: appendLeaveNote(student.notes, {
+        date: todayString,
+        text,
+        by: currentTeacher?.fullName ?? 'Staff',
+      }),
+      p_student_type: student.studentType,
+    })
+    if (error) {
+      return getErrorMessage(error, 'Failed to save the leave note.')
+    }
+    await refreshStudentsAndLogs()
+    return null
+  }
+
+  const whatsAppCrm: WhatsAppCrm = {
+    leads,
+    students,
+    classrooms,
+    packages,
+    leadOptions,
+    canEditLeads: can('leads', 'edit'),
+    canEditStudents: can('students', 'edit'),
+    canBookMakeup: canEditCalendar,
+    onCreateLead: createLeadFromChat,
+    onChangeLeadStatus: handleChangeLeadStatus,
+    onAddFollowUp: addFollowUpFromChat,
+    onAddOption: handleAddLeadOption,
+    onRecordLeave: recordLeaveFromChat,
+    onOpenLead: openEditLeadModal,
+    leadIdsWithForms,
+    onOpenFormAnswers: openLeadFormAnswers,
+    onOpenStudent: openStudentDetail,
+    onOpenMakeup: (studentId) => {
+      const student = students.find((entry) => entry.id === studentId)
+      if (student) {
+        void openStudentMakeup(student)
+      }
+    },
   }
 
   async function handleAddTask(title: string, dueDate: string) {
@@ -5202,6 +5321,7 @@ function App() {
                 apiUrl={whatsAppApiUrl}
                 currentUser={whatsAppUser}
                 staff={whatsAppStaff}
+                crm={whatsAppCrm}
               />
             )}
 

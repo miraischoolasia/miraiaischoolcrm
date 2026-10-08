@@ -44,6 +44,14 @@ export type ChatwootSender = {
   thumbnail?: string | null
 }
 
+// What the CRM keeps on a chat. Chatwoot replaces all of these whenever one is
+// saved, so every save sends the whole set.
+export type ChatAttributes = {
+  crm_owner_id?: number | string | null
+  crm_owner_name?: string | null
+  crm_lead_id?: number | string | null
+}
+
 export type ChatwootConversation = {
   id: number
   status: string
@@ -52,7 +60,7 @@ export type ChatwootConversation = {
   waiting_since: number
   timestamp: number
   last_activity_at: number
-  custom_attributes?: { crm_owner_id?: number | string | null; crm_owner_name?: string | null } | null
+  custom_attributes?: ChatAttributes | null
   labels?: string[]
   meta: { sender: ChatwootSender }
   last_non_activity_message?: ChatwootMessage | null
@@ -126,6 +134,16 @@ export function getOwner(conversation: Pick<ChatwootConversation, 'custom_attrib
     return null
   }
   return { id: Number(id), name: attributes?.crm_owner_name ?? 'Someone' }
+}
+
+// The lead this chat was tied to, if anyone did.
+export function getLinkedLeadId(conversation: Pick<ChatwootConversation, 'custom_attributes'>) {
+  const id = conversation.custom_attributes?.crm_lead_id
+  if (id === null || id === undefined || id === '') {
+    return null
+  }
+  const number = Number(id)
+  return Number.isFinite(number) ? number : null
 }
 
 export function attachmentLabel(attachment: ChatwootAttachment) {
