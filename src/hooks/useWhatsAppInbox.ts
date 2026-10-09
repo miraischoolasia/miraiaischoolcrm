@@ -47,7 +47,13 @@ type OutboxItem = {
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
 
-export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
+// active is false while the WhatsApp page is hidden behind another page: the page stays as it
+// was, but nothing is marked as read while no one is looking.
+export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, active = true) {
+  const activeRef = useRef(active)
+  useEffect(() => {
+    activeRef.current = active
+  }, [active])
   const [conversationMap, setConversationMap] = useState<Map<number, ChatwootConversation>>(new Map())
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -210,7 +216,7 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
     }
 
     const timer = window.setInterval(() => {
-      if (document.hidden) {
+      if (document.hidden || !activeRef.current) {
         return
       }
       client
@@ -526,21 +532,6 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
     [client, refreshStatus],
   )
 
-  const savePhone = useCallback(
-    async (contactId: number, digits: string) => {
-      setActionError(null)
-      try {
-        await client.setContactPhone(contactId, digits)
-        await refreshStatus('open')
-        return true
-      } catch {
-        setActionError("Couldn't save that number. It may already belong to another chat.")
-        return false
-      }
-    },
-    [client, refreshStatus],
-  )
-
   return {
     conversations,
     selected,
@@ -561,7 +552,6 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
     setStatus,
     send,
     dismissUnsent,
-    savePhone,
     startNewChat,
     loadMissingConversations,
   }

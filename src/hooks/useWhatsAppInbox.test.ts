@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ChatwootClient } from '../lib/chatwootClient'
 import type { ChatwootConversation, ChatwootMessage } from '../lib/whatsappInbox'
 import { useWhatsAppInbox } from './useWhatsAppInbox'
@@ -90,5 +90,33 @@ describe('useWhatsAppInbox with a parent who has two chats', () => {
       await Promise.resolve()
     })
     expect(result.current.hasOlder).toBe(false)
+  })
+})
+
+describe('useWhatsAppInbox while another page is showing', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('keeps the open chat and stops refreshing and marking it read until it is back', async () => {
+    const client = mergedParent()
+    const { result, rerender } = renderHook(({ active }) => useWhatsAppInbox(client, staff, active), {
+      initialProps: { active: true },
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => result.current.setSelectedId(20))
+    await waitFor(() => expect(result.current.messages).toHaveLength(2))
+
+    rerender({ active: false })
+    const calls = (client.listMessages as ReturnType<typeof vi.fn>).mock.calls.length
+    vi.useFakeTimers()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000)
+    })
+
+    // Nothing was fetched while hidden, and the chat is still the open one.
+    expect((client.listMessages as ReturnType<typeof vi.fn>).mock.calls.length).toBe(calls)
+    expect(result.current.selectedId).toBe(20)
+    expect(result.current.messages).toHaveLength(2)
   })
 })

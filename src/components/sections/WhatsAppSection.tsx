@@ -12,11 +12,13 @@ type WhatsAppSectionProps = {
   currentUser: Sender | null
   staff: Sender[]
   crm: WhatsAppCrm
+  // False while another page is showing (the page stays mounted).
+  active?: boolean
 }
 
-export function WhatsAppSection({ chatwootUrl, apiUrl, currentUser, staff, crm }: WhatsAppSectionProps) {
+export function WhatsAppSection({ chatwootUrl, apiUrl, currentUser, staff, crm, active = true }: WhatsAppSectionProps) {
   if (apiUrl && currentUser) {
-    return <WhatsAppInbox apiUrl={apiUrl} currentUser={currentUser} staff={staff} crm={crm} />
+    return <WhatsAppInbox apiUrl={apiUrl} currentUser={currentUser} staff={staff} crm={crm} active={active} />
   }
 
   const inboxUrl = `${chatwootUrl}/app/`

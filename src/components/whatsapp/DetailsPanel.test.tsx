@@ -96,7 +96,6 @@ function renderPanel(
       crm={crm}
       sourceRules={rules}
       onLoadOlder={vi.fn()}
-      onSavePhone={vi.fn()}
       onLinkLead={onLinkLead}
     />,
   )
@@ -160,7 +159,6 @@ describe('DetailsPanel', () => {
         sourceRules={[]}
         onManageRules={onManageRules}
         onLoadOlder={vi.fn()}
-        onSavePhone={vi.fn()}
         onLinkLead={vi.fn()}
       />,
     )
@@ -253,7 +251,6 @@ describe('DetailsPanel', () => {
         crm={crm}
         sourceRules={[]}
         onLoadOlder={vi.fn()}
-        onSavePhone={vi.fn()}
         onLinkLead={vi.fn()}
       />,
     )
@@ -268,7 +265,6 @@ describe('DetailsPanel', () => {
         crm={{ ...crm, leads: [newer] }}
         sourceRules={[]}
         onLoadOlder={vi.fn()}
-        onSavePhone={vi.fn()}
         onLinkLead={vi.fn()}
       />,
     )
@@ -351,7 +347,6 @@ describe('DetailsPanel', () => {
         crm={makeCrm({ leads: [lead] })}
         sourceRules={[]}
         onLoadOlder={vi.fn()}
-        onSavePhone={vi.fn()}
         onLinkLead={vi.fn()}
         otherChats={[{ id: 9, title: 'jiayu', lastActivity: 1_790_000_000, isDone: false }]}
         onOpenChat={onOpenChat}

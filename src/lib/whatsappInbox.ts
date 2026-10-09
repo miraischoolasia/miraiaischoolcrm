@@ -114,16 +114,8 @@ export function getChatIdentity(sender: ChatwootSender, leadName?: string | null
   const ownName = leadName?.trim() ?? ''
   const title = ownName || (phone ? formatPhone(phone) : UNNAMED_CHAT)
   const subtitle = phone ? formatPhone(phone) : 'Number hidden by WhatsApp'
-  const initials = ownName
-    ? ownName
-        .split(/\s+/)
-        .map((part) => part.replace(/^[^\p{L}\p{N}]+/u, '')[0] ?? '')
-        .join('')
-        .slice(0, 2)
-        .toUpperCase() || '?'
-    : phone
-      ? phone.slice(-2)
-      : '?'
+  // The picture is the initials of the WhatsApp name, never the number.
+  const initials = hasName ? getInitials(cleanName) : '?'
 
   return { name: hasName ? cleanName : null, title, subtitle, hasRealPhone: phone !== null, initials }
 }

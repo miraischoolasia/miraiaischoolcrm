@@ -8,7 +8,9 @@ import {
   countByTab,
   filterConversations,
   getChatIdentity,
+  getInitials,
   getLinkedLeadId,
+  getOwner,
   getRealPhone,
   isRecentlyOverdue,
   type InboxTab,
@@ -30,11 +32,13 @@ type WhatsAppInboxProps = {
   currentUser: Sender
   staff: Sender[]
   crm: WhatsAppCrm
+  // False while another page is showing; this page stays mounted so it is as it was left.
+  active?: boolean
 }
 
-export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInboxProps) {
+export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }: WhatsAppInboxProps) {
   const client = useMemo(() => createChatwootClient(apiUrl), [apiUrl])
-  const inbox = useWhatsAppInbox(client, currentUser)
+  const inbox = useWhatsAppInbox(client, currentUser, active)
   const [tab, setTab] = useState<InboxTab>('chats')
   const [tagId, setTagId] = useState<number | null>(null)
   const [sourceId, setSourceId] = useState<number | null>(null)
@@ -84,6 +88,27 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
     (conversation: ChatwootConversation) =>
       studentsOf(conversation).map((student) => getStudentKind(student, crm.packages)),
     [studentsOf, crm.packages],
+  )
+  // The lead's tags and person in charge, shown on each chat in the list.
+  const optionsById = useMemo(() => new Map(crm.leadOptions.map((option) => [option.id, option])), [crm.leadOptions])
+  const tagsOf = useCallback(
+    (conversation: ChatwootConversation) => {
+      const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
+      return (lead?.tagIds ?? []).flatMap((id) => {
+        const option = optionsById.get(id)
+        return option && option.kind === 'tag' ? [option] : []
+      })
+    },
+    [resolveLead, optionsById],
+  )
+  const picOf = useCallback(
+    (conversation: ChatwootConversation) => {
+      const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
+      const leadPic = lead?.picId != null ? optionsById.get(lead.picId)?.label : undefined
+      const name = leadPic ?? getOwner(conversation)?.name
+      return name ? { name, initials: getInitials(name) } : null
+    },
+    [resolveLead, optionsById],
   )
   // A parent can have two chats: an old one imported under a hidden WhatsApp ID, and the one
   // WhatsApp now uses with their number. Both are tied to the same lead.
@@ -207,6 +232,8 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
         leadNameOf={leadNameOf}
         studentLabelsOf={studentLabelsOf}
         isOlderDuplicate={isOlderDuplicate}
+        tagsOf={tagsOf}
+        picOf={picOf}
         kind={kind}
         onKind={setKind}
         selectedId={inbox.selectedId}
@@ -265,7 +292,6 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
             sourceRules={sourceRules.rules}
             onManageRules={(phrase) => setManagingRules({ phrase })}
             onLoadOlder={() => void inbox.loadOlder()}
-            onSavePhone={inbox.savePhone}
             onLinkLead={(leadId) => inbox.setLeadLink(inbox.selected!.id, leadId)}
             otherChats={otherChatsOf(inbox.selected).map((other) => ({
               id: other.id,

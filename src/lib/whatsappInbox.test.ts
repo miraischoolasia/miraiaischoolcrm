@@ -57,7 +57,8 @@ describe('getChatIdentity', () => {
     expect(identity.title).toBe('+60 12-632 6319')
     expect(identity.subtitle).toBe('+60 12-632 6319')
     expect(identity.hasRealPhone).toBe(true)
-    expect(identity.initials).toBe('19')
+    // The picture is the initials of the WhatsApp name, not of the number.
+    expect(identity.initials).toBe('L')
     // It is kept only so the chat can be matched to a lead.
     expect(identity.name).toBe('Lex')
   })
@@ -79,12 +80,20 @@ describe('getChatIdentity', () => {
     const hidden = { id: 1, name: '1215643541729', phone_number: '+1215643541729', identifier: null }
     const identity = getChatIdentity(hidden, '  @YYMDZ1973 ')
     expect(identity.title).toBe('@YYMDZ1973')
-    expect(identity.initials).toBe('Y')
+    // WhatsApp gave no name, so the picture is a question mark, not the number or the parent name.
+    expect(identity.initials).toBe('?')
     // The chat itself still has no name, and the number is still hidden.
     expect(identity.name).toBeNull()
     expect(identity.subtitle).toBe('Number hidden by WhatsApp')
     expect(getChatIdentity(hidden, null).title).toBe('WhatsApp user')
     expect(getChatIdentity(hidden, '   ').title).toBe('WhatsApp user')
+  })
+
+  it('keeps the picture on the WhatsApp name when the title is the parent name', () => {
+    const named = { id: 1, name: 'Yvonne Tan', phone_number: '+60126326319', identifier: null }
+    const identity = getChatIdentity(named, '@YYMDZ1973')
+    expect(identity.title).toBe('@YYMDZ1973')
+    expect(identity.initials).toBe('YT')
   })
 
   it('calls a chat by the parent name from the lead, else the number', () => {

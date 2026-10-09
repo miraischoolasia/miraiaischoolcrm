@@ -13,6 +13,8 @@ import {
 } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
+import { LeadTagChip } from '../LeadTagChip'
+import type { LeadOption } from '../../types/domain'
 import type { StudentKind } from '../../lib/studentLink'
 import {
   desktopAlertsStatus,
@@ -27,7 +29,6 @@ import {
   OVERDUE_SECONDS,
   STALE_SECONDS,
   getChatIdentity,
-  getOwner,
   getPreview,
   type ChatwootConversation,
   type InboxTab,
@@ -59,6 +60,12 @@ type ConversationListProps = {
   leadNameOf?: (conversation: ChatwootConversation) => string | null
   // What the parent's students are to the school ("Regular · 3 Months", "HOA"), per chat.
   studentLabelsOf?: (conversation: ChatwootConversation) => string[]
+  // The lead's tags, shown as chips under the chat.
+  tagsOf?: (conversation: ChatwootConversation) => Pick<LeadOption, 'id' | 'label' | 'color' | 'isActive'>[]
+  // Who is in charge of the parent: the lead's person in charge, else whoever handles the chat.
+  picOf?: (conversation: ChatwootConversation) => { name: string; initials: string } | null
+  // How long a parent has waited (the red banner, the red row, "Waiting 45 min"). Hidden for now.
+  showWaiting?: boolean
   // True for an older chat of a parent who has a newer one.
   isOlderDuplicate?: (conversation: ChatwootConversation) => boolean
   // Show only parents with a student of this kind, or with none yet.
@@ -127,6 +134,9 @@ export function ConversationList({
   snippets,
   leadNameOf,
   studentLabelsOf,
+  tagsOf,
+  picOf,
+  showWaiting = false,
   isOlderDuplicate,
   kind = null,
   selectedId,
@@ -208,7 +218,7 @@ export function ConversationList({
           })}
         </div>
 
-        {overdueCount > 0 && (
+        {showWaiting && overdueCount > 0 && (
           <p role="status" className="mt-2 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">
             {overdueCount} {overdueCount === 1 ? 'chat has' : 'chats have'} waited over 30 minutes for a reply.
           </p>
@@ -301,12 +311,12 @@ export function ConversationList({
         )}
         {conversations.map((conversation) => {
           const identity = getChatIdentity(conversation.meta.sender, leadNameOf?.(conversation))
-          const chatOwner = getOwner(conversation)
+          const pic = picOf?.(conversation) ?? null
           const lastMessage = conversation.last_non_activity_message
           const preview = getPreview(conversation)
           const selected = conversation.id === selectedId
           const waiting = getWaitingSeconds(conversation, nowSeconds)
-          const overdue = waiting !== null && waiting >= OVERDUE_SECONDS
+          const overdue = showWaiting && waiting !== null && waiting >= OVERDUE_SECONDS
           // Past a day it is most likely an old chat, so it gets the label but not the red row.
           const redRow = overdue && waiting < STALE_SECONDS
           return (
@@ -328,7 +338,17 @@ export function ConversationList({
               </span>
               <span className="min-w-0">
                 <span className="flex items-baseline justify-between gap-2">
-                  <span className="truncate text-sm font-semibold text-slate-900">{identity.title}</span>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate text-sm font-semibold text-slate-900">{identity.title}</span>
+                    {pic && (
+                      <span
+                        title={`In charge: ${pic.name}`}
+                        className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-pink-100 px-1 text-[10px] font-bold leading-none text-[#be185d]"
+                      >
+                        {pic.initials}
+                      </span>
+                    )}
+                  </span>
                   <span className="shrink-0 text-xs text-slate-400">{formatListTime(conversation.last_activity_at)}</span>
                 </span>
                 <span className="flex items-center justify-between gap-2">
@@ -352,27 +372,11 @@ export function ConversationList({
                     </span>
                   )}
                 </span>
-                <span className="mt-1 flex flex-wrap gap-1">
-                  {conversation.status !== 'resolved' && (
-                    <span
-                      className={cn(
-                        'rounded-full px-2 py-0.5 text-[11px] font-medium',
-                        chatOwner ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700',
-                      )}
-                    >
-                      {chatOwner ? chatOwner.name : 'No one yet'}
-                    </span>
-                  )}
-                  {overdue && waiting !== null ? (
+                <span className="mt-1 flex min-h-[22px] flex-wrap gap-1">
+                  {overdue && waiting !== null && (
                     <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white">
                       Waiting {formatWaiting(waiting)}
                     </span>
-                  ) : (
-                    waiting !== null && (
-                      <span className="rounded-full bg-pink-100 px-2 py-0.5 text-[11px] font-semibold text-pink-700">
-                        Needs reply
-                      </span>
-                    )
                   )}
                   {isOlderDuplicate?.(conversation) && (
                     <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
@@ -387,9 +391,11 @@ export function ConversationList({
                       {label}
                     </span>
                   ))}
-                  {!identity.hasRealPhone && (
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">No number</span>
-                  )}
+                  {tagsOf?.(conversation).map((tag) => (
+                    <span key={tag.id} className="max-w-full text-[11px]">
+                      <LeadTagChip tag={tag} />
+                    </span>
+                  ))}
                 </span>
               </span>
             </button>

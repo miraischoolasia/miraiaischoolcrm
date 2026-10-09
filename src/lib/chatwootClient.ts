@@ -161,9 +161,5 @@ export function createChatwootClient(
     async createConversation(contactId: number, inboxId: number): Promise<{ id: number }> {
       return request<{ id: number }>('/conversations', json('POST', { contact_id: contactId, inbox_id: inboxId }))
     },
-
-    async setContactPhone(contactId: number, digits: string) {
-      await request(`/contacts/${contactId}`, json('PUT', { phone_number: `+${digits}` }))
-    },
   }
 }

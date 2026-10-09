@@ -627,6 +627,12 @@ function App() {
     return sections
   }, [can, isAdmin, isTeacherAccount])
   const visibleSection = allowedSections.includes(activeSection) ? activeSection : null
+  const [hasOpenedWhatsApp, setHasOpenedWhatsApp] = useState(false)
+  useEffect(() => {
+    if (visibleSection === 'whatsapp') {
+      setHasOpenedWhatsApp(true)
+    }
+  }, [visibleSection])
   const { unread: unreadFormSubmissions, markSeen: markFormSubmissionsSeen } =
     useUnreadFormSubmissions(can('forms'))
   const canUseWhatsApp = can('leads')
@@ -5585,14 +5591,19 @@ function App() {
               />
             )}
 
-            {visibleSection === 'whatsapp' && chatwootUrl && (
-              <WhatsAppSection
-                chatwootUrl={chatwootUrl}
-                apiUrl={whatsAppApiUrl}
-                currentUser={whatsAppUser}
-                staff={whatsAppStaff}
-                crm={whatsAppCrm}
-              />
+            {/* Once opened, the WhatsApp page stays mounted behind other pages, so coming back to it
+                finds the same chat, search, filters and scroll position. */}
+            {(visibleSection === 'whatsapp' || hasOpenedWhatsApp) && chatwootUrl && (
+              <div className={visibleSection === 'whatsapp' ? undefined : 'hidden'}>
+                <WhatsAppSection
+                  chatwootUrl={chatwootUrl}
+                  apiUrl={whatsAppApiUrl}
+                  currentUser={whatsAppUser}
+                  staff={whatsAppStaff}
+                  crm={whatsAppCrm}
+                  active={visibleSection === 'whatsapp'}
+                />
+              </div>
             )}
 
             {visibleSection === 'forms' && (

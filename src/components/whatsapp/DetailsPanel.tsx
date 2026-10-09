@@ -33,7 +33,6 @@ type DetailsPanelProps = {
   sourceRules: SourceRule[]
   onManageRules?: (phrase: string) => void
   onLoadOlder: () => void
-  onSavePhone: (contactId: number, digits: string) => Promise<boolean>
   onLinkLead: (leadId: number | null) => Promise<boolean>
   // Other chats of the same parent (an old one under a hidden ID, say), to jump to.
   otherChats?: { id: number; title: string; lastActivity: number; isDone: boolean }[]
@@ -53,7 +52,6 @@ export function DetailsPanel({
   sourceRules,
   onManageRules,
   onLoadOlder,
-  onSavePhone,
   onLinkLead,
   otherChats = [],
   onOpenChat,
@@ -62,8 +60,6 @@ export function DetailsPanel({
   const sender = conversation.meta.sender
   const owner = getOwner(conversation)
   const phone = getRealPhone(sender.phone_number)
-  const [phoneInput, setPhoneInput] = useState('')
-  const [phoneError, setPhoneError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
 
   const { lead, byPhone } = resolveChatLead(getLinkedLeadId(conversation), phone, crm.leads)
@@ -80,19 +76,6 @@ export function DetailsPanel({
   const first = useMemo(() => getFirstMessage(messages), [messages])
   const guess = useMemo(() => guessSourceAndTags(first?.text ?? '', crm.leadOptions, sourceRules), [first, crm.leadOptions, sourceRules])
   const found = useMemo(() => searchLeads(crm.leads, query), [crm.leads, query])
-
-  async function savePhone() {
-    const digits = phoneInput.replace(/\D/g, '')
-    if (digits.length < 9 || digits.length > 13) {
-      setPhoneError('Enter the full number, for example 012 345 6789.')
-      return
-    }
-    const national = digits.startsWith('0') ? `60${digits.slice(1)}` : digits
-    setPhoneError(null)
-    if (await onSavePhone(sender.id, national)) {
-      setPhoneInput('')
-    }
-  }
 
   // The WhatsApp name is only used to find leads with a similar name; it is never shown or copied
   // into the form, where the parent name is what the team writes.
@@ -118,34 +101,6 @@ export function DetailsPanel({
       <h3 className="text-sm font-semibold text-slate-900">{identity.title}</h3>
       <p className="mt-0.5 text-xs text-slate-500">{identity.subtitle}</p>
       <p className="mt-1 text-xs text-slate-500">Handled by: {owner ? owner.name : 'no one yet'}</p>
-
-      {!identity.hasRealPhone && (
-        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-          <p className="font-medium">WhatsApp hides this parent's number.</p>
-          <p className="mt-1">If you know it, add it here so the chat matches the right lead or student.</p>
-          <label className="mt-2 block">
-            <span className="sr-only">Parent phone number</span>
-            <input
-              type="tel"
-              value={phoneInput}
-              onChange={(event) => {
-                setPhoneInput(event.target.value)
-                setPhoneError(null)
-              }}
-              placeholder="012 345 6789"
-              className="w-full rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-[#fc0c97]"
-            />
-          </label>
-          {phoneError && <p className="mt-1 text-red-600">{phoneError}</p>}
-          <button
-            type="button"
-            onClick={() => void savePhone()}
-            className="mt-2 w-full rounded-lg bg-[#fc0c97] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#e00a87]"
-          >
-            Save number
-          </button>
-        </div>
-      )}
 
       <div className="mt-5 space-y-5 border-t border-slate-100 pt-4">
         {/* The slots below keep their place whether or not the chat is a lead yet, so the
@@ -211,6 +166,38 @@ export function DetailsPanel({
         </ul>
       </section>
     )}
+        {!lead ? (
+        <div className="text-xs">
+          <label className="block">
+            <span className="font-semibold text-slate-700">Already a lead? Find them</span>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Name or phone number"
+              className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-[#fc0c97]"
+            />
+          </label>
+          {query.trim() && found.length === 0 && <p className="mt-1 text-slate-500">No lead found.</p>}
+          {found.length > 0 && (
+            <ul className="mt-1 space-y-1">
+              {found.map((entry) => (
+                <li key={entry.id}>
+                  <button
+                    type="button"
+                    onClick={() => void onLinkLead(entry.id)}
+                    className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-left hover:bg-slate-50"
+                  >
+                    <span className="block truncate text-sm text-slate-900">
+                      {entry.fullName || entry.children[0]?.name || 'Unnamed lead'}
+                    </span>
+                    <span className="block truncate text-slate-500">{entry.phone ?? 'No phone number'}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        ) : null}
         {lead || crm.canEditLeads ? (
           <LeadForm
             key={conversation.id}
@@ -228,40 +215,7 @@ export function DetailsPanel({
             This parent is not a lead yet. You can look but not add leads.
           </p>
         )}
-        {lead ? (
-          <LeadExtras lead={lead} crm={crm} />
-        ) : (
-      <div className="text-xs">
-        <label className="block">
-          <span className="font-semibold text-slate-700">Already a lead? Find them</span>
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Name or phone number"
-            className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-[#fc0c97]"
-          />
-        </label>
-        {query.trim() && found.length === 0 && <p className="mt-1 text-slate-500">No lead found.</p>}
-        {found.length > 0 && (
-          <ul className="mt-1 space-y-1">
-            {found.map((entry) => (
-              <li key={entry.id}>
-                <button
-                  type="button"
-                  onClick={() => void onLinkLead(entry.id)}
-                  className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-left hover:bg-slate-50"
-                >
-                  <span className="block truncate text-sm text-slate-900">
-                    {entry.fullName || entry.children[0]?.name || 'Unnamed lead'}
-                  </span>
-                  <span className="block truncate text-slate-500">{entry.phone ?? 'No phone number'}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-        )}
+        {lead ? <LeadExtras lead={lead} crm={crm} /> : null}
 
         {students.map((student) => (
           <StudentCard key={student.id} student={student} crm={crm} />
