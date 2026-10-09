@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAttendanceSubmission } from './attendance'
+import { buildAttendanceSubmission, countRatedMetrics, getReviewProgress, isReviewComplete } from './attendance'
 import type { AttendanceReviewFormState } from '../types/domain'
 
 const fullReview = (overrides: Partial<AttendanceReviewFormState> = {}): AttendanceReviewFormState => ({
@@ -158,5 +158,34 @@ describe('buildAttendanceSubmission', () => {
       'Finished the maze game.',
       null,
     ])
+  })
+})
+
+describe('review progress', () => {
+  it('needs all five ratings, and a remark for every 1-2 star score', () => {
+    expect(isReviewComplete(fullReview())).toBe(true)
+    expect(isReviewComplete(undefined)).toBe(false)
+    expect(isReviewComplete(fullReview({ sustainedFocusScore: null }))).toBe(false)
+    expect(isReviewComplete(fullReview({ codingCreativityScore: 2 }))).toBe(false)
+    expect(isReviewComplete(fullReview({ codingCreativityScore: 2, codingCreativityRemark: '  ' }))).toBe(false)
+    expect(isReviewComplete(fullReview({ codingCreativityScore: 2, codingCreativityRemark: 'Needs help' }))).toBe(true)
+  })
+
+  it('counts rated metrics', () => {
+    expect(countRatedMetrics(undefined)).toBe(0)
+    expect(countRatedMetrics(fullReview({ problemSolvingScore: null, expressivenessScore: null }))).toBe(3)
+  })
+
+  it('tells who is done, who still needs a review, and who is away', () => {
+    const progress = getReviewProgress(
+      [1, 2, 3, 4],
+      { 1: 'present', 2: 'present', 3: 'absent' },
+      { 1: fullReview(), 2: fullReview({ logicalThinkingScore: null }) },
+    )
+
+    expect(progress.presentIds).toEqual([1, 2, 4])
+    expect(progress.doneIds).toEqual([1])
+    expect(progress.pendingIds).toEqual([2, 4])
+    expect(progress.awayCount).toBe(1)
   })
 })

@@ -183,6 +183,10 @@ async function signIn() {
   render(<App />)
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'admin-1' } }))
+  // A teacher starts on Today.
+  if (mocks.role === 'teacher') {
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Calendar' }))[0])
+  }
   await screen.findByRole('list', { name: 'calendar events' })
 }
 

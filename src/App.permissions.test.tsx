@@ -124,17 +124,34 @@ describe('account permissions', () => {
     expect(screen.queryByRole('button', { name: /Convert/ })).not.toBeInTheDocument()
   })
 
-  it('keeps a plain teacher on Calendar and My Classroom', async () => {
+  it('keeps a plain teacher on Today, Calendar and My Classroom, starting on Today', async () => {
     await signInAs('teacher', {})
 
+    expect(await screen.findByText(/^Good (morning|afternoon|evening),/)).toBeInTheDocument()
+    expect(screen.queryByText('Calendar ready')).not.toBeInTheDocument()
+    expect(navLabels()).toEqual(['Today', 'Calendar', 'My Classroom'])
+  })
+
+  it('shows a teacher their own day first, with a way on to the full calendar', async () => {
+    await signInAs('teacher', {})
+
+    expect(await screen.findByRole('heading', { name: /^Good (morning|afternoon|evening),/ })).toBeInTheDocument()
+    expect(screen.getByText('No classes today.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Open full calendar' }))
     expect(await screen.findByText('Calendar ready')).toBeInTheDocument()
-    expect(navLabels()).toEqual(['Calendar', 'My Classroom'])
+  })
+
+  it('does not give Today to an admin', async () => {
+    await signInAs('admin', {})
+
+    expect(await screen.findByText('Calendar ready')).toBeInTheDocument()
+    expect(navLabels()).not.toContain('Today')
   })
 
   it('adds the ticked modules to a teacher account', async () => {
     await signInAs('teacher', { leads: { level: 'edit', delete: true } })
 
-    expect(navLabels()).toEqual(['Calendar', 'Marketing', 'My Classroom'])
+    expect(navLabels()).toEqual(['Today', 'Calendar', 'Marketing', 'My Classroom'])
   })
 
   it('loads the activity log only when it is opened, one day at a time', async () => {

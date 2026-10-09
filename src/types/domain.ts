@@ -1,6 +1,7 @@
 import type { Database } from './database'
 
 export type AppSection =
+  | 'home'
   | 'calendar'
   | 'classrooms'
   | 'students'

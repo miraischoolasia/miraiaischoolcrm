@@ -87,3 +87,30 @@ export function buildAttendanceSubmission(
 
   return { ok: true, payload, reviewPayload }
 }
+
+// A review is complete when all five metrics are rated and every 1-2 star
+// metric has its remark. The same rule buildAttendanceSubmission enforces.
+export function isReviewComplete(reviewForm: AttendanceReviewFormState | undefined) {
+  const form = reviewForm ?? createEmptyAttendanceReviewForm()
+  return performanceMetricDefinitions.every((metric) => {
+    const score = form[metric.scoreField]
+    return score !== null && (score > 2 || form[metric.remarkField].trim() !== '')
+  })
+}
+
+export function countRatedMetrics(reviewForm: AttendanceReviewFormState | undefined) {
+  const form = reviewForm ?? createEmptyAttendanceReviewForm()
+  return performanceMetricDefinitions.filter((metric) => form[metric.scoreField] !== null).length
+}
+
+// Who is present, who has a finished review, and who still needs one.
+export function getReviewProgress(
+  rosterIds: number[],
+  attendanceStatuses: Record<number, AttendanceStatus>,
+  attendanceReviews: Record<number, AttendanceReviewFormState>,
+) {
+  const presentIds = rosterIds.filter((id) => (attendanceStatuses[id] ?? 'present') === 'present')
+  const doneIds = presentIds.filter((id) => isReviewComplete(attendanceReviews[id]))
+  const pendingIds = presentIds.filter((id) => !doneIds.includes(id))
+  return { presentIds, doneIds, pendingIds, awayCount: rosterIds.length - presentIds.length }
+}

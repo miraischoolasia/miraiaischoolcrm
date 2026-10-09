@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { cn } from '../../lib/cn'
 import { formatDate } from '../../domain/studentStatus'
 import { performanceMetricDefinitions } from '../../lib/constants'
+import { countRatedMetrics, getReviewProgress, isReviewComplete } from '../../lib/attendance'
 import { createEmptyAttendanceReviewForm } from '../../lib/mappers'
 import { StarRatingInput } from '../StarRatingInput'
 import type {
@@ -86,6 +88,32 @@ export function AttendanceModal({
   // Nothing has been submitted that this viewer could look at: roster only.
   const isRosterOnly = isUpcoming || (isViewOnly && !attendanceExistingLog)
 
+  const rosterIds = attendanceRoster.map((student) => student.id)
+  const progress = getReviewProgress(rosterIds, attendanceStatuses, attendanceReviews)
+  // A new submission opens one student's review at a time, starting with the
+  // first one still to review. A submitted report opens every review, as it
+  // is there to be read, and each can be closed on its own.
+  const isReport = attendanceExistingLog !== null
+  const [chosenOpenIds, setChosenOpenIds] = useState<number[] | undefined>(undefined)
+  const openIds = chosenOpenIds ?? (isReport ? progress.presentIds : progress.pendingIds.slice(0, 1))
+  function toggleReview(studentId: number) {
+    const isOpen = openIds.includes(studentId)
+    if (isReport) {
+      setChosenOpenIds(isOpen ? openIds.filter((id) => id !== studentId) : [...openIds, studentId])
+    } else {
+      setChosenOpenIds(isOpen ? [] : [studentId])
+    }
+  }
+  function focusReview(studentId: number) {
+    if (!isReport) {
+      setChosenOpenIds([studentId])
+    }
+  }
+  const pendingNames = progress.pendingIds.map(
+    (id) => attendanceRoster.find((student) => student.id === id)?.name.split(' ')[0] ?? '',
+  )
+  const canSubmit = !attendanceLocked && attendanceRoster.length > 0
+
   return (
     <ModalShell maxWidth="760" onClose={onClose}>
       <div className="border-b border-slate-200 bg-white px-6 py-5 sm:px-8">
@@ -166,6 +194,43 @@ export function AttendanceModal({
           </div>
         ) : (
           <>
+            {canSubmit && !isRosterOnly && (
+              <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">
+                    Reviewed {progress.doneIds.length} of {progress.presentIds.length} present students
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {progress.awayCount > 0
+                      ? `${progress.awayCount} absent or on leave, no review needed`
+                      : 'Rate each present student, one at a time.'}
+                  </div>
+                </div>
+                <div
+                  className="h-2 min-w-32 flex-1 overflow-hidden rounded-full bg-slate-200"
+                  aria-hidden="true"
+                >
+                  <div
+                    className="h-full rounded-full bg-[#fc0c97] transition-all"
+                    style={{
+                      width: `${progress.presentIds.length === 0 ? 100 : (progress.doneIds.length / progress.presentIds.length) * 100}%`,
+                    }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    for (const student of attendanceRoster) {
+                      onSetStatus(student.id, 'present')
+                    }
+                  }}
+                  className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Mark all present
+                </button>
+              </div>
+            )}
+
             <div className="space-y-3">
               {attendanceRoster.map((student) => {
                 const currentStatus =
@@ -173,32 +238,47 @@ export function AttendanceModal({
                 const reviewForm =
                   attendanceReviews[student.id] ??
                   createEmptyAttendanceReviewForm()
+                const isOpen = !isRosterOnly && currentStatus === 'present' && openIds.includes(student.id)
+                const ratedCount = countRatedMetrics(reviewForm)
+                const complete = isReviewComplete(reviewForm)
+                const nextPendingId = progress.pendingIds.find((id) => id !== student.id) ?? null
 
                 return (
                   <div
                     key={student.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                    className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
                   >
-                    <div className="flex flex-col gap-4">
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="space-y-1">
-                          <div
-                            className="text-base font-semibold text-slate-900"
-                          >
-                            {student.name}
-                          </div>
-                          <div className="text-sm text-slate-500">
-                            {[
-                              student.age !== null ? `${student.age} yrs old` : null,
-                              student.phone,
-                            ]
-                              .filter(Boolean)
-                              .join(' · ') || 'No contact info'}
-                          </div>
+                    <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+                      <span
+                        aria-hidden="true"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#fbcfe8] bg-[#fff1f8] text-xs font-bold text-[#be185d]"
+                      >
+                        {student.name
+                          .split(/\s+/)
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .map((word) => word[0])
+                          .join('')
+                          .toUpperCase()}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-base font-semibold text-slate-900">{student.name}</div>
+                        <div className="text-sm text-slate-500">
+                          {[
+                            student.age !== null ? `${student.age} yrs old` : null,
+                            student.phone,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ') || 'No contact info'}
                         </div>
+                      </div>
 
-                        {!isRosterOnly && (
-                        <div className="grid grid-cols-3 gap-2">
+                      {!isRosterOnly && (
+                        <div
+                          role="group"
+                          aria-label={`Attendance for ${student.name}`}
+                          className="ml-auto inline-flex overflow-hidden rounded-xl border border-slate-200"
+                        >
                           {([
                             ['present', 'Present'],
                             ['absent', 'Absent'],
@@ -211,20 +291,19 @@ export function AttendanceModal({
                                 key={value}
                                 type="button"
                                 disabled={attendanceLocked}
-                                onClick={() => onSetStatus(student.id, value)}
+                                aria-pressed={active}
+                                onClick={() => {
+                                  onSetStatus(student.id, value)
+                                  if (value !== 'present' && openIds.includes(student.id)) {
+                                    setChosenOpenIds(openIds.filter((id) => id !== student.id))
+                                  }
+                                }}
                                 className={cn(
-                                  'rounded-xl border px-4 py-2 text-sm font-semibold transition',
-                                  active &&
-                                    value === 'present' &&
-                                    'border-emerald-200 bg-emerald-50 text-emerald-700',
-                                  active &&
-                                    value === 'absent' &&
-                                    'border-slate-300 bg-slate-100 text-slate-700',
-                                  active &&
-                                    value === 'leave' &&
-                                    'border-amber-200 bg-amber-50 text-amber-700',
-                                  !active &&
-                                    'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+                                  'border-r border-slate-200 px-4 py-1.5 text-sm font-semibold transition last:border-r-0',
+                                  active && value === 'present' && 'bg-emerald-50 text-emerald-700',
+                                  active && value === 'absent' && 'bg-slate-100 text-slate-800',
+                                  active && value === 'leave' && 'bg-amber-50 text-amber-700',
+                                  !active && 'bg-white text-slate-500 hover:bg-slate-50',
                                   attendanceLocked && 'cursor-not-allowed opacity-70',
                                 )}
                               >
@@ -233,87 +312,113 @@ export function AttendanceModal({
                             )
                           })}
                         </div>
-                        )}
-                      </div>
-
-                      {!isRosterOnly && currentStatus === 'present' && (
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                          <div className="mb-3 text-sm font-semibold text-slate-900">
-                            Student Performance Review
-                          </div>
-                          <div className="grid gap-3 lg:grid-cols-2">
-                            {performanceMetricDefinitions.map((metric) => {
-                              const score = reviewForm[metric.scoreField]
-                              const needsRemark =
-                                score !== null && score <= 2
-
-                              return (
-                                <div
-                                  key={`${student.id}-${metric.key}`}
-                                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3"
-                                >
-                                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                    <div className="text-sm font-semibold text-slate-900">
-                                      {metric.label}
-                                    </div>
-                                    <StarRatingInput
-                                      value={score}
-                                      disabled={attendanceLocked}
-                                      onChange={(nextScore) =>
-                                        onUpdateReviewScore(
-                                          student.id,
-                                          metric.scoreField,
-                                          metric.remarkField,
-                                          nextScore,
-                                        )
-                                      }
-                                    />
-                                  </div>
-
-                                  {needsRemark && (
-                                    <div className="mt-3 space-y-2">
-                                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-red-600">
-                                        Remark Required for 1-2 Stars
-                                      </div>
-                                      <textarea
-                                        rows={3}
-                                        value={reviewForm[metric.remarkField]}
-                                        disabled={attendanceLocked}
-                                        onChange={(event) =>
-                                          onUpdateReviewRemark(
-                                            student.id,
-                                            metric.remarkField,
-                                            event.target.value,
-                                          )
-                                        }
-                                        placeholder="Explain the low score for this metric."
-                                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2] disabled:bg-slate-50"
-                                      />
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-
-                          <label className="mt-3 block space-y-2">
-                            <span className="text-sm font-semibold text-slate-900">
-                              Lesson Remark
-                            </span>
-                            <textarea
-                              rows={3}
-                              value={reviewForm.lessonRemark}
-                              disabled={attendanceLocked}
-                              onChange={(event) =>
-                                onUpdateLessonRemark(student.id, event.target.value)
-                              }
-                              placeholder={`Lesson progress, homework, or any note for ${student.name}.`}
-                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2] disabled:bg-slate-50"
-                            />
-                          </label>
-                        </div>
                       )}
                     </div>
+
+                    {!isRosterOnly && currentStatus === 'present' && (
+                      <button
+                        type="button"
+                        aria-expanded={isOpen}
+                        onClick={() => toggleReview(student.id)}
+                        className="flex w-full items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-left transition hover:bg-[#fff8fc]"
+                      >
+                        <span className="text-sm font-semibold text-slate-900">
+                          Student Performance Review
+                        </span>
+                        <span className="flex items-center gap-3">
+                          {complete ? (
+                            <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
+                              ✓ Reviewed
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-700">
+                              {ratedCount === 0
+                                ? 'Not reviewed'
+                                : `${ratedCount} of 5 rated${ratedCount === 5 ? ' · remark needed' : ''}`}
+                            </span>
+                          )}
+                          <span className="text-xs font-semibold text-slate-500">
+                            {isOpen ? 'Hide' : attendanceLocked ? 'View' : 'Rate'}
+                          </span>
+                        </span>
+                      </button>
+                    )}
+
+                    {isOpen && (
+                      <div className="space-y-3 border-t border-slate-200 p-4">
+                        {performanceMetricDefinitions.map((metric) => {
+                          const score = reviewForm[metric.scoreField]
+                          const needsRemark = score !== null && score <= 2
+
+                          return (
+                            <div key={`${student.id}-${metric.key}`}>
+                              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="text-sm font-medium text-slate-800">{metric.label}</div>
+                                <StarRatingInput
+                                  value={score}
+                                  disabled={attendanceLocked}
+                                  onChange={(nextScore) => {
+                                    focusReview(student.id)
+                                    onUpdateReviewScore(
+                                      student.id,
+                                      metric.scoreField,
+                                      metric.remarkField,
+                                      nextScore,
+                                    )
+                                  }}
+                                />
+                              </div>
+
+                              {needsRemark && (
+                                <div className="mt-2 space-y-1.5">
+                                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-red-600">
+                                    Remark Required for 1-2 Stars
+                                  </div>
+                                  <textarea
+                                    rows={2}
+                                    value={reviewForm[metric.remarkField]}
+                                    disabled={attendanceLocked}
+                                    onChange={(event) =>
+                                      onUpdateReviewRemark(
+                                        student.id,
+                                        metric.remarkField,
+                                        event.target.value,
+                                      )
+                                    }
+                                    placeholder="Explain the low score for this metric."
+                                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2] disabled:bg-slate-50"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+
+                        <label className="block space-y-1.5">
+                          <span className="text-sm font-semibold text-slate-900">Lesson Remark</span>
+                          <textarea
+                            rows={2}
+                            value={reviewForm.lessonRemark}
+                            disabled={attendanceLocked}
+                            onChange={(event) =>
+                              onUpdateLessonRemark(student.id, event.target.value)
+                            }
+                            placeholder={`Lesson progress, homework, or any note for ${student.name}.`}
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2] disabled:bg-slate-50"
+                          />
+                        </label>
+
+                        {complete && nextPendingId !== null && !attendanceLocked && (
+                          <button
+                            type="button"
+                            onClick={() => setChosenOpenIds([nextPendingId])}
+                            className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                          >
+                            Next student
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -347,6 +452,19 @@ export function AttendanceModal({
               {adminAction.label}
             </button>
           )}
+          {canSubmit && !isRosterOnly && !isLoadingAttendance && (
+            <p
+              id="attendance-submit-hint"
+              className={cn(
+                'text-sm sm:mr-auto',
+                pendingNames.length > 0 ? 'text-slate-500' : 'font-medium text-emerald-700',
+              )}
+            >
+              {pendingNames.length > 0
+                ? `Still to review: ${pendingNames.join(', ')}`
+                : 'All set. Ready to submit.'}
+            </p>
+          )}
           <button
             type="button"
             onClick={onClose}
@@ -354,11 +472,16 @@ export function AttendanceModal({
           >
             Close
           </button>
-          {!attendanceLocked && attendanceRoster.length > 0 && (
+          {canSubmit && (
             <button
               type="submit"
-              disabled={isSavingAttendance || isLoadingAttendance}
-              className="rounded-xl bg-[#fc0c97] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#de0a84] disabled:cursor-not-allowed disabled:opacity-70"
+              aria-describedby="attendance-submit-hint"
+              disabled={
+                isSavingAttendance ||
+                isLoadingAttendance ||
+                (!isRosterOnly && progress.pendingIds.length > 0)
+              }
+              className="rounded-xl bg-[#fc0c97] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#de0a84] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSavingAttendance ? 'Submitting...' : 'Submit Attendance'}
             </button>

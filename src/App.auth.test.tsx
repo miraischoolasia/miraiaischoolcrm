@@ -39,7 +39,7 @@ vi.mock('./lib/api', async (importOriginal) => ({
   fetchAdminActivityForDay: async () => [],
 }))
 
-const teacher = { id: 1, authUserId: 'user-1', username: 'teacher', fullName: 'Test Teacher', role: 'teacher', isActive: true, permissions: {} }
+const teacher = { id: 1, authUserId: 'user-1', username: 'teacher', fullName: 'Test Teacher', role: 'admin', isActive: true, permissions: {} }
 async function signIn(id = 'user-1') {
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id } }))
 }

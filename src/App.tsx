@@ -18,6 +18,7 @@ import { malaysiaHolidayEvents } from './lib/holidays'
 import {
   CalendarBlank,
   Chalkboard,
+  House,
   ClockCounterClockwise,
   CaretDown,
   CaretDoubleLeft,
@@ -118,6 +119,7 @@ import {
   filterSchedulesByTeacher,
   getDateKeyFromDate,
   getTrialSlotKey,
+  weekdayLabels,
   type CalendarClassFilter,
 } from './lib/schedule'
 import {
@@ -135,6 +137,8 @@ import { AuthScreen } from './components/AuthScreen'
 import { SummaryBar } from './components/SummaryBar'
 import { ClassListingSection } from './components/sections/ClassListingSection'
 import { StudentDashboardSection } from './components/sections/StudentDashboardSection'
+import { TeacherHomeSection } from './components/sections/TeacherHomeSection'
+import { buildTeacherAgenda, formatClockTime } from './lib/teacherAgenda'
 import { TeacherManagementSection } from './components/sections/TeacherManagementSection'
 import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
@@ -619,6 +623,7 @@ function App() {
   const seesAllClasses = can('calendar') || can('classrooms') || can('students')
   const allowedSections = useMemo(() => {
     const sections: AppSection[] = []
+    if (isTeacherAccount) sections.push('home')
     if (can('leads')) sections.push('leads')
     // Same ticks as Leads: whoever follows up leads answers their WhatsApp.
     if (can('leads') && chatwootUrl) sections.push('whatsapp')
@@ -711,6 +716,80 @@ function App() {
     () => buildStudentParents({ students, leads, trialBookings }),
     [students, leads, trialBookings],
   )
+  // What a teacher sees on Today: their own classes, by day.
+  const teacherAgenda = useMemo(
+    () =>
+      isTeacherAccount && currentSession?.teacherId
+        ? buildTeacherAgenda(
+            {
+              teacherId: currentSession.teacherId,
+              schedules,
+              exceptions: scheduleExceptions,
+              classroomMap,
+              lessonLogs,
+              makeupEntries,
+              getRosterIds: getScheduleRosterStudentIds,
+            },
+            todayString,
+          )
+        : null,
+    // getScheduleRosterStudentIds reads students, the maps and the bookings, so they
+    // are dependencies even though they are not named in the callback.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+    [
+      isTeacherAccount,
+      currentSession?.teacherId,
+      schedules,
+      scheduleExceptions,
+      classroomMap,
+      lessonLogs,
+      makeupEntries,
+      students,
+      trialBookingMap,
+      makeupMap,
+      scheduleParticipantMap,
+      todayString,
+    ],
+  )
+  const teacherHomeClasses = useMemo(() => {
+    const teacherId = currentSession?.teacherId
+    if (!teacherAgenda || !teacherId) {
+      return []
+    }
+    const classroomIds = new Set<number>()
+    for (const schedule of schedules) {
+      if (schedule.teacherId === teacherId && schedule.status === 'active' && schedule.classroomId !== null) {
+        classroomIds.add(schedule.classroomId)
+      }
+    }
+    return [...classroomIds]
+      .map((id) => classroomMap.get(id))
+      .filter(
+        (classroom): classroom is Classroom =>
+          classroom !== undefined && classroom.status === 'active' && classroom.category !== 'trial',
+      )
+      .map((classroom) => ({
+        id: classroom.id,
+        name: classroom.name,
+        subtitle: `${classroom.ageGroup} · ${classroom.programLevel}`,
+        studentCount: (classroomStudentMap.get(classroom.id) ?? []).length,
+        slots: schedules
+          .filter(
+            (schedule) =>
+              schedule.classroomId === classroom.id &&
+              schedule.teacherId === teacherId &&
+              schedule.eventType === 'regular' &&
+              schedule.status === 'active' &&
+              schedule.dayOfWeek !== null,
+          )
+          .sort((a, b) => (a.dayOfWeek ?? 0) - (b.dayOfWeek ?? 0) || a.startTime.localeCompare(b.startTime))
+          .map(
+            (schedule) =>
+              `${weekdayLabels[schedule.dayOfWeek ?? 0].slice(0, 3)} ${formatClockTime(schedule.startTime)}-${formatClockTime(schedule.endTime)}`,
+          ),
+        missing: teacherAgenda.todo.filter((item) => item.classroomId === classroom.id).length,
+      }))
+  }, [teacherAgenda, currentSession?.teacherId, schedules, classroomMap, classroomStudentMap])
   const editingStudent =
     students.find((student) => student.id === editingStudentId) ?? null
   const editingTeacher =
@@ -857,6 +936,13 @@ function App() {
       setActiveSection(allowedSections.includes('calendar') ? 'calendar' : allowedSections[0])
     }
   }, [activeSection, allowedSections])
+
+  // A teacher starts on Today, not on the full calendar.
+  useEffect(() => {
+    if (isTeacherAccount) {
+      setActiveSection('home')
+    }
+  }, [isTeacherAccount, currentSession?.teacherId])
 
   useEffect(() => {
     if (!selectedStudentDetailId) {
@@ -1262,6 +1348,7 @@ function App() {
 
   const navItems: NavItem[] = (
     [
+      { key: 'home', label: 'Today', icon: House },
       { key: 'leads', label: 'Leads', icon: Funnel, group: 'marketing' },
       { key: 'whatsapp', label: 'WhatsApp', icon: WhatsappLogo, group: 'marketing' },
       { key: 'forms', label: 'Forms', icon: ClipboardText, group: 'marketing' },
@@ -5065,7 +5152,7 @@ function App() {
 
           <nav className={cn('flex-1 space-y-1', isSidebarCollapsed ? 'px-2 pt-3' : 'px-3')}>
             {navItems
-              .filter((item) => !item.group && item.key === 'calendar')
+              .filter((item) => !item.group && (item.key === 'home' || item.key === 'calendar'))
               .map((item) => renderDesktopNavButton(item))}
             {marketingNavItems.length > 0 && isSidebarCollapsed && (
               <div className="space-y-1 border-y border-white/10 py-1">
@@ -5102,7 +5189,7 @@ function App() {
               </div>
             )}
             {navItems
-              .filter((item) => !item.group && item.key !== 'calendar')
+              .filter((item) => !item.group && item.key !== 'home' && item.key !== 'calendar')
               .map((item) => renderDesktopNavButton(item))}
           </nav>
 
@@ -5118,7 +5205,9 @@ function App() {
             <div className="mx-auto flex max-w-[1600px] flex-col gap-3 px-4 py-3 lg:px-5 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#be185d]">
-                  {activeSection === 'calendar'
+                  {activeSection === 'home'
+                    ? 'Teacher Home'
+                    : activeSection === 'calendar'
                     ? 'Calendar Board'
                     : activeSection === 'classrooms'
                       ? 'Classroom Board'
@@ -5135,7 +5224,9 @@ function App() {
                               : 'Student Board'}
                 </div>
                 <h1 className="mt-0.5 text-2xl font-semibold tracking-tight text-slate-900">
-                  {activeSection === 'calendar'
+                  {activeSection === 'home'
+                    ? 'Today'
+                    : activeSection === 'calendar'
                     ? 'Classes, Attendance & Timetable'
                     : activeSection === 'classrooms'
                       ? 'My Classroom'
@@ -5268,6 +5359,28 @@ function App() {
               <section className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-600">
                 Your account has no modules yet. Ask your admin to tick what you can use.
               </section>
+            )}
+
+            {visibleSection === 'home' && teacherAgenda && (
+              <TeacherHomeSection
+                teacherName={effectiveTeacher?.fullName ?? 'teacher'}
+                todayString={todayString}
+                agenda={teacherAgenda}
+                classes={teacherHomeClasses}
+                lateEditOpen={lateFeedbackEdit}
+                onTakeAttendance={(item) =>
+                  void openAttendanceForEvent(item.scheduleId, item.date, item.title)
+                }
+                onOpenCalendar={() => setActiveSection('calendar')}
+                onOpenClass={(classroomId) => {
+                  const classroom = classroomMap.get(classroomId)
+                  if (classroom) {
+                    setSelectedAgeGroup(classroom.ageGroup)
+                    setSelectedClassroomId(classroomId)
+                    setActiveSection('classrooms')
+                  }
+                }}
+              />
             )}
 
             {visibleSection === 'calendar' && (
