@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
 import { CaretLeft } from '@phosphor-icons/react'
 import {
-  findStudentsByPhone,
   getFirstMessage,
   guessSourceAndTags,
   resolveChatLead,
   suggestLeadsByName,
 } from '../../lib/chatLink'
 import { searchLeads } from '../../lib/leadSearch'
+import { makeStudentResolver } from '../../lib/studentLink'
 import type { SourceRule } from '../../lib/sourceRules'
 import {
   getChatIdentity,
@@ -63,10 +63,12 @@ export function DetailsPanel({
 
   const { lead, byPhone } = resolveChatLead(getLinkedLeadId(conversation), phone, crm.leads)
 
-  const student =
-    (lead?.convertedStudentId != null ? crm.students.find((entry) => entry.id === lead.convertedStudentId) : null) ??
-    findStudentsByPhone(phone, crm.students)[0] ??
-    null
+  // Every child of this parent: through the lead, the HOA bookings and the phone number.
+  const students = useMemo(
+    () =>
+      makeStudentResolver({ students: crm.students, trialBookings: crm.trialBookings, packages: crm.packages })(lead, phone),
+    [crm.students, crm.trialBookings, crm.packages, lead, phone],
+  )
 
   const first = useMemo(() => getFirstMessage(messages), [messages])
   const guess = useMemo(() => guessSourceAndTags(first?.text ?? '', crm.leadOptions, sourceRules), [first, crm.leadOptions, sourceRules])
@@ -229,7 +231,9 @@ export function DetailsPanel({
       </div>
         )}
 
-        {student && <StudentCard key={student.id} student={student} crm={crm} />}
+        {students.map((student) => (
+          <StudentCard key={student.id} student={student} crm={crm} />
+        ))}
       </div>
     </aside>
   )

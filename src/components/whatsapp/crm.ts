@@ -1,4 +1,13 @@
-import type { Classroom, Lead, LeadOption, LeadOptionKind, LeadStatus, Package, Student } from '../../types/domain'
+import type {
+  Classroom,
+  Lead,
+  LeadOption,
+  LeadOptionKind,
+  LeadStatus,
+  Package,
+  Student,
+  TrialBooking,
+} from '../../types/domain'
 
 // What the WhatsApp page needs from the rest of the CRM: the records to match a
 // chat against, and the few things the team can do to them from the side panel.
@@ -23,6 +32,8 @@ export type WhatsAppCrm = {
   students: Student[]
   classrooms: Classroom[]
   packages: Package[]
+  // HOA bookings tie a lead to the student who came to the class.
+  trialBookings: TrialBooking[]
   leadOptions: LeadOption[]
   canEditLeads: boolean
   canEditStudents: boolean

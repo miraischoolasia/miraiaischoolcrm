@@ -152,6 +152,16 @@ describe('filterConversations', () => {
     expect(filterConversations(list, { ...base, search: 'yymdz' }).map((c) => c.id)).toEqual([])
   })
 
+  it('filters by what the students of the parent are', () => {
+    const kindsOf = (c: ChatwootConversation) => (c.id === 1 ? (['regular'] as const).slice() : c.id === 2 ? ['hoa' as const] : [])
+    const ids = (kind: 'regular' | 'hoa' | 'none' | null) =>
+      filterConversations(list, { ...base, kind }, () => null, kindsOf).map((c) => c.id)
+    expect(ids('regular')).toEqual([1])
+    expect(ids('hoa')).toEqual([2])
+    expect(ids('none')).toEqual([3])
+    expect(ids(null)).toEqual([2, 3, 1])
+  })
+
   it('filters by the tag or source of the lead the chat belongs to', () => {
     const leads: Record<number, { tagIds: number[]; sourceId: number | null }> = {
       1: { tagIds: [10, 11], sourceId: 5 },

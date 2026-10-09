@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Student } from '../../types/domain'
+import { describeStudent } from '../../lib/studentLink'
 import type { WhatsAppCrm } from './crm'
 
 type StudentCardProps = {
@@ -39,7 +40,12 @@ export function StudentCard({ student, crm }: StudentCardProps) {
   return (
     <section className="space-y-3 text-xs">
       <div>
-        <p className="text-slate-500">Student</p>
+        <p className="flex items-center gap-1.5 text-slate-500">
+          Student
+          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+            {describeStudent(student, crm.packages)}
+          </span>
+        </p>
         <h4 className="text-sm font-semibold text-slate-900">{student.name}</h4>
         {!student.isActive && <p className="text-amber-700">Not active now</p>}
       </div>

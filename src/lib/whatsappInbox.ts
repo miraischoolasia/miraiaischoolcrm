@@ -1,3 +1,5 @@
+import type { StudentKind } from './studentLink'
+
 // What the WhatsApp inbox knows about a chat, kept apart from the screens so the
 // rules (which tab a chat sits in, whose number to show) are easy to test.
 
@@ -240,6 +242,8 @@ export type InboxFilters = {
   sourceId: number | null
   // Chats whose messages contain the search words (found by the server).
   matchedIds?: ReadonlySet<number>
+  // Only chats whose parent has a student of this kind, or none yet.
+  kind?: StudentKind | 'none' | null
 }
 
 // The lead a chat belongs to, for the tag and source filters.
@@ -251,6 +255,7 @@ export function filterConversations(
   conversations: ChatwootConversation[],
   filters: InboxFilters,
   leadOf: LeadOfChat = () => null,
+  kindsOf: (conversation: ChatwootConversation) => StudentKind[] = () => [],
 ) {
   const query = filters.search.trim().toLowerCase()
   const digitsQuery = query.replace(/\D/g, '')
@@ -269,6 +274,13 @@ export function filterConversations(
         (filters.tagId === null || lead.tagIds.includes(filters.tagId)) &&
         (filters.sourceId === null || lead.sourceId === filters.sourceId)
       )
+    })
+    .filter((conversation) => {
+      if (!filters.kind) {
+        return true
+      }
+      const kinds = kindsOf(conversation)
+      return filters.kind === 'none' ? kinds.length === 0 : kinds.includes(filters.kind)
     })
     .filter((conversation) => {
       if (!query) {

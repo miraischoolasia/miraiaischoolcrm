@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { Lead, LeadOption } from '../../types/domain'
+import type { Lead, LeadOption, Package, Student, TrialBooking } from '../../types/domain'
 import type { ChatwootConversation, ChatwootMessage } from '../../lib/whatsappInbox'
 import type { SourceRule } from '../../lib/sourceRules'
 import type { WhatsAppCrm } from './crm'
@@ -62,6 +62,7 @@ function makeCrm(patch: Partial<WhatsAppCrm> = {}): WhatsAppCrm {
     students: [],
     classrooms: [],
     packages: [],
+    trialBookings: [],
     leadOptions: [option(1, 'source', 'Facebook'), option(2, 'source', 'Other', 'other')],
     canEditLeads: true,
     canEditStudents: true,
@@ -317,4 +318,24 @@ describe('DetailsPanel', () => {
     expect(screen.queryByRole('heading', { name: 'Add as a new lead' })).not.toBeInTheDocument()
     expect(screen.getByText(/You can look but not add leads/)).toBeInTheDocument()
   })
+  it('lists every child of the parent with what they are to the school', () => {
+    const crm = makeCrm({
+      leads: [lead],
+      students: [
+        { id: 1, name: 'Ethan Lim', phone: null, studentType: 'regular', packageId: 2, isActive: true } as Student,
+        { id: 2, name: 'Mia Lim', phone: null, studentType: 'trial', packageId: null, isActive: true } as Student,
+      ],
+      packages: [{ id: 2, name: '3 Months', kind: 'regular' } as Package],
+      // Mia came to HOA through this lead; Ethan was converted from it.
+      trialBookings: [{ id: 1, leadId: 11, studentId: 2, phone: null } as TrialBooking],
+    })
+    crm.leads[0] = { ...lead, convertedStudentId: 1 }
+    renderPanel(crm, { crm_lead_id: 11 })
+
+    expect(screen.getByText('Ethan Lim')).toBeInTheDocument()
+    expect(screen.getByText('Regular · 3 Months')).toBeInTheDocument()
+    expect(screen.getByText('Mia Lim')).toBeInTheDocument()
+    expect(screen.getByText('HOA')).toBeInTheDocument()
+  })
+
 })

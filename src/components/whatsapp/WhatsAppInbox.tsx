@@ -18,6 +18,7 @@ import { ConversationList } from './ConversationList'
 import { useQuickReplies } from '../../hooks/useQuickReplies'
 import { useSourceRules } from '../../hooks/useSourceRules'
 import { makeLeadResolver, quickReplyValues, resolveChatLead } from '../../lib/chatLink'
+import { describeStudent, getStudentKind, makeStudentResolver, type StudentKind } from '../../lib/studentLink'
 import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
 import { NewChatDialog } from './NewChatDialog'
@@ -37,6 +38,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
   const [tab, setTab] = useState<InboxTab>('chats')
   const [tagId, setTagId] = useState<number | null>(null)
   const [sourceId, setSourceId] = useState<number | null>(null)
+  const [kind, setKind] = useState<StudentKind | 'none' | null>(null)
   const [search, setSearch] = useState('')
   // On a small screen the side panel takes the place of the chat.
   const [detailsOpen, setDetailsOpen] = useState(false)
@@ -59,6 +61,29 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
     (conversation: ChatwootConversation) =>
       resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))?.fullName ?? null,
     [resolveLead],
+  )
+  // The students of the parent in each chat, found through the lead, the HOA bookings and the phone.
+  const resolveStudents = useMemo(
+    () => makeStudentResolver({ students: crm.students, trialBookings: crm.trialBookings, packages: crm.packages }),
+    [crm.students, crm.trialBookings, crm.packages],
+  )
+  const studentsOf = useCallback(
+    (conversation: ChatwootConversation) => {
+      const phone = getRealPhone(conversation.meta.sender.phone_number)
+      return resolveStudents(resolveLead(getLinkedLeadId(conversation), phone), phone)
+    },
+    [resolveLead, resolveStudents],
+  )
+  const studentLabelsOf = useCallback(
+    (conversation: ChatwootConversation) => [
+      ...new Set(studentsOf(conversation).map((student) => describeStudent(student, crm.packages))),
+    ],
+    [studentsOf, crm.packages],
+  )
+  const studentKindsOf = useCallback(
+    (conversation: ChatwootConversation) =>
+      studentsOf(conversation).map((student) => getStudentKind(student, crm.packages)),
+    [studentsOf, crm.packages],
   )
   // How many open chats belong to a lead with each tag or source, so the menus can show it.
   const optionCounts = useMemo(() => {
@@ -93,11 +118,12 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
     () =>
       filterConversations(
         inbox.conversations,
-        { tab, search, tagId, sourceId, matchedIds },
+        { tab, search, tagId, sourceId, matchedIds, kind },
         (conversation) =>
           resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number)),
+        studentKindsOf,
       ),
-    [inbox.conversations, tab, search, tagId, sourceId, matchedIds, resolveLead],
+    [inbox.conversations, tab, search, tagId, sourceId, matchedIds, kind, resolveLead, studentKindsOf],
   )
   const hasChat = inbox.selected !== null
 
@@ -156,6 +182,9 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
         sources={sourceOptions}
         snippets={messageHits}
         leadNameOf={leadNameOf}
+        studentLabelsOf={studentLabelsOf}
+        kind={kind}
+        onKind={setKind}
         selectedId={inbox.selectedId}
         nowSeconds={nowSeconds}
         overdueCount={overdueCount}

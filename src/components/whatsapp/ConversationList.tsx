@@ -13,6 +13,7 @@ import {
 } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
+import type { StudentKind } from '../../lib/studentLink'
 import {
   desktopAlertsStatus,
   enableDesktopAlerts,
@@ -56,6 +57,10 @@ type ConversationListProps = {
   snippets: ReadonlyMap<number, string>
   // The parent's name on the lead a chat belongs to, for chats WhatsApp gave no name.
   leadNameOf?: (conversation: ChatwootConversation) => string | null
+  // What the parent's students are to the school ("Regular · 3 Months", "HOA"), per chat.
+  studentLabelsOf?: (conversation: ChatwootConversation) => string[]
+  // Show only parents with a student of this kind, or with none yet.
+  kind?: StudentKind | 'none' | null
   selectedId: number | null
   // The clock, so a chat that has waited too long is flagged without a refresh.
   nowSeconds: number
@@ -68,6 +73,7 @@ type ConversationListProps = {
   onTab: (tab: InboxTab) => void
   onTag: (tagId: number | null) => void
   onSource: (sourceId: number | null) => void
+  onKind?: (kind: StudentKind | 'none' | null) => void
   onSearch: (value: string) => void
   onSelect: (id: number) => void
   onLoadMore: () => void
@@ -118,6 +124,8 @@ export function ConversationList({
   sources,
   snippets,
   leadNameOf,
+  studentLabelsOf,
+  kind = null,
   selectedId,
   nowSeconds,
   overdueCount,
@@ -128,6 +136,7 @@ export function ConversationList({
   onTab,
   onTag,
   onSource,
+  onKind,
   onSearch,
   onSelect,
   onLoadMore,
@@ -201,7 +210,7 @@ export function ConversationList({
             {overdueCount} {overdueCount === 1 ? 'chat has' : 'chats have'} waited over 30 minutes for a reply.
           </p>
         )}
-        <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+        <div className={cn('mt-2 grid gap-2 text-sm', onKind ? 'grid-cols-3' : 'grid-cols-2')}>
           <label className="relative min-w-0">
             <span className="sr-only">Filter by tag</span>
             <select
@@ -240,6 +249,27 @@ export function ConversationList({
             </select>
             <CaretDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" />
           </label>
+          {onKind && (
+            <label className="relative min-w-0">
+              <span className="sr-only">Filter by student type</span>
+              <select
+                value={kind ?? ''}
+                onChange={(event) => onKind((event.target.value || null) as StudentKind | 'none' | null)}
+                className={cn(
+                  'w-full appearance-none rounded-lg border bg-white py-1.5 pl-2.5 pr-7 text-xs outline-none focus:border-[#fc0c97]',
+                  kind ? 'border-[#fc0c97] text-slate-900' : 'border-slate-200 text-slate-700',
+                )}
+              >
+                <option value="">All types</option>
+                <option value="regular">Regular</option>
+                <option value="hoa">HOA</option>
+                <option value="trial">Trial</option>
+                <option value="camp">Camp</option>
+                <option value="none">Not a student</option>
+              </select>
+              <CaretDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" />
+            </label>
+          )}
         </div>
         {(tagId !== null || sourceId !== null) && (
           <p className="mt-1 text-[11px] text-slate-500">
@@ -263,7 +293,7 @@ export function ConversationList({
         {loadError && <p className="p-4 text-sm text-red-600">{loadError}</p>}
         {!isLoading && !loadError && conversations.length === 0 && (
           <p className="p-4 text-sm text-slate-500">
-            {search || tagId !== null || sourceId !== null ? 'No chats match.' : 'Nothing here. New messages from parents will show up here.'}
+            {search || tagId !== null || sourceId !== null || kind ? 'No chats match.' : 'Nothing here. New messages from parents will show up here.'}
           </p>
         )}
         {conversations.map((conversation) => {
@@ -341,6 +371,14 @@ export function ConversationList({
                       </span>
                     )
                   )}
+                  {studentLabelsOf?.(conversation).map((label) => (
+                    <span
+                      key={label}
+                      className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
+                    >
+                      {label}
+                    </span>
+                  ))}
                   {!identity.hasRealPhone && (
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">No number</span>
                   )}

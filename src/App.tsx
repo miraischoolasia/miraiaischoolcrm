@@ -3280,6 +3280,7 @@ function App() {
     students,
     classrooms,
     packages,
+    trialBookings,
     leadOptions,
     canEditLeads: can('leads', 'edit'),
     canEditStudents: can('students', 'edit'),
