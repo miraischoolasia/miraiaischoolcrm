@@ -2,6 +2,7 @@ import type { HoaSlot } from '../../lib/hoaSlots'
 import type {
   Classroom,
   Lead,
+  LeadFormSubmission,
   LeadOption,
   LeadOptionKind,
   LeadStatus,
@@ -56,13 +57,14 @@ export type WhatsAppCrm = {
   onUpdateLead: (leadId: number, input: LeadFormValues) => Promise<string | null>
   // The lead's next trial day (or last one), written the way a parent reads it.
   trialDateFor: (leadId: number) => string | null
-  onAddFollowUp: (leadId: number, note: string) => Promise<string | null>
   onAddOption: (kind: LeadOptionKind, label: string, color?: string) => Promise<LeadOption | null>
   onRecordLeave: (studentId: number, text: string) => Promise<string | null>
   onOpenLead: (leadId: number) => void
   // Leads that filled in one of the school's forms, and a way to read what they wrote.
   leadIdsWithForms: Set<number>
   onOpenFormAnswers: (leadId: number) => void
+  // Every form the lead filled in, newest first, to read in the panel.
+  loadFormAnswers: (leadId: number) => Promise<LeadFormSubmission[]>
   onOpenStudent: (studentId: number) => void
   // Only offered for a student in a regular class.
   onOpenMakeup: (studentId: number) => void

@@ -9,6 +9,7 @@ import { cleanHoaTitle, describeHoaSlot, hoaSlotFitsAge, type HoaSlot } from '..
 import { prepareReceipt } from '../../lib/receiptPdf'
 import type { Form, Lead } from '../../types/domain'
 import type { WhatsAppCrm } from './crm'
+import { PanelSection } from './PanelSection'
 
 type EnrolPanelProps = {
   lead: Lead
@@ -209,11 +210,7 @@ export function EnrolPanel({ lead, crm, userName, onWriteMessage }: EnrolPanelPr
   const visibleSlots = showAllSlots ? slots : slots.slice(0, 6)
 
   return (
-    <section aria-label="Enrol in HOA" className="space-y-3 border-t border-slate-100 pt-4 text-xs">
-      <div className="flex items-center justify-between gap-2">
-        <h4 className="text-sm font-semibold text-slate-900">Enrol in HOA</h4>
-        <span className="text-slate-500">{doneCount} of 4 done</span>
-      </div>
+    <PanelSection title="Enrol in HOA" aside={<span className="text-slate-500">{doneCount} of 4 done</span>}>
       {enrolment.loadError && <p className="rounded-lg bg-amber-50 p-2 text-amber-900">{enrolment.loadError}</p>}
 
       <Step number={1} done={submitted} title="Registration form">
@@ -469,6 +466,6 @@ export function EnrolPanel({ lead, crm, userName, onWriteMessage }: EnrolPanelPr
         </button>
         <p className="text-slate-500">It goes into the message box with what is saved above. Read it, change it, then press Send.</p>
       </div>
-    </section>
+    </PanelSection>
   )
 }

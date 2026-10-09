@@ -91,6 +91,7 @@ import {
   fetchAdminActivityForDay,
   fetchClassroomsFromSupabase,
   fetchLatestLessonLogStudents,
+  fetchLeadFormSubmissions,
   fetchLeadOptionsFromSupabase,
   fetchPackagesFromSupabase,
   fetchLateFeedbackEdit,
@@ -3242,19 +3243,6 @@ function App() {
     return null
   }
 
-  async function addFollowUpFromChat(leadId: number, note: string) {
-    const lead = leads.find((entry) => entry.id === leadId)
-    if (!lead) {
-      return 'That lead is no longer in the list.'
-    }
-    try {
-      await saveLeadFollowUp(lead, note)
-      return null
-    } catch (error) {
-      return getErrorMessage(error, 'Failed to log follow-up.')
-    }
-  }
-
   // Leave is recorded as a dated line in the student's notes; attendance is
   // marked on the day itself.
   async function recordLeaveFromChat(studentId: number, text: string) {
@@ -3366,12 +3354,12 @@ function App() {
       const next = dates.find((date) => date >= todayString) ?? dates[dates.length - 1]
       return next ? formatDate(next) : null
     },
-    onAddFollowUp: addFollowUpFromChat,
     onAddOption: handleAddLeadOption,
     onRecordLeave: recordLeaveFromChat,
     onOpenLead: openEditLeadModal,
     leadIdsWithForms,
     onOpenFormAnswers: openLeadFormAnswers,
+    loadFormAnswers: fetchLeadFormSubmissions,
     onOpenStudent: openStudentDetail,
     onOpenMakeup: (studentId) => {
       const student = students.find((entry) => entry.id === studentId)

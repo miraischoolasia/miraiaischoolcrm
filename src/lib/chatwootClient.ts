@@ -35,6 +35,19 @@ export function createChatwootClient(
     return (text ? JSON.parse(text) : null) as T
   }
 
+  // The phone's own WhatsApp (read ticks, unread dot) is reached through the same gateway and login.
+  async function phoneRequest(path: string, body: unknown) {
+    const token = await getAccessToken()
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`)
+    }
+    const response = await fetch(`${apiUrl}/wa${path}`, { method: 'POST', headers, body: JSON.stringify(body) })
+    if (!response.ok) {
+      throw new Error(`WhatsApp phone request failed (${response.status})`)
+    }
+  }
+
   function json(method: string, body: unknown): RequestInit {
     return { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
   }
@@ -98,6 +111,14 @@ export function createChatwootClient(
 
     async markSeen(conversationId: number) {
       await request(`/conversations/${conversationId}/update_last_seen`, { method: 'POST' })
+    },
+
+    // Marks the parent's messages as read on the phone too, as if the chat was opened there.
+    // WhatsApp only allows it for a chat with a real phone number, not a hidden ID.
+    async markReadOnPhone(phone: string, whatsappIds: string[]) {
+      await phoneRequest('/read', {
+        readMessages: whatsappIds.map((id) => ({ remoteJid: `${phone}@s.whatsapp.net`, fromMe: false, id })),
+      })
     },
 
     // Chats with a message containing these words, and the message that matched.

@@ -366,7 +366,9 @@ export function ConversationList({
                       preview
                     )}
                   </span>
-                  {conversation.unread_count > 0 && conversation.status !== 'resolved' && (
+                  {conversation.unread_count > 0 && conversation.status !== 'resolved' && conversation.custom_attributes?.crm_marked_unread && conversation.unread_count <= 1 ? (
+                    <span role="img" aria-label="Marked as unread" className="size-2.5 shrink-0 rounded-full bg-[#fc0c97]" />
+                  ) : conversation.unread_count > 0 && conversation.status !== 'resolved' && (
                     <span className="min-w-5 shrink-0 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white">
                       {conversation.unread_count > 99 ? '99+' : conversation.unread_count}
                     </span>

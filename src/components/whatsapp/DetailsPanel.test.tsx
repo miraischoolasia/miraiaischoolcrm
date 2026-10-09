@@ -74,12 +74,12 @@ function makeCrm(patch: Partial<WhatsAppCrm> = {}): WhatsAppCrm {
     onCreateLead: vi.fn().mockResolvedValue({ leadId: 55, error: null }),
     onUpdateLead: vi.fn().mockResolvedValue(null),
     trialDateFor: () => null,
-    onAddFollowUp: vi.fn().mockResolvedValue(null),
     onAddOption: vi.fn().mockResolvedValue(null),
     onRecordLeave: vi.fn().mockResolvedValue(null),
     onOpenLead: vi.fn(),
     leadIdsWithForms: new Set<number>(),
     onOpenFormAnswers: vi.fn(),
+    loadFormAnswers: vi.fn().mockResolvedValue([]),
     onOpenStudent: vi.fn(),
     onOpenMakeup: vi.fn(),
     ...patch,
@@ -196,12 +196,39 @@ describe('DetailsPanel', () => {
     expect(onLinkLead).not.toHaveBeenCalled()
   })
 
-  it('opens the form answers from the source of a lead that filled in a form', async () => {
-    const crm = makeCrm({ leads: [lead], leadIdsWithForms: new Set([11]) })
+  it('reads every form the lead filled in, in the panel, from a Form button by the source', async () => {
+    const submission = (id: number, formName: string, value: string) => ({
+      id,
+      formId: `f${id}`,
+      formName,
+      createdAt: '2026-10-05T03:00:00.000Z',
+      answers: [{ id: 'q1', label: 'Child name', value }],
+      wasExisting: false,
+      tracking: null,
+    })
+    const crm = makeCrm({
+      leads: [lead],
+      leadIdsWithForms: new Set([11]),
+      loadFormAnswers: vi.fn().mockResolvedValue([submission(2, 'HOA registration', 'Ethan'), submission(1, 'Open day', 'Ethan Lim')]),
+    })
     renderPanel(crm, { crm_lead_id: 11 })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Read their form answers' }))
-    expect(crm.onOpenFormAnswers).toHaveBeenCalledWith(11)
+    expect(screen.queryByText('HOA registration')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Form' }))
+
+    expect(await screen.findByText('HOA registration')).toBeInTheDocument()
+    expect(screen.getByText('Open day')).toBeInTheDocument()
+    expect(crm.loadFormAnswers).toHaveBeenCalledWith(11)
+    expect(screen.queryByRole('button', { name: 'Read their form answers' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Form' }))
+    expect(screen.queryByText('HOA registration')).not.toBeInTheDocument()
+  })
+
+  it('has no Form button for a lead who filled in no form', () => {
+    renderPanel(makeCrm({ leads: [lead] }), { crm_lead_id: 11 })
+
+    expect(screen.queryByRole('button', { name: 'Form' })).not.toBeInTheDocument()
   })
 
   it('shows the linked lead in the same editable form, filled in', () => {
@@ -217,32 +244,63 @@ describe('DetailsPanel', () => {
     expect(screen.getByLabelText('Notes')).toHaveValue('Likes robots')
   })
 
-  it('saves changes to the lead, says Saved, and the form stays as it is', async () => {
+  it('saves a change to the lead by itself, with no Save button and no message', async () => {
     const crm = makeCrm({ leads: [lead] })
     renderPanel(crm, { crm_lead_id: 11 })
 
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
     await userEvent.selectOptions(screen.getByLabelText('State'), 'Pulau Pinang')
     await userEvent.selectOptions(screen.getByLabelText('Stage'), 'trial_scheduled')
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-    expect(await screen.findByText('Saved')).toBeInTheDocument()
-    expect(crm.onUpdateLead).toHaveBeenCalledWith(
-      11,
-      expect.objectContaining({ state: 'Pulau Pinang', status: 'trial_scheduled', fullName: 'Mei Ling' }),
+    await waitFor(() =>
+      expect(crm.onUpdateLead).toHaveBeenLastCalledWith(
+        11,
+        expect.objectContaining({ state: 'Pulau Pinang', status: 'trial_scheduled', fullName: 'Mei Ling' }),
+      ),
     )
+    expect(screen.queryByText('Saved')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByLabelText('State')).toHaveValue('Pulau Pinang')
     expect(screen.getByLabelText('Stage')).toHaveValue('trial_scheduled')
   })
 
-  it('shows why a save failed and does not say Saved', async () => {
+  it('saves typed text a moment after typing stops, once', async () => {
+    const crm = makeCrm({ leads: [lead] })
+    renderPanel(crm, { crm_lead_id: 11 })
+
+    await userEvent.type(screen.getByLabelText('Notes'), 'Likes robots')
+    expect(crm.onUpdateLead).not.toHaveBeenCalled()
+
+    await waitFor(() => expect(crm.onUpdateLead).toHaveBeenCalledTimes(1), { timeout: 2000 })
+    expect(crm.onUpdateLead).toHaveBeenCalledWith(11, expect.objectContaining({ notes: 'Likes robots' }))
+  })
+
+  it('saves typed text when the panel is closed before the pause ends', async () => {
+    const crm = makeCrm({ leads: [lead] })
+    const { unmount } = render(
+      <DetailsPanel
+        conversation={conversation({ crm_lead_id: 11 })}
+        messages={[firstMessage]}
+        hasOlder={false}
+        crm={crm}
+        sourceRules={[]}
+        onLoadOlder={vi.fn()}
+        onLinkLead={vi.fn()}
+      />,
+    )
+    await userEvent.type(screen.getByLabelText('Notes'), 'Call after 5')
+    unmount()
+
+    expect(crm.onUpdateLead).toHaveBeenCalledWith(11, expect.objectContaining({ notes: 'Call after 5' }))
+  })
+
+  it('shows why a save failed', async () => {
     const crm = makeCrm({ leads: [lead], onUpdateLead: vi.fn().mockResolvedValue('Failed to save lead record.') })
     renderPanel(crm, { crm_lead_id: 11 })
 
-    await userEvent.type(screen.getByLabelText('Notes'), 'x')
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await userEvent.selectOptions(screen.getByLabelText('Stage'), 'trial_scheduled')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Failed to save lead record.')
-    expect(screen.queryByText('Saved')).not.toBeInTheDocument()
   })
 
   it('keeps what the person typed when the lead is refreshed behind it', async () => {
@@ -292,10 +350,17 @@ describe('DetailsPanel', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Add a child' }))
     await userEvent.type(screen.getByLabelText('Child 2 name'), 'Mia')
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-    expect(screen.getByRole('alert')).toHaveTextContent("Add the child's age too.")
+    expect(await screen.findByRole('alert', {}, { timeout: 2000 })).toHaveTextContent("Choose the child's age to save.")
     expect(crm.onUpdateLead).not.toHaveBeenCalled()
+
+    await userEvent.selectOptions(screen.getByLabelText('Child 2 age'), '7')
+    await waitFor(() =>
+      expect(crm.onUpdateLead).toHaveBeenCalledWith(
+        11,
+        expect.objectContaining({ children: [expect.objectContaining({ name: 'Ethan' }), { name: 'Mia', age: 7, phone: null }] }),
+      ),
+    )
   })
 
   it('shows the lead but cannot change it without edit permission', () => {
@@ -305,14 +370,22 @@ describe('DetailsPanel', () => {
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
   })
 
-  it('logs a follow-up on the linked lead', async () => {
-    const crm = makeCrm({ leads: [lead] })
-    renderPanel(crm, { crm_lead_id: 11 })
+  it('has no follow-ups block and no open-full-lead button in the panel', () => {
+    renderPanel(makeCrm({ leads: [lead] }), { crm_lead_id: 11 })
 
-    await userEvent.type(screen.getByLabelText('Follow-up note'), 'Called, will decide Friday')
-    await userEvent.click(screen.getByRole('button', { name: 'Log follow-up' }))
+    expect(screen.queryByText(/Follow-ups/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open full lead' })).not.toBeInTheDocument()
+  })
 
-    expect(crm.onAddFollowUp).toHaveBeenCalledWith(11, 'Called, will decide Friday')
+  it('puts Children above State, and Lead details, Tags and the enrol steps under pink headings', () => {
+    renderPanel(makeCrm({ leads: [lead] }), { crm_lead_id: 11 })
+
+    const children = screen.getByText('Children')
+    const state = screen.getByText('State')
+    expect(children.compareDocumentPosition(state) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    for (const name of ['Lead details', 'Tags']) {
+      expect(screen.getByRole('heading', { name })).toHaveClass('text-[#be185d]')
+    }
   })
 
   it('does not offer to add a lead without edit permission', () => {

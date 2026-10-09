@@ -68,6 +68,11 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
       resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))?.fullName ?? null,
     [resolveLead],
   )
+  const leadIdOf = useCallback(
+    (conversation: ChatwootConversation) =>
+      resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))?.id ?? null,
+    [resolveLead],
+  )
   // The students of the parent in each chat, found through the lead, the HOA bookings and the phone.
   const resolveStudents = useMemo(
     () => makeStudentResolver({ students: crm.students, trialBookings: crm.trialBookings, packages: crm.packages }),
@@ -262,6 +267,9 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
             className={cn(!hasChat && 'hidden lg:flex', detailsOpen && 'hidden xl:flex')}
             conversation={inbox.selected}
             leadName={leadNameOf(inbox.selected)}
+            onOpenLead={
+              leadIdOf(inbox.selected) !== null ? () => crm.onOpenLead(leadIdOf(inbox.selected!)!) : undefined
+            }
             messages={inbox.messages}
             waitingMessages={inbox.waitingMessages}
             hasOlder={inbox.hasOlder}

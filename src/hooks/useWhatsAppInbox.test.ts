@@ -120,3 +120,92 @@ describe('useWhatsAppInbox while another page is showing', () => {
     expect(result.current.messages).toHaveLength(2)
   })
 })
+
+describe('useWhatsAppInbox and the phone', () => {
+  const heard = (id: number, at: number, waId: string): ChatwootMessage => ({
+    ...message(id, at, `m${id}`),
+    source_id: `WAID:${waId}`,
+  })
+
+  function phoneClient() {
+    const withUnread = (base: ChatwootConversation, unread: number, phone: string | null): ChatwootConversation => ({
+      ...base,
+      unread_count: unread,
+      meta: { sender: { ...base.meta.sender, phone_number: phone } },
+    })
+    const messages: Record<number, ChatwootMessage[]> = {
+      40: [heard(1, 1, 'A1'), heard(2, 2, 'A2'), heard(3, 3, 'A3')],
+      41: [heard(4, 4, 'B1')],
+    }
+    return {
+      listConversations: vi.fn(async (status: string) => ({
+        conversations: status === 'open' ? [withUnread(chat(40, 7, 3), 2, '+60123456789'), withUnread(chat(41, 8, 4), 1, null)] : [],
+        totalCount: status === 'open' ? 2 : 0,
+      })),
+      listMessages: vi.fn(async (id: number) => messages[id] ?? []),
+      listContactConversations: vi.fn(async () => []),
+      markSeen: vi.fn().mockResolvedValue(undefined),
+      markUnread: vi.fn().mockResolvedValue(undefined),
+      markReadOnPhone: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ChatwootClient
+  }
+
+  it('tells the phone the unread messages were read when a chat is opened', async () => {
+    const client = phoneClient()
+    const { result } = renderHook(() => useWhatsAppInbox(client, staff))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    act(() => result.current.setSelectedId(40))
+
+    // Two were unread, so the last two are marked; the first was already read.
+    await waitFor(() => expect(client.markReadOnPhone).toHaveBeenCalledWith('60123456789', ['A2', 'A3']))
+    expect(client.markSeen).toHaveBeenCalledWith(40)
+  })
+
+  it('does not try the phone for a chat whose number WhatsApp hides, but still reads it here', async () => {
+    const client = phoneClient()
+    const { result } = renderHook(() => useWhatsAppInbox(client, staff))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    act(() => result.current.setSelectedId(41))
+
+    await waitFor(() => expect(client.markSeen).toHaveBeenCalledWith(41))
+    expect(client.markReadOnPhone).not.toHaveBeenCalled()
+  })
+
+  it('marks only what is unread when a chat marked unread is opened again', async () => {
+    const client = phoneClient()
+    const { result } = renderHook(() => useWhatsAppInbox(client, staff))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => result.current.setSelectedId(40))
+    await waitFor(() => expect(client.markReadOnPhone).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      await result.current.markUnread(40)
+    })
+    act(() => result.current.setSelectedId(null))
+
+    // Opened again: the CRM says it is unread again (1 at least), so one message is marked.
+    act(() => result.current.setSelectedId(40))
+    await waitFor(() => expect(client.markReadOnPhone).toHaveBeenCalledTimes(2))
+    expect(client.markReadOnPhone).toHaveBeenLastCalledWith('60123456789', ['A3'])
+  })
+
+  it('marks a chat unread with a flag that opening it clears', async () => {
+    const client = phoneClient() as unknown as Record<string, ReturnType<typeof vi.fn>> & ChatwootClient
+    ;(client as unknown as Record<string, unknown>).setAttributes = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useWhatsAppInbox(client, staff))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => result.current.setSelectedId(40))
+    await waitFor(() => expect(result.current.messages).toHaveLength(3))
+
+    await act(async () => {
+      await result.current.markUnread(40)
+    })
+    expect(client.setAttributes).toHaveBeenLastCalledWith(40, expect.objectContaining({ crm_marked_unread: true }))
+
+    act(() => result.current.setSelectedId(40))
+    await waitFor(() =>
+      expect(client.setAttributes).toHaveBeenLastCalledWith(40, expect.objectContaining({ crm_marked_unread: false })),
+    )
+  })
+})

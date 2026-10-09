@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { ChatwootConversation } from '../../lib/whatsappInbox'
@@ -166,5 +166,27 @@ describe('ConversationList chat details', () => {
     renderList([chat(1, 'Mei Ling', 60)], 0)
 
     expect(screen.getByText('ML')).toBeInTheDocument()
+  })
+})
+
+describe('ConversationList unread marks', () => {
+  it('shows a pink dot, not a number, for a chat the team marked unread by hand', () => {
+    renderList([{ ...chat(1, 'Mei Ling', 60), custom_attributes: { crm_marked_unread: true } }], 0)
+
+    expect(screen.getByRole('img', { name: 'Marked as unread' })).toBeInTheDocument()
+    expect(within(screen.getByRole('button', { name: /12-345 6789/ })).queryByText('1')).not.toBeInTheDocument()
+  })
+
+  it('shows the number when new messages came after it was marked unread', () => {
+    renderList([{ ...chat(1, 'Mei Ling', 60), unread_count: 3, custom_attributes: { crm_marked_unread: true } }], 0)
+
+    expect(screen.queryByRole('img', { name: 'Marked as unread' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('button', { name: /12-345 6789/ })).getByText('3')).toBeInTheDocument()
+  })
+
+  it('shows the number for ordinary unread messages', () => {
+    renderList([chat(1, 'Mei Ling', 60)], 0)
+
+    expect(within(screen.getByRole('button', { name: /12-345 6789/ })).getByText('1')).toBeInTheDocument()
   })
 })

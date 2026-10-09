@@ -38,7 +38,7 @@ export function StudentCard({ student, crm }: StudentCardProps) {
   }
 
   return (
-    <section className="space-y-3 text-xs">
+    <section className="space-y-3 border-t border-pink-100 pt-4 text-xs">
       <div>
         <p className="flex items-center gap-1.5 text-slate-500">
           Student
@@ -46,7 +46,7 @@ export function StudentCard({ student, crm }: StudentCardProps) {
             {describeStudent(student, crm.packages)}
           </span>
         </p>
-        <h4 className="text-sm font-semibold text-slate-900">{student.name}</h4>
+        <h4 className="text-sm font-semibold text-[#be185d]">{student.name}</h4>
         {!student.isActive && <p className="text-amber-700">Not active now</p>}
       </div>
 

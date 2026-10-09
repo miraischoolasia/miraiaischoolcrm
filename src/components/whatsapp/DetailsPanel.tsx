@@ -21,7 +21,7 @@ import {
 import type { WhatsAppCrm } from './crm'
 import { FirstMessageCard } from './FirstMessageCard'
 import { LeadForm } from './LeadForm'
-import { LeadExtras, LeadHeader } from './LeadCard'
+import { LeadHeader } from './LeadCard'
 import { EnrolPanel } from './EnrolPanel'
 import { StudentCard } from './StudentCard'
 
@@ -222,7 +222,6 @@ export function DetailsPanel({
             This parent is not a lead yet. You can look but not add leads.
           </p>
         )}
-        {lead ? <LeadExtras lead={lead} crm={crm} /> : null}
         {lead && onWriteMessage ? (
           <EnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} />
         ) : null}

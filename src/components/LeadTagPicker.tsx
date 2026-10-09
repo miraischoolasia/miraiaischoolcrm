@@ -16,11 +16,13 @@ type LeadTagPickerProps = {
   onChange: (ids: number[]) => void
   // Saves a new tag and returns it, or null when it could not be added.
   onCreate: (label: string, color: string) => Promise<LeadOption | null>
+  // Off where the page already puts a "Tags" heading above the picker.
+  showLabel?: boolean
 }
 
 // The lead's tags as pills, a list to add one that exists, and a way to make a
 // new one on the spot (name and colour) that is picked right away.
-export function LeadTagPicker({ tags, selectedIds, onChange, onCreate }: LeadTagPickerProps) {
+export function LeadTagPicker({ tags, selectedIds, onChange, onCreate, showLabel = true }: LeadTagPickerProps) {
   const [isCreating, setIsCreating] = useState(false)
   const [name, setName] = useState('')
   const [color, setColor] = useState<string>(() => nextTagColor(tags))
@@ -46,7 +48,7 @@ export function LeadTagPicker({ tags, selectedIds, onChange, onCreate }: LeadTag
 
   return (
     <div className="space-y-2">
-      <div className="text-sm font-semibold text-slate-700">Tags</div>
+      {showLabel && <div className="text-sm font-semibold text-slate-700">Tags</div>}
 
       {selected.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">

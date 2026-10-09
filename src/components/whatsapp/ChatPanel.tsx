@@ -44,6 +44,8 @@ type ChatPanelProps = {
   onManageQuickReplies?: () => void
   // Text written for the message box by the enrol steps.
   draftRequest?: { id: number; text: string } | null
+  // Opens the lead's full page; only for a chat that belongs to a lead.
+  onOpenLead?: () => void
 }
 
 export function ChatPanel({
@@ -67,6 +69,7 @@ export function ChatPanel({
   quickReplyValues,
   onManageQuickReplies,
   draftRequest,
+  onOpenLead,
 }: ChatPanelProps) {
   const identity = getChatIdentity(conversation.meta.sender, leadName)
   const owner = getOwner(conversation)
@@ -125,13 +128,26 @@ export function ChatPanel({
         >
           <CaretLeft size={20} />
         </button>
-        <Avatar initials={identity.initials} tone={parentTone} />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-slate-900">{identity.title}</div>
-          <div className={cn('truncate text-xs', identity.hasRealPhone ? 'text-slate-500' : 'text-amber-700')}>
-            {identity.subtitle}
-          </div>
-        </div>
+        {/* The name and picture open the lead's full page, when the chat belongs to a lead. */}
+        <button
+          type="button"
+          disabled={!onOpenLead}
+          onClick={onOpenLead}
+          title={onOpenLead ? 'Open the full lead' : undefined}
+          aria-label={onOpenLead ? `Open the full lead of ${identity.title}` : undefined}
+          className={cn(
+            'flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left',
+            onOpenLead ? '-m-1 cursor-pointer p-1 hover:bg-pink-100' : 'cursor-default',
+          )}
+        >
+          <Avatar initials={identity.initials} tone={parentTone} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold text-slate-900">{identity.title}</span>
+            <span className={cn('block truncate text-xs', identity.hasRealPhone ? 'text-slate-500' : 'text-amber-700')}>
+              {identity.subtitle}
+            </span>
+          </span>
+        </button>
         <button
           type="button"
           onClick={onOpenDetails}

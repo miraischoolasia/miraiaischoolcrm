@@ -52,6 +52,8 @@ export type ChatAttributes = {
   crm_owner_id?: number | string | null
   crm_owner_name?: string | null
   crm_lead_id?: number | string | null
+  // The team marked the chat unread by hand: a pink dot instead of a number, until it is opened.
+  crm_marked_unread?: boolean
 }
 
 export type ChatwootConversation = {
@@ -78,6 +80,16 @@ export function getRealPhone(phone: string | null | undefined) {
     return digits
   }
   return null
+}
+
+// Who and what to tell the phone once the team has read these messages: the number, and WhatsApp's
+// own ids of the parent's messages. Null for a chat whose number WhatsApp hides, which it cannot do.
+export function getPhoneReadTarget(sender: { phone_number: string | null }, messages: ChatwootMessage[]) {
+  const phone = getRealPhone(sender.phone_number)
+  const ids = messages.flatMap((message) =>
+    message.message_type === 0 && message.source_id?.startsWith('WAID:') ? [message.source_id.slice(5)] : [],
+  )
+  return phone && ids.length > 0 ? { phone, ids: ids.slice(-50) } : null
 }
 
 export function formatPhone(digits: string) {

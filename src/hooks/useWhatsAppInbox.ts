@@ -4,6 +4,7 @@ import { startChat } from '../lib/startChat'
 import { CONFIRM_POLL_MS, CONFIRM_TIMEOUT_MS, fileKind, splitForSending } from '../lib/outbox'
 import {
   getOwner,
+  getPhoneReadTarget,
   onePerParent,
   type ChatAttributes,
   type ChatwootConversation,
@@ -71,6 +72,7 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
   const totals = useRef({ open: 0, resolved: 0 })
   const [canLoadMore, setCanLoadMore] = useState({ open: false, resolved: false })
   const selectedRef = useRef<number | null>(null)
+  const saveAttributesRef = useRef<(id: number, change: ChatAttributes) => Promise<void>>(async () => {})
   const mapRef = useRef(conversationMap)
   const outboxRef = useRef<OutboxItem[]>([])
   const running = useRef(new Set<number>())
@@ -153,8 +155,18 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
     [client, updateLoadMore],
   )
 
+  // `readNow` are the parent's messages the team has just read; the phone is told too, so its
+  // unread dot goes away. Not every chat can be reached that way, and the CRM does not wait for it.
   const markSeen = useCallback(
-    (conversationId: number) => {
+    (conversationId: number, readNow: ChatwootMessage[]) => {
+      const conversation = mapRef.current.get(conversationId)
+      if (conversation?.custom_attributes?.crm_marked_unread) {
+        saveAttributesRef.current(conversationId, { crm_marked_unread: false }).catch(() => undefined)
+      }
+      const target = conversation ? getPhoneReadTarget(conversation.meta.sender, readNow) : null
+      if (target) {
+        client.markReadOnPhone(target.phone, target.ids).catch(() => undefined)
+      }
       client
         .markSeen(conversationId)
         .then(() =>
@@ -192,7 +204,9 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
         setMessages(mergeMessages([], latest))
         setOwnHasOlder(latest.length >= 20)
         ownCursor.current = latest.length > 0 ? Math.min(...latest.map((message) => message.id)) : null
-        markSeen(selectedId)
+        // The phone shows as many unread as the CRM did, so only that many need telling.
+        const unread = mapRef.current.get(selectedId)?.unread_count ?? 0
+        markSeen(selectedId, unread > 0 ? latest.filter((message) => message.message_type === 0).slice(-unread) : [])
       })
       .catch(() => {
         if (!cancelled) {
@@ -227,8 +241,9 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
           }
           setMessages((current) => {
             const known = new Set(current.map((message) => message.id))
-            if (latest.some((message) => message.message_type === 0 && !known.has(message.id))) {
-              markSeen(selectedId)
+            const arrived = latest.filter((message) => message.message_type === 0 && !known.has(message.id))
+            if (arrived.length > 0) {
+              markSeen(selectedId, arrived)
             }
             return mergeMessages(current, latest)
           })
@@ -287,6 +302,8 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
         await client.markUnread(conversationId)
         const conversation = mapRef.current.get(conversationId)
         patchConversation(conversationId, { unread_count: Math.max(1, conversation?.unread_count ?? 0) })
+        // Shown as a dot, not a number, since nothing new was received.
+        await saveAttributesRef.current(conversationId, { crm_marked_unread: true })
         setSelectedId(null)
       } catch {
         setActionError("Couldn't mark this chat as unread. Try again.")
@@ -305,6 +322,10 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
     },
     [client, patchConversation],
   )
+
+  useEffect(() => {
+    saveAttributesRef.current = saveAttributes
+  }, [saveAttributes])
 
   const setOwner = useCallback(
     async (conversationId: number, owner: Sender | null) => {
