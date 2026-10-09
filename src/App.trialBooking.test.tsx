@@ -479,7 +479,7 @@ describe('trial slots on the calendar', () => {
 
     const table = await screen.findByRole('table')
     expect(within(table).getAllByText('Aiden')).toHaveLength(1)
-    expect(screen.getByText('Total Students').nextElementSibling?.textContent ?? '').toBe('1')
+    expect(screen.getByRole('button', { name: 'All 1' })).toBeInTheDocument()
   })
 
   it('still lists a trial child whose lead is not converted yet', async () => {

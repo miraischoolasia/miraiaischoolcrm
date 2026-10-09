@@ -299,7 +299,7 @@ export function StudentDashboardSection({
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder="Search name, ID, parent or phone"
               aria-label="Search students"
-              className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#fc0c97] focus:outline-none"
+              className="w-full rounded-xl border border-slate-200 py-2 pl-9! pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#fc0c97] focus:outline-none"
             />
           </div>
           <select
@@ -388,17 +388,17 @@ export function StudentDashboardSection({
             </ul>
 
             <div className="hidden overflow-x-auto md:block">
-              <table data-compact-table className="min-w-[960px] divide-y divide-slate-200">
+              <table data-compact-table className="min-w-[900px] divide-y divide-slate-200">
                 <thead className="bg-slate-50">
                   <tr className="text-left text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                    <th className="px-4 py-3">Student</th>
-                    <th className="px-4 py-3">Class</th>
-                    <th className="px-4 py-3">Package</th>
-                    <th className="px-4 py-3">Classes left</th>
-                    <th className="px-4 py-3">Ends</th>
-                    <th className="px-4 py-3">Fees</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">
+                    <th className="px-3 py-3">Student</th>
+                    <th className="px-3 py-3">Class</th>
+                    <th className="px-3 py-3">Package</th>
+                    <th className="px-3 py-3">Classes left</th>
+                    <th className="px-3 py-3">Ends</th>
+                    <th className="px-3 py-3">Fees</th>
+                    <th className="px-3 py-3">Status</th>
+                    <th className="px-3 py-3">
                       <span className="sr-only">Actions</span>
                     </th>
                   </tr>
@@ -413,28 +413,28 @@ export function StudentDashboardSection({
                         !row.student.isActive && 'opacity-60',
                       )}
                     >
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <StudentIdentity row={row} onOpen={onOpenStudentDetail} />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <ClassCell row={row} todayString={todayString} />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <PackageCell row={row} />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <ClassesLeftCell row={row} />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <EndsCell row={row} />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <FeesCell row={row} />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <StatusCell row={row} todayString={todayString} />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <div className="flex items-center justify-end gap-2">
                           {renewButton(row)}
                           <RowActionsMenu
@@ -570,7 +570,7 @@ function ClassesLeftCell({ row }: { row: StudentRow }) {
         {pkg ? <span className="ml-1 text-xs font-medium text-slate-500">of {pkg.classCount}</span> : null}
       </div>
       {pkg && pkg.classCount > 0 && (
-        <div className="mt-1 h-1.5 w-24 overflow-hidden rounded-full bg-slate-200">
+        <div className="mt-1 h-1.5 w-20 overflow-hidden rounded-full bg-slate-200">
           <div
             className={cn('h-full rounded-full', low ? 'bg-red-600' : 'bg-[#fc0c97]')}
             style={{

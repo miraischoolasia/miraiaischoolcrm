@@ -149,6 +149,7 @@ import { useUnreadFormSubmissions } from './hooks/useUnreadFormSubmissions'
 import { LeadsSection } from './components/sections/LeadsSection'
 import { AdminActivitySection } from './components/sections/AdminActivitySection'
 import { StudentDetailModal } from './components/StudentDetailModal'
+import { buildStudentParents } from './lib/studentParents'
 import { EditStudentModal } from './components/modals/EditStudentModal'
 import { CreateStudentModal } from './components/modals/CreateStudentModal'
 import { ClassroomModal } from './components/modals/ClassroomModal'
@@ -336,6 +337,7 @@ function App() {
   )
 
   const [studentFilter, setStudentFilter] = useState<FilterKey>('all')
+  const [studentFollowUpOnly, setStudentFollowUpOnly] = useState(false)
   const [activeSection, setActiveSection] = useState<AppSection>('calendar')
   const [isMarketingOpen, setIsMarketingOpen] = useState(false)
   // The menu can shrink to icons so the page beside it (the WhatsApp inbox) gets the room.
@@ -705,6 +707,10 @@ function App() {
       .map((booking) => booking.studentId)
       .filter((studentId): studentId is number => studentId !== null)
   }, [leads, selectedStudentDetailId, trialBookings])
+  const studentParents = useMemo(
+    () => buildStudentParents({ students, leads, trialBookings }),
+    [students, leads, trialBookings],
+  )
   const editingStudent =
     students.find((student) => student.id === editingStudentId) ?? null
   const editingTeacher =
@@ -853,7 +859,7 @@ function App() {
   }, [activeSection, allowedSections])
 
   useEffect(() => {
-    if (!selectedStudentDetailId || !canEditCalendar) {
+    if (!selectedStudentDetailId) {
       return
     }
 
@@ -865,13 +871,14 @@ function App() {
         }
       })
       .catch(() => {
-        // Only a speed-up: openStudentMakeup fetches again if this is missing.
+        // Attendance is only extra on the student page, and a speed-up for
+        // Arrange Make-up, which fetches again if this is missing.
       })
 
     return () => {
       cancelled = true
     }
-  }, [canEditCalendar, selectedStudentDetailId])
+  }, [selectedStudentDetailId])
 
   useEffect(() => {
     if (!selectedStudent) {
@@ -5585,6 +5592,13 @@ function App() {
                 canEdit={can('students', 'edit')}
                 canDelete={can('students', 'delete')}
                 packages={packages}
+                followUpOnly={studentFollowUpOnly}
+                onToggleFollowUp={() => setStudentFollowUpOnly((current) => !current)}
+                classrooms={classrooms}
+                schedules={schedules}
+                teacherMap={teacherMap}
+                trialBookings={trialBookings}
+                parents={studentParents}
                 onOpenAssignPackages={
                   can('students', 'edit')
                     ? () => {
@@ -5872,6 +5886,20 @@ function App() {
           schedules={schedules}
           teacherMap={teacherMap}
           trialStudentIds={selectedStudentTrialIds}
+          attendance={
+            prefetchedAttendance?.studentId === selectedStudentDetail.id
+              ? prefetchedAttendance.rows
+              : undefined
+          }
+          parentName={studentParents.get(selectedStudentDetail.id)?.name ?? null}
+          onRenew={
+            can('students', 'edit')
+              ? () => {
+                  closeStudentDetail()
+                  openStudentRenewal(selectedStudentDetail.id)
+                }
+              : undefined
+          }
           makeupPlans={makeupPlans.filter(
             (plan) =>
               plan.studentId === selectedStudentDetail.id ||
