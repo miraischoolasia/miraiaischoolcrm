@@ -3,7 +3,11 @@ import {
   checkQuickReplyFile,
   fillVariables,
   mediaKind,
+  moveItem,
   parseMedia,
+  parseSteps,
+  replyMedia,
+  replyTexts,
   searchQuickReplies,
   unfilledVariables,
   type QuickReply,
@@ -12,8 +16,7 @@ import {
 const reply = (id: number, title: string, body = '', isActive = true): QuickReply => ({
   id,
   title,
-  messages: body ? [body] : [],
-  media: [],
+  steps: body ? [{ kind: 'text', text: body }] : [],
   isActive,
 })
 
@@ -62,7 +65,14 @@ describe('searchQuickReplies', () => {
   })
 
   it('looks in every message of a reply, not only the first', () => {
-    const several: QuickReply = { ...reply(9, 'Welcome'), messages: ['Hello', 'Fees start at RM100'] }
+    const several: QuickReply = {
+      ...reply(9, 'Welcome'),
+      steps: [
+        { kind: 'text', text: 'Hello' },
+        { kind: 'media', media: { path: 'a', name: 'a.png', type: 'image/png', size: 1 } },
+        { kind: 'text', text: 'Fees start at RM100' },
+      ],
+    }
     expect(searchQuickReplies([several], 'rm100').map((item) => item.id)).toEqual([9])
   })
 
@@ -98,5 +108,47 @@ describe('mediaKind', () => {
     expect(mediaKind('image/webp')).toBe('image')
     expect(mediaKind('video/mp4')).toBe('video')
     expect(mediaKind('application/pdf')).toBe('file')
+  })
+})
+
+describe('parseSteps', () => {
+  it('keeps well-formed rows in their order and drops the rest', () => {
+    expect(
+      parseSteps([
+        { kind: 'text', text: 'Hi' },
+        { kind: 'media', media: { path: 'a', name: 'A', type: 'image/png', size: 5 } },
+        { kind: 'text', text: 3 },
+        { kind: 'media', media: { path: 1 } },
+        null,
+      ]),
+    ).toEqual([
+      { kind: 'text', text: 'Hi' },
+      { kind: 'media', media: { path: 'a', name: 'A', type: 'image/png', size: 5 } },
+    ])
+    expect(parseSteps(null)).toEqual([])
+  })
+
+  it('splits a reply into its texts and its files', () => {
+    const steps = parseSteps([
+      { kind: 'media', media: { path: 'a', name: 'A', type: 'image/png', size: 5 } },
+      { kind: 'text', text: 'One' },
+    ])
+    expect(replyTexts({ steps })).toEqual(['One'])
+    expect(replyMedia({ steps }).map((item) => item.name)).toEqual(['A'])
+  })
+})
+
+describe('moveItem', () => {
+  it('moves an item to another place and leaves the original list alone', () => {
+    const list = ['a', 'b', 'c', 'd']
+    expect(moveItem(list, 0, 2)).toEqual(['b', 'c', 'a', 'd'])
+    expect(moveItem(list, 3, 1)).toEqual(['a', 'd', 'b', 'c'])
+    expect(list).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('does nothing for the same place or one that does not exist', () => {
+    const list = ['a', 'b']
+    expect(moveItem(list, 1, 1)).toBe(list)
+    expect(moveItem(list, 0, 5)).toBe(list)
   })
 })

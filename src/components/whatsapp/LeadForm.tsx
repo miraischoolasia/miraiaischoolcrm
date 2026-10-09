@@ -63,12 +63,10 @@ function fromLead(lead: Lead): FormState {
 // button; after that every change is saved by itself and nothing pops up.
 export function LeadForm({ crm, lead, initialName, initialPhone, guess, onCreated }: LeadFormProps) {
   const sources = crm.leadOptions.filter((option) => option.kind === 'source' && option.isActive)
-  const people = crm.leadOptions.filter((option) => option.kind === 'pic' && option.isActive)
   const tags = crm.leadOptions.filter((option) => option.kind === 'tag')
   const otherSource = sources.find((option) => option.legacyKey === 'other')
   // A lead's own source or PIC may have been hidden since; it must still show.
   const sourceChoices = withCurrent(sources, crm.leadOptions, lead?.sourceId ?? null)
-  const picChoices = withCurrent(people, crm.leadOptions, lead?.picId ?? null)
 
   const [form, setForm] = useState<FormState>(() =>
     lead
@@ -360,18 +358,6 @@ export function LeadForm({ crm, lead, initialName, initialPhone, guess, onCreate
           </select>
           {hasForms && showForms && lead && <FormAnswers leadId={lead.id} load={crm.loadFormAnswers} />}
         </div>
-
-        <label className="block">
-          <span className="text-slate-600">Person in charge</span>
-          <select value={form.picId} disabled={!canEdit} onChange={(event) => change({ picId: event.target.value })} className={fieldClass}>
-            <option value="">No one yet</option>
-            {picChoices.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
 
         <label className="block">
           <span className="text-slate-600">Stage</span>

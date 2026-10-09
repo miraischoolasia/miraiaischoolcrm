@@ -20,6 +20,7 @@ import { ConversationList } from './ConversationList'
 import { useQuickReplies } from '../../hooks/useQuickReplies'
 import { useSourceRules } from '../../hooks/useSourceRules'
 import { makeLeadResolver, quickReplyValues, resolveChatLead } from '../../lib/chatLink'
+import { draftPreview, draftsFirst, type Draft } from '../../lib/draft'
 import { describeStudent, getStudentKind, makeStudentResolver, type StudentKind } from '../../lib/studentLink'
 import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
@@ -170,16 +171,45 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
       .map((option) => ({ id: option.id, label: `${option.label} (${counts.get(option.id) ?? 0})` }))
   const tagOptions = choicesFor('tag', optionCounts.tags)
   const sourceOptions = choicesFor('source', optionCounts.sources)
+  // What is left unsent in each chat's message box. It lives here, not in the box, so it survives
+  // going to another chat or another page.
+  const [drafts, setDrafts] = useState<Map<number, Draft>>(new Map())
+  const setDraft = useCallback((id: number, draft: Draft | null) => {
+    setDrafts((current) => {
+      if (!draft && !current.has(id)) {
+        return current
+      }
+      const next = new Map(current)
+      if (draft) {
+        next.set(id, draft)
+      } else {
+        next.delete(id)
+      }
+      return next
+    })
+  }, [])
+  // The chat on screen is being written in right now; it counts as a draft once you leave it.
+  const draftOf = useCallback(
+    (conversation: ChatwootConversation) => {
+      const draft = conversation.id === inbox.selectedId ? undefined : drafts.get(conversation.id)
+      return draft ? draftPreview(draft) : null
+    },
+    [drafts, inbox.selectedId],
+  )
+
   const visible = useMemo(
     () =>
-      filterConversations(
-        inbox.conversations,
-        { tab, search, tagId, sourceId, matchedIds, kind },
-        (conversation) =>
-          resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number)),
-        studentKindsOf,
+      draftsFirst(
+        filterConversations(
+          inbox.conversations,
+          { tab, search, tagId, sourceId, matchedIds, kind },
+          (conversation) =>
+            resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number)),
+          studentKindsOf,
+        ),
+        (id) => id !== inbox.selectedId && drafts.has(id),
       ),
-    [inbox.conversations, tab, search, tagId, sourceId, matchedIds, kind, resolveLead, studentKindsOf],
+    [inbox.conversations, inbox.selectedId, drafts, tab, search, tagId, sourceId, matchedIds, kind, resolveLead, studentKindsOf],
   )
   const hasChat = inbox.selected !== null
 
@@ -237,6 +267,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
         sources={sourceOptions}
         snippets={messageHits}
         leadNameOf={leadNameOf}
+        draftOf={draftOf}
         studentLabelsOf={studentLabelsOf}
         isOlderDuplicate={isOlderDuplicate}
         tagsOf={tagsOf}
@@ -290,6 +321,8 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
             quickReplyValues={quickReplyFill}
             onManageQuickReplies={crm.canEditLeads ? () => setManagingReplies(true) : undefined}
             draftRequest={draftRequest}
+            draft={drafts.get(inbox.selected.id) ?? null}
+            onDraftChange={(draft) => setDraft(inbox.selected!.id, draft)}
           />
           <DetailsPanel
             className={cn(
@@ -363,6 +396,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
           onClose={() => setManagingReplies(false)}
           onSave={quickReplies.save}
           onRemove={quickReplies.remove}
+          onReorder={quickReplies.reorder}
         />
       )}
     </div>

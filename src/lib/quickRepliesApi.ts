@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { parseMedia, type QuickReply, type QuickReplyMedia } from './quickReplies'
+import { parseSteps, replyMedia, type QuickReply, type QuickReplyMedia, type QuickReplyStep } from './quickReplies'
 
 const BUCKET = 'quick-reply-media'
 
@@ -28,7 +28,8 @@ export function quickReplyErrorMessage(error: unknown, fallback: string) {
 export async function fetchQuickReplies(): Promise<QuickReply[]> {
   const { data, error } = await requireSupabase()
     .from('quick_replies')
-    .select('id, title, messages, media, is_active')
+    .select('id, title, steps, is_active')
+    .order('sort_order', { ascending: true })
     .order('title', { ascending: true })
 
   if (error) {
@@ -37,19 +38,21 @@ export async function fetchQuickReplies(): Promise<QuickReply[]> {
   return (data ?? []).map((row) => ({
     id: row.id,
     title: row.title,
-    messages: row.messages,
-    media: parseMedia(row.media),
+    steps: parseSteps(row.steps),
     isActive: row.is_active,
   }))
 }
 
+// A row being edited: a text, a file already stored, or a file chosen just now.
+export type QuickReplyDraftStep =
+  | { kind: 'text'; text: string }
+  | { kind: 'media'; media: QuickReplyMedia }
+  | { kind: 'file'; file: File }
+
 export type QuickReplyDraft = {
   title: string
-  messages: string[]
+  steps: QuickReplyDraftStep[]
   isActive: boolean
-  // Files already stored that stay, and new ones to store.
-  keep: QuickReplyMedia[]
-  add: File[]
 }
 
 async function removeFiles(paths: string[]) {
@@ -65,27 +68,43 @@ export async function saveQuickReply(existing: QuickReply | null, draft: QuickRe
   const uploaded: QuickReplyMedia[] = []
 
   try {
-    for (const file of draft.add) {
-      const extension = file.name.includes('.') ? file.name.split('.').pop() : 'bin'
-      const path = `${crypto.randomUUID()}.${extension}`
-      const { error } = await client.storage.from(BUCKET).upload(path, file, { contentType: file.type })
+    const steps: QuickReplyStep[] = []
+    for (const step of draft.steps) {
+      if (step.kind === 'text') {
+        steps.push({ kind: 'text', text: step.text })
+      } else if (step.kind === 'media') {
+        steps.push({ kind: 'media', media: step.media })
+      } else {
+        const { file } = step
+        const extension = file.name.includes('.') ? file.name.split('.').pop() : 'bin'
+        const path = `${crypto.randomUUID()}.${extension}`
+        const { error } = await client.storage.from(BUCKET).upload(path, file, { contentType: file.type })
+        if (error) {
+          throw error
+        }
+        const media = { path, name: file.name, type: file.type, size: file.size }
+        uploaded.push(media)
+        steps.push({ kind: 'media', media })
+      }
+    }
+
+    const row = { title: draft.title.trim(), steps, is_active: draft.isActive }
+    if (existing) {
+      const { error } = await client.from('quick_replies').update(row).eq('id', existing.id)
       if (error) {
         throw error
       }
-      uploaded.push({ path, name: file.name, type: file.type, size: file.size })
-    }
-
-    const row = {
-      title: draft.title.trim(),
-      messages: draft.messages,
-      is_active: draft.isActive,
-      media: [...draft.keep, ...uploaded],
-    }
-    const { error } = existing
-      ? await client.from('quick_replies').update(row).eq('id', existing.id)
-      : await client.from('quick_replies').insert(row)
-    if (error) {
-      throw error
+    } else {
+      // A new reply goes to the end of the list.
+      const { data: last } = await client
+        .from('quick_replies')
+        .select('sort_order')
+        .order('sort_order', { ascending: false })
+        .limit(1)
+      const { error } = await client.from('quick_replies').insert({ ...row, sort_order: (last?.[0]?.sort_order ?? 0) + 10 })
+      if (error) {
+        throw error
+      }
     }
   } catch (error) {
     await removeFiles(uploaded.map((item) => item.path)).catch(() => undefined)
@@ -93,10 +112,24 @@ export async function saveQuickReply(existing: QuickReply | null, draft: QuickRe
   }
 
   if (existing) {
-    const kept = new Set(draft.keep.map((item) => item.path))
-    await removeFiles(existing.media.filter((item) => !kept.has(item.path)).map((item) => item.path)).catch(
-      () => undefined,
-    )
+    const kept = new Set(draft.steps.flatMap((step) => (step.kind === 'media' ? [step.media.path] : [])))
+    await removeFiles(
+      replyMedia(existing)
+        .filter((item) => !kept.has(item.path))
+        .map((item) => item.path),
+    ).catch(() => undefined)
+  }
+}
+
+// Saves the order the team dragged the quick replies into, for everyone.
+export async function saveQuickReplyOrder(ids: number[]) {
+  const client = requireSupabase()
+  const results = await Promise.all(
+    ids.map((id, index) => client.from('quick_replies').update({ sort_order: (index + 1) * 10 }).eq('id', id)),
+  )
+  const failed = results.find((result) => result.error)
+  if (failed?.error) {
+    throw failed.error
   }
 }
 
@@ -105,7 +138,7 @@ export async function deleteQuickReply(reply: QuickReply) {
   if (error) {
     throw error
   }
-  await removeFiles(reply.media.map((item) => item.path)).catch(() => undefined)
+  await removeFiles(replyMedia(reply).map((item) => item.path)).catch(() => undefined)
 }
 
 // Downloads a stored attachment as a File, ready to go out with the message.

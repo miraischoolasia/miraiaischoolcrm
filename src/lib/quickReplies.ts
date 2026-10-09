@@ -4,17 +4,18 @@
 
 export type QuickReplyMedia = { path: string; name: string; type: string; size: number }
 
+// One row of a quick reply: a text, or a file. Each is sent to the parent as its own message.
+export type QuickReplyStep = { kind: 'text'; text: string } | { kind: 'media'; media: QuickReplyMedia }
+
 export type QuickReply = {
   id: number
   title: string
-  // Up to three texts, each sent as its own message after the photos and videos.
-  messages: string[]
-  media: QuickReplyMedia[]
+  // In the order they are sent.
+  steps: QuickReplyStep[]
   isActive: boolean
 }
 
-export const MAX_QUICK_REPLY_FILES = 5
-export const MAX_QUICK_REPLY_MESSAGES = 3
+export const MAX_QUICK_REPLY_STEPS = 5
 // The most WhatsApp accepts for a video or document.
 export const MAX_QUICK_REPLY_FILE_BYTES = 16 * 1024 * 1024
 export const QUICK_REPLY_FILE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'application/pdf']
@@ -66,9 +67,49 @@ export function searchQuickReplies(replies: QuickReply[], query: string) {
   return active
     .filter(
       (reply) =>
-        reply.title.toLowerCase().includes(text) || reply.messages.some((message) => message.toLowerCase().includes(text)),
+        reply.title.toLowerCase().includes(text) || replyTexts(reply).some((message) => message.toLowerCase().includes(text)),
     )
     .sort((a, b) => Number(starts(b)) - Number(starts(a)))
+}
+
+export function replyTexts(reply: Pick<QuickReply, 'steps'>) {
+  return reply.steps.flatMap((step) => (step.kind === 'text' ? [step.text] : []))
+}
+
+export function replyMedia(reply: Pick<QuickReply, 'steps'>) {
+  return reply.steps.flatMap((step) => (step.kind === 'media' ? [step.media] : []))
+}
+
+// The rows as stored in the database, ignoring anything malformed.
+export function parseSteps(value: unknown): QuickReplyStep[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item): QuickReplyStep[] => {
+    if (typeof item !== 'object' || item === null) {
+      return []
+    }
+    const { kind, text, media } = item as Record<string, unknown>
+    if (kind === 'text' && typeof text === 'string') {
+      return [{ kind: 'text', text }]
+    }
+    if (kind === 'media') {
+      const [parsed] = parseMedia([media])
+      return parsed ? [{ kind: 'media', media: parsed }] : []
+    }
+    return []
+  })
+}
+
+// Moves one item of a list to another place, for drag and drop.
+export function moveItem<T>(list: T[], from: number, to: number): T[] {
+  if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) {
+    return list
+  }
+  const next = [...list]
+  const [item] = next.splice(from, 1)
+  next.splice(to, 0, item)
+  return next
 }
 
 // The attachment list as stored in the database, ignoring anything malformed.

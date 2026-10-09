@@ -66,6 +66,8 @@ type ConversationListProps = {
   picOf?: (conversation: ChatwootConversation) => { name: string; initials: string } | null
   // How long a parent has waited (the red banner, the red row, "Waiting 45 min"). Hidden for now.
   showWaiting?: boolean
+  // What is left unsent in the chat, as one short line; null when nothing is.
+  draftOf?: (conversation: ChatwootConversation) => string | null
   // True for an older chat of a parent who has a newer one.
   isOlderDuplicate?: (conversation: ChatwootConversation) => boolean
   // Show only parents with a student of this kind, or with none yet.
@@ -137,6 +139,7 @@ export function ConversationList({
   tagsOf,
   picOf,
   showWaiting = false,
+  draftOf,
   isOlderDuplicate,
   kind = null,
   selectedId,
@@ -353,7 +356,12 @@ export function ConversationList({
                 </span>
                 <span className="flex items-center justify-between gap-2">
                   <span className="truncate text-sm text-slate-500">
-                    {snippets.get(conversation.id) ? (
+                    {draftOf?.(conversation) ? (
+                      <>
+                        <span className="font-medium text-[#fc0c97]">Draft: </span>
+                        {draftOf(conversation)}
+                      </>
+                    ) : snippets.get(conversation.id) ? (
                       <>
                         <span className="font-medium text-[#be185d]">Found: </span>
                         {snippets.get(conversation.id)}

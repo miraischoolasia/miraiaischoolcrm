@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatwootClient, Sender } from '../lib/chatwootClient'
 import { startChat } from '../lib/startChat'
-import { CONFIRM_POLL_MS, CONFIRM_TIMEOUT_MS, fileKind, splitForSending } from '../lib/outbox'
+import { CONFIRM_POLL_MS, CONFIRM_TIMEOUT_MS, fileKind, splitSequence } from '../lib/outbox'
 import {
   getOwner,
   getPhoneReadTarget,
@@ -32,8 +32,8 @@ function mergeMessages(current: ChatwootMessage[], incoming: ChatwootMessage[]) 
   return [...byId.values()].sort((a, b) => a.created_at - b.created_at || a.id - b.id)
 }
 
-// moreTexts are extra messages sent after the first one, each on its own.
-export type SendInput = { content: string; isPrivate: boolean; files: File[]; moreTexts?: string[] }
+// Texts and files, each sent as its own message in this order.
+export type SendInput = { isPrivate: boolean; sequence: (string | File)[] }
 
 type OutboxItem = {
   tempId: number
@@ -468,7 +468,7 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
       if (selectedId === null) {
         return false
       }
-      const parts = splitForSending(input.content, input.files, input.moreTexts)
+      const parts = splitSequence(input.sequence)
       if (parts.length === 0) {
         return false
       }

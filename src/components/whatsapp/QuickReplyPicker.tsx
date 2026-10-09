@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FileText, Image, MagnifyingGlass, VideoCamera } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
-import { mediaKind, searchQuickReplies, type QuickReply } from '../../lib/quickReplies'
+import { mediaKind, replyMedia, replyTexts, searchQuickReplies, type QuickReply } from '../../lib/quickReplies'
 
 type QuickReplyPickerProps = {
   replies: QuickReply[]
@@ -14,10 +14,11 @@ type QuickReplyPickerProps = {
 }
 
 function MediaBadges({ reply }: { reply: QuickReply }) {
-  if (reply.media.length === 0) {
+  const media = replyMedia(reply)
+  if (media.length === 0) {
     return null
   }
-  const kinds = [...new Set(reply.media.map((item) => mediaKind(item.type)))]
+  const kinds = [...new Set(media.map((item) => mediaKind(item.type)))]
   return (
     <span className="ml-2 inline-flex shrink-0 items-center gap-1 text-slate-500">
       {kinds.map((kind) =>
@@ -107,10 +108,10 @@ export function QuickReplyPicker({ replies, isLoading, error, onPick, onClose, o
                 <span className="truncate">{reply.title}</span>
                 <MediaBadges reply={reply} />
               </span>
-              {reply.messages[0] && (
+              {replyTexts(reply)[0] && (
                 <span className="mt-0.5 line-clamp-1 block text-xs text-slate-500">
-                  {reply.messages[0]}
-                  {reply.messages.length > 1 && ` (+${reply.messages.length - 1} more)`}
+                  {replyTexts(reply)[0]}
+                  {reply.steps.length > 1 && ` (+${reply.steps.length - 1} more)`}
                 </span>
               )}
             </button>

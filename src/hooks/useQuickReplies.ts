@@ -5,6 +5,7 @@ import {
   fetchQuickReplies,
   quickReplyErrorMessage,
   saveQuickReply,
+  saveQuickReplyOrder,
   type QuickReplyDraft,
 } from '../lib/quickRepliesApi'
 
@@ -60,5 +61,20 @@ export function useQuickReplies(enabled: boolean) {
     [reload],
   )
 
-  return { replies, isLoading, error, reload, save, remove }
+  // Shows the new order at once, then saves it; if that fails the saved order comes back.
+  const reorder = useCallback(
+    async (ids: number[]) => {
+      setReplies((current) => ids.flatMap((id) => current.find((reply) => reply.id === id) ?? []))
+      try {
+        await saveQuickReplyOrder(ids)
+        return null
+      } catch (problem) {
+        await reload()
+        return quickReplyErrorMessage(problem, "Couldn't save the new order.")
+      }
+    },
+    [reload],
+  )
+
+  return { replies, isLoading, error, reload, save, remove, reorder }
 }

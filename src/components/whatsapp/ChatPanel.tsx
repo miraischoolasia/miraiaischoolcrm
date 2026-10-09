@@ -14,6 +14,7 @@ import {
   type ChatwootMessage,
 } from '../../lib/whatsappInbox'
 import { parentTone, staffTone } from '../../lib/avatarTone'
+import type { Draft } from '../../lib/draft'
 import { Avatar } from './Avatar'
 import { Composer } from './Composer'
 import { MessageBubble, type BubbleAvatar } from './MessageBubble'
@@ -46,6 +47,9 @@ type ChatPanelProps = {
   draftRequest?: { id: number; text: string } | null
   // Opens the lead's full page; only for a chat that belongs to a lead.
   onOpenLead?: () => void
+  // What is left unsent in this chat's message box, and where changes to it are reported.
+  draft?: Draft | null
+  onDraftChange?: (draft: Draft | null) => void
 }
 
 export function ChatPanel({
@@ -70,6 +74,8 @@ export function ChatPanel({
   onManageQuickReplies,
   draftRequest,
   onOpenLead,
+  draft,
+  onDraftChange,
 }: ChatPanelProps) {
   const identity = getChatIdentity(conversation.meta.sender, leadName)
   const owner = getOwner(conversation)
@@ -265,6 +271,8 @@ export function ChatPanel({
         variables={quickReplyValues}
         onManageQuickReplies={onManageQuickReplies}
         draftRequest={draftRequest}
+        draft={draft}
+        onDraftChange={onDraftChange}
       />
     </div>
   )

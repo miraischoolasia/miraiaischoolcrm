@@ -190,3 +190,20 @@ describe('ConversationList unread marks', () => {
     expect(within(screen.getByRole('button', { name: /12-345 6789/ })).getByText('1')).toBeInTheDocument()
   })
 })
+
+describe('ConversationList drafts', () => {
+  it('shows what was left unsent in place of the last message', () => {
+    renderList([chat(1, 'Mei Ling', 60)], 0, { draftOf: () => 'See you at 2' })
+
+    const row = screen.getByRole('button', { name: /12-345 6789/ })
+    expect(within(row).getByText('Draft:')).toBeInTheDocument()
+    expect(within(row).getByText(/See you at 2/)).toBeInTheDocument()
+    expect(within(row).queryByText('hello')).not.toBeInTheDocument()
+  })
+
+  it('shows the last message when there is no draft', () => {
+    renderList([chat(1, 'Mei Ling', 60)], 0, { draftOf: () => null })
+
+    expect(screen.queryByText('Draft:')).not.toBeInTheDocument()
+  })
+})

@@ -1,12 +1,24 @@
 import { useRef, useState } from 'react'
-import { FileText, Image, PencilSimple, Plus, Trash, VideoCamera, X } from '@phosphor-icons/react'
+import {
+  CaretDown,
+  CaretUp,
+  DotsSixVertical,
+  FileText,
+  Image,
+  PencilSimple,
+  Plus,
+  Trash,
+  VideoCamera,
+  X,
+} from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
+import { cn } from '../../lib/cn'
 import { useConfirm } from '../../hooks/useConfirm'
 import {
   checkQuickReplyFile,
-  MAX_QUICK_REPLY_FILES,
-  MAX_QUICK_REPLY_MESSAGES,
+  MAX_QUICK_REPLY_STEPS,
   mediaKind,
+  moveItem,
   QUICK_REPLY_FILE_TYPES,
   QUICK_REPLY_VARIABLES,
   type QuickReply,
@@ -22,6 +34,8 @@ type QuickReplyManagerProps = {
   // Each returns an error message, or null when it worked.
   onSave: (existing: QuickReply | null, draft: QuickReplyDraft) => Promise<string | null>
   onRemove: (reply: QuickReply) => Promise<string | null>
+  // The ids in the order the team dragged them into.
+  onReorder: (ids: number[]) => Promise<string | null>
 }
 
 const fieldClass =
@@ -31,6 +45,21 @@ function KindIcon({ type }: { type: string }) {
   const kind = mediaKind(type)
   const Icon = kind === 'image' ? Image : kind === 'video' ? VideoCamera : FileText
   return <Icon size={14} aria-hidden="true" className="shrink-0 text-slate-500" />
+}
+
+// One row being edited. A file row holds a stored file or a newly chosen one, never both.
+type Row = { key: number; type: 'text' | 'file'; text: string; media: QuickReplyMedia | null; file: File | null }
+
+let nextRowKey = 1
+const newRow = (patch: Partial<Row> = {}): Row => ({ key: nextRowKey++, type: 'text', text: '', media: null, file: null, ...patch })
+
+function rowsOf(reply: QuickReply | null): Row[] {
+  if (!reply || reply.steps.length === 0) {
+    return [newRow()]
+  }
+  return reply.steps.map((step) =>
+    step.kind === 'text' ? newRow({ text: step.text }) : newRow({ type: 'file', media: step.media }),
+  )
 }
 
 function ReplyForm({
@@ -43,42 +72,44 @@ function ReplyForm({
   onSave: QuickReplyManagerProps['onSave']
 }) {
   const [title, setTitle] = useState(existing?.title ?? '')
-  const [messages, setMessages] = useState<string[]>(existing?.messages.length ? existing.messages : [''])
+  const [rows, setRows] = useState<Row[]>(() => rowsOf(existing))
   const [isActive, setIsActive] = useState(existing?.isActive ?? true)
-  const [keep, setKeep] = useState<QuickReplyMedia[]>(existing?.media ?? [])
-  const [added, setAdded] = useState<File[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
-  const messageFields = useRef<Array<HTMLTextAreaElement | null>>([])
-  // The box a name tag is put into: the one last clicked in.
-  const lastBox = useRef(0)
+  const textFields = useRef(new Map<number, HTMLTextAreaElement>())
+  // The text row a name tag is put into: the one last clicked in.
+  const lastText = useRef<number | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
-  const fileCount = keep.length + added.length
+  const pickingFor = useRef<number | null>(null)
 
-  function addFiles(list: FileList) {
-    const chosen = Array.from(list)
-    const problem = chosen.map(checkQuickReplyFile).find(Boolean)
+  function change(key: number, patch: Partial<Row>) {
+    setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)))
+  }
+
+  function chooseFile(list: FileList | null) {
+    const file = list?.[0]
+    const key = pickingFor.current
+    if (!file || key === null) {
+      return
+    }
+    const problem = checkQuickReplyFile(file)
     if (problem) {
       setError(problem)
       return
     }
-    if (fileCount + chosen.length > MAX_QUICK_REPLY_FILES) {
-      setError(`A quick reply can carry up to ${MAX_QUICK_REPLY_FILES} files.`)
-      return
-    }
     setError(null)
-    setAdded((current) => [...current, ...chosen])
+    change(key, { file, media: null })
   }
 
   function insertVariable(token: string) {
-    const index = Math.min(lastBox.current, messages.length - 1)
-    const field = messageFields.current[index]
-    const value = messages[index] ?? ''
-    const start = field?.selectionStart ?? value.length
-    const end = field?.selectionEnd ?? value.length
-    setMessages((current) =>
-      current.map((entry, position) => (position === index ? `${value.slice(0, start)}${token}${value.slice(end)}` : entry)),
-    )
+    const target = rows.find((row) => row.key === lastText.current && row.type === 'text') ?? rows.find((row) => row.type === 'text')
+    if (!target) {
+      return
+    }
+    const field = textFields.current.get(target.key)
+    const start = field?.selectionStart ?? target.text.length
+    const end = field?.selectionEnd ?? target.text.length
+    change(target.key, { text: `${target.text.slice(0, start)}${token}${target.text.slice(end)}` })
     window.requestAnimationFrame(() => {
       field?.focus()
       field?.setSelectionRange(start + token.length, start + token.length)
@@ -90,14 +121,28 @@ function ReplyForm({
       setError('Give it a short title so the team can find it.')
       return
     }
-    const written = messages.map((message) => message.trim()).filter(Boolean)
-    if (written.length === 0 && fileCount === 0) {
+    const steps: QuickReplyDraft['steps'] = []
+    for (const [index, row] of rows.entries()) {
+      if (row.type === 'text') {
+        if (row.text.trim()) {
+          steps.push({ kind: 'text', text: row.text.trim() })
+        }
+      } else if (row.file) {
+        steps.push({ kind: 'file', file: row.file })
+      } else if (row.media) {
+        steps.push({ kind: 'media', media: row.media })
+      } else {
+        setError(`Row ${index + 1} has no file yet. Choose one, or change the row to a text.`)
+        return
+      }
+    }
+    if (steps.length === 0) {
       setError('Write a message or attach a file.')
       return
     }
     setIsSaving(true)
     setError(null)
-    const problem = await onSave(existing, { title, messages: written, isActive, keep, add: added })
+    const problem = await onSave(existing, { title, steps, isActive })
     setIsSaving(false)
     if (problem) {
       setError(problem)
@@ -122,55 +167,123 @@ function ReplyForm({
         </label>
 
         <div className="space-y-3">
-          {messages.map((message, index) => (
-            <div key={index}>
-              <div className="flex items-center justify-between">
-                <label htmlFor={`quick-reply-message-${index}`} className="text-sm font-medium text-slate-700">
-                  {messages.length === 1 ? 'Message' : `Message ${index + 1}`}
-                </label>
-                {messages.length > 1 && (
+          <p className="text-sm font-medium text-slate-700">What to send, in this order</p>
+          <ol className="space-y-3">
+            {rows.map((row, index) => (
+              <li key={row.key} className="rounded-xl border border-slate-200 bg-slate-50 p-3" aria-label={`Row ${index + 1}`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-slate-700">{index + 1}</span>
+                  <select
+                    value={row.type}
+                    aria-label={`Row ${index + 1} type`}
+                    onChange={(event) => change(row.key, { type: event.target.value as Row['type'] })}
+                    className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm outline-none focus:border-[#fc0c97]"
+                  >
+                    <option value="text">Text</option>
+                    <option value="file">Photo, video or PDF</option>
+                  </select>
+                  <span className="flex-1" />
                   <button
                     type="button"
-                    onClick={() => setMessages((current) => current.filter((_, position) => position !== index))}
-                    aria-label={`Remove message ${index + 1}`}
-                    className="rounded p-1 text-slate-500 hover:bg-slate-100"
+                    disabled={index === 0}
+                    onClick={() => setRows((current) => moveItem(current, index, index - 1))}
+                    aria-label={`Move row ${index + 1} up`}
+                    className="rounded p-1 text-slate-500 hover:bg-slate-200 disabled:opacity-30"
                   >
-                    <X size={12} />
+                    <CaretUp size={14} />
                   </button>
+                  <button
+                    type="button"
+                    disabled={index === rows.length - 1}
+                    onClick={() => setRows((current) => moveItem(current, index, index + 1))}
+                    aria-label={`Move row ${index + 1} down`}
+                    className="rounded p-1 text-slate-500 hover:bg-slate-200 disabled:opacity-30"
+                  >
+                    <CaretDown size={14} />
+                  </button>
+                  {rows.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setRows((current) => current.filter((entry) => entry.key !== row.key))}
+                      aria-label={`Remove row ${index + 1}`}
+                      className="rounded p-1 text-slate-500 hover:bg-slate-200"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {row.type === 'text' ? (
+                  <textarea
+                    ref={(element) => {
+                      if (element) {
+                        textFields.current.set(row.key, element)
+                      } else {
+                        textFields.current.delete(row.key)
+                      }
+                    }}
+                    value={row.text}
+                    rows={index === 0 ? 4 : 3}
+                    maxLength={4000}
+                    aria-label={`Row ${index + 1} text`}
+                    onFocus={() => {
+                      lastText.current = row.key
+                    }}
+                    onChange={(event) => change(row.key, { text: event.target.value })}
+                    className={cn(fieldClass, 'mt-2 bg-white')}
+                  />
+                ) : (
+                  <div className="mt-2 flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm">
+                    {row.file || row.media ? (
+                      <>
+                        <KindIcon type={row.file?.type ?? row.media?.type ?? ''} />
+                        <span className="min-w-0 flex-1 truncate">{row.file?.name ?? row.media?.name}</span>
+                        {row.file && <span className="text-xs text-emerald-700">New</span>}
+                      </>
+                    ) : (
+                      <span className="min-w-0 flex-1 text-slate-500">No file chosen</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        pickingFor.current = row.key
+                        fileInput.current?.click()
+                      }}
+                      className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      {row.file || row.media ? 'Change file' : 'Choose file'}
+                    </button>
+                  </div>
                 )}
-              </div>
-              <textarea
-                id={`quick-reply-message-${index}`}
-                ref={(element) => {
-                  messageFields.current[index] = element
-                }}
-                value={message}
-                rows={index === 0 ? 5 : 3}
-                maxLength={4000}
-                onFocus={() => {
-                  lastBox.current = index
-                }}
-                onChange={(event) =>
-                  setMessages((current) => current.map((entry, position) => (position === index ? event.target.value : entry)))
-                }
-                className={fieldClass}
-              />
-            </div>
-          ))}
-          {messages.length < MAX_QUICK_REPLY_MESSAGES && (
+              </li>
+            ))}
+          </ol>
+          <input
+            ref={fileInput}
+            type="file"
+            hidden
+            accept={QUICK_REPLY_FILE_TYPES.join(',')}
+            onChange={(event) => {
+              chooseFile(event.target.files)
+              event.target.value = ''
+            }}
+          />
+          {rows.length < MAX_QUICK_REPLY_STEPS && (
             <button
               type="button"
-              onClick={() => setMessages((current) => [...current, ''])}
+              onClick={() => setRows((current) => [...current, newRow()])}
               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               <Plus size={14} aria-hidden="true" />
-              Add another message
+              Add a row
             </button>
           )}
           <p className="text-xs text-slate-500">
-            Each message is sent on its own, one after the other, after any photo or video. Up to {MAX_QUICK_REPLY_MESSAGES} messages.
+            Each row is sent on its own, one after the other, from the first row down. Up to {MAX_QUICK_REPLY_STEPS} rows. Files can be PNG, JPG,
+            WebP, MP4 or PDF, up to 16 MB each.
           </p>
         </div>
+
         <div>
           <p className="text-xs text-slate-500">Add a name that fills in by itself for each parent:</p>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -185,64 +298,6 @@ function ReplyForm({
               </button>
             ))}
           </div>
-        </div>
-
-        <div>
-          <span className="text-sm font-medium text-slate-700">Photos, videos or PDFs</span>
-          <ul className="mt-1.5 space-y-1.5">
-            {keep.map((item) => (
-              <li key={item.path} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-sm">
-                <KindIcon type={item.type} />
-                <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                <button
-                  type="button"
-                  onClick={() => setKeep((current) => current.filter((entry) => entry.path !== item.path))}
-                  aria-label={`Remove ${item.name}`}
-                  className="rounded p-1 text-slate-500 hover:bg-slate-200"
-                >
-                  <X size={12} />
-                </button>
-              </li>
-            ))}
-            {added.map((file, index) => (
-              <li key={`${file.name}-${index}`} className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-1.5 text-sm">
-                <KindIcon type={file.type} />
-                <span className="min-w-0 flex-1 truncate">{file.name}</span>
-                <span className="text-xs text-emerald-700">New</span>
-                <button
-                  type="button"
-                  onClick={() => setAdded((current) => current.filter((_, position) => position !== index))}
-                  aria-label={`Remove ${file.name}`}
-                  className="rounded p-1 text-slate-500 hover:bg-emerald-100"
-                >
-                  <X size={12} />
-                </button>
-              </li>
-            ))}
-          </ul>
-          <input
-            ref={fileInput}
-            type="file"
-            multiple
-            hidden
-            accept={QUICK_REPLY_FILE_TYPES.join(',')}
-            onChange={(event) => {
-              if (event.target.files) {
-                addFiles(event.target.files)
-              }
-              event.target.value = ''
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => fileInput.current?.click()}
-            disabled={fileCount >= MAX_QUICK_REPLY_FILES}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            <Plus size={14} aria-hidden="true" />
-            Add a file
-          </button>
-          <p className="mt-1 text-xs text-slate-500">PNG, JPG, WebP, MP4 or PDF, up to 16 MB each, {MAX_QUICK_REPLY_FILES} files at most.</p>
         </div>
 
         <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -278,10 +333,12 @@ function ReplyForm({
   )
 }
 
-// Where the team adds, changes and removes quick replies.
-export function QuickReplyManager({ replies, isLoading, loadError, onClose, onSave, onRemove }: QuickReplyManagerProps) {
+// Where the team adds, changes, removes and orders quick replies.
+export function QuickReplyManager({ replies, isLoading, loadError, onClose, onSave, onRemove, onReorder }: QuickReplyManagerProps) {
   const [editing, setEditing] = useState<QuickReply | 'new' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [dragging, setDragging] = useState<number | null>(null)
+  const [over, setOver] = useState<number | null>(null)
   const { confirm, dialog } = useConfirm()
 
   async function remove(reply: QuickReply) {
@@ -294,6 +351,16 @@ export function QuickReplyManager({ replies, isLoading, loadError, onClose, onSa
     setError(await onRemove(reply))
   }
 
+  async function drop(to: number) {
+    const from = dragging
+    setDragging(null)
+    setOver(null)
+    if (from === null || from === to) {
+      return
+    }
+    setError(await onReorder(moveItem(replies, from, to).map((reply) => reply.id)))
+  }
+
   return (
     <ModalShell onClose={onClose}>
       <div className="border-b border-slate-200 bg-white px-6 py-5 sm:px-8">
@@ -304,7 +371,9 @@ export function QuickReplyManager({ replies, isLoading, loadError, onClose, onSa
               {editing === null ? 'Quick replies' : editing === 'new' ? 'New quick reply' : 'Edit quick reply'}
             </h2>
             {editing === null && (
-              <p className="mt-2 text-sm text-slate-500">Messages the team can send in two clicks, with photos or videos if you like.</p>
+              <p className="mt-2 text-sm text-slate-500">
+                Messages the team can send in two clicks, with photos or videos if you like. Drag them into the order you want.
+              </p>
             )}
           </div>
           <button
@@ -343,8 +412,42 @@ export function QuickReplyManager({ replies, isLoading, loadError, onClose, onSa
             <p className="text-sm text-slate-500">None yet. Add the messages you send most often.</p>
           )}
           <ul className="divide-y divide-slate-100">
-            {replies.map((reply) => (
-              <li key={reply.id} className="flex items-start gap-3 py-3">
+            {replies.map((reply, index) => (
+              <li
+                key={reply.id}
+                draggable
+                aria-label={`Quick reply ${reply.title}`}
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = 'move'
+                  setDragging(index)
+                }}
+                onDragOver={(event) => {
+                  if (dragging !== null) {
+                    event.preventDefault()
+                    setOver(index)
+                  }
+                }}
+                onDrop={(event) => {
+                  event.preventDefault()
+                  void drop(index)
+                }}
+                onDragEnd={() => {
+                  setDragging(null)
+                  setOver(null)
+                }}
+                className={cn(
+                  'flex items-start gap-3 py-3',
+                  dragging === index && 'opacity-40',
+                  over === index && dragging !== index && 'bg-pink-50',
+                )}
+              >
+                <span
+                  className="mt-0.5 cursor-grab text-slate-400 active:cursor-grabbing"
+                  title="Drag to change the order"
+                  aria-hidden="true"
+                >
+                  <DotsSixVertical size={18} />
+                </span>
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                     <span className="truncate">{reply.title}</span>
@@ -352,21 +455,19 @@ export function QuickReplyManager({ replies, isLoading, loadError, onClose, onSa
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">Hidden</span>
                     )}
                   </p>
-                  {reply.messages.map((message, index) => (
-                    <p key={index} className="mt-0.5 line-clamp-2 whitespace-pre-wrap text-xs text-slate-500">
-                      {reply.messages.length > 1 && <span className="font-medium text-slate-600">{index + 1}. </span>}
-                      {message}
-                    </p>
-                  ))}
-                  {reply.media.length > 0 && (
-                    <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-500">
-                      {reply.media.map((item) => (
-                        <span key={item.path} className="inline-flex items-center gap-1">
-                          <KindIcon type={item.type} />
-                          {item.name}
-                        </span>
-                      ))}
-                    </p>
+                  {reply.steps.map((step, position) =>
+                    step.kind === 'text' ? (
+                      <p key={position} className="mt-0.5 line-clamp-2 whitespace-pre-wrap text-xs text-slate-500">
+                        <span className="font-medium text-slate-600">{position + 1}. </span>
+                        {step.text}
+                      </p>
+                    ) : (
+                      <p key={position} className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+                        <span className="font-medium text-slate-600">{position + 1}. </span>
+                        <KindIcon type={step.media.type} />
+                        {step.media.name}
+                      </p>
+                    ),
                   )}
                 </div>
                 <button
@@ -397,3 +498,4 @@ export function QuickReplyManager({ replies, isLoading, loadError, onClose, onSa
     </ModalShell>
   )
 }
+

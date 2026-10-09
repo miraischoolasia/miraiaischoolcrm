@@ -430,6 +430,8 @@ export type Database = {
           title: string
           messages: string[]
           media: Json
+          steps: Json
+          sort_order: number
           is_active: boolean
           created_at: string
           updated_at: string
@@ -439,6 +441,8 @@ export type Database = {
           title: string
           messages?: string[]
           media?: Json
+          steps?: Json
+          sort_order?: number
           is_active?: boolean
           created_at?: string
           updated_at?: string
@@ -448,6 +452,8 @@ export type Database = {
           title?: string
           messages?: string[]
           media?: Json
+          steps?: Json
+          sort_order?: number
           is_active?: boolean
           created_at?: string
           updated_at?: string
