@@ -10,6 +10,7 @@ import { searchLeads } from '../../lib/leadSearch'
 import { makeStudentResolver } from '../../lib/studentLink'
 import type { SourceRule } from '../../lib/sourceRules'
 import {
+  formatListTime,
   getChatIdentity,
   getLinkedLeadId,
   getOwner,
@@ -34,6 +35,9 @@ type DetailsPanelProps = {
   onLoadOlder: () => void
   onSavePhone: (contactId: number, digits: string) => Promise<boolean>
   onLinkLead: (leadId: number | null) => Promise<boolean>
+  // Other chats of the same parent (an old one under a hidden ID, say), to jump to.
+  otherChats?: { id: number; title: string; lastActivity: number; isDone: boolean }[]
+  onOpenChat?: (id: number) => void
   // Only on small screens, where this panel takes the place of the chat.
   onBack?: () => void
 }
@@ -51,6 +55,8 @@ export function DetailsPanel({
   onLoadOlder,
   onSavePhone,
   onLinkLead,
+  otherChats = [],
+  onOpenChat,
   onBack,
 }: DetailsPanelProps) {
   const sender = conversation.meta.sender
@@ -142,6 +148,29 @@ export function DetailsPanel({
         {/* The slots below keep their place whether or not the chat is a lead yet, so the
             form is the same one before and after saving and only says "Saved". */}
         {lead ? <LeadHeader lead={lead} byPhone={byPhone} onUnlink={() => void onLinkLead(null)} /> : null}
+        {otherChats.length > 0 && onOpenChat && (
+          <section className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            <h4 className="font-semibold">This parent has another chat</h4>
+            <p className="mt-1">WhatsApp can keep an old chat and a new one for the same person.</p>
+            <ul className="mt-2 space-y-1.5">
+              {otherChats.map((other) => (
+                <li key={other.id}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenChat(other.id)}
+                    className="w-full rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-left hover:bg-amber-100"
+                  >
+                    <span className="block truncate text-sm font-medium text-slate-900">{other.title}</span>
+                    <span className="block text-slate-600">
+                      Last message {formatListTime(other.lastActivity)}
+                      {other.isDone ? ' · Done' : ''}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         {!lead ? (
           <FirstMessageCard
             first={first}

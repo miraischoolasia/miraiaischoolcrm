@@ -59,6 +59,8 @@ type ConversationListProps = {
   leadNameOf?: (conversation: ChatwootConversation) => string | null
   // What the parent's students are to the school ("Regular · 3 Months", "HOA"), per chat.
   studentLabelsOf?: (conversation: ChatwootConversation) => string[]
+  // True for an older chat of a parent who has a newer one.
+  isOlderDuplicate?: (conversation: ChatwootConversation) => boolean
   // Show only parents with a student of this kind, or with none yet.
   kind?: StudentKind | 'none' | null
   selectedId: number | null
@@ -125,6 +127,7 @@ export function ConversationList({
   snippets,
   leadNameOf,
   studentLabelsOf,
+  isOlderDuplicate,
   kind = null,
   selectedId,
   nowSeconds,
@@ -370,6 +373,11 @@ export function ConversationList({
                         Needs reply
                       </span>
                     )
+                  )}
+                  {isOlderDuplicate?.(conversation) && (
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                      Older chat of this parent
+                    </span>
                   )}
                   {studentLabelsOf?.(conversation).map((label) => (
                     <span

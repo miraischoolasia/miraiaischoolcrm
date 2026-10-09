@@ -101,8 +101,8 @@ export type ChatIdentity = {
   initials: string
 }
 
-// leadName is the parent's name on the lead this chat belongs to. It names a chat that
-// WhatsApp gave no name, so a hidden-number parent can be called what the team calls them.
+// leadName is the parent's name on the lead this chat belongs to. The team's own name for
+// the parent wins over the one WhatsApp gives, so changing it on the lead renames the chat.
 export function getChatIdentity(sender: ChatwootSender, leadName?: string | null): ChatIdentity {
   const phone = getRealPhone(sender.phone_number)
   // The helper that adds numbers to names writes "Name +60123456789".
@@ -111,7 +111,7 @@ export function getChatIdentity(sender: ChatwootSender, leadName?: string | null
   const hasName = cleanName.length > 0 && !nameIsJustDigits
 
   const ownName = leadName?.trim() ?? ''
-  const shownName = hasName ? cleanName : ownName
+  const shownName = ownName || (hasName ? cleanName : '')
   const title = shownName || (phone ? formatPhone(phone) : UNNAMED_CHAT)
   const subtitle = phone ? formatPhone(phone) : 'Number hidden by WhatsApp'
   const initials = shownName

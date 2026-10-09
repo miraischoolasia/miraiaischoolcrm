@@ -84,9 +84,12 @@ describe('getChatIdentity', () => {
     expect(getChatIdentity(hidden, '   ').title).toBe('WhatsApp user')
   })
 
-  it('keeps the WhatsApp name when the chat has one', () => {
+  it('puts the parent name from the lead above the name WhatsApp gives', () => {
     const named = { id: 1, name: 'Lex +60126326319', phone_number: '+60126326319', identifier: null }
-    expect(getChatIdentity(named, 'Mr Lee').title).toBe('Lex')
+    expect(getChatIdentity(named, 'Mr Lee').title).toBe('Mr Lee')
+    // The chat keeps its own WhatsApp name, and the lead form still starts from it.
+    expect(getChatIdentity(named, 'Mr Lee').name).toBe('Lex')
+    expect(getChatIdentity(named, null).title).toBe('Lex')
   })
 })
 

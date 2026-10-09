@@ -338,4 +338,26 @@ describe('DetailsPanel', () => {
     expect(screen.getByText('HOA')).toBeInTheDocument()
   })
 
+  it('offers a way to the other chat of the same parent', async () => {
+    const onOpenChat = vi.fn()
+    render(
+      <DetailsPanel
+        conversation={conversation({ crm_lead_id: 11 })}
+        messages={[firstMessage]}
+        hasOlder={false}
+        crm={makeCrm({ leads: [lead] })}
+        sourceRules={[]}
+        onLoadOlder={vi.fn()}
+        onSavePhone={vi.fn()}
+        onLinkLead={vi.fn()}
+        otherChats={[{ id: 9, title: 'jiayu', lastActivity: 1_790_000_000, isDone: false }]}
+        onOpenChat={onOpenChat}
+      />,
+    )
+
+    expect(screen.getByText('This parent has another chat')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /jiayu/ }))
+    expect(onOpenChat).toHaveBeenCalledWith(9)
+  })
+
 })

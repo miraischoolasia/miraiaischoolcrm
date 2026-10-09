@@ -85,6 +85,30 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
       studentsOf(conversation).map((student) => getStudentKind(student, crm.packages)),
     [studentsOf, crm.packages],
   )
+  // A parent can have two chats: an old one imported under a hidden WhatsApp ID, and the one
+  // WhatsApp now uses with their number. Both are tied to the same lead.
+  const chatsByLead = useMemo(() => {
+    const groups = new Map<number, ChatwootConversation[]>()
+    for (const conversation of inbox.conversations) {
+      const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
+      if (lead) {
+        groups.set(lead.id, [...(groups.get(lead.id) ?? []), conversation])
+      }
+    }
+    return groups
+  }, [inbox.conversations, resolveLead])
+  const otherChatsOf = useCallback(
+    (conversation: ChatwootConversation) => {
+      const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
+      return lead ? (chatsByLead.get(lead.id) ?? []).filter((other) => other.id !== conversation.id) : []
+    },
+    [chatsByLead, resolveLead],
+  )
+  const isOlderDuplicate = useCallback(
+    (conversation: ChatwootConversation) =>
+      otherChatsOf(conversation).some((other) => other.last_activity_at > conversation.last_activity_at),
+    [otherChatsOf],
+  )
   // How many open chats belong to a lead with each tag or source, so the menus can show it.
   const optionCounts = useMemo(() => {
     const tags = new Map<number, number>()
@@ -183,6 +207,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
         snippets={messageHits}
         leadNameOf={leadNameOf}
         studentLabelsOf={studentLabelsOf}
+        isOlderDuplicate={isOlderDuplicate}
         kind={kind}
         onKind={setKind}
         selectedId={inbox.selectedId}
@@ -243,6 +268,13 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
             onLoadOlder={() => void inbox.loadOlder()}
             onSavePhone={inbox.savePhone}
             onLinkLead={(leadId) => inbox.setLeadLink(inbox.selected!.id, leadId)}
+            otherChats={otherChatsOf(inbox.selected).map((other) => ({
+              id: other.id,
+              title: getChatIdentity(other.meta.sender, leadNameOf(other)).title,
+              lastActivity: other.last_activity_at,
+              isDone: other.status === 'resolved',
+            }))}
+            onOpenChat={(id) => inbox.setSelectedId(id)}
             onBack={() => setDetailsOpen(false)}
           />
         </>
