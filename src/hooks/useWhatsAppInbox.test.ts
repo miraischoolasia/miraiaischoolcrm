@@ -208,4 +208,42 @@ describe('useWhatsAppInbox and the phone', () => {
       expect(client.setAttributes).toHaveBeenLastCalledWith(40, expect.objectContaining({ crm_marked_unread: false })),
     )
   })
+
+  it('pins a chat for the whole team, and unpins it', async () => {
+    const client = phoneClient() as unknown as Record<string, ReturnType<typeof vi.fn>> & ChatwootClient
+    ;(client as unknown as Record<string, unknown>).setAttributes = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useWhatsAppInbox(client, staff))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    await act(async () => {
+      await result.current.togglePinned(40)
+    })
+    expect(client.setAttributes).toHaveBeenLastCalledWith(40, expect.objectContaining({ crm_pinned: true }))
+    await waitFor(() => expect(result.current.conversations.find((entry) => entry.id === 40)?.custom_attributes?.crm_pinned).toBe(true))
+
+    await act(async () => {
+      await result.current.togglePinned(40)
+    })
+    expect(client.setAttributes).toHaveBeenLastCalledWith(40, expect.objectContaining({ crm_pinned: false }))
+  })
+
+  it('stars and un-stars messages without losing the other attributes', async () => {
+    const client = phoneClient() as unknown as Record<string, ReturnType<typeof vi.fn>> & ChatwootClient
+    ;(client as unknown as Record<string, unknown>).setAttributes = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useWhatsAppInbox(client, staff))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    await act(async () => {
+      await result.current.toggleStar(40, 7)
+    })
+    await act(async () => {
+      await result.current.toggleStar(40, 9)
+    })
+    expect(client.setAttributes).toHaveBeenLastCalledWith(40, expect.objectContaining({ crm_starred: [7, 9] }))
+
+    await act(async () => {
+      await result.current.toggleStar(40, 7)
+    })
+    expect(client.setAttributes).toHaveBeenLastCalledWith(40, expect.objectContaining({ crm_starred: [9] }))
+  })
 })

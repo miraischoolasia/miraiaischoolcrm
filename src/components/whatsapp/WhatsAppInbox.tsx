@@ -5,6 +5,7 @@ import { useMessageSearch } from '../../hooks/useMessageSearch'
 import { useWhatsAppInbox } from '../../hooks/useWhatsAppInbox'
 import {
   type ChatwootConversation,
+  type ChatwootMessage,
   countByTab,
   filterConversations,
   getChatIdentity,
@@ -21,6 +22,12 @@ import { useQuickReplies } from '../../hooks/useQuickReplies'
 import { useSourceRules } from '../../hooks/useSourceRules'
 import { makeLeadResolver, quickReplyValues, resolveChatLead } from '../../lib/chatLink'
 import { draftPreview, draftsFirst, type Draft } from '../../lib/draft'
+import { createWaActions, waIdOf } from '../../lib/waActions'
+import { splitSequence } from '../../lib/outbox'
+import { summarizeMessage } from '../../lib/specialMessages'
+import { ForwardDialog } from './ForwardDialog'
+import { useMessageEvents } from '../../hooks/useMessageEvents'
+import { useTyping } from '../../hooks/useTyping'
 import { describeStudent, getStudentKind, makeStudentResolver, type StudentKind } from '../../lib/studentLink'
 import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
@@ -39,6 +46,7 @@ type WhatsAppInboxProps = {
 
 export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }: WhatsAppInboxProps) {
   const client = useMemo(() => createChatwootClient(apiUrl), [apiUrl])
+  const waActions = useMemo(() => createWaActions(apiUrl), [apiUrl])
   const inbox = useWhatsAppInbox(client, currentUser, active)
   const [tab, setTab] = useState<InboxTab>('chats')
   const [tagId, setTagId] = useState<number | null>(null)
@@ -197,9 +205,15 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
     [drafts, inbox.selectedId],
   )
 
+  const pinnedIds = useMemo(
+    () => new Set(inbox.conversations.filter((conversation) => conversation.custom_attributes?.crm_pinned).map((conversation) => conversation.id)),
+    [inbox.conversations],
+  )
   const visible = useMemo(
     () =>
+      // Pinned chats first, then the ones with a draft, then the rest in their order.
       draftsFirst(
+        draftsFirst(
         filterConversations(
           inbox.conversations,
           { tab, search, tagId, sourceId, matchedIds, kind },
@@ -208,10 +222,15 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
           studentKindsOf,
         ),
         (id) => id !== inbox.selectedId && drafts.has(id),
+        ),
+        (id) => pinnedIds.has(id),
       ),
-    [inbox.conversations, inbox.selectedId, drafts, tab, search, tagId, sourceId, matchedIds, kind, resolveLead, studentKindsOf],
+    [inbox.conversations, inbox.selectedId, pinnedIds, drafts, tab, search, tagId, sourceId, matchedIds, kind, resolveLead, studentKindsOf],
   )
   const hasChat = inbox.selected !== null
+  // Reactions, edits and deletes of the open chat, and the team's own.
+  const messageEvents = useMessageEvents(waActions, client, currentUser, inbox.selectedId, inbox.messages, active)
+  const showTyping = useTyping(waActions, inbox.selected ? getRealPhone(inbox.selected.meta.sender.phone_number) : null)
 
   // Ticks every 30 seconds so a chat turns red the moment it passes 30 minutes.
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000))
@@ -230,6 +249,43 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
   const [managingRules, setManagingRules] = useState<{ phrase: string } | null>(null)
   const [managingReplies, setManagingReplies] = useState(false)
   const [startingChat, setStartingChat] = useState(false)
+  // The message being forwarded, while the person picks the chats.
+  const [forwarding, setForwarding] = useState<ChatwootMessage | null>(null)
+
+  const forwardTargets = useMemo(
+    () =>
+      inbox.conversations.map((conversation) => {
+        const identity = getChatIdentity(conversation.meta.sender, leadNameOf(conversation))
+        return { id: conversation.id, title: identity.title, subtitle: identity.subtitle }
+      }),
+    [inbox.conversations, leadNameOf],
+  )
+
+  // Sends a copy of the message (its text, then each file) to every chat chosen. Null when all went out.
+  async function forwardMessage(message: ChatwootMessage, targetIds: number[]) {
+    try {
+      const files = await Promise.all(
+        (message.attachments ?? []).map(async (attachment) => {
+          const response = await fetch(attachment.data_url)
+          if (!response.ok) {
+            throw new Error('file')
+          }
+          const blob = await response.blob()
+          const name = decodeURIComponent(attachment.data_url.split('?')[0].split('/').pop() ?? 'file')
+          return new File([blob], name, { type: blob.type })
+        }),
+      )
+      const parts = splitSequence([(message.content ?? '').trim(), ...files])
+      for (const targetId of targetIds) {
+        for (const part of parts) {
+          await client.sendMessage(targetId, { content: part.content, isPrivate: false, files: part.files, sender: currentUser })
+        }
+      }
+      return null
+    } catch {
+      return "Couldn't forward it to every chat. Check which ones got it, then try again."
+    }
+  }
   // What {parent name}, {child name} and the like become in the open chat.
   const quickReplyFill = useMemo(() => {
     if (!inbox.selected) {
@@ -305,7 +361,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
             waitingMessages={inbox.waitingMessages}
             hasOlder={inbox.hasOlder}
             staff={staff}
-            actionError={inbox.actionError}
+            actionError={inbox.actionError ?? messageEvents.error}
             onBack={() => {
               setDetailsOpen(false)
               inbox.setSelectedId(null)
@@ -321,10 +377,40 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
             quickReplyValues={quickReplyFill}
             onManageQuickReplies={crm.canEditLeads ? () => setManagingReplies(true) : undefined}
             draftRequest={draftRequest}
+            messageEvents={messageEvents.events}
+            onSendSpecial={messageEvents.sendSpecial}
+            pinned={inbox.selected.custom_attributes?.crm_pinned === true}
+            onTogglePin={() => void inbox.togglePinned(inbox.selected!.id)}
+            starredIds={inbox.selected.custom_attributes?.crm_starred ?? []}
+            onToggleStar={(message) => void inbox.toggleStar(inbox.selected!.id, message.id)}
+            onForward={setForwarding}
+            onTyping={showTyping}
+            onReact={(message, emoji) => {
+              const waId = waIdOf(message.source_id)
+              if (waId) {
+                void messageEvents.react(waId, emoji)
+              }
+            }}
+            onEditMessage={(message, text) => {
+              const waId = waIdOf(message.source_id)
+              return waId ? messageEvents.edit(waId, text) : Promise.resolve(false)
+            }}
+            onDeleteMessage={(message) => {
+              const waId = waIdOf(message.source_id)
+              return waId ? messageEvents.remove(waId, message.id) : Promise.resolve(false)
+            }}
             draft={drafts.get(inbox.selected.id) ?? null}
             onDraftChange={(draft) => setDraft(inbox.selected!.id, draft)}
           />
           <DetailsPanel
+            whatsappLabels={messageEvents.labels}
+            starredMessages={(inbox.selected.custom_attributes?.crm_starred ?? []).flatMap((id) => {
+              const message = inbox.messages.find((entry) => entry.id === id)
+              return message
+                ? [{ id, text: summarizeMessage(message.content) || (message.attachments?.length ? 'Photo, video or file' : ''), at: message.created_at }]
+                : []
+            })}
+            onUnstar={(id) => void inbox.toggleStar(inbox.selected!.id, id)}
             className={cn(
               'min-h-0 overflow-y-auto border-l border-slate-200 bg-white p-4',
               detailsOpen ? 'block' : 'hidden xl:block',
@@ -386,6 +472,14 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
           onSave={sourceRules.save}
           onRemove={sourceRules.remove}
           onAddOption={crm.onAddOption}
+        />
+      )}
+      {forwarding && (
+        <ForwardDialog
+          targets={forwardTargets.filter((target) => target.id !== inbox.selectedId)}
+          preview={summarizeMessage(forwarding.content) || 'A photo, video or file'}
+          onClose={() => setForwarding(null)}
+          onForward={(ids) => forwardMessage(forwarding, ids)}
         />
       )}
       {managingReplies && (

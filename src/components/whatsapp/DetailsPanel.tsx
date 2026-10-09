@@ -24,6 +24,8 @@ import { LeadForm } from './LeadForm'
 import { LeadHeader } from './LeadCard'
 import { EnrolPanel } from './EnrolPanel'
 import { StudentCard } from './StudentCard'
+import { PanelSection } from './PanelSection'
+import type { WaLabel } from '../../lib/waActions'
 
 type DetailsPanelProps = {
   conversation: ChatwootConversation
@@ -42,6 +44,11 @@ type DetailsPanelProps = {
   // Other chats of the same parent (an old one under a hidden ID, say), to jump to.
   otherChats?: { id: number; title: string; lastActivity: number; isDone: boolean }[]
   onOpenChat?: (id: number) => void
+  // Labels put on this chat on the phone; shown for reading, they are not changed from here.
+  whatsappLabels?: WaLabel[]
+  // Messages the team starred in this chat, and a way to take the star off.
+  starredMessages?: { id: number; text: string; at: number }[]
+  onUnstar?: (id: number) => void
   // Only on small screens, where this panel takes the place of the chat.
   onBack?: () => void
 }
@@ -62,6 +69,9 @@ export function DetailsPanel({
   onWriteMessage,
   otherChats = [],
   onOpenChat,
+  whatsappLabels = [],
+  starredMessages = [],
+  onUnstar,
   onBack,
 }: DetailsPanelProps) {
   const sender = conversation.meta.sender
@@ -221,6 +231,47 @@ export function DetailsPanel({
           <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
             This parent is not a lead yet. You can look but not add leads.
           </p>
+        )}
+        {starredMessages.length > 0 && (
+          <PanelSection title="Starred messages" aside={<span className="text-slate-500">{starredMessages.length}</span>}>
+            <ul className="space-y-1.5">
+              {starredMessages.map((entry) => (
+                <li key={entry.id} className="flex items-start gap-2 rounded-lg bg-amber-50 px-2.5 py-1.5">
+                  <span className="min-w-0 flex-1">
+                    <span className="block line-clamp-3 whitespace-pre-wrap text-slate-800">{entry.text}</span>
+                    <span className="block text-[11px] text-slate-500">{formatListTime(entry.at)}</span>
+                  </span>
+                  {onUnstar && (
+                    <button
+                      type="button"
+                      onClick={() => onUnstar(entry.id)}
+                      aria-label="Remove the star"
+                      className="rounded p-1 text-slate-500 hover:bg-amber-100"
+                    >
+                      ×
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </PanelSection>
+        )}
+        {whatsappLabels.length > 0 && (
+          <PanelSection title="WhatsApp labels" aside={<span className="text-slate-500">set on the phone</span>}>
+            <ul className="flex flex-wrap gap-1.5">
+              {whatsappLabels.map((label) => (
+                <li key={label.id}>
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-slate-700"
+                    title="This label was put on the chat on the phone"
+                  >
+                    <span className="size-2 rounded-full" style={{ backgroundColor: label.color }} aria-hidden="true" />
+                    {label.name}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </PanelSection>
         )}
         {lead && onWriteMessage ? (
           <EnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} />

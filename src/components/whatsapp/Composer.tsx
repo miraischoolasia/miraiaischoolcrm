@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { FileText, Image as ImageIcon, Lightning, Microphone, PaperPlaneTilt, Paperclip, Smiley, Trash, VideoCamera, X } from '@phosphor-icons/react'
+import { PlusCircle, FileText, Image as ImageIcon, Lightning, Microphone, PaperPlaneTilt, Paperclip, Smiley, Trash, VideoCamera, X } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { useAutoGrow } from '../../hooks/useAutoGrow'
 import { useVoiceRecorder } from '../../hooks/useVoiceRecorder'
@@ -11,6 +11,8 @@ import { fileKind } from '../../lib/outbox'
 import { EmojiPicker } from './EmojiPicker'
 import { insertAt, rememberEmoji } from '../../lib/emoji'
 import { QuickReplyPicker } from './QuickReplyPicker'
+import { SpecialMessageDialog, type SpecialKind } from './SpecialMessageDialog'
+import type { SpecialMessage } from '../../lib/waActions'
 
 type ComposerProps = {
   onSend: (input: SendInput) => Promise<boolean>
@@ -24,7 +26,21 @@ type ComposerProps = {
   // What was left unsent in this chat, and where to report changes to it (null once nothing is left).
   draft?: Draft | null
   onDraftChange?: (draft: Draft | null) => void
+  // The message the next one answers, shown above the box; the first message sent quotes it.
+  replyTo?: { id: number; author: string; text: string } | null
+  onClearReply?: () => void
+  // Sends a location, contact, poll or sticker; resolves to null when it went out, else what to tell the person.
+  onSendSpecial?: (message: SpecialMessage) => Promise<string | null>
+  // Called as the team writes a reply, so the parent can be shown "typing...".
+  onTyping?: () => void
 }
+
+const SPECIAL_CHOICES: { kind: SpecialKind; label: string }[] = [
+  { kind: 'location', label: 'Location' },
+  { kind: 'contact', label: 'Contact' },
+  { kind: 'poll', label: 'Poll' },
+  { kind: 'sticker', label: 'Sticker' },
+]
 
 function formatSeconds(total: number) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
@@ -75,7 +91,13 @@ export function Composer({
   draftRequest,
   draft = null,
   onDraftChange,
+  replyTo = null,
+  onClearReply,
+  onSendSpecial,
+  onTyping,
 }: ComposerProps) {
+  const [specialMenu, setSpecialMenu] = useState(false)
+  const [special, setSpecial] = useState<SpecialKind | null>(null)
   const [mode, setMode] = useState<'reply' | 'note'>(draft?.mode ?? 'reply')
   const [text, setText] = useState(draft?.text ?? '')
   // Rows from a quick reply, in the order they will be sent, before anything else.
@@ -194,8 +216,9 @@ ${draftRequest.text}` : draftRequest.text))
     }
     // The quick reply rows first, in their order; then files attached by hand; the typed text last.
     const sequence = [...queue.map((item) => (item.kind === 'text' ? item.text : item.file)), ...files, text]
-    const sent = await onSend({ isPrivate: mode === 'note', sequence })
+    const sent = await onSend({ isPrivate: mode === 'note', sequence, replyTo: replyTo?.id })
     if (sent) {
+      onClearReply?.()
       setText('')
       setQueue([])
       setFiles([])
@@ -295,6 +318,18 @@ ${draftRequest.text}` : draftRequest.text))
         </div>
       )}
 
+      {replyTo && mode === 'reply' && (
+        <div className="mb-2 flex items-start gap-2 rounded-lg border-l-4 border-[#fc0c97] bg-slate-50 px-3 py-1.5 text-xs">
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold text-[#be185d]">Replying to {replyTo.author}</div>
+            <div className="line-clamp-2 whitespace-pre-wrap text-slate-600">{replyTo.text}</div>
+          </div>
+          <button type="button" onClick={onClearReply} aria-label="Cancel reply" className="rounded p-1 text-slate-500 hover:bg-slate-200">
+            <X size={12} />
+          </button>
+        </div>
+      )}
+
       {voice.state !== 'recording' && queue.length > 0 && (
         <ol className="mb-2 max-h-72 space-y-2 overflow-y-auto" aria-label="Quick reply rows, sent in this order">
           {queue.map((item, index) => (
@@ -389,6 +424,9 @@ ${draftRequest.text}` : draftRequest.text))
               }
               setText(event.target.value)
               setHint(null)
+              if (mode === 'reply' && event.target.value.trim()) {
+                onTyping?.()
+              }
             }}
             onKeyDown={(event) => handleEnter(event, text, setText)}
             onPaste={(event) => {
@@ -435,6 +473,39 @@ ${draftRequest.text}` : draftRequest.text))
           >
             <Lightning size={18} />
           </button>
+          {onSendSpecial && mode === 'reply' && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setSpecialMenu((open) => !open)}
+                aria-label="Send a location, contact, poll or sticker"
+                title="Location, contact, poll, sticker"
+                aria-expanded={specialMenu}
+                className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 sm:p-2.5"
+              >
+                <PlusCircle size={18} />
+              </button>
+              {specialMenu && (
+                <ul className="absolute bottom-full right-0 z-20 mb-2 w-36 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg" role="menu">
+                  {SPECIAL_CHOICES.map((choice) => (
+                    <li key={choice.kind} role="none">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setSpecialMenu(false)
+                          setSpecial(choice.kind)
+                        }}
+                        className="block w-full px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-pink-50"
+                      >
+                        {choice.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           <button
             type="button"
             onClick={() => fileInput.current?.click()}
@@ -465,6 +536,7 @@ ${draftRequest.text}` : draftRequest.text))
         </div>
       )}
 
+      {special && onSendSpecial && <SpecialMessageDialog kind={special} onClose={() => setSpecial(null)} onSend={onSendSpecial} />}
       {isLoadingMedia && <p className="mt-2 text-xs text-slate-500">Loading the photo or video...</p>}
       {(hint || voice.error) &&<p className="mt-2 text-xs text-red-600">{hint ?? voice.error}</p>}
       {voice.state !== 'recording' && (

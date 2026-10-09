@@ -1,16 +1,5 @@
 import { useState } from 'react'
-import {
-  Bell,
-  BellSlash,
-  CaretDown,
-  ChatCircleDots,
-  CheckCircle,
-  EnvelopeSimple,
-  MagnifyingGlass,
-  Plus,
-  SpeakerHigh,
-  SpeakerSlash,
-} from '@phosphor-icons/react'
+import { Bell, BellSlash, CaretDown, ChatCircleDots, CheckCircle, EnvelopeSimple, MagnifyingGlass, Plus, SpeakerHigh, SpeakerSlash, PushPin } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { LeadTagChip } from '../LeadTagChip'
@@ -343,6 +332,9 @@ export function ConversationList({
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className="truncate text-sm font-semibold text-slate-900">{identity.title}</span>
+                    {conversation.custom_attributes?.crm_pinned && (
+                      <PushPin size={12} weight="fill" className="shrink-0 text-slate-400" aria-label="Pinned" />
+                    )}
                     {pic && (
                       <span
                         title={`In charge: ${pic.name}`}

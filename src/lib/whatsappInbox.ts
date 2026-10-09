@@ -34,6 +34,9 @@ export type ChatwootMessage = {
     external_error?: string
     // Chatwoot keeps a deleted message as an empty shell with this flag.
     deleted?: boolean
+    // The message this one answers (quoted), by Chatwoot's id and by WhatsApp's.
+    in_reply_to?: number | null
+    in_reply_to_external_id?: string | null
   } | null
   sender?: { name?: string | null; type?: string | null } | null
 }
@@ -54,6 +57,10 @@ export type ChatAttributes = {
   crm_lead_id?: number | string | null
   // The team marked the chat unread by hand: a pink dot instead of a number, until it is opened.
   crm_marked_unread?: boolean
+  // Kept at the top of the list for the whole team.
+  crm_pinned?: boolean
+  // Messages of this chat the team starred, by Chatwoot's id.
+  crm_starred?: number[]
 }
 
 export type ChatwootConversation = {

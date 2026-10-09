@@ -152,3 +152,69 @@ export function getStudentStatus(
     isNormal: tags.length === 1 && tags[0].label === 'Normal',
   }
 }
+
+export type StudentIssue = {
+  label: string
+  tone: 'critical' | 'warning'
+  // 0 is the most urgent. Used to put the students who need action first.
+  severity: number
+}
+
+type StudentStatus = ReturnType<typeof getStudentStatus>
+
+// The Account Fee or the Mirai Club date that runs out first. Null when both
+// are healthy or not tracked (a package without fees).
+export function getWorstFee(status: StudentStatus) {
+  const fees = [
+    { name: 'Account Fee', meta: status.accountFeeExpiry, needsAttention: status.accountFeeNeedsAttention },
+    { name: 'Mirai Club', meta: status.miraiClubExpiry, needsAttention: status.miraiClubNeedsAttention },
+  ].filter((fee) => fee.needsAttention)
+
+  if (fees.length === 0) {
+    return null
+  }
+
+  return fees.reduce((worst, fee) => (fee.meta.daysUntil < worst.meta.daysUntil ? fee : worst))
+}
+
+// What needs doing for a student, most urgent first. Replaces reading five
+// separate tags: the list shows the first one and counts the rest.
+export function getStudentIssues(
+  student: Pick<StudentStatusInput, 'isActive' | 'studentType' | 'remainingHours'>,
+  status: StudentStatus,
+): StudentIssue[] {
+  if (!student.isActive) {
+    return [{ label: 'Deactivated', tone: 'critical', severity: 0 }]
+  }
+
+  if (student.studentType === 'preview' || student.studentType === 'trial') {
+    return []
+  }
+
+  const issues: StudentIssue[] = []
+
+  if (status.lessonExpired) {
+    issues.push({ label: 'Package ended', tone: 'critical', severity: 1 })
+  } else if (student.remainingHours <= 0) {
+    issues.push({ label: 'No classes left', tone: 'critical', severity: 1 })
+  } else if (status.hoursLow) {
+    issues.push({ label: 'Classes low', tone: 'warning', severity: 2 })
+  }
+
+  const fee = getWorstFee(status)
+  if (fee?.meta.expired) {
+    issues.push({ label: 'Fee expired', tone: 'critical', severity: 1 })
+  } else if (fee) {
+    issues.push({ label: `Fee due in ${fee.meta.daysUntil}d`, tone: 'warning', severity: 2 })
+  }
+
+  return issues.sort((a, b) => a.severity - b.severity)
+}
+
+// Sort key for "needs attention first": action needed < healthy < deactivated.
+export function getAttentionRank(isActive: boolean, issues: StudentIssue[]) {
+  if (!isActive) {
+    return 11
+  }
+  return issues.length > 0 ? issues[0].severity : 10
+}

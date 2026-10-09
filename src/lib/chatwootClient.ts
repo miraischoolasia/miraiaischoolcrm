@@ -68,7 +68,7 @@ export function createChatwootClient(
 
     async sendMessage(
       conversationId: number,
-      input: { content: string; isPrivate: boolean; files: File[]; sender: Sender },
+      input: { content: string; isPrivate: boolean; files: File[]; sender: Sender; replyTo?: number },
     ): Promise<ChatwootMessage> {
       const path = `/conversations/${conversationId}/messages`
       if (input.files.length === 0) {
@@ -78,7 +78,7 @@ export function createChatwootClient(
             content: input.content,
             private: input.isPrivate,
             message_type: 'outgoing',
-            content_attributes: { crm_sender: input.sender },
+            content_attributes: { crm_sender: input.sender, ...(input.replyTo ? { in_reply_to: input.replyTo } : {}) },
           }),
         )
       }
@@ -89,10 +89,49 @@ export function createChatwootClient(
       form.append('message_type', 'outgoing')
       form.append('content_attributes[crm_sender][id]', String(input.sender.id))
       form.append('content_attributes[crm_sender][name]', input.sender.name)
+      if (input.replyTo) {
+        form.append('content_attributes[in_reply_to]', String(input.replyTo))
+      }
       for (const file of input.files) {
         form.append('attachments[]', file, file.name)
       }
       return request<ChatwootMessage>(path, { method: 'POST', body: form })
+    },
+
+    // Adds to the chat a message that WhatsApp has already sent (a location, a poll, a sticker). The
+    // WhatsApp id on it tells Evolution not to send it again.
+    async addSentMessage(
+      conversationId: number,
+      input: { content: string; whatsappId: string; sender: Sender; file?: File },
+    ): Promise<ChatwootMessage> {
+      const path = `/conversations/${conversationId}/messages`
+      const sourceId = `WAID:${input.whatsappId}`
+      if (!input.file) {
+        return request<ChatwootMessage>(
+          path,
+          json('POST', {
+            content: input.content,
+            private: false,
+            message_type: 'outgoing',
+            source_id: sourceId,
+            content_attributes: { crm_sender: input.sender },
+          }),
+        )
+      }
+      const form = new FormData()
+      form.append('content', input.content)
+      form.append('private', 'false')
+      form.append('message_type', 'outgoing')
+      form.append('source_id', sourceId)
+      form.append('content_attributes[crm_sender][id]', String(input.sender.id))
+      form.append('content_attributes[crm_sender][name]', input.sender.name)
+      form.append('attachments[]', input.file, input.file.name)
+      return request<ChatwootMessage>(path, { method: 'POST', body: form })
+    },
+
+    // Hides a message for the whole team (Chatwoot keeps it, marked as deleted).
+    async deleteMessage(conversationId: number, messageId: number) {
+      await request(`/conversations/${conversationId}/messages/${messageId}`, { method: 'DELETE' })
     },
 
     // Chatwoot swaps in whatever it is given, so callers pass the complete set.

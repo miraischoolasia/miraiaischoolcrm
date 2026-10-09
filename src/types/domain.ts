@@ -9,7 +9,7 @@ export type AppSection =
   | 'whatsapp'
   | 'forms'
   | 'activity'
-export type FilterKey = 'all' | 'hoa' | 'trial' | 'regular' | 'camp' | 'followUp'
+export type FilterKey = 'all' | 'hoa' | 'trial' | 'regular' | 'camp'
 export type AttendanceStatus = 'present' | 'absent' | 'leave'
 export type StudentType = 'trial' | 'preview' | 'regular'
 export type LeadOptionKind = 'source' | 'pic' | 'tag' | 'check'

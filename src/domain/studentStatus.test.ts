@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { getDateMeta, getStudentStatus } from './studentStatus'
+import {
+  getAttentionRank,
+  getDateMeta,
+  getStudentIssues,
+  getStudentStatus,
+  getWorstFee,
+} from './studentStatus'
 
 const today = '2026-07-03'
 const healthyStudent = {
@@ -118,5 +124,64 @@ describe('getStudentStatus', () => {
 
     expect(status.tags).toEqual([{ label: 'Deactivated', tone: 'critical' }])
     expect(status.isNormal).toBe(false)
+  })
+})
+
+describe('getStudentIssues', () => {
+  const regular = { ...healthyStudent, studentType: 'regular' as const }
+
+  it('has no issues for a healthy student', () => {
+    expect(getStudentIssues(regular, getStudentStatus(regular, today))).toEqual([])
+  })
+
+  it('says Package ended before anything else, then the fee', () => {
+    const student = { ...regular, lessonExpiryDate: '2026-07-02', accountFeeExpiryDate: '2026-07-10' }
+    const issues = getStudentIssues(student, getStudentStatus(student, today))
+
+    expect(issues.map((issue) => issue.label)).toEqual(['Package ended', 'Fee due in 7d'])
+    expect(issues[0].tone).toBe('critical')
+    expect(issues[1].tone).toBe('warning')
+  })
+
+  it('tells no classes left from classes low', () => {
+    const none = { ...regular, remainingHours: 0 }
+    const low = { ...regular, remainingHours: 2 }
+
+    expect(getStudentIssues(none, getStudentStatus(none, today))[0].label).toBe('No classes left')
+    expect(getStudentIssues(low, getStudentStatus(low, today))[0].label).toBe('Classes low')
+  })
+
+  it('names an expired fee as critical, and uses the date that runs out first', () => {
+    const student = { ...regular, accountFeeExpiryDate: '2026-08-01', miraiClubExpiryDate: '2026-07-01' }
+    const status = getStudentStatus(student, today)
+
+    expect(getWorstFee(status)?.name).toBe('Mirai Club')
+    expect(getStudentIssues(student, status)).toEqual([
+      { label: 'Fee expired', tone: 'critical', severity: 1 },
+    ])
+  })
+
+  it('shows only Deactivated for a deactivated student', () => {
+    const student = { ...regular, isActive: false, remainingHours: 0 }
+
+    expect(getStudentIssues(student, getStudentStatus(student, today))).toEqual([
+      { label: 'Deactivated', tone: 'critical', severity: 0 },
+    ])
+  })
+
+  it('raises nothing for trial and preview rows, and for packages without fees', () => {
+    const trial = { ...regular, studentType: 'trial' as const, remainingHours: 0 }
+    const noFees = { ...regular, feesApply: false, accountFeeExpiryDate: '2026-07-01' }
+
+    expect(getStudentIssues(trial, getStudentStatus(trial, today))).toEqual([])
+    expect(getStudentIssues(noFees, getStudentStatus(noFees, today))).toEqual([])
+  })
+})
+
+describe('getAttentionRank', () => {
+  it('puts action first, healthy next and deactivated last', () => {
+    expect(getAttentionRank(true, [{ label: 'x', tone: 'critical', severity: 1 }])).toBe(1)
+    expect(getAttentionRank(true, [])).toBe(10)
+    expect(getAttentionRank(false, [])).toBe(11)
   })
 })

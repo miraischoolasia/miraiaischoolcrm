@@ -191,3 +191,45 @@ describe('Composer drafts', () => {
     expect(screen.getByText('a.png')).toBeInTheDocument()
   })
 })
+
+describe('Composer replying', () => {
+  const quickReplies = { replies: [], isLoading: false, error: null, reload: vi.fn().mockResolvedValue(undefined) }
+
+  it('shows what is being answered, sends it as the quote of the first message, then clears it', async () => {
+    const onSend = vi.fn().mockResolvedValue(true)
+    const onClearReply = vi.fn()
+    render(
+      <Composer
+        onSend={onSend}
+        quickReplies={quickReplies}
+        variables={{}}
+        replyTo={{ id: 12, author: 'Mei Ling', text: 'What time?' }}
+        onClearReply={onClearReply}
+      />,
+    )
+
+    expect(screen.getByText('Replying to Mei Ling')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Message to parent'), 'At 2')
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    expect(onSend).toHaveBeenCalledWith({ isPrivate: false, sequence: ['At 2'], replyTo: 12 })
+    expect(onClearReply).toHaveBeenCalled()
+  })
+
+  it('lets the reply be cancelled', async () => {
+    const onClearReply = vi.fn()
+    render(
+      <Composer
+        onSend={vi.fn()}
+        quickReplies={quickReplies}
+        variables={{}}
+        replyTo={{ id: 1, author: 'A', text: 'b' }}
+        onClearReply={onClearReply}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel reply' }))
+
+    expect(onClearReply).toHaveBeenCalled()
+  })
+})

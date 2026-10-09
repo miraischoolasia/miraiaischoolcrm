@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from 'react'
 import type { VariableValues } from '../../lib/quickReplies'
-import { ArrowCounterClockwise, CaretDown, CaretLeft, CheckCircle, EnvelopeSimple, Info } from '@phosphor-icons/react'
+import { ArrowCounterClockwise, CaretDown, CaretLeft, CheckCircle, EnvelopeSimple, Info, PushPin } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import type { Sender } from '../../lib/chatwootClient'
 import type { SendInput } from '../../hooks/useWhatsAppInbox'
@@ -17,7 +17,9 @@ import { parentTone, staffTone } from '../../lib/avatarTone'
 import type { Draft } from '../../lib/draft'
 import { Avatar } from './Avatar'
 import { Composer } from './Composer'
-import { MessageBubble, type BubbleAvatar } from './MessageBubble'
+import { MessageBubble, type BubbleAvatar, type BubbleExtras } from './MessageBubble'
+import { summarizeMessage } from '../../lib/specialMessages'
+import { NO_EVENTS, waIdOf, type MessageEvents, type SpecialMessage } from '../../lib/waActions'
 
 type ChatPanelProps = {
   conversation: ChatwootConversation
@@ -50,6 +52,43 @@ type ChatPanelProps = {
   // What is left unsent in this chat's message box, and where changes to it are reported.
   draft?: Draft | null
   onDraftChange?: (draft: Draft | null) => void
+  // What happened to the messages on WhatsApp (reactions, edits, deletes), and what the team can do about it.
+  messageEvents?: MessageEvents
+  onReact?: (message: ChatwootMessage, emoji: string) => void
+  onEditMessage?: (message: ChatwootMessage, text: string) => Promise<boolean>
+  onDeleteMessage?: (message: ChatwootMessage) => Promise<boolean>
+  onSendSpecial?: (message: SpecialMessage) => Promise<string | null>
+  // Shows the parent we are typing; called as the team writes a reply.
+  onTyping?: () => void
+  // Pinned chats stay at the top of the list, for the whole team.
+  pinned?: boolean
+  onTogglePin?: () => void
+  // Starred messages of this chat (by Chatwoot id); the team shares them.
+  starredIds?: number[]
+  onToggleStar?: (message: ChatwootMessage) => void
+  onForward?: (message: ChatwootMessage) => void
+}
+
+const EDIT_WINDOW_SECONDS = 15 * 60
+const DELETE_WINDOW_SECONDS = 48 * 3600
+
+// The ways the two sides may write the same text (bold marks, spaces) are not an edit.
+const plain = (text: string) => text.replace(/[*_~`\s]/g, '')
+
+// The text WhatsApp holds now, when it is not what the message was first shown as.
+function changedText(message: ChatwootMessage, current: string | undefined) {
+  const shown = message.content ?? ''
+  return current !== undefined && current.trim() !== '' && plain(current) !== plain(shown) ? current : null
+}
+
+// One short line standing for a message, such as in a quote.
+function describeMessage(message: ChatwootMessage) {
+  const text = summarizeMessage(message.content)
+  if (text) {
+    return text
+  }
+  const kind = message.attachments?.[0]?.file_type
+  return kind === 'image' ? 'Photo' : kind === 'video' ? 'Video' : kind === 'audio' ? 'Voice message' : kind ? 'File' : ''
 }
 
 export function ChatPanel({
@@ -76,10 +115,24 @@ export function ChatPanel({
   onOpenLead,
   draft,
   onDraftChange,
+  messageEvents = NO_EVENTS,
+  onReact,
+  onEditMessage,
+  onDeleteMessage,
+  onSendSpecial,
+  onTyping,
+  pinned = false,
+  onTogglePin,
+  starredIds = [],
+  onToggleStar,
+  onForward,
 }: ChatPanelProps) {
   const identity = getChatIdentity(conversation.meta.sender, leadName)
   const owner = getOwner(conversation)
   const done = conversation.status === 'resolved'
+  // The message the next one will answer (quote).
+  const [replyTo, setReplyTo] = useState<{ conversationId: number; message: ChatwootMessage } | null>(null)
+  const replying = replyTo?.conversationId === conversation.id ? replyTo.message : null
   const scroller = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
   const lastConversation = useRef<number | null>(null)
@@ -111,6 +164,32 @@ export function ChatPanel({
 
   let lastDay = ''
   let lastRun = ''
+
+  const byId = new Map(messages.map((entry) => [entry.id, entry]))
+  const byWaId = new Map(messages.flatMap((entry) => (waIdOf(entry.source_id) ? [[waIdOf(entry.source_id) as string, entry] as const] : [])))
+
+  function authorOf(message: ChatwootMessage) {
+    return message.message_type === 1 ? (getSenderLabel(message) ?? 'You') : identity.title
+  }
+
+  function extrasFor(message: ChatwootMessage): BubbleExtras {
+    const waId = waIdOf(message.source_id)
+    const attributes = message.content_attributes
+    const quoted =
+      (attributes?.in_reply_to ? byId.get(attributes.in_reply_to) : undefined) ??
+      (attributes?.in_reply_to_external_id ? byWaId.get(attributes.in_reply_to_external_id) : undefined)
+    const ours = message.message_type === 1 && !message.private && !message.local && waId !== null
+    const age = nowSeconds - message.created_at
+    return {
+      quote: quoted ? { author: authorOf(quoted), text: describeMessage(quoted) } : null,
+      reactions: waId ? messageEvents.reactions.get(waId) : undefined,
+      editedText: waId ? changedText(message, messageEvents.edits.get(waId) ?? messageEvents.texts.get(waId)) : null,
+      deletedForEveryone: waId ? messageEvents.deleted.has(waId) : false,
+      canEdit: ours && !message.attachments?.length && Boolean(message.content?.trim()) && age < EDIT_WINDOW_SECONDS,
+      canDelete: ours && age < DELETE_WINDOW_SECONDS,
+      starred: starredIds.includes(message.id),
+    }
+  }
 
   function avatarFor(message: ChatwootMessage): BubbleAvatar | null {
     if (message.message_type === 0) {
@@ -185,6 +264,21 @@ export function ChatPanel({
           </select>
           <CaretDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" />
         </label>
+        {onTogglePin && (
+          <button
+            type="button"
+            onClick={onTogglePin}
+            aria-label={pinned ? 'Unpin this chat' : 'Pin this chat'}
+            aria-pressed={pinned}
+            title={pinned ? 'Unpin: stop keeping it at the top' : 'Pin: keep it at the top of the list for everyone'}
+            className={cn(
+              'inline-flex items-center rounded-lg border bg-white p-1.5 hover:bg-slate-50',
+              pinned ? 'border-[#fc0c97] text-[#fc0c97]' : 'border-slate-200 text-slate-600',
+            )}
+          >
+            <PushPin size={14} weight={pinned ? 'fill' : 'regular'} />
+          </button>
+        )}
         {!done && (
           <button
             type="button"
@@ -253,6 +347,15 @@ export function ChatPanel({
                 showAvatar={showAvatar}
                 nowSeconds={nowSeconds}
                 onDismiss={message.local ? () => onDismissUnsent(-message.id) : undefined}
+                extras={extrasFor(message)}
+                actions={{
+                  onReply: message.local ? undefined : () => setReplyTo({ conversationId: conversation.id, message }),
+                  onReact: onReact && waIdOf(message.source_id) ? (emoji) => onReact(message, emoji) : undefined,
+                  onEdit: onEditMessage ? (text) => onEditMessage(message, text) : undefined,
+                  onDelete: onDeleteMessage ? () => onDeleteMessage(message) : undefined,
+                  onStar: onToggleStar && !message.local ? () => onToggleStar(message) : undefined,
+                  onForward: onForward && !message.local && !message.private ? () => onForward(message) : undefined,
+                }}
               />
             </div>
           )
@@ -273,6 +376,10 @@ export function ChatPanel({
         draftRequest={draftRequest}
         draft={draft}
         onDraftChange={onDraftChange}
+        replyTo={replying ? { id: replying.id, author: authorOf(replying), text: describeMessage(replying) } : null}
+        onClearReply={() => setReplyTo(null)}
+        onSendSpecial={onSendSpecial}
+        onTyping={onTyping}
       />
     </div>
   )

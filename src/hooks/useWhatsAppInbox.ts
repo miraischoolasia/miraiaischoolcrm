@@ -33,7 +33,12 @@ function mergeMessages(current: ChatwootMessage[], incoming: ChatwootMessage[]) 
 }
 
 // Texts and files, each sent as its own message in this order.
-export type SendInput = { isPrivate: boolean; sequence: (string | File)[] }
+export type SendInput = {
+  isPrivate: boolean
+  sequence: (string | File)[]
+  // The message the first one quotes (Chatwoot's id of it).
+  replyTo?: number
+}
 
 type OutboxItem = {
   tempId: number
@@ -42,6 +47,7 @@ type OutboxItem = {
   files: File[]
   previewUrls: string[]
   isPrivate: boolean
+  replyTo?: number
   state: 'queued' | 'sending' | 'cancelled'
   createdAt: number
 }
@@ -339,6 +345,36 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
     [saveAttributes],
   )
 
+  // Pins or unpins a chat for the whole team: pinned chats stay at the top of the list.
+  const togglePinned = useCallback(
+    async (conversationId: number) => {
+      setActionError(null)
+      try {
+        const pinned = mapRef.current.get(conversationId)?.custom_attributes?.crm_pinned === true
+        await saveAttributes(conversationId, { crm_pinned: !pinned })
+      } catch {
+        setActionError("Couldn't pin this chat. Try again.")
+      }
+    },
+    [saveAttributes],
+  )
+
+  // Stars or un-stars one message for the whole team.
+  const toggleStar = useCallback(
+    async (conversationId: number, messageId: number) => {
+      setActionError(null)
+      try {
+        const starred = mapRef.current.get(conversationId)?.custom_attributes?.crm_starred ?? []
+        await saveAttributes(conversationId, {
+          crm_starred: starred.includes(messageId) ? starred.filter((id) => id !== messageId) : [...starred, messageId],
+        })
+      } catch {
+        setActionError("Couldn't star this message. Try again.")
+      }
+    },
+    [saveAttributes],
+  )
+
   const setLeadLink = useCallback(
     async (conversationId: number, leadId: number | null) => {
       setActionError(null)
@@ -429,6 +465,7 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
               isPrivate: item.isPrivate,
               files: item.files,
               sender: currentUser,
+              replyTo: item.replyTo,
             })
             dropOutboxItems((entry) => entry.tempId === item.tempId)
             if (selectedRef.current === conversationId) {
@@ -473,7 +510,7 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
         return false
       }
       setActionError(null)
-      const items: OutboxItem[] = parts.map((part) => {
+      const items: OutboxItem[] = parts.map((part, index) => {
         tempCounter.current += 1
         return {
           tempId: tempCounter.current,
@@ -482,6 +519,7 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
           files: part.files,
           previewUrls: part.files.map((file) => URL.createObjectURL(file)),
           isPrivate: input.isPrivate,
+          replyTo: index === 0 ? input.replyTo : undefined,
           state: 'queued',
           createdAt: Math.floor(Date.now() / 1000),
         }
@@ -569,6 +607,8 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
     loadMore,
     setOwner,
     markUnread,
+    togglePinned,
+    toggleStar,
     setLeadLink,
     setStatus,
     send,

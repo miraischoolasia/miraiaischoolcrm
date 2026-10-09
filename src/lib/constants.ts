@@ -66,7 +66,6 @@ export const studentFilterOptions: Array<{ key: FilterKey; label: string }> = [
   { key: 'trial', label: 'Trial' },
   { key: 'regular', label: 'Regular' },
   { key: 'camp', label: 'Camp' },
-  { key: 'followUp', label: 'Need Follow Up' },
 ]
 
 export const ageGroupOptions: AgeGroup[] = [

@@ -6,6 +6,7 @@ export function ModalShell({
   maxWidth = '2xl',
   onClose,
   layer = 'base',
+  placement = 'center',
 }: {
   children: ReactNode
   maxWidth?: '2xl' | '760' | 'sm'
@@ -17,6 +18,9 @@ export function ModalShell({
   // always sit above whatever asked for it. 'overlay' bumps a shell above the
   // 'base' layer regardless of mount order.
   layer?: 'base' | 'overlay'
+  // 'right' is a full-height drawer that slides in from the right edge, for
+  // a record you read through (a student) rather than a short form.
+  placement?: 'center' | 'right'
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const onCloseRef = useRef(onClose)
@@ -44,6 +48,33 @@ export function ModalShell({
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [])
+
+  if (placement === 'right') {
+    return (
+      <div
+        className={cn(
+          'fixed inset-0 flex justify-end bg-slate-900/30',
+          layer === 'overlay' ? 'z-[60]' : 'z-50',
+        )}
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) {
+            onClose()
+          }
+        }}
+      >
+        <div
+          ref={panelRef}
+          data-drawer-shell
+          role="dialog"
+          aria-modal="true"
+          tabIndex={-1}
+          className="drawer-enter flex h-full w-full max-w-[720px] flex-col overflow-hidden border-l border-slate-200 bg-white shadow-[-18px_0_50px_rgba(15,23,42,0.15)] outline-none"
+        >
+          {children}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
