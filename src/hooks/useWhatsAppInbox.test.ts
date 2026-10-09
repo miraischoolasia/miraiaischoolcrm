@@ -247,3 +247,40 @@ describe('useWhatsAppInbox and the phone', () => {
     expect(client.setAttributes).toHaveBeenLastCalledWith(40, expect.objectContaining({ crm_starred: [9] }))
   })
 })
+
+describe('useWhatsAppInbox with a slow server', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('does not ask for the chat list again while the last answer is still on its way', async () => {
+    // Only the repeating timers are faked, so the page itself keeps running as usual.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    let calls = 0
+    const slow = new Promise<never>(() => undefined)
+    const client = {
+      listConversations: vi.fn(async (status: string, page: number) => {
+        calls += 1
+        // The first load answers at once; every refresh after that never comes back.
+        if (page === 1 && calls > 2) {
+          return slow
+        }
+        return { conversations: [], totalCount: 0, status }
+      }),
+      listMessages: vi.fn(async () => []),
+      listContactConversations: vi.fn(async () => []),
+      markSeen: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ChatwootClient
+    renderHook(() => useWhatsAppInbox(client, staff))
+
+    await waitFor(() => expect(calls).toBeGreaterThanOrEqual(2))
+    const afterFirstLoad = calls
+    await act(async () => {
+      vi.advanceTimersByTime(60_000)
+      await Promise.resolve()
+    })
+
+    // A minute of refreshes with an answer that never arrives adds one request, not fifteen.
+    expect(calls - afterFirstLoad).toBeLessThanOrEqual(2)
+  })
+})

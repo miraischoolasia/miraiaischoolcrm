@@ -133,14 +133,29 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
     }
     void firstLoad()
 
+    // A refresh is skipped while the last one is still on its way: when the server is slow, asking
+    // again every few seconds only piles requests up and makes it slower.
+    let listBusy = false
+    let doneBusy = false
     const listTimer = window.setInterval(() => {
-      if (!document.hidden) {
-        refreshStatus('open').then(() => setLoadError(null)).catch(() => undefined)
+      if (!document.hidden && !listBusy) {
+        listBusy = true
+        refreshStatus('open')
+          .then(() => setLoadError(null))
+          .catch(() => undefined)
+          .finally(() => {
+            listBusy = false
+          })
       }
     }, LIST_REFRESH_MS)
     const doneTimer = window.setInterval(() => {
-      if (!document.hidden) {
-        refreshStatus('resolved').catch(() => undefined)
+      if (!document.hidden && !doneBusy) {
+        doneBusy = true
+        refreshStatus('resolved')
+          .catch(() => undefined)
+          .finally(() => {
+            doneBusy = false
+          })
       }
     }, DONE_REFRESH_MS)
     return () => {
@@ -235,12 +250,17 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
         .catch(() => undefined)
     }
 
+    let messagesBusy = false
     const timer = window.setInterval(() => {
-      if (document.hidden || !activeRef.current) {
+      if (document.hidden || !activeRef.current || messagesBusy) {
         return
       }
+      messagesBusy = true
       client
         .listMessages(selectedId)
+        .finally(() => {
+          messagesBusy = false
+        })
         .then((latest) => {
           if (cancelled || selectedRef.current !== selectedId) {
             return

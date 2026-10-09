@@ -62,10 +62,21 @@ export function useMessageEvents(
     if (!actions || conversationId === null || !active) {
       return
     }
-    void refreshRef.current()
+    // Not asked again while the last answer is still awaited, so a slow server is not buried in requests.
+    let busy = false
+    const ask = () => {
+      if (busy) {
+        return
+      }
+      busy = true
+      void refreshRef.current().finally(() => {
+        busy = false
+      })
+    }
+    ask()
     const timer = window.setInterval(() => {
       if (!document.hidden) {
-        void refreshRef.current()
+        ask()
       }
     }, REFRESH_MS)
     return () => window.clearInterval(timer)
