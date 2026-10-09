@@ -10,6 +10,7 @@ import {
   formatDayLabel,
   formatListTime,
   getChatIdentity,
+  onePerParent,
   getInitials,
   getOwner,
   getPreview,
@@ -90,6 +91,23 @@ describe('getChatIdentity', () => {
     // The chat keeps its own WhatsApp name, and the lead form still starts from it.
     expect(getChatIdentity(named, 'Mr Lee').name).toBe('Lex')
     expect(getChatIdentity(named, null).title).toBe('Lex')
+  })
+})
+
+describe('onePerParent', () => {
+  const withSender = (id: number, senderId: number, activity: number) => {
+    const chat = conversation({ id, last_activity_at: activity })
+    return { ...chat, meta: { ...chat.meta, sender: { ...chat.meta.sender, id: senderId } } }
+  }
+
+  it('keeps only the newest chat of a parent whose chats were merged', () => {
+    const chats = [withSender(1, 50, 100), withSender(2, 50, 300), withSender(3, 51, 200)]
+    expect(onePerParent(chats).map((chat) => chat.id)).toEqual([2, 3])
+  })
+
+  it('leaves chats of different parents alone', () => {
+    const chats = [withSender(1, 50, 100), withSender(2, 51, 300)]
+    expect(onePerParent(chats)).toHaveLength(2)
   })
 })
 

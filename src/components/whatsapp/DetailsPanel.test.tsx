@@ -360,4 +360,10 @@ describe('DetailsPanel', () => {
     expect(onOpenChat).toHaveBeenCalledWith(9)
   })
 
+  it('titles the panel with the parent name from the lead', () => {
+    renderPanel(makeCrm({ leads: [lead] }), { crm_lead_id: 11 })
+
+    expect(screen.getByRole('heading', { level: 3 })).toHaveTextContent(lead.fullName ?? '')
+  })
+
 })

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChatwootClient } from '../lib/chatwootClient'
 import { isSoundOn, playAlertSound, showDesktopAlert } from '../lib/inboxAlerts'
-import { countUnread, getChatIdentity, getPreview, isOverdue } from '../lib/whatsappInbox'
+import { countUnread, getChatIdentity, getPreview, isOverdue, onePerParent } from '../lib/whatsappInbox'
 
 const REFRESH_MS = 10_000
 
@@ -21,7 +21,8 @@ export function useWhatsAppUnread(client: ChatwootClient | null) {
 
     async function refresh() {
       try {
-        const { conversations } = await client!.listConversations('open', 1)
+        const { conversations: everyChat } = await client!.listConversations('open', 1)
+        const conversations = onePerParent(everyChat)
         if (cancelled) {
           return
         }

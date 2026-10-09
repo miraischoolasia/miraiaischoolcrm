@@ -60,7 +60,6 @@ export function DetailsPanel({
   onBack,
 }: DetailsPanelProps) {
   const sender = conversation.meta.sender
-  const identity = getChatIdentity(sender)
   const owner = getOwner(conversation)
   const phone = getRealPhone(sender.phone_number)
   const [phoneInput, setPhoneInput] = useState('')
@@ -68,6 +67,8 @@ export function DetailsPanel({
   const [query, setQuery] = useState('')
 
   const { lead, byPhone } = resolveChatLead(getLinkedLeadId(conversation), phone, crm.leads)
+  // The parent name on the lead names the chat here too, like in the list.
+  const identity = getChatIdentity(sender, lead?.fullName)
 
   // Every child of this parent: through the lead, the HOA bookings and the phone number.
   const students = useMemo(

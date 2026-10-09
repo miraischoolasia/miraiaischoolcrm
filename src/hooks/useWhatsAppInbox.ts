@@ -4,6 +4,7 @@ import { startChat } from '../lib/startChat'
 import { CONFIRM_POLL_MS, CONFIRM_TIMEOUT_MS, fileKind, splitForSending } from '../lib/outbox'
 import {
   getOwner,
+  onePerParent,
   type ChatAttributes,
   type ChatwootConversation,
   type ChatwootMessage,
@@ -21,12 +22,13 @@ function mergeConversations(current: Map<number, ChatwootConversation>, incoming
   return next
 }
 
+// By time first, so an older chat of the same parent reads in the right place; the id breaks ties.
 function mergeMessages(current: ChatwootMessage[], incoming: ChatwootMessage[]) {
   const byId = new Map(current.map((message) => [message.id, message]))
   for (const message of incoming) {
     byId.set(message.id, message)
   }
-  return [...byId.values()].sort((a, b) => a.id - b.id)
+  return [...byId.values()].sort((a, b) => a.created_at - b.created_at || a.id - b.id)
 }
 
 // moreTexts are extra messages sent after the first one, each on its own.
@@ -51,7 +53,12 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [messages, setMessages] = useState<ChatwootMessage[]>([])
-  const [hasOlder, setHasOlder] = useState(false)
+  // Whether the selected chat itself has older messages, and how many older chats of the same
+  // parent are still to be read after it.
+  const [ownHasOlder, setOwnHasOlder] = useState(false)
+  const [olderChatCount, setOlderChatCount] = useState(0)
+  const ownCursor = useRef<number | null>(null)
+  const olderChats = useRef<number[]>([])
   const [actionError, setActionError] = useState<string | null>(null)
   const [outbox, setOutbox] = useState<OutboxItem[]>([])
   const nextPage = useRef({ open: 2, resolved: 2 })
@@ -75,7 +82,8 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
     })
   }, [])
 
-  const conversations = useMemo(() => [...conversationMap.values()], [conversationMap])
+  const conversations = useMemo(() => onePerParent([...conversationMap.values()]), [conversationMap])
+  const hasOlder = ownHasOlder || olderChatCount > 0
   const selected = selectedId === null ? null : (conversationMap.get(selectedId) ?? null)
 
   const refreshStatus = useCallback(
@@ -160,7 +168,10 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
   useEffect(() => {
     selectedRef.current = selectedId
     setMessages([])
-    setHasOlder(false)
+    setOwnHasOlder(false)
+    setOlderChatCount(0)
+    ownCursor.current = null
+    olderChats.current = []
     setActionError(null)
     if (selectedId === null) {
       return
@@ -172,8 +183,9 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
         if (cancelled) {
           return
         }
-        setMessages(latest.sort((a, b) => a.id - b.id))
-        setHasOlder(latest.length >= 20)
+        setMessages(mergeMessages([], latest))
+        setOwnHasOlder(latest.length >= 20)
+        ownCursor.current = latest.length > 0 ? Math.min(...latest.map((message) => message.id)) : null
         markSeen(selectedId)
       })
       .catch(() => {
@@ -181,6 +193,21 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
           setActionError("Couldn't load this chat. Try again in a moment.")
         }
       })
+
+    // Other chats of the same parent (an old one under a hidden ID) are read after this one.
+    const senderId = mapRef.current.get(selectedId)?.meta.sender.id
+    if (senderId !== undefined) {
+      client
+        .listContactConversations(senderId)
+        .then((chats) => {
+          if (cancelled) {
+            return
+          }
+          olderChats.current = chats.map((chat) => chat.id).filter((id) => id !== selectedId).sort((a, b) => b - a)
+          setOlderChatCount(olderChats.current.length)
+        })
+        .catch(() => undefined)
+    }
 
     const timer = window.setInterval(() => {
       if (document.hidden) {
@@ -209,13 +236,34 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender) {
   }, [client, selectedId, markSeen])
 
   const loadOlder = useCallback(async () => {
-    if (selectedId === null || messages.length === 0) {
+    if (selectedId === null) {
       return
     }
-    const older = await client.listMessages(selectedId, messages[0].id)
-    setHasOlder(older.length >= 20)
-    setMessages((current) => mergeMessages(current, older))
-  }, [client, selectedId, messages])
+    if (ownHasOlder && ownCursor.current !== null) {
+      const older = await client.listMessages(selectedId, ownCursor.current)
+      setOwnHasOlder(older.length >= 20)
+      if (older.length > 0) {
+        ownCursor.current = Math.min(...older.map((message) => message.id))
+      }
+      setMessages((current) => mergeMessages(current, older))
+      return
+    }
+    // This chat is read to its start; carry on into the next older chat of the same parent.
+    const next = olderChats.current.shift()
+    if (next === undefined) {
+      return
+    }
+    setOlderChatCount(olderChats.current.length)
+    let before: number | undefined
+    for (let page = 0; page < 40; page += 1) {
+      const older = await client.listMessages(next, before)
+      setMessages((current) => mergeMessages(current, older))
+      if (older.length < 20) {
+        break
+      }
+      before = Math.min(...older.map((message) => message.id))
+    }
+  }, [client, selectedId, ownHasOlder])
 
   const patchConversation = useCallback((id: number, patch: Partial<ChatwootConversation>) => {
     setConversationMap((current) => {

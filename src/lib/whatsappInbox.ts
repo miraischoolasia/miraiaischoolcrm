@@ -313,6 +313,20 @@ export function countByTab(conversations: ChatwootConversation[]) {
   return counts
 }
 
+// One chat per parent. WhatsApp can leave an old chat under a hidden ID beside the one with
+// the phone number. Once Chatwoot has merged the two contacts they share a sender id, and the
+// chat with the newest message stands for the parent; the older ones are read through it.
+export function onePerParent(conversations: ChatwootConversation[]) {
+  const newest = new Map<number, ChatwootConversation>()
+  for (const conversation of conversations) {
+    const current = newest.get(conversation.meta.sender.id)
+    if (!current || conversation.last_activity_at > current.last_activity_at) {
+      newest.set(conversation.meta.sender.id, conversation)
+    }
+  }
+  return conversations.filter((conversation) => newest.get(conversation.meta.sender.id) === conversation)
+}
+
 // Open chats with something nobody has looked at yet.
 export function countUnread(conversations: ChatwootConversation[]) {
   return conversations.filter((c) => c.status !== 'resolved' && c.unread_count > 0).length
