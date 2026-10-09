@@ -324,6 +324,11 @@ export function ChatPanel({
           if (message.content_attributes?.deleted) {
             return null
           }
+          // A reaction is also written into the chat as a message of its own; it already shows on the message it is for.
+          const ownWaId = waIdOf(message.source_id)
+          if (ownWaId && messageEvents.reactionIds.has(ownWaId)) {
+            return null
+          }
           const day = formatDayLabel(message.created_at)
           const showDay = day !== lastDay
           lastDay = day

@@ -39,6 +39,12 @@ describe('parseEvents', () => {
     expect([...events.deleted]).toEqual(['m9'])
   })
 
+  it('remembers which messages are only a reaction written into the chat', () => {
+    const events = parseEvents([reaction('m1', '🙏', false, 3), reaction('m1', '❤️', true, 4)])
+
+    expect([...events.reactionIds].sort()).toEqual(['r3', 'r4'])
+  })
+
   it('holds the text WhatsApp has now for plain messages', () => {
     const events = parseEvents([{ key: { id: 'm1', fromMe: true, remoteJid: 'c@lid' }, message: { conversation: 'changed text' } }])
 

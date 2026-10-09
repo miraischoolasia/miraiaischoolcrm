@@ -99,6 +99,7 @@ export function useMessageEvents(
       reactions,
       edits: new Map([...current.edits, ...own.edits]),
       texts: current.texts,
+      reactionIds: current.reactionIds,
       deleted: new Set([...current.deleted, ...own.deleted]),
     }
   }, [current, own])

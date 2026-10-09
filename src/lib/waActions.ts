@@ -20,9 +20,18 @@ export type MessageEvents = {
   texts: Map<string, string>
   // Messages taken back for everyone.
   deleted: Set<string>
+  // The ids of the reactions themselves. Evolution also writes each reaction into the chat as a
+  // message of its own (the emoji, quoting the one reacted to), which is a copy to hide.
+  reactionIds: Set<string>
 }
 
-export const NO_EVENTS: MessageEvents = { reactions: new Map(), edits: new Map(), texts: new Map(), deleted: new Set() }
+export const NO_EVENTS: MessageEvents = {
+  reactions: new Map(),
+  edits: new Map(),
+  texts: new Map(),
+  deleted: new Set(),
+  reactionIds: new Set(),
+}
 
 type Row = {
   key?: { id?: string; fromMe?: boolean; remoteJid?: string }
@@ -41,7 +50,7 @@ type Row = {
 // Turns WhatsApp's records of reactions and edits into what each message should show. The newest
 // reaction of each person wins, and an empty one means it was taken back.
 export function parseEvents(rows: Row[]): MessageEvents {
-  const events: MessageEvents = { reactions: new Map(), edits: new Map(), texts: new Map(), deleted: new Set() }
+  const events: MessageEvents = { reactions: new Map(), edits: new Map(), texts: new Map(), deleted: new Set(), reactionIds: new Set() }
   const newest = new Map<string, { at: number; emoji: string; byUs: boolean; target: string }>()
   const editedAt = new Map<string, number>()
 
@@ -53,6 +62,9 @@ export function parseEvents(rows: Row[]): MessageEvents {
     }
     const reaction = row.message?.reactionMessage
     if (reaction?.key?.id) {
+      if (row.key?.id) {
+        events.reactionIds.add(row.key.id)
+      }
       const byUs = row.key?.fromMe === true
       const slot = `${reaction.key.id}|${byUs ? 'us' : 'them'}`
       const known = newest.get(slot)
