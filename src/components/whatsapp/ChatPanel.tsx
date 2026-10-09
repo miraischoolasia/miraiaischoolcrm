@@ -42,6 +42,8 @@ type ChatPanelProps = {
   quickReplies: ComponentProps<typeof Composer>['quickReplies']
   quickReplyValues: VariableValues
   onManageQuickReplies?: () => void
+  // Text written for the message box by the enrol steps.
+  draftRequest?: { id: number; text: string } | null
 }
 
 export function ChatPanel({
@@ -64,6 +66,7 @@ export function ChatPanel({
   quickReplies,
   quickReplyValues,
   onManageQuickReplies,
+  draftRequest,
 }: ChatPanelProps) {
   const identity = getChatIdentity(conversation.meta.sender, leadName)
   const owner = getOwner(conversation)
@@ -245,6 +248,7 @@ export function ChatPanel({
         quickReplies={quickReplies}
         variables={quickReplyValues}
         onManageQuickReplies={onManageQuickReplies}
+        draftRequest={draftRequest}
       />
     </div>
   )

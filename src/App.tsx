@@ -138,6 +138,7 @@ import { TeacherManagementSection } from './components/sections/TeacherManagemen
 import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
 import type { LeadFormValues, WhatsAppCrm } from './components/whatsapp/crm'
+import { describeHoaSlot, upcomingHoaSlots, type HoaSlot } from './lib/hoaSlots'
 import { appendLeaveNote } from './lib/chatLink'
 import { getChatwootUrl } from './lib/chatwoot'
 import { createChatwootClient } from './lib/chatwootClient'
@@ -3281,12 +3282,76 @@ function App() {
     return null
   }
 
+  // The same booking the calendar makes, for a parent who is talking to us on WhatsApp.
+  async function bookHoaFromChat(
+    leadId: number,
+    slot: HoaSlot,
+    child: { name: string; age: number | null; phone: string },
+  ) {
+    if (!supabase) {
+      return 'Supabase is not configured.'
+    }
+    const { error } = await supabase.rpc('book_trial_slot', {
+      p_schedule_id: slot.scheduleId,
+      p_booking_date: slot.date,
+      p_child_name: child.name.trim(),
+      p_child_age: child.age,
+      p_phone: child.phone.trim() || null,
+      p_lead_id: leadId,
+      p_notes: null,
+    })
+    if (error) {
+      return getErrorMessage(error, 'Failed to book this class.')
+    }
+    await Promise.all([refreshTrialBookings(), refreshLeads(), refreshAdminActivities(), refreshStudentsAndLogs()])
+    return null
+  }
+
+  async function cancelHoaFromChat(booking: TrialBooking) {
+    if (!supabase) {
+      return 'Supabase is not configured.'
+    }
+    if (!(await confirm(`Remove ${booking.childName} from this HOA class?`))) {
+      return null
+    }
+    const { error } = await supabase.rpc('cancel_trial_booking', { p_booking_id: booking.id })
+    if (error) {
+      return getErrorMessage(error, 'Failed to remove this booking.')
+    }
+    await Promise.all([refreshTrialBookings(), refreshAdminActivities(), refreshStudentsAndLogs()])
+    return null
+  }
+
   const whatsAppCrm: WhatsAppCrm = {
     leads,
     students,
     classrooms,
     packages,
     trialBookings,
+    listHoaSlots: () => {
+      const now = new Date()
+      return upcomingHoaSlots({
+        schedules: schedules,
+        classroomMap,
+        teachers,
+        exceptions: scheduleExceptions,
+        bookings: trialBookings,
+        today: todayString,
+        nowTime: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+      })
+    },
+    describeHoaBooking: (booking: TrialBooking) => {
+      const schedule = schedules.find((entry) => entry.id === booking.scheduleId)
+      return schedule
+        ? describeHoaSlot({
+            date: booking.bookingDate,
+            startTime: schedule.startTime.slice(0, 5),
+            endTime: schedule.endTime.slice(0, 5),
+          })
+        : booking.bookingDate
+    },
+    onBookHoa: bookHoaFromChat,
+    onCancelHoa: cancelHoaFromChat,
     leadOptions,
     canEditLeads: can('leads', 'edit'),
     canEditStudents: can('students', 'edit'),

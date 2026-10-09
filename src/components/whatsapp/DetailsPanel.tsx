@@ -22,6 +22,7 @@ import type { WhatsAppCrm } from './crm'
 import { FirstMessageCard } from './FirstMessageCard'
 import { LeadForm } from './LeadForm'
 import { LeadExtras, LeadHeader } from './LeadCard'
+import { EnrolPanel } from './EnrolPanel'
 import { StudentCard } from './StudentCard'
 
 type DetailsPanelProps = {
@@ -34,6 +35,10 @@ type DetailsPanelProps = {
   onManageRules?: (phrase: string) => void
   onLoadOlder: () => void
   onLinkLead: (leadId: number | null) => Promise<boolean>
+  // Who is using the page, written on the receipts and Zoom meetings they add.
+  userName?: string | null
+  // Puts text in the message box, for the team to read and send.
+  onWriteMessage?: (text: string) => void
   // Other chats of the same parent (an old one under a hidden ID, say), to jump to.
   otherChats?: { id: number; title: string; lastActivity: number; isDone: boolean }[]
   onOpenChat?: (id: number) => void
@@ -53,6 +58,8 @@ export function DetailsPanel({
   onManageRules,
   onLoadOlder,
   onLinkLead,
+  userName = null,
+  onWriteMessage,
   otherChats = [],
   onOpenChat,
   onBack,
@@ -216,6 +223,9 @@ export function DetailsPanel({
           </p>
         )}
         {lead ? <LeadExtras lead={lead} crm={crm} /> : null}
+        {lead && onWriteMessage ? (
+          <EnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} />
+        ) : null}
 
         {students.map((student) => (
           <StudentCard key={student.id} student={student} crm={crm} />

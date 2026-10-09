@@ -44,6 +44,8 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
   const [sourceId, setSourceId] = useState<number | null>(null)
   const [kind, setKind] = useState<StudentKind | 'none' | null>(null)
   const [search, setSearch] = useState('')
+  // Text the enrol steps write for the message box; each new id is added once.
+  const [draftRequest, setDraftRequest] = useState<{ id: number; text: string } | null>(null)
   // On a small screen the side panel takes the place of the chat.
   const [detailsOpen, setDetailsOpen] = useState(false)
 
@@ -279,6 +281,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
             quickReplies={quickReplies}
             quickReplyValues={quickReplyFill}
             onManageQuickReplies={crm.canEditLeads ? () => setManagingReplies(true) : undefined}
+            draftRequest={draftRequest}
           />
           <DetailsPanel
             className={cn(
@@ -293,6 +296,11 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
             onManageRules={(phrase) => setManagingRules({ phrase })}
             onLoadOlder={() => void inbox.loadOlder()}
             onLinkLead={(leadId) => inbox.setLeadLink(inbox.selected!.id, leadId)}
+            userName={currentUser.name}
+            onWriteMessage={(text) => {
+              setDraftRequest((current) => ({ id: (current?.id ?? 0) + 1, text }))
+              setDetailsOpen(false)
+            }}
             otherChats={otherChatsOf(inbox.selected).map((other) => ({
               id: other.id,
               title: getChatIdentity(other.meta.sender, leadNameOf(other)).title,

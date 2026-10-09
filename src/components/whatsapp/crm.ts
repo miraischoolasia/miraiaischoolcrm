@@ -1,3 +1,4 @@
+import type { HoaSlot } from '../../lib/hoaSlots'
 import type {
   Classroom,
   Lead,
@@ -37,6 +38,18 @@ export type WhatsAppCrm = {
   leadOptions: LeadOption[]
   canEditLeads: boolean
   canEditStudents: boolean
+  // The HOA classes still open for booking, as the calendar shows them.
+  listHoaSlots: () => HoaSlot[]
+  // Books the child into an HOA class on the calendar, tied to the lead.
+  onBookHoa: (
+    leadId: number,
+    slot: HoaSlot,
+    child: { name: string; age: number | null; phone: string },
+  ) => Promise<string | null>
+  // How a booked class reads to a parent ("Sat 18 Oct, 10:00 to 12:00").
+  describeHoaBooking: (booking: TrialBooking) => string
+  // Takes the child out of the class again.
+  onCancelHoa: (booking: TrialBooking) => Promise<string | null>
   // Make-up classes are arranged with the calendar's permission.
   canBookMakeup: boolean
   onCreateLead: (input: LeadFormValues) => Promise<{ leadId: number | null; error: string | null }>

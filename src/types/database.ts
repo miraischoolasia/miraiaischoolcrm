@@ -454,6 +454,63 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_receipts: {
+        Row: {
+          id: number
+          lead_id: number
+          file_path: string
+          file_name: string
+          size_bytes: number
+          added_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          lead_id: number
+          file_path: string
+          file_name: string
+          size_bytes: number
+          added_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          lead_id?: number
+          file_path?: string
+          file_name?: string
+          size_bytes?: number
+          added_by?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      lead_zoom_meetings: {
+        Row: {
+          id: number
+          lead_id: number
+          starts_at: string
+          link: string
+          added_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          lead_id: number
+          starts_at: string
+          link: string
+          added_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          lead_id?: number
+          starts_at?: string
+          link?: string
+          added_by?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           id: number

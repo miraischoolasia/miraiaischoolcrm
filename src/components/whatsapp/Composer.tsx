@@ -16,6 +16,8 @@ type ComposerProps = {
   variables: VariableValues
   // Only given to people who may edit quick replies.
   onManageQuickReplies?: () => void
+  // Text written for the box from elsewhere (the enrol steps). Each new id adds its text once.
+  draftRequest?: { id: number; text: string } | null
 }
 
 function formatSeconds(total: number) {
@@ -24,7 +26,7 @@ function formatSeconds(total: number) {
 
 const isTouchDevice = () => window.matchMedia?.('(pointer: coarse)').matches ?? false
 
-export function Composer({ onSend, quickReplies, variables, onManageQuickReplies }: ComposerProps) {
+export function Composer({ onSend, quickReplies, variables, onManageQuickReplies, draftRequest }: ComposerProps) {
   const [mode, setMode] = useState<'reply' | 'note'>('reply')
   const [text, setText] = useState('')
   // Further messages from a quick reply, each sent on its own after the first.
@@ -34,6 +36,19 @@ export function Composer({ onSend, quickReplies, variables, onManageQuickReplies
   const [pickerOpen, setPickerOpen] = useState(false)
   const [emojiOpen, setEmojiOpen] = useState(false)
   const textarea = useRef<HTMLTextAreaElement>(null)
+  const lastDraft = useRef<number | null>(draftRequest?.id ?? null)
+  // Kept after what is already typed, so nothing the team wrote is lost.
+  useEffect(() => {
+    if (!draftRequest || draftRequest.id === lastDraft.current) {
+      return
+    }
+    lastDraft.current = draftRequest.id
+    setMode('reply')
+    setText((current) => (current.trim() ? `${current.trimEnd()}
+
+${draftRequest.text}` : draftRequest.text))
+    textarea.current?.focus()
+  }, [draftRequest])
   const [isLoadingMedia, setIsLoadingMedia] = useState(false)
   const { reload: reloadQuickReplies } = quickReplies
   const fileInput = useRef<HTMLInputElement>(null)
