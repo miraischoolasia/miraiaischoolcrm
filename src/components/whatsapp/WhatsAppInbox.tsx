@@ -174,11 +174,10 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm }: WhatsAppInbox
       return {}
     }
     const sender = inbox.selected.meta.sender
-    const identity = getChatIdentity(sender)
     const { lead } = resolveChatLead(getLinkedLeadId(inbox.selected), getRealPhone(sender.phone_number), crm.leads)
     return quickReplyValues({
       lead,
-      chatName: identity.name ?? '',
+      chatName: '',
       trialDate: lead ? crm.trialDateFor(lead.id) : null,
       myName: currentUser.name,
     })

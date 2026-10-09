@@ -92,7 +92,7 @@ export function formatPhone(digits: string) {
 export const UNNAMED_CHAT = 'WhatsApp user'
 
 export type ChatIdentity = {
-  // The name the person gave WhatsApp, or null when there is none.
+  // The name the person gave WhatsApp, or null when there is none. For matching only, never shown.
   name: string | null
   title: string
   // The number, or a plain reason there is none.
@@ -101,8 +101,9 @@ export type ChatIdentity = {
   initials: string
 }
 
-// leadName is the parent's name on the lead this chat belongs to. The team's own name for
-// the parent wins over the one WhatsApp gives, so changing it on the lead renames the chat.
+// A chat is called by the parent name on its lead (what the team writes, such as the parent's
+// @username), else by the phone number, else "WhatsApp user". The name the person gave
+// WhatsApp is never shown; `name` keeps it only so a chat can be matched to a lead.
 export function getChatIdentity(sender: ChatwootSender, leadName?: string | null): ChatIdentity {
   const phone = getRealPhone(sender.phone_number)
   // The helper that adds numbers to names writes "Name +60123456789".
@@ -111,11 +112,10 @@ export function getChatIdentity(sender: ChatwootSender, leadName?: string | null
   const hasName = cleanName.length > 0 && !nameIsJustDigits
 
   const ownName = leadName?.trim() ?? ''
-  const shownName = ownName || (hasName ? cleanName : '')
-  const title = shownName || (phone ? formatPhone(phone) : UNNAMED_CHAT)
+  const title = ownName || (phone ? formatPhone(phone) : UNNAMED_CHAT)
   const subtitle = phone ? formatPhone(phone) : 'Number hidden by WhatsApp'
-  const initials = shownName
-    ? shownName
+  const initials = ownName
+    ? ownName
         .split(/\s+/)
         .map((part) => part.replace(/^[^\p{L}\p{N}]+/u, '')[0] ?? '')
         .join('')

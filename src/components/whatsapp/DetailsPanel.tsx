@@ -94,11 +94,13 @@ export function DetailsPanel({
     }
   }
 
-  const initialName = identity.name ?? ''
+  // The WhatsApp name is only used to find leads with a similar name; it is never shown or copied
+  // into the form, where the parent name is what the team writes.
+  const whatsappName = identity.name ?? ''
   // No number matched, so offer the leads with a similar name for someone to confirm.
   const nameSuggestions = useMemo(
-    () => (lead ? [] : suggestLeadsByName(initialName, crm.leads)),
-    [lead, initialName, crm.leads],
+    () => (lead ? [] : suggestLeadsByName(whatsappName, crm.leads)),
+    [lead, whatsappName, crm.leads],
   )
 
   return (
@@ -214,7 +216,7 @@ export function DetailsPanel({
             key={conversation.id}
             crm={crm}
             lead={lead}
-            initialName={initialName}
+            initialName=""
             initialPhone={phone ? `+${phone}` : ''}
             guess={guess}
             onCreated={async (leadId) => {

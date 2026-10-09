@@ -52,12 +52,14 @@ describe('getRealPhone', () => {
 })
 
 describe('getChatIdentity', () => {
-  it('uses the name and the number', () => {
+  it('never shows the name WhatsApp gives, only the number', () => {
     const identity = getChatIdentity({ id: 1, name: 'Lex +60126326319', phone_number: '+60126326319', identifier: null })
-    expect(identity.title).toBe('Lex')
+    expect(identity.title).toBe('+60 12-632 6319')
     expect(identity.subtitle).toBe('+60 12-632 6319')
     expect(identity.hasRealPhone).toBe(true)
-    expect(identity.initials).toBe('L')
+    expect(identity.initials).toBe('19')
+    // It is kept only so the chat can be matched to a lead.
+    expect(identity.name).toBe('Lex')
   })
 
   it('shows the number as the title when there is no name', () => {
@@ -85,12 +87,11 @@ describe('getChatIdentity', () => {
     expect(getChatIdentity(hidden, '   ').title).toBe('WhatsApp user')
   })
 
-  it('puts the parent name from the lead above the name WhatsApp gives', () => {
+  it('calls a chat by the parent name from the lead, else the number', () => {
     const named = { id: 1, name: 'Lex +60126326319', phone_number: '+60126326319', identifier: null }
     expect(getChatIdentity(named, 'Mr Lee').title).toBe('Mr Lee')
-    // The chat keeps its own WhatsApp name, and the lead form still starts from it.
-    expect(getChatIdentity(named, 'Mr Lee').name).toBe('Lex')
-    expect(getChatIdentity(named, null).title).toBe('Lex')
+    expect(getChatIdentity(named, null).title).toBe('+60 12-632 6319')
+    expect(getChatIdentity(named, '  ').title).toBe('+60 12-632 6319')
   })
 })
 

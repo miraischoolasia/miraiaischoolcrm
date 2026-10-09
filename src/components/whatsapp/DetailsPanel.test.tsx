@@ -174,6 +174,9 @@ describe('DetailsPanel', () => {
     const crm = makeCrm()
     const onLinkLead = renderPanel(crm)
 
+    // The name WhatsApp gives is not copied in; the team writes the parent name.
+    expect(screen.getByLabelText('Parent name')).toHaveValue('')
+    await userEvent.type(screen.getByLabelText('Parent name'), 'Mei Ling')
     await userEvent.click(screen.getByRole('button', { name: 'Save lead' }))
 
     await waitFor(() => expect(onLinkLead).toHaveBeenCalledWith(55))

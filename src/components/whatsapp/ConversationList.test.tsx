@@ -81,7 +81,7 @@ describe('ConversationList waiting too long', () => {
     renderList([chat(1, 'Old chat', 3 * 86400)], 0)
 
     expect(screen.getByText('Waiting 3 d')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Old chat/ }).className).not.toContain('bg-red-50')
+    expect(screen.getByText('Waiting 3 d').closest('button')?.className).not.toContain('bg-red-50')
   })
 })
 
