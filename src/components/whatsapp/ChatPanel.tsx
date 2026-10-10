@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from 'react'
 import type { VariableValues } from '../../lib/quickReplies'
-import { ArrowCounterClockwise, CaretDown, CaretLeft, CheckCircle, EnvelopeSimple, Info, PushPin } from '@phosphor-icons/react'
+import { ArrowCounterClockwise, CaretDown, CaretLeft, CheckCircle, EnvelopeSimple, Info, PushPin, UserCircle } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import type { Sender } from '../../lib/chatwootClient'
 import type { SendInput } from '../../hooks/useWhatsAppInbox'
@@ -68,6 +68,10 @@ type ChatPanelProps = {
   onToggleStar?: (message: ChatwootMessage) => void
   onForward?: (message: ChatwootMessage) => void
 }
+
+// The round icon buttons at the top of a chat.
+const HEADER_ICON_BUTTON =
+  'inline-flex h-9 w-9 items-center justify-center rounded-full border border-pink-200/80 bg-white text-slate-600 shadow-sm transition hover:border-pink-300 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fc0c97]/40'
 
 const EDIT_WINDOW_SECONDS = 15 * 60
 const DELETE_WINDOW_SECONDS = 48 * 3600
@@ -204,12 +208,12 @@ export function ChatPanel({
 
   return (
     <div className={cn('flex min-h-0 min-w-0 flex-col bg-slate-50', className)}>
-      <div className="flex flex-wrap items-center gap-2 border-b border-pink-100 bg-pink-50 px-3 py-3 sm:px-4">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-pink-100 bg-pink-50 px-3 py-2.5 sm:px-4">
         <button
           type="button"
           onClick={onBack}
           aria-label="Back to all chats"
-          className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 lg:hidden"
+          className="rounded-lg p-1.5 text-slate-600 hover:bg-pink-100 lg:hidden"
         >
           <CaretLeft size={20} />
         </button>
@@ -221,7 +225,7 @@ export function ChatPanel({
           title={onOpenLead ? 'Open the full lead' : undefined}
           aria-label={onOpenLead ? `Open the full lead of ${identity.title}` : undefined}
           className={cn(
-            'flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left',
+            'flex min-w-[170px] flex-1 items-center gap-2.5 rounded-xl text-left',
             onOpenLead ? '-m-1 cursor-pointer p-1 hover:bg-pink-100' : 'cursor-default',
           )}
         >
@@ -233,72 +237,90 @@ export function ChatPanel({
             </span>
           </span>
         </button>
-        <button
-          type="button"
-          onClick={onOpenDetails}
-          aria-label="Lead and student details"
-          title="Lead and student details"
-          className="rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50 xl:hidden"
-        >
-          <Info size={16} />
-        </button>
-        <label className="relative">
-          <span className="sr-only">Handled by</span>
-          <select
-            value={owner?.id ?? ''}
-            onChange={(event) => {
-              const chosen = staff.find((person) => String(person.id) === event.target.value)
-              onSetOwner(chosen ?? null)
-            }}
-            className="max-w-[170px] appearance-none rounded-lg border border-slate-200 bg-white py-1.5 pl-2.5 pr-7 text-xs text-slate-700 outline-none focus:border-[#fc0c97]"
-          >
-            <option value="">Handled by: no one yet</option>
-            {owner && !staff.some((person) => person.id === owner.id) && (
-              <option value={owner.id}>Handled by: {owner.name}</option>
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          {/* Who is looking after this chat. The select itself is invisible and covers the pill. */}
+          <label className="relative flex h-9 w-[168px] cursor-pointer items-center gap-2 rounded-full border border-pink-200/80 bg-white pl-1.5 pr-3 shadow-sm transition hover:border-pink-300 focus-within:ring-2 focus-within:ring-[#fc0c97]/40">
+            {owner ? (
+              <Avatar initials={getInitials(owner.name)} tone={staffTone(owner.name)} size="sm" />
+            ) : (
+              <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                <UserCircle size={18} />
+              </span>
             )}
-            {staff.map((person) => (
-              <option key={person.id} value={person.id}>
-                Handled by: {person.name}
-              </option>
-            ))}
-          </select>
-          <CaretDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" />
-        </label>
-        {onTogglePin && (
+            <span className="min-w-0 flex-1 leading-tight">
+              <span className="block text-[10px] font-medium uppercase tracking-wider text-slate-400">Handled by</span>
+              <span className={cn('block truncate text-[13px] font-medium', owner ? 'text-slate-900' : 'text-slate-500')}>
+                {owner?.name ?? 'No one yet'}
+              </span>
+            </span>
+            <CaretDown size={12} aria-hidden="true" className="shrink-0 text-slate-400" />
+            <select
+              aria-label="Handled by"
+              value={owner?.id ?? ''}
+              onChange={(event) => {
+                const chosen = staff.find((person) => String(person.id) === event.target.value)
+                onSetOwner(chosen ?? null)
+              }}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            >
+              <option value="">No one yet</option>
+              {owner && !staff.some((person) => person.id === owner.id) && <option value={owner.id}>{owner.name}</option>}
+              {staff.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onOpenDetails}
+              aria-label="Lead and student details"
+              title="Lead and student details"
+              className={cn(HEADER_ICON_BUTTON, 'xl:hidden')}
+            >
+              <Info size={16} />
+            </button>
+            {onTogglePin && (
+              <button
+                type="button"
+                onClick={onTogglePin}
+                aria-label={pinned ? 'Unpin this chat' : 'Pin this chat'}
+                aria-pressed={pinned}
+                title={pinned ? 'Unpin: stop keeping it at the top' : 'Pin: keep it at the top of the list for everyone'}
+                className={cn(HEADER_ICON_BUTTON, pinned && 'border-[#fc0c97] text-[#fc0c97] hover:text-[#fc0c97]')}
+              >
+                <PushPin size={16} weight={pinned ? 'fill' : 'regular'} />
+              </button>
+            )}
+            {!done && (
+              <button
+                type="button"
+                onClick={onMarkUnread}
+                aria-label="Mark as unread"
+                title="Mark as unread, for a chat you opened by mistake"
+                className={HEADER_ICON_BUTTON}
+              >
+                <EnvelopeSimple size={16} />
+              </button>
+            )}
+          </div>
           <button
             type="button"
-            onClick={onTogglePin}
-            aria-label={pinned ? 'Unpin this chat' : 'Pin this chat'}
-            aria-pressed={pinned}
-            title={pinned ? 'Unpin: stop keeping it at the top' : 'Pin: keep it at the top of the list for everyone'}
+            onClick={() => onSetStatus(done ? 'open' : 'resolved')}
+            title={done ? 'Put this chat back in the open list' : 'Close this chat; it comes back when the parent writes again'}
             className={cn(
-              'inline-flex items-center rounded-lg border bg-white p-1.5 hover:bg-slate-50',
-              pinned ? 'border-[#fc0c97] text-[#fc0c97]' : 'border-slate-200 text-slate-600',
+              'inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-[13px] font-semibold shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fc0c97]/40',
+              done
+                ? 'border border-pink-200/80 bg-white text-slate-700 hover:border-pink-300'
+                : 'bg-slate-900 text-white hover:bg-slate-800',
             )}
           >
-            <PushPin size={14} weight={pinned ? 'fill' : 'regular'} />
+            {done ? <ArrowCounterClockwise size={15} weight="bold" /> : <CheckCircle size={15} weight="bold" />}
+            {done ? 'Reopen' : 'Done'}
           </button>
-        )}
-        {!done && (
-          <button
-            type="button"
-            onClick={onMarkUnread}
-            aria-label="Mark as unread"
-            title="Mark as unread, for a chat you opened by mistake"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-          >
-            <EnvelopeSimple size={14} aria-hidden="true" />
-            <span className="hidden sm:inline">Mark as unread</span>
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => onSetStatus(done ? 'open' : 'resolved')}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-        >
-          {done ? <ArrowCounterClockwise size={14} /> : <CheckCircle size={14} />}
-          {done ? 'Reopen' : 'Mark as done'}
-        </button>
+        </div>
       </div>
 
       <div

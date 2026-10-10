@@ -3,6 +3,8 @@ import { Bell, BellSlash, CaretDown, ChatCircleDots, CheckCircle, EnvelopeSimple
 import type { Icon } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { LeadTagChip } from '../LeadTagChip'
+import { formatReactionLine, type ReactionPreview } from '../../lib/reactionPreview'
+import { waIdOf } from '../../lib/waActions'
 import type { LeadOption } from '../../types/domain'
 import type { StudentKind } from '../../lib/studentLink'
 import {
@@ -55,6 +57,8 @@ type ConversationListProps = {
   picOf?: (conversation: ChatwootConversation) => { name: string; initials: string } | null
   // How long a parent has waited (the red banner, the red row, "Waiting 45 min"). Hidden for now.
   showWaiting?: boolean
+  // What the reactions at the end of chats were put on, by the reaction's WhatsApp id.
+  reactionPreviews?: ReadonlyMap<string, ReactionPreview>
   // What is left unsent in the chat, as one short line; null when nothing is.
   draftOf?: (conversation: ChatwootConversation) => string | null
   // True for an older chat of a parent who has a newer one.
@@ -129,6 +133,7 @@ export function ConversationList({
   picOf,
   showWaiting = false,
   draftOf,
+  reactionPreviews,
   isOlderDuplicate,
   kind = null,
   selectedId,
@@ -306,6 +311,9 @@ export function ConversationList({
           const pic = picOf?.(conversation) ?? null
           const lastMessage = conversation.last_non_activity_message
           const preview = getPreview(conversation)
+          // A reaction reads like WhatsApp writes it ("You reacted 😂 to: ...") instead of just the emoji.
+          const reaction = reactionPreviews?.get(waIdOf(lastMessage?.source_id) ?? '')
+          const reactionLine = reaction ? formatReactionLine(reaction.emoji, reaction.target, lastMessage?.message_type === 1) : null
           const selected = conversation.id === selectedId
           const waiting = getWaitingSeconds(conversation, nowSeconds)
           const overdue = showWaiting && waiting !== null && waiting >= OVERDUE_SECONDS
@@ -358,6 +366,8 @@ export function ConversationList({
                         <span className="font-medium text-[#be185d]">Found: </span>
                         {snippets.get(conversation.id)}
                       </>
+                    ) : reactionLine ? (
+                      reactionLine
                     ) : lastMessage?.private && preview ? (
                       `Note: ${preview}`
                     ) : lastMessage?.message_type === 1 && preview ? (

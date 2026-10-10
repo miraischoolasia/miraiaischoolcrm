@@ -85,6 +85,28 @@ describe('ConversationList waiting too long', () => {
   })
 })
 
+describe('ConversationList reactions', () => {
+  it('words a reaction the way WhatsApp does instead of showing only the emoji', () => {
+    const reacted: ChatwootConversation = {
+      ...chat(1, 'Aisha', 60),
+      last_non_activity_message: {
+        id: 9,
+        content: '❤️',
+        message_type: 1,
+        created_at: NOW - 60,
+        private: false,
+        status: 'sent',
+        source_id: 'WAID:R1',
+        content_attributes: { in_reply_to: 4, in_reply_to_external_id: 'WAID:V1' },
+      },
+    }
+    renderList([reacted], 0, { reactionPreviews: new Map([['R1', { emoji: '❤️', target: '🎤 0:11' }]]) })
+
+    expect(screen.getByText('You reacted ❤️ to: "🎤 0:11"')).toBeInTheDocument()
+    expect(screen.queryByText('You: ❤️')).not.toBeInTheDocument()
+  })
+})
+
 describe('ConversationList filters and search', () => {
   const option = (id: number, kind: 'tag' | 'source', label: string) => ({ id, kind, label, isActive: true, legacyKey: null, color: null })
 

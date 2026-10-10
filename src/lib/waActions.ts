@@ -1,4 +1,5 @@
 import { getSupabaseAccessToken } from './accessToken'
+import { describeWaRecord, type ReactionPreview } from './reactionPreview'
 
 // Things WhatsApp can do that Chatwoot does not carry (reactions, editing and deleting a sent
 // message, what the other side did on their phone), reached through the school's gateway, which
@@ -227,6 +228,20 @@ export function createWaActions(
         const label = labelNames?.get(id)
         return label?.name ? [label] : []
       })
+    },
+
+    // What a reaction was for, worded for the chat list: the emoji and a short line for the message it
+    // was put on. Null when WhatsApp does not hold this message or it is not a reaction.
+    async reactionPreview(reactionWaId: string): Promise<ReactionPreview | null> {
+      const find = async (id: string) =>
+        (await call<{ messages?: { records?: Row[] } }>('POST', '/chat/findMessages', { where: { key: { id } }, page: 1, offset: 1 }))
+          .messages?.records?.[0] ?? null
+      const reaction = (await find(reactionWaId))?.message?.reactionMessage
+      if (!reaction?.key?.id || !reaction.text) {
+        return null
+      }
+      const target = describeWaRecord((await find(reaction.key.id)) as Parameters<typeof describeWaRecord>[0])
+      return { emoji: reaction.text, target }
     },
 
     // Shows the parent "typing..." for a few seconds.

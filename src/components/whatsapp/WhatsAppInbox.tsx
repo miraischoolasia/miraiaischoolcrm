@@ -26,6 +26,7 @@ import { useSourceRules } from '../../hooks/useSourceRules'
 import { canonicalPhone, makeLeadResolver, quickReplyValues, resolveChatLead } from '../../lib/chatLink'
 import { draftPreview, draftsFirst, type Draft } from '../../lib/draft'
 import { createWaActions, waIdOf } from '../../lib/waActions'
+import { useReactionPreviews } from '../../hooks/useReactionPreviews'
 import { findChatByPhone } from '../../lib/startChat'
 import { splitSequence } from '../../lib/outbox'
 import { summarizeMessage } from '../../lib/specialMessages'
@@ -278,6 +279,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
   const hasChat = inbox.selected !== null
   // Reactions, edits and deletes of the open chat, and the team's own.
   const messageEvents = useMessageEvents(waActions, client, currentUser, inbox.selectedId, inbox.messages, active)
+  const reactionPreviews = useReactionPreviews(active ? waActions : null, visible)
   const showTyping = useTyping(waActions, inbox.selected ? getRealPhone(inbox.selected.meta.sender.phone_number) : null)
 
   // Ticks every 30 seconds so a chat turns red the moment it passes 30 minutes.
@@ -420,6 +422,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
         snippets={messageHits}
         leadNameOf={chatLabelOf}
         draftOf={draftOf}
+        reactionPreviews={reactionPreviews}
         studentLabelsOf={studentLabelsOf}
         isOlderDuplicate={isOlderDuplicate}
         tagsOf={tagsOf}

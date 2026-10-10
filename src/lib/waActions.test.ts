@@ -103,6 +103,24 @@ describe('createWaActions', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  it('tells what a reaction was put on, and nothing for a message that is no reaction', async () => {
+    const answers: Record<string, unknown> = {
+      R1: { key: { id: 'R1' }, message: { reactionMessage: { key: { id: 'V1' }, text: '❤️' } } },
+      V1: { key: { id: 'V1' }, message: { audioMessage: { seconds: 11 } } },
+      T1: { key: { id: 'T1' }, message: { conversation: 'just a 😂' } },
+    }
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const id = JSON.parse(String(init.body)).where.key.id as string
+      return new Response(JSON.stringify({ messages: { records: answers[id] ? [answers[id]] : [] } }), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const actions = createWaActions('https://gw.example', async () => 'token')
+
+    expect(await actions.reactionPreview('R1')).toEqual({ emoji: '❤️', target: '🎤 0:11' })
+    expect(await actions.reactionPreview('T1')).toBeNull()
+    expect(await actions.reactionPreview('unknown')).toBeNull()
+  })
+
   it('refuses a message WhatsApp does not know', async () => {
     const { actions } = setup([])
 
