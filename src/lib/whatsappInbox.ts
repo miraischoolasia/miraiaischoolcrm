@@ -63,7 +63,11 @@ export type ChatAttributes = {
   crm_starred?: number[]
   // Students the team tied to this chat by hand, for a parent whose number matches nobody.
   crm_student_ids?: number[]
+  // Who is on the other end of the chat: the parent of the student(s), or the student themself.
+  crm_chat_role?: ChatRole | null
 }
+
+export type ChatRole = 'parent' | 'student'
 
 export type ChatwootConversation = {
   id: number
@@ -219,6 +223,12 @@ export function getLinkedLeadId(conversation: Pick<ChatwootConversation, 'custom
   }
   const number = Number(id)
   return Number.isFinite(number) ? number : null
+}
+
+// Who the team said is on the other end of this chat, if anyone did.
+export function getChatRole(conversation: Pick<ChatwootConversation, 'custom_attributes'>): ChatRole | null {
+  const role = conversation.custom_attributes?.crm_chat_role
+  return role === 'parent' || role === 'student' ? role : null
 }
 
 // The students the team tied to this chat by hand.

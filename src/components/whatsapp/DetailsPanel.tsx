@@ -1,21 +1,15 @@
 import { useMemo, useState } from 'react'
 import { CaretLeft } from '@phosphor-icons/react'
-import {
-  getFirstMessage,
-  guessSourceAndTags,
-  resolveChatLead,
-  suggestLeadsByName,
-} from '../../lib/chatLink'
+import { getFirstMessage, guessSourceAndTags, parentNumberUpdate, resolveChatLead } from '../../lib/chatLink'
 import { searchLeads } from '../../lib/leadSearch'
 import { getStudentKind, makeStudentResolver } from '../../lib/studentLink'
 import type { SourceRule } from '../../lib/sourceRules'
 import {
   formatListTime,
-  getChatIdentity,
   getLinkedLeadId,
   getLinkedStudentIds,
-  getOwner,
   getRealPhone,
+  type ChatRole,
   type ChatwootConversation,
   type ChatwootMessage,
 } from '../../lib/whatsappInbox'
@@ -26,6 +20,7 @@ import { LeadHeader } from './LeadCard'
 import { EnrolPanel } from './EnrolPanel'
 import { StudentCard } from './StudentCard'
 import { StudentLinker } from './StudentLinker'
+import { ChatRolePicker } from './ChatRolePicker'
 import type { Student } from '../../types/domain'
 import { PanelSection } from './PanelSection'
 import type { WaLabel } from '../../lib/waActions'
@@ -42,12 +37,15 @@ type DetailsPanelProps = {
   onLinkLead: (leadId: number | null) => Promise<boolean>
   // Replaces the students tied to this chat by hand.
   onLinkStudents: (studentIds: number[]) => Promise<boolean>
+  // Who the team said is on this chat, and a way to say it.
+  role?: ChatRole | null
+  onSetRole?: (role: ChatRole | null) => Promise<boolean>
   // Who is using the page, written on the receipts and Zoom meetings they add.
   userName?: string | null
   // Puts text in the message box, for the team to read and send.
   onWriteMessage?: (text: string) => void
   // Other chats of the same parent (an old one under a hidden ID, say), to jump to.
-  otherChats?: { id: number; title: string; lastActivity: number; isDone: boolean }[]
+  otherChats?: { id: number; title: string; lastActivity: number; isDone: boolean; role?: ChatRole | null }[]
   onOpenChat?: (id: number) => void
   // Labels put on this chat on the phone; shown for reading, they are not changed from here.
   whatsappLabels?: WaLabel[]
@@ -71,6 +69,8 @@ export function DetailsPanel({
   onLoadOlder,
   onLinkLead,
   onLinkStudents,
+  role = null,
+  onSetRole,
   userName = null,
   onWriteMessage,
   otherChats = [],
@@ -81,13 +81,10 @@ export function DetailsPanel({
   onBack,
 }: DetailsPanelProps) {
   const sender = conversation.meta.sender
-  const owner = getOwner(conversation)
   const phone = getRealPhone(sender.phone_number)
   const [query, setQuery] = useState('')
 
   const { lead, byPhone } = resolveChatLead(getLinkedLeadId(conversation), phone, crm.leads)
-  // The parent name on the lead names the chat here too, like in the list.
-  const identity = getChatIdentity(sender, lead?.fullName)
 
   // Every child of this parent: through the lead, the HOA bookings and the phone number.
   const linkedStudentIds = useMemo(() => getLinkedStudentIds(conversation), [conversation])
@@ -100,6 +97,13 @@ export function DetailsPanel({
       ),
     [crm.students, crm.trialBookings, crm.packages, lead, phone, linkedStudentIds],
   )
+  // The child (or children) this chat is about: the students found for it, else the children
+  // written on the lead, so a lead that is not a student yet can say who is on the chat too.
+  const childNames =
+    students.length > 0
+      ? students.map((student) => student.name)
+      : (lead?.children ?? []).map((child) => child.name?.trim()).filter((name): name is string => Boolean(name))
+
   // A parent whose child is already in a class is not at the start of the HOA steps.
   const isEnrolled = lead?.status === 'converted' || students.some((student) => getStudentKind(student, crm.packages) !== 'hoa')
 
@@ -117,18 +121,40 @@ export function DetailsPanel({
     return null
   }
 
+  // Tying the chat to a lead also gives the lead this chat's number, so it is found by phone
+  // from now on; the number it had stays with the child (or in the notes).
+  const [numberSaved, setNumberSaved] = useState<string | null>(null)
+  async function linkLead(leadId: number) {
+    setNumberSaved(null)
+    if (!(await onLinkLead(leadId))) {
+      return
+    }
+    const chosen = crm.leads.find((entry) => entry.id === leadId)
+    const update = chosen && crm.canEditLeads ? parentNumberUpdate(chosen, phone) : null
+    if (!chosen || !update) {
+      return
+    }
+    const problem = await crm.onUpdateLead(chosen.id, {
+      fullName: chosen.fullName ?? '',
+      phone: update.phone,
+      state: chosen.state ?? '',
+      sourceId: chosen.sourceId,
+      picId: chosen.picId,
+      tagIds: chosen.tagIds,
+      status: chosen.status,
+      children: update.children.map((child) => ({ name: child.name, age: child.age, phone: child.phone })),
+      notes: update.notes ?? '',
+    })
+    setNumberSaved(problem ? `Linked, but the number was not saved on the lead: ${problem}` : "This parent's number is now saved on the lead.")
+  }
+
+  // A parent who already has a student is not a new lead: the add-lead form stays out of the way.
+  const [leadFormFor, setLeadFormFor] = useState<number | null>(null)
+  const showLeadPart = lead !== null || students.length === 0 || leadFormFor === conversation.id
+
   const first = useMemo(() => getFirstMessage(messages), [messages])
   const guess = useMemo(() => guessSourceAndTags(first?.text ?? '', crm.leadOptions, sourceRules), [first, crm.leadOptions, sourceRules])
   const found = useMemo(() => searchLeads(crm.leads, query), [crm.leads, query])
-
-  // The WhatsApp name is only used to find leads with a similar name; it is never shown or copied
-  // into the form, where the parent name is what the team writes.
-  const whatsappName = identity.name ?? ''
-  // No number matched, so offer the leads with a similar name for someone to confirm.
-  const nameSuggestions = useMemo(
-    () => (lead ? [] : suggestLeadsByName(whatsappName, crm.leads)),
-    [lead, whatsappName, crm.leads],
-  )
 
   return (
     <aside className={className}>
@@ -142,15 +168,20 @@ export function DetailsPanel({
           Back to the chat
         </button>
       )}
-      <h3 className="text-sm font-semibold text-slate-900">{identity.title}</h3>
-      <p className="mt-0.5 text-xs text-slate-500">{identity.subtitle}</p>
-      <p className="mt-1 text-xs text-slate-500">Handled by: {owner ? owner.name : 'no one yet'}</p>
-
-      <div className="mt-5 space-y-5 border-t border-slate-100 pt-4">
+      {/* The name, the number and who handles the chat are in the chat's own header already. */}
+      <div className="space-y-5">
         {/* The slots below keep their place whether or not the chat is a lead yet, so the
             form is the same one before and after saving and only says "Saved". */}
         {lead ? <LeadHeader lead={lead} byPhone={byPhone} onUnlink={() => void onLinkLead(null)} /> : null}
         {/* Who the school already has as students comes first: a parent of a student is not a new lead. */}
+        {childNames.length > 0 && onSetRole ? (
+          <ChatRolePicker
+            role={role}
+            studentName={childNames.join(' & ')}
+            canBeStudent={childNames.length === 1}
+            onPick={(next) => void onSetRole(next)}
+          />
+        ) : null}
         {students.map((student) => (
           <StudentCard
             key={student.id}
@@ -172,8 +203,8 @@ export function DetailsPanel({
         />
         {otherChats.length > 0 && onOpenChat && (
           <section className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-            <h4 className="font-semibold">This parent has another chat</h4>
-            <p className="mt-1">WhatsApp can keep an old chat and a new one for the same person.</p>
+            <h4 className="font-semibold">This family has another chat</h4>
+            <p className="mt-1">The parent, the student and an old chat can each have their own.</p>
             <ul className="mt-2 space-y-1.5">
               {otherChats.map((other) => (
                 <li key={other.id}>
@@ -184,6 +215,7 @@ export function DetailsPanel({
                   >
                     <span className="block truncate text-sm font-medium text-slate-900">{other.title}</span>
                     <span className="block text-slate-600">
+                      {other.role === 'parent' ? 'Parent · ' : other.role === 'student' ? 'Student · ' : ''}
                       Last message {formatListTime(other.lastActivity)}
                       {other.isDone ? ' · Done' : ''}
                     </span>
@@ -193,7 +225,17 @@ export function DetailsPanel({
             </ul>
           </section>
         )}
-        {!lead ? (
+        {numberSaved && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">{numberSaved}</p>}
+        {!showLeadPart ? (
+          <button
+            type="button"
+            onClick={() => setLeadFormFor(conversation.id)}
+            className="text-xs font-medium text-[#be185d] hover:underline"
+          >
+            Also a lead? Add or find the lead
+          </button>
+        ) : null}
+        {showLeadPart && !lead ? (
           <FirstMessageCard
             first={first}
             guess={guess}
@@ -202,35 +244,7 @@ export function DetailsPanel({
             onManageRules={crm.canEditLeads ? onManageRules : undefined}
           />
         ) : null}
-    {!lead && nameSuggestions.length > 0 && (
-      <section className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-        <h4 className="font-semibold">Could this parent be one of your leads?</h4>
-        <p className="mt-1">
-          {identity.hasRealPhone
-            ? "Their WhatsApp number is not in any lead, but the name is similar."
-            : "WhatsApp hides this number, but the name is similar."}
-        </p>
-        <ul className="mt-2 space-y-1.5">
-          {nameSuggestions.map((suggestion) => (
-            <li key={suggestion.id}>
-              <button
-                type="button"
-                onClick={() => void onLinkLead(suggestion.id)}
-                className="w-full rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-left hover:bg-amber-100"
-              >
-                <span className="block truncate text-sm font-medium text-slate-900">
-                  {suggestion.fullName || suggestion.children[0]?.name || 'Unnamed lead'}
-                </span>
-                <span className="block truncate text-slate-600">
-                  {suggestion.phone ?? 'No phone number'} · This is them
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
-    )}
-        {!lead ? (
+        {showLeadPart && !lead ? (
         <div className="text-xs">
           <label className="block">
             <span className="font-semibold text-slate-700">Already a lead? Find them</span>
@@ -248,7 +262,7 @@ export function DetailsPanel({
                 <li key={entry.id}>
                   <button
                     type="button"
-                    onClick={() => void onLinkLead(entry.id)}
+                    onClick={() => void linkLead(entry.id)}
                     className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-left hover:bg-slate-50"
                   >
                     <span className="block truncate text-sm text-slate-900">
@@ -262,7 +276,7 @@ export function DetailsPanel({
           )}
         </div>
         ) : null}
-        {lead || crm.canEditLeads ? (
+        {!showLeadPart ? null : lead || crm.canEditLeads ? (
           <LeadForm
             key={conversation.id}
             crm={crm}

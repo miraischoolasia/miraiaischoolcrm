@@ -11,6 +11,7 @@ import {
   getChatIdentity,
   getInitials,
   getLinkedLeadId,
+  getChatRole,
   getLinkedStudentIds,
   getOwner,
   getRealPhone,
@@ -99,6 +100,30 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
     },
     [resolveLead, resolveStudents],
   )
+  // What a chat is called in the list and above the messages: the parent's name from the lead,
+  // or, once the team said who is on it, "Albee's parent" / "Albee (student)".
+  const chatLabelOf = useCallback(
+    (conversation: ChatwootConversation) => {
+      const leadName = leadNameOf(conversation)
+      const role = getChatRole(conversation)
+      const studentNames = studentsOf(conversation).map((student) => student.name)
+      // A lead that is not a student yet is named by the children written on it.
+      const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
+      const names =
+        studentNames.length > 0
+          ? studentNames
+          : (lead?.children ?? []).map((child) => child.name?.trim()).filter((name): name is string => Boolean(name))
+      if (!role || names.length === 0) {
+        return leadName
+      }
+      if (role === 'student') {
+        return `${names[0]} (${studentNames.length > 0 ? 'student' : 'child'})`
+      }
+      const parentOf = `${names.join(' & ')}'s parent`
+      return leadName ? `${leadName} · ${parentOf}` : parentOf
+    },
+    [leadNameOf, studentsOf, resolveLead],
+  )
   const studentLabelsOf = useCallback(
     (conversation: ChatwootConversation) => [
       ...new Set(studentsOf(conversation).map((student) => describeStudent(student, crm.packages))),
@@ -149,6 +174,24 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
       return lead ? (chatsByLead.get(lead.id) ?? []).filter((other) => other.id !== conversation.id) : []
     },
     [chatsByLead, resolveLead],
+  )
+  // Everyone the school talks to about the same family: chats that share a lead or a student.
+  // Shown in the side panel only; unlike an old duplicate, none of these is hidden from the list.
+  const familyChatsOf = useCallback(
+    (conversation: ChatwootConversation) => {
+      const leadId = leadIdOf(conversation)
+      const studentIds = new Set(studentsOf(conversation).map((student) => student.id))
+      return inbox.conversations.filter((other) => {
+        if (other.id === conversation.id) {
+          return false
+        }
+        if (leadId !== null && leadIdOf(other) === leadId) {
+          return true
+        }
+        return studentIds.size > 0 && studentsOf(other).some((student) => studentIds.has(student.id))
+      })
+    },
+    [inbox.conversations, leadIdOf, studentsOf],
   )
   const isOlderDuplicate = useCallback(
     (conversation: ChatwootConversation) =>
@@ -308,10 +351,10 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
   const forwardTargets = useMemo(
     () =>
       inbox.conversations.map((conversation) => {
-        const identity = getChatIdentity(conversation.meta.sender, leadNameOf(conversation))
+        const identity = getChatIdentity(conversation.meta.sender, chatLabelOf(conversation))
         return { id: conversation.id, title: identity.title, subtitle: identity.subtitle }
       }),
-    [inbox.conversations, leadNameOf],
+    [inbox.conversations, chatLabelOf],
   )
 
   // Sends a copy of the message (its text, then each file) to every chat chosen. Null when all went out.
@@ -375,7 +418,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
         tags={tagOptions}
         sources={sourceOptions}
         snippets={messageHits}
-        leadNameOf={leadNameOf}
+        leadNameOf={chatLabelOf}
         draftOf={draftOf}
         studentLabelsOf={studentLabelsOf}
         isOlderDuplicate={isOlderDuplicate}
@@ -406,7 +449,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
           <ChatPanel
             className={cn(!hasChat && 'hidden lg:flex', detailsOpen && 'hidden xl:flex')}
             conversation={inbox.selected}
-            leadName={leadNameOf(inbox.selected)}
+            leadName={chatLabelOf(inbox.selected)}
             onOpenLead={
               leadIdOf(inbox.selected) !== null ? () => crm.onOpenLead(leadIdOf(inbox.selected!)!) : undefined
             }
@@ -482,9 +525,12 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
               setDraftRequest((current) => ({ id: (current?.id ?? 0) + 1, text }))
               setDetailsOpen(false)
             }}
-            otherChats={otherChatsOf(inbox.selected).map((other) => ({
+            role={getChatRole(inbox.selected)}
+            onSetRole={(role) => inbox.setChatRole(inbox.selected!.id, role)}
+            otherChats={familyChatsOf(inbox.selected).map((other) => ({
               id: other.id,
-              title: getChatIdentity(other.meta.sender, leadNameOf(other)).title,
+              title: getChatIdentity(other.meta.sender, chatLabelOf(other)).title,
+              role: getChatRole(other),
               lastActivity: other.last_activity_at,
               isDone: other.status === 'resolved',
             }))}

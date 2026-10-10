@@ -1,4 +1,4 @@
-import type { Lead, LeadOption, Student } from '../types/domain'
+import type { Lead, LeadChild, LeadOption, Student } from '../types/domain'
 import type { VariableValues } from './quickReplies'
 import { matchSourceRules, type SourceRule } from './sourceRules'
 import { attachmentLabel, type ChatwootMessage } from './whatsappInbox'
@@ -85,36 +85,31 @@ export function quickReplyValues(input: {
   }
 }
 
-function nameKey(value: string | null | undefined) {
-  return (value ?? '')
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim()
-}
-
-// Two letters are enough for a Chinese name, an English name needs three.
-function longEnough(key: string) {
-  return /\p{Script=Han}/u.test(key) ? key.length >= 2 : key.length >= 3
-}
-
-// Leads whose parent or child name matches the name this chat shows. WhatsApp hides
-// some people's numbers, so a name is all there is to go on. Closest match first.
-export function suggestLeadsByName(chatName: string, leads: Lead[], limit = 3) {
-  const wanted = nameKey(chatName)
-  if (!longEnough(wanted)) {
-    return []
+// What a lead should look like once a chat with this number is tied to it by hand: the
+// number the school writes to becomes the lead's number, and the number it had stays
+// with the child (or in the notes), so nothing is lost. Null when the lead already
+// holds this number, or the chat has none to give (WhatsApp hides it).
+export function parentNumberUpdate(lead: Lead, chatPhone: string | null | undefined) {
+  const wanted = canonicalPhone(chatPhone)
+  if (!wanted) {
+    return null
   }
-  const scored = leads.flatMap((lead) => {
-    const names = [lead.fullName, ...lead.children.map((child) => child.name)].map(nameKey).filter(longEnough)
-    if (names.some((name) => name === wanted)) {
-      return [{ lead, score: 2 }]
+  const held = [lead.phone, ...lead.children.map((child) => child.phone)]
+  if (held.some((value) => canonicalPhone(value) === wanted)) {
+    return null
+  }
+  let children: LeadChild[] = lead.children
+  let notes = lead.notes
+  const old = lead.phone?.trim() || null
+  if (old) {
+    if (children.length === 1 && !children[0].phone?.trim()) {
+      children = [{ ...children[0], phone: old }]
+    } else if (!children.some((child) => canonicalPhone(child.phone) === canonicalPhone(old))) {
+      const line = `Previous phone number: ${old}`
+      notes = notes?.trim() ? `${notes.trim()}\n${line}` : line
     }
-    if (names.some((name) => name.includes(wanted) || wanted.includes(name))) {
-      return [{ lead, score: 1 }]
-    }
-    return []
-  })
-  return scored.sort((a, b) => b.score - a.score || b.lead.id - a.lead.id).slice(0, limit).map((entry) => entry.lead)
+  }
+  return { phone: wanted, children, notes }
 }
 
 export function findStudentsByPhone(phone: string | null | undefined, students: Student[]) {

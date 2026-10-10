@@ -11,6 +11,7 @@ import {
   formatListTime,
   getChatIdentity,
   onePerParent,
+  getChatRole,
   getInitials,
   getLinkedStudentIds,
   getOwner,
@@ -354,5 +355,18 @@ describe('getLinkedStudentIds', () => {
     expect(getLinkedStudentIds({ custom_attributes: {} })).toEqual([])
     expect(getLinkedStudentIds({ custom_attributes: null })).toEqual([])
     expect(getLinkedStudentIds({ custom_attributes: { crm_student_ids: 'x' as unknown as number[] } })).toEqual([])
+  })
+})
+
+describe('getChatRole', () => {
+  it('reads who the team said is on the chat', () => {
+    expect(getChatRole({ custom_attributes: { crm_chat_role: 'parent' } })).toBe('parent')
+    expect(getChatRole({ custom_attributes: { crm_chat_role: 'student' } })).toBe('student')
+  })
+
+  it('is null when nobody said, or the value is not a known one', () => {
+    expect(getChatRole({ custom_attributes: {} })).toBeNull()
+    expect(getChatRole({ custom_attributes: null })).toBeNull()
+    expect(getChatRole({ custom_attributes: { crm_chat_role: 'uncle' as never } })).toBeNull()
   })
 })

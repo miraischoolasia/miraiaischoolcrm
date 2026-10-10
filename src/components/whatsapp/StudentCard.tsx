@@ -66,6 +66,10 @@ export function StudentCard({ student, crm, onUnlink }: StudentCardProps) {
           <dt className="text-slate-500">Package</dt>
           <dd className="text-sm text-slate-900">{plan?.name ?? 'None recorded'}</dd>
         </div>
+        <div>
+          <dt className="text-slate-500">Phone</dt>
+          <dd className="text-sm text-slate-900">{student.phone?.trim() || 'No phone number yet'}</dd>
+        </div>
       </dl>
 
       {canNote && (

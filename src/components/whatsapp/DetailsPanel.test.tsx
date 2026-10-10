@@ -124,20 +124,27 @@ describe('DetailsPanel', () => {
     expect(screen.getByLabelText(/Where did they find us/)).toHaveValue('1')
   })
 
-  it('suggests a lead with a similar name when the number matches nothing, and links it on confirm', async () => {
-    const named = { ...lead, id: 21, fullName: 'Mei Ling Tan', phone: '0198888888', children: [] } as Lead
-    const onLinkLead = renderPanel(makeCrm({ leads: [named] }))
+  it('does not guess a lead from the name; the team finds it by searching, and the chat number is saved on it', async () => {
+    const named = { ...lead, id: 21, fullName: 'Mei Ling Tan', phone: '0198888888', children: [{ name: 'Ethan', age: 9, phone: null }] } as Lead
+    const crm = makeCrm({ leads: [named] })
+    const onLinkLead = renderPanel(crm)
 
-    expect(screen.getByText('Could this parent be one of your leads?')).toBeInTheDocument()
+    expect(screen.queryByText('Could this parent be one of your leads?')).not.toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Already a lead? Find them'), 'Mei')
     await userEvent.click(screen.getByRole('button', { name: /Mei Ling Tan/ }))
 
     expect(onLinkLead).toHaveBeenCalledWith(21)
-  })
-
-  it('suggests nothing when no lead has a similar name', () => {
-    renderPanel(makeCrm({ leads: [{ ...lead, id: 22, fullName: 'Someone Else', phone: '0198888888', children: [] } as Lead] }))
-
-    expect(screen.queryByText('Could this parent be one of your leads?')).not.toBeInTheDocument()
+    // The chat's number becomes the lead's number; the number it had stays with the child.
+    await waitFor(() =>
+      expect(crm.onUpdateLead).toHaveBeenCalledWith(
+        21,
+        expect.objectContaining({
+          phone: '60123456789',
+          children: [{ name: 'Ethan', age: 9, phone: '0198888888' }],
+        }),
+      ),
+    )
+    expect(await screen.findByText("This parent's number is now saved on the lead.")).toBeInTheDocument()
   })
 
   it('picks the source and tags from a rule that matches the first message', async () => {
@@ -441,15 +448,16 @@ describe('DetailsPanel', () => {
       />,
     )
 
-    expect(screen.getByText('This parent has another chat')).toBeInTheDocument()
+    expect(screen.getByText('This family has another chat')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /jiayu/ }))
     expect(onOpenChat).toHaveBeenCalledWith(9)
   })
 
-  it('titles the panel with the parent name from the lead', () => {
-    renderPanel(makeCrm({ leads: [lead] }), { crm_lead_id: 11 })
+  it('does not repeat the name, the number and who handles the chat, which the chat header shows', () => {
+    renderPanel(makeCrm({ leads: [lead] }), { crm_lead_id: 11, crm_owner_id: 5, crm_owner_name: 'Admin Demo' })
 
-    expect(screen.getByRole('heading', { level: 3 })).toHaveTextContent(lead.fullName ?? '')
+    expect(screen.queryByRole('heading', { level: 3 })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Handled by/)).not.toBeInTheDocument()
   })
 
   describe('a parent whose number matches no student', () => {
@@ -528,6 +536,79 @@ describe('DetailsPanel', () => {
 
       expect(screen.getByText('Enrol steps')).toBeInTheDocument()
       expect(screen.queryByText('Enrol another child in HOA')).not.toBeInTheDocument()
+    })
+
+    it('shows the student and their number without an add-lead form, which opens on request', async () => {
+      const withPhone = { ...ethan, phone: '01111940144' } as Student
+      renderPanel(makeCrm({ students: [withPhone], packages }), { crm_student_ids: [1] })
+
+      expect(screen.getByText('Ethan Lim')).toBeInTheDocument()
+      expect(screen.getByText('01111940144')).toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: 'Add as a new lead' })).not.toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Also a lead? Add or find the lead' }))
+      expect(screen.getByRole('heading', { name: 'Add as a new lead' })).toBeInTheDocument()
+    })
+
+    it('asks who is on a chat that has a student, and saves the answer', async () => {
+      const onSetRole = vi.fn().mockResolvedValue(true)
+      render(
+        <DetailsPanel
+          conversation={conversation({ crm_student_ids: [1] })}
+          messages={[firstMessage]}
+          hasOlder={false}
+          crm={makeCrm({ students: [ethan], packages })}
+          sourceRules={[]}
+          onLoadOlder={vi.fn()}
+          onLinkLead={vi.fn()}
+          onLinkStudents={vi.fn()}
+          role={null}
+          onSetRole={onSetRole}
+        />,
+      )
+
+      await userEvent.click(screen.getByRole('button', { name: 'Parent of Ethan Lim' }))
+
+      expect(onSetRole).toHaveBeenCalledWith('parent')
+    })
+
+    it('asks who is on the chat for a lead that is not a student yet, using the child on the lead', async () => {
+      const onSetRole = vi.fn().mockResolvedValue(true)
+      render(
+        <DetailsPanel
+          conversation={conversation({ crm_lead_id: 11 })}
+          messages={[firstMessage]}
+          hasOlder={false}
+          crm={makeCrm({ leads: [lead] })}
+          sourceRules={[]}
+          onLoadOlder={vi.fn()}
+          onLinkLead={vi.fn()}
+          onLinkStudents={vi.fn()}
+          onSetRole={onSetRole}
+        />,
+      )
+
+      await userEvent.click(screen.getByRole('button', { name: 'Ethan themself' }))
+
+      expect(onSetRole).toHaveBeenCalledWith('student')
+    })
+
+    it('does not ask who is on the chat when no student is tied to it', () => {
+      render(
+        <DetailsPanel
+          conversation={conversation()}
+          messages={[firstMessage]}
+          hasOlder={false}
+          crm={makeCrm()}
+          sourceRules={[]}
+          onLoadOlder={vi.fn()}
+          onLinkLead={vi.fn()}
+          onLinkStudents={vi.fn()}
+          onSetRole={vi.fn()}
+        />,
+      )
+
+      expect(screen.queryByText('Who is on this chat?')).not.toBeInTheDocument()
     })
   })
 })

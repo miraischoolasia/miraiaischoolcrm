@@ -9,7 +9,7 @@ import {
   getFirstMessage,
   guessSourceAndTags,
   makeLeadResolver,
-  suggestLeadsByName,
+  parentNumberUpdate,
 } from './chatLink'
 
 const lead = (id: number, phone: string | null, childPhone: string | null = null): Lead =>
@@ -134,32 +134,57 @@ describe('appendLeaveNote', () => {
   })
 })
 
-describe('suggestLeadsByName', () => {
-  const named = (id: number, fullName: string | null, child?: string) =>
-    ({ id, fullName, phone: null, children: child ? [{ name: child, age: 8, phone: null }] : [] }) as Lead
+describe('parentNumberUpdate', () => {
+  const base = (over: Partial<Lead>) =>
+    ({ id: 1, fullName: null, phone: null, children: [], notes: null, ...over }) as Lead
 
-  it('finds the lead with the same name, ignoring capitals and punctuation', () => {
-    const found = suggestLeadsByName('Mei-Ling Tan', [named(1, 'mei ling tan'), named(2, 'Aisha')])
-    expect(found.map((lead) => lead.id)).toEqual([1])
+  it('makes the chat number the lead number and keeps the old one on the only child', () => {
+    const result = parentNumberUpdate(
+      base({ phone: '60134681225', children: [{ name: 'Jayden', age: 12, phone: null }] }),
+      '60198765432',
+    )
+    expect(result).toEqual({
+      phone: '60198765432',
+      children: [{ name: 'Jayden', age: 12, phone: '60134681225' }],
+      notes: null,
+    })
   })
 
-  it('also matches the child name and a name that holds the other', () => {
-    const found = suggestLeadsByName('Ethan', [named(1, 'Mei Ling', 'Ethan Tan'), named(2, 'Ethan')])
-    expect(found.map((lead) => lead.id)).toEqual([2, 1])
+  it('leaves the child number alone when the old number is already there', () => {
+    const result = parentNumberUpdate(
+      base({ phone: '60134681225', children: [{ name: 'Jayden', age: 12, phone: '0134681225' }] }),
+      '60198765432',
+    )
+    expect(result?.children).toEqual([{ name: 'Jayden', age: 12, phone: '0134681225' }])
+    expect(result?.notes).toBeNull()
   })
 
-  it('works for a Chinese name of two characters', () => {
-    expect(suggestLeadsByName('奕婷', [named(1, '陈奕婷')]).map((lead) => lead.id)).toEqual([1])
+  it('writes the old number in the notes when two children make it unclear whose it is', () => {
+    const result = parentNumberUpdate(
+      base({
+        phone: '60134681225',
+        notes: 'Likes robots',
+        children: [
+          { name: 'A', age: 8, phone: null },
+          { name: 'B', age: 10, phone: null },
+        ],
+      }),
+      '60198765432',
+    )
+    expect(result?.notes).toBe('Likes robots\nPrevious phone number: 60134681225')
+    expect(result?.children).toHaveLength(2)
   })
 
-  it('does not guess from a name too short to mean anything', () => {
-    expect(suggestLeadsByName('Al', [named(1, 'Alice')])).toEqual([])
-    expect(suggestLeadsByName('', [named(1, 'Alice')])).toEqual([])
+  it('sets the number on a lead that had none', () => {
+    expect(parentNumberUpdate(base({}), '+60 19-876 5432')?.phone).toBe('60198765432')
   })
 
-  it('returns at most three, closest first', () => {
-    const leads = [1, 2, 3, 4].map((id) => named(id, `Sam ${id}`))
-    expect(suggestLeadsByName('Sam', leads)).toHaveLength(3)
+  it('changes nothing when the lead holds the number, or the chat has none', () => {
+    expect(parentNumberUpdate(base({ phone: '0198765432' }), '60198765432')).toBeNull()
+    expect(
+      parentNumberUpdate(base({ children: [{ name: 'A', age: 8, phone: '60198765432' }] }), '60198765432'),
+    ).toBeNull()
+    expect(parentNumberUpdate(base({ phone: '0134681225' }), null)).toBeNull()
   })
 })
 

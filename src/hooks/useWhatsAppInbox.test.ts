@@ -227,6 +227,26 @@ describe('useWhatsAppInbox and the phone', () => {
     expect(client.setAttributes).toHaveBeenLastCalledWith(40, expect.objectContaining({ crm_pinned: false }))
   })
 
+  it('saves who is on a chat and can take it away again', async () => {
+    const client = phoneClient() as unknown as Record<string, ReturnType<typeof vi.fn>> & ChatwootClient
+    ;(client as unknown as Record<string, unknown>).setAttributes = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useWhatsAppInbox(client, staff))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    await act(async () => {
+      await result.current.setChatRole(40, 'student')
+    })
+    expect(client.setAttributes).toHaveBeenLastCalledWith(40, expect.objectContaining({ crm_chat_role: 'student' }))
+    await waitFor(() =>
+      expect(result.current.conversations.find((entry) => entry.id === 40)?.custom_attributes?.crm_chat_role).toBe('student'),
+    )
+
+    await act(async () => {
+      await result.current.setChatRole(40, null)
+    })
+    expect(client.setAttributes).toHaveBeenLastCalledWith(40, expect.objectContaining({ crm_chat_role: null }))
+  })
+
   it('stars and un-stars messages without losing the other attributes', async () => {
     const client = phoneClient() as unknown as Record<string, ReturnType<typeof vi.fn>> & ChatwootClient
     ;(client as unknown as Record<string, unknown>).setAttributes = vi.fn().mockResolvedValue(undefined)

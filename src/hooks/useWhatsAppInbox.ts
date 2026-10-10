@@ -7,6 +7,7 @@ import {
   getPhoneReadTarget,
   onePerParent,
   type ChatAttributes,
+  type ChatRole,
   type ChatwootConversation,
   type ChatwootMessage,
 } from '../lib/whatsappInbox'
@@ -409,6 +410,21 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
     [saveAttributes],
   )
 
+  // Says who is on the other end of the chat: the parent, or the student themself.
+  const setChatRole = useCallback(
+    async (conversationId: number, role: ChatRole | null) => {
+      setActionError(null)
+      try {
+        await saveAttributes(conversationId, { crm_chat_role: role })
+        return true
+      } catch {
+        setActionError("Couldn't save who is on this chat. Try again.")
+        return false
+      }
+    },
+    [saveAttributes],
+  )
+
   // The students tied to this chat by hand (the whole list, replacing the old one).
   const setStudentLinks = useCallback(
     async (conversationId: number, studentIds: number[]) => {
@@ -646,6 +662,7 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
     toggleStar,
     setLeadLink,
     setStudentLinks,
+    setChatRole,
     setStatus,
     send,
     dismissUnsent,
