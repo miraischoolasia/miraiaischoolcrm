@@ -136,6 +136,22 @@ describe('findTeacherClashes', () => {
     expect(find(weekly({ startRecur: '2026-10-21' }), [replacement])).toEqual([])
   })
 
+  it('does not count a series that ended, or an overlap that is already over', () => {
+    // Wednesday series that ran 1 Sep to 11 Oct.
+    const ended = { ...wednesday, endRecur: '2026-10-11' }
+    // The new series starts on Wednesday 7 Oct: the only shared Wednesday is 7 Oct, which is past.
+    const candidate = weekly({ startRecur: '2026-10-07' })
+    expect(find(candidate, [ended])).toHaveLength(1)
+    expect(find({ ...candidate, today: '2026-10-10' }, [ended])).toEqual([])
+    // Still a clash when a shared Wednesday (14 Oct) is yet to come.
+    expect(find({ ...candidate, today: '2026-10-08' }, [{ ...ended, endRecur: '2026-10-18' }])).toHaveLength(1)
+  })
+
+  it('does not count a one-off class that is already over', () => {
+    expect(find({ ...weekly(), today: '2026-10-20' }, [replacement])).toEqual([])
+    expect(find({ ...weekly(), today: '2026-10-14' }, [replacement])).toHaveLength(1)
+  })
+
   it('returns nothing for an incomplete or backwards time range', () => {
     expect(find(weekly({ startTime: '', endTime: '' }), [wednesday])).toEqual([])
     expect(find(weekly({ startTime: '21:00', endTime: '20:00' }), [wednesday])).toEqual([])

@@ -20,6 +20,7 @@ import { Composer } from './Composer'
 import { MessageBubble, type BubbleAvatar, type BubbleExtras } from './MessageBubble'
 import { summarizeMessage } from '../../lib/specialMessages'
 import { NO_EVENTS, waIdOf, type MessageEvents, type SpecialMessage } from '../../lib/waActions'
+import { isEditCopy, withoutEditHeading } from '../../lib/editCopy'
 
 type ChatPanelProps = {
   conversation: ChatwootConversation
@@ -30,6 +31,8 @@ type ChatPanelProps = {
   waitingMessages: ChatwootMessage[]
   hasOlder: boolean
   staff: Sender[]
+  // Who looks after the chat when that is more than what the chat itself says (the lead's person in charge).
+  handledBy?: { id: number; name: string } | null
   actionError: string | null
   className?: string
   onBack: () => void
@@ -102,6 +105,7 @@ export function ChatPanel({
   waitingMessages,
   hasOlder,
   staff,
+  handledBy,
   actionError,
   className,
   onBack,
@@ -132,7 +136,7 @@ export function ChatPanel({
   onForward,
 }: ChatPanelProps) {
   const identity = getChatIdentity(conversation.meta.sender, leadName)
-  const owner = getOwner(conversation)
+  const owner = handledBy ?? getOwner(conversation)
   const done = conversation.status === 'resolved'
   // The message the next one will answer (quote).
   const [replyTo, setReplyTo] = useState<{ conversationId: number; message: ChatwootMessage } | null>(null)
@@ -170,7 +174,15 @@ export function ChatPanel({
   let lastRun = ''
 
   const byId = new Map(messages.map((entry) => [entry.id, entry]))
-  const byWaId = new Map(messages.flatMap((entry) => (waIdOf(entry.source_id) ? [[waIdOf(entry.source_id) as string, entry] as const] : [])))
+  // The copy Evolution writes when a message is edited is hidden while the edited message itself is here.
+  const idsOfOriginals = new Set(
+    messages.flatMap((entry) => (waIdOf(entry.source_id) && !isEditCopy(entry.content) ? [waIdOf(entry.source_id) as string] : [])),
+  )
+  const byWaId = new Map(
+    messages.flatMap((entry) =>
+      waIdOf(entry.source_id) && !isEditCopy(entry.content) ? [[waIdOf(entry.source_id) as string, entry] as const] : [],
+    ),
+  )
 
   function authorOf(message: ChatwootMessage) {
     return message.message_type === 1 ? (getSenderLabel(message) ?? 'You') : identity.title
@@ -351,6 +363,12 @@ export function ChatPanel({
           if (ownWaId && messageEvents.reactionIds.has(ownWaId)) {
             return null
           }
+          const isCopyOfEdit = isEditCopy(message.content)
+          if (isCopyOfEdit && ownWaId && idsOfOriginals.has(ownWaId)) {
+            return null
+          }
+          // The edited message is not here (it is older): show the new text without the heading.
+          const shown = isCopyOfEdit ? { ...message, content: withoutEditHeading(message.content) } : message
           const day = formatDayLabel(message.created_at)
           const showDay = day !== lastDay
           lastDay = day
@@ -369,7 +387,7 @@ export function ChatPanel({
                 </div>
               )}
               <MessageBubble
-                message={message}
+                message={shown}
                 avatar={avatar}
                 showAvatar={showAvatar}
                 nowSeconds={nowSeconds}

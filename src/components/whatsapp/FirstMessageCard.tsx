@@ -13,7 +13,7 @@ type FirstMessageCardProps = {
   onManageRules?: (phrase: string) => void
 }
 
-// "How they first contacted you": what the parent wrote first, so whoever adds
+// "Source Keyword": what the parent wrote first, so whoever adds
 // the lead can tell which advert it came from.
 export function FirstMessageCard({ first, guess, hasOlder, onLoadOlder, onManageRules }: FirstMessageCardProps) {
   const guessed = [guess.source?.label, ...guess.tags.map((tag) => tag.label)].filter(Boolean)
@@ -30,7 +30,7 @@ export function FirstMessageCard({ first, guess, hasOlder, onLoadOlder, onManage
           className="flex w-full items-center gap-1.5 text-left font-semibold"
         >
           <ChatCircleText size={14} aria-hidden="true" />
-          <span className="flex-1">How they first contacted you</span>
+          <span className="flex-1">Source Keyword</span>
           <CaretDown size={12} aria-hidden="true" className={isOpen ? 'rotate-180 transition' : 'transition'} />
         </button>
       </h4>

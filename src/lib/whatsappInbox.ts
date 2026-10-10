@@ -1,4 +1,5 @@
 import type { StudentKind } from './studentLink'
+import { withoutEditHeading } from './editCopy'
 
 // What the WhatsApp inbox knows about a chat, kept apart from the screens so the
 // rules (which tab a chat sits in, whose number to show) are easy to test.
@@ -258,7 +259,7 @@ export function getPreview(conversation: Pick<ChatwootConversation, 'last_non_ac
   if (!message) {
     return ''
   }
-  const text = (message.content ?? '').trim()
+  const text = withoutEditHeading(message.content).trim()
   if (text) {
     return text
   }

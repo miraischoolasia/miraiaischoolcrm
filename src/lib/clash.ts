@@ -9,6 +9,8 @@ export type ClashCandidate = {
   startTime: string
   endTime: string
   excludeScheduleId?: number | null
+  // Today, as an ISO date. Days that are over cannot be double-booked any more, so they are not counted.
+  today?: string
 } & (
   | { kind: 'weekly'; dayOfWeek: number; startRecur: string; endRecur: string | null }
   | { kind: 'single'; date: string }
@@ -52,6 +54,39 @@ function weekdayOf(date: string) {
 
 function isWithin(date: string, start: string | null, end: string | null) {
   return (!start || date >= start) && (!end || date <= end)
+}
+
+function isoOf(date: Date) {
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+// The first day, today or later, on which both weekly series really meet (the other one is not
+// cancelled that day), within the dates both are running. Null when they never do.
+function firstSharedDay(
+  candidate: { dayOfWeek: number; startRecur: string; endRecur: string | null; today?: string },
+  schedule: { startRecur: string | null; endRecur: string | null },
+  meets: (date: string) => boolean,
+) {
+  const from = [candidate.startRecur, schedule.startRecur ?? '', candidate.today ?? ''].reduce((a, b) => (a > b ? a : b))
+  const ends = [candidate.endRecur, schedule.endRecur].filter((end): end is string => Boolean(end))
+  const to = ends.length > 0 ? ends.reduce((a, b) => (a < b ? a : b)) : null
+  const day = parseLocalDate(from)
+  while (day.getDay() !== candidate.dayOfWeek) {
+    day.setDate(day.getDate() + 1)
+  }
+  for (let week = 0; week < 60; week += 1) {
+    const iso = isoOf(day)
+    if (to && iso > to) {
+      return null
+    }
+    if (meets(iso)) {
+      return iso
+    }
+    day.setDate(day.getDate() + 7)
+  }
+  return null
 }
 
 /**
@@ -139,14 +174,17 @@ export function findTeacherClashes(
           candidate.endRecur,
           schedule.startRecur,
           schedule.endRecur,
-        )
+        ) &&
+        // A series that has already ended, or only overlapped on days that are over, is no clash.
+        firstSharedDay(candidate, schedule, (date) => weeklyMeetsOn(schedule, date)) !== null
       ) {
         when = `${weekdayLabels[candidate.dayOfWeek]} ${timeRange}`
       }
     } else if (
       schedule.scheduledDate !== null &&
       weekdayOf(schedule.scheduledDate) === candidate.dayOfWeek &&
-      isWithin(schedule.scheduledDate, candidate.startRecur, candidate.endRecur)
+      isWithin(schedule.scheduledDate, candidate.startRecur, candidate.endRecur) &&
+      (!candidate.today || schedule.scheduledDate >= candidate.today)
     ) {
       when = `${schedule.scheduledDate} ${timeRange}`
     }

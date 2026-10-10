@@ -117,7 +117,7 @@ describe('DetailsPanel', () => {
     renderPanel(makeCrm())
 
     expect(screen.queryByText('Hi, I saw your Facebook ad')).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: /How they first contacted you/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Source Keyword/ }))
     expect(screen.getByText('Hi, I saw your Facebook ad')).toBeInTheDocument()
     expect(screen.getByText('Looks like it came from: Facebook.')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Add as a new lead' })).toBeInTheDocument()
@@ -160,7 +160,7 @@ describe('DetailsPanel', () => {
       { id: 1, phrase: 'i saw your facebook ad', sourceId: 3, tagIds: [7], isActive: true },
     ])
 
-    await userEvent.click(screen.getByRole('button', { name: /How they first contacted you/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Source Keyword/ }))
     expect(screen.getByText(/Matched your rule "i saw your facebook ad": Google Ads, Free HOA/)).toBeInTheDocument()
     expect(screen.getByLabelText(/Where did they find us/)).toHaveValue('3')
   })
@@ -181,7 +181,7 @@ describe('DetailsPanel', () => {
       />,
     )
 
-    await userEvent.click(screen.getByRole('button', { name: /How they first contacted you/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Source Keyword/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Make a rule from this message' }))
     expect(onManageRules).toHaveBeenCalledWith('Hi, I saw your Facebook ad')
   })

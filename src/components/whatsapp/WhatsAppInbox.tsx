@@ -23,6 +23,7 @@ import { ChatPanel } from './ChatPanel'
 import { ConversationList } from './ConversationList'
 import { useQuickReplies } from '../../hooks/useQuickReplies'
 import { useSourceRules } from '../../hooks/useSourceRules'
+import { useAutoLeads } from '../../hooks/useAutoLeads'
 import { canonicalPhone, makeLeadResolver, quickReplyValues, resolveChatLead } from '../../lib/chatLink'
 import { draftPreview, draftsFirst, type Draft } from '../../lib/draft'
 import { createWaActions, waIdOf } from '../../lib/waActions'
@@ -152,10 +153,54 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
     (conversation: ChatwootConversation) => {
       const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
       const leadPic = lead?.picId != null ? optionsById.get(lead.picId)?.label : undefined
-      const name = leadPic ?? getOwner(conversation)?.name
+      const owner = getOwner(conversation)
+      const name = (owner ? (staff.find((person) => person.id === owner.id)?.name ?? owner.name) : undefined) ?? leadPic
       return name ? { name, initials: getInitials(name) } : null
     },
-    [resolveLead, optionsById],
+    [resolveLead, optionsById, staff],
+  )
+  // "Handled by" and the lead's person in charge are one thing for the team. They are two lists (the PIC
+  // names end in 小老师, the staff names in 老师), so a person is matched to a PIC by the name without 小.
+  const sameName = (a: string, b: string) => a.replace(/[小\s]/g, '').toLowerCase() === b.replace(/[小\s]/g, '').toLowerCase()
+  const picOptions = useMemo(() => crm.leadOptions.filter((option) => option.kind === 'pic'), [crm.leadOptions])
+  const handlerOf = useCallback(
+    (conversation: ChatwootConversation) => {
+      const owner = getOwner(conversation)
+      if (owner) {
+        return { id: owner.id, name: staff.find((person) => person.id === owner.id)?.name ?? owner.name }
+      }
+      const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
+      const pic = lead?.picId != null ? picOptions.find((option) => option.id === lead.picId) : undefined
+      return (pic ? staff.find((person) => sameName(person.name, pic.label)) : undefined) ?? null
+    },
+    [picOptions, resolveLead, staff],
+  )
+  // Choosing who handles a chat also sets the lead's person in charge, when that person is one.
+  const setHandler = useCallback(
+    (conversation: ChatwootConversation, person: Sender | null) => {
+      void inbox.setOwner(conversation.id, person)
+      const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
+      if (!lead || !crm.canEditLeads) {
+        return
+      }
+      const pic = person ? picOptions.find((option) => option.isActive && sameName(option.label, person.name)) : undefined
+      const picId = person ? (pic?.id ?? lead.picId) : null
+      if (picId === lead.picId) {
+        return
+      }
+      void crm.onUpdateLead(lead.id, {
+        fullName: lead.fullName ?? '',
+        phone: lead.phone ?? '',
+        state: lead.state ?? '',
+        sourceId: lead.sourceId,
+        picId,
+        tagIds: lead.tagIds,
+        status: lead.status,
+        children: lead.children.map((child) => ({ name: child.name, age: child.age, phone: child.phone })),
+        notes: lead.notes ?? '',
+      })
+    },
+    [crm, inbox, picOptions, resolveLead],
   )
   // A parent can have two chats: an old one imported under a hidden WhatsApp ID, and the one
   // WhatsApp now uses with their number. Both are tied to the same lead.
@@ -295,6 +340,18 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
 
   const quickReplies = useQuickReplies(true)
   const sourceRules = useSourceRules(true)
+  // A new chat that matches a source rule becomes a lead without anyone pressing "Save lead".
+  useAutoLeads({
+    enabled: active,
+    client,
+    conversations: inbox.conversations,
+    crm,
+    rules: sourceRules.rules,
+    ready: !sourceRules.isLoading && !inbox.isLoading && crm.leads.length > 0 && crm.students.length > 0,
+    hasLead: (conversation) => leadIdOf(conversation) !== null,
+    hasStudents: (conversation) => studentsOf(conversation).length > 0,
+    linkLead: inbox.setLeadLink,
+  })
   // Set while the source rules window is open; phrase starts a new rule from a message.
   const [managingRules, setManagingRules] = useState<{ phrase: string } | null>(null)
   const [managingReplies, setManagingReplies] = useState(false)
@@ -460,6 +517,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
             waitingMessages={inbox.waitingMessages}
             hasOlder={inbox.hasOlder}
             staff={staff}
+            handledBy={handlerOf(inbox.selected)}
             actionError={inbox.actionError ?? messageEvents.error}
             onBack={() => {
               setDetailsOpen(false)
@@ -469,7 +527,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
             onLoadOlder={() => void inbox.loadOlder()}
             onSend={inbox.send}
             onDismissUnsent={inbox.dismissUnsent}
-            onSetOwner={(person) => void inbox.setOwner(inbox.selected!.id, person)}
+            onSetOwner={(person) => setHandler(inbox.selected!, person)}
             onSetStatus={(status) => void inbox.setStatus(inbox.selected!.id, status)}
             onMarkUnread={() => void inbox.markUnread(inbox.selected!.id)}
             quickReplies={quickReplies}

@@ -850,6 +850,7 @@ function App() {
       startTime: scheduleFormState.startTime,
       endTime: scheduleFormState.endTime,
       excludeScheduleId: editingScheduleId,
+      today: todayString,
     }
     let candidate: ClashCandidate | null = null
 
@@ -878,6 +879,7 @@ function App() {
     scheduleExceptions,
     scheduleFormState,
     schedules,
+    todayString,
   ])
 
   useEffect(() => {
