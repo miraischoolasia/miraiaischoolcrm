@@ -61,6 +61,8 @@ export type ChatAttributes = {
   crm_pinned?: boolean
   // Messages of this chat the team starred, by Chatwoot's id.
   crm_starred?: number[]
+  // Students the team tied to this chat by hand, for a parent whose number matches nobody.
+  crm_student_ids?: number[]
 }
 
 export type ChatwootConversation = {
@@ -217,6 +219,15 @@ export function getLinkedLeadId(conversation: Pick<ChatwootConversation, 'custom
   }
   const number = Number(id)
   return Number.isFinite(number) ? number : null
+}
+
+// The students the team tied to this chat by hand.
+export function getLinkedStudentIds(conversation: Pick<ChatwootConversation, 'custom_attributes'>) {
+  const ids = conversation.custom_attributes?.crm_student_ids
+  if (!Array.isArray(ids)) {
+    return []
+  }
+  return ids.map(Number).filter((id) => Number.isFinite(id))
 }
 
 export function attachmentLabel(attachment: ChatwootAttachment) {

@@ -12,6 +12,26 @@ export function normalizePhoneInput(raw: string) {
   return digits.startsWith('0') ? `60${digits.slice(1)}` : digits
 }
 
+type FindChatClient = Pick<ChatwootClient, 'getInboxId' | 'findContactByPhone' | 'listContactConversations'>
+
+// Whether a chat with this number exists already, without making one. Null when
+// there is none, or when the number cannot be a number.
+export async function findChatByPhone(client: FindChatClient, phone: string): Promise<number | null> {
+  const digits = normalizePhoneInput(phone)
+  if (!digits) {
+    return null
+  }
+  const contact = await client.findContactByPhone(digits)
+  if (!contact) {
+    return null
+  }
+  const inboxId = await client.getInboxId()
+  const existing = (await client.listContactConversations(contact.id))
+    .filter((conversation) => conversation.inbox_id === inboxId)
+    .sort((a, b) => b.id - a.id)
+  return (existing.find((conversation) => conversation.status !== 'resolved') ?? existing[0])?.id ?? null
+}
+
 export type StartChatResult =
   | { conversationId: number; created: boolean; reopened: boolean; error: null }
   | { conversationId: null; created: false; reopened: false; error: string }

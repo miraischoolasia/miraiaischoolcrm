@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '../../lib/cn'
 import { createChatwootClient, type Sender } from '../../lib/chatwootClient'
 import { useMessageSearch } from '../../hooks/useMessageSearch'
@@ -11,8 +11,10 @@ import {
   getChatIdentity,
   getInitials,
   getLinkedLeadId,
+  getLinkedStudentIds,
   getOwner,
   getRealPhone,
+  getTab,
   isRecentlyOverdue,
   type InboxTab,
 } from '../../lib/whatsappInbox'
@@ -20,9 +22,10 @@ import { ChatPanel } from './ChatPanel'
 import { ConversationList } from './ConversationList'
 import { useQuickReplies } from '../../hooks/useQuickReplies'
 import { useSourceRules } from '../../hooks/useSourceRules'
-import { makeLeadResolver, quickReplyValues, resolveChatLead } from '../../lib/chatLink'
+import { canonicalPhone, makeLeadResolver, quickReplyValues, resolveChatLead } from '../../lib/chatLink'
 import { draftPreview, draftsFirst, type Draft } from '../../lib/draft'
 import { createWaActions, waIdOf } from '../../lib/waActions'
+import { findChatByPhone } from '../../lib/startChat'
 import { splitSequence } from '../../lib/outbox'
 import { summarizeMessage } from '../../lib/specialMessages'
 import { ForwardDialog } from './ForwardDialog'
@@ -42,9 +45,11 @@ type WhatsAppInboxProps = {
   crm: WhatsAppCrm
   // False while another page is showing; this page stays mounted so it is as it was left.
   active?: boolean
+  // A number somewhere else in the app asked for its chat. Each request has its own id.
+  openRequest?: { id: number; phone: string; name: string | null; leadId: number | null } | null
 }
 
-export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }: WhatsAppInboxProps) {
+export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, openRequest = null }: WhatsAppInboxProps) {
   const client = useMemo(() => createChatwootClient(apiUrl), [apiUrl])
   const waActions = useMemo(() => createWaActions(apiUrl), [apiUrl])
   const inbox = useWhatsAppInbox(client, currentUser, active)
@@ -90,7 +95,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
   const studentsOf = useCallback(
     (conversation: ChatwootConversation) => {
       const phone = getRealPhone(conversation.meta.sender.phone_number)
-      return resolveStudents(resolveLead(getLinkedLeadId(conversation), phone), phone)
+      return resolveStudents(resolveLead(getLinkedLeadId(conversation), phone), phone, getLinkedStudentIds(conversation))
     },
     [resolveLead, resolveStudents],
   )
@@ -249,8 +254,56 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
   const [managingRules, setManagingRules] = useState<{ phrase: string } | null>(null)
   const [managingReplies, setManagingReplies] = useState(false)
   const [startingChat, setStartingChat] = useState(false)
+  // The number and lead a "New chat" window starts with, when it was opened from one.
+  const [chatPrefill, setChatPrefill] = useState<{ phone: string; name: string; leadId: number | null } | null>(null)
   // The message being forwarded, while the person picks the chats.
   const [forwarding, setForwarding] = useState<ChatwootMessage | null>(null)
+
+  // Another page asked for the chat of a number: open the one this page has, else look
+  // for it on the server, and only when there is none offer to start one.
+  const handledRequest = useRef<number | null>(null)
+  const { conversations: loadedChats, isLoading: isLoadingChats, setSelectedId, startNewChat } = inbox
+  useEffect(() => {
+    if (!openRequest || !active || isLoadingChats || handledRequest.current === openRequest.id) {
+      return
+    }
+    handledRequest.current = openRequest.id
+    const wanted = canonicalPhone(openRequest.phone)
+    const show = (conversation: ChatwootConversation | null) => {
+      setSearch('')
+      setTagId(null)
+      setSourceId(null)
+      setKind(null)
+      setDetailsOpen(false)
+      if (conversation) {
+        setTab(getTab(conversation))
+        setSelectedId(conversation.id)
+      }
+    }
+    const here = loadedChats.find(
+      (conversation) =>
+        (openRequest.leadId !== null && getLinkedLeadId(conversation) === openRequest.leadId) ||
+        (wanted !== null && canonicalPhone(getRealPhone(conversation.meta.sender.phone_number)) === wanted),
+    )
+    if (here) {
+      show(here)
+      return
+    }
+    void (async () => {
+      const found = await findChatByPhone(client, openRequest.phone).catch(() => null)
+      if (found !== null) {
+        const result = await startNewChat({ phone: openRequest.phone, name: openRequest.name ?? '' })
+        if (result.error === null) {
+          show(null)
+          setTab('chats')
+          return
+        }
+      }
+      show(null)
+      setChatPrefill({ phone: openRequest.phone, name: openRequest.name ?? '', leadId: openRequest.leadId })
+      setStartingChat(true)
+    })()
+  }, [openRequest, active, isLoadingChats, loadedChats, client, setSelectedId, startNewChat])
 
   const forwardTargets = useMemo(
     () =>
@@ -423,6 +476,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
             onManageRules={(phrase) => setManagingRules({ phrase })}
             onLoadOlder={() => void inbox.loadOlder()}
             onLinkLead={(leadId) => inbox.setLeadLink(inbox.selected!.id, leadId)}
+            onLinkStudents={(ids) => inbox.setStudentLinks(inbox.selected!.id, ids)}
             userName={currentUser.name}
             onWriteMessage={(text) => {
               setDraftRequest((current) => ({ id: (current?.id ?? 0) + 1, text }))
@@ -446,7 +500,11 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true }
       {startingChat && (
         <NewChatDialog
           leads={crm.leads}
-          onClose={() => setStartingChat(false)}
+          initial={chatPrefill ?? undefined}
+          onClose={() => {
+            setStartingChat(false)
+            setChatPrefill(null)
+          }}
           onStart={async ({ phone, name, leadId }) => {
             const result = await inbox.startNewChat({ phone, name })
             if (result.error !== null) {

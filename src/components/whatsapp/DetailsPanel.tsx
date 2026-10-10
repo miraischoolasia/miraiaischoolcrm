@@ -7,12 +7,13 @@ import {
   suggestLeadsByName,
 } from '../../lib/chatLink'
 import { searchLeads } from '../../lib/leadSearch'
-import { makeStudentResolver } from '../../lib/studentLink'
+import { getStudentKind, makeStudentResolver } from '../../lib/studentLink'
 import type { SourceRule } from '../../lib/sourceRules'
 import {
   formatListTime,
   getChatIdentity,
   getLinkedLeadId,
+  getLinkedStudentIds,
   getOwner,
   getRealPhone,
   type ChatwootConversation,
@@ -24,6 +25,8 @@ import { LeadForm } from './LeadForm'
 import { LeadHeader } from './LeadCard'
 import { EnrolPanel } from './EnrolPanel'
 import { StudentCard } from './StudentCard'
+import { StudentLinker } from './StudentLinker'
+import type { Student } from '../../types/domain'
 import { PanelSection } from './PanelSection'
 import type { WaLabel } from '../../lib/waActions'
 
@@ -37,6 +40,8 @@ type DetailsPanelProps = {
   onManageRules?: (phrase: string) => void
   onLoadOlder: () => void
   onLinkLead: (leadId: number | null) => Promise<boolean>
+  // Replaces the students tied to this chat by hand.
+  onLinkStudents: (studentIds: number[]) => Promise<boolean>
   // Who is using the page, written on the receipts and Zoom meetings they add.
   userName?: string | null
   // Puts text in the message box, for the team to read and send.
@@ -65,6 +70,7 @@ export function DetailsPanel({
   onManageRules,
   onLoadOlder,
   onLinkLead,
+  onLinkStudents,
   userName = null,
   onWriteMessage,
   otherChats = [],
@@ -84,11 +90,32 @@ export function DetailsPanel({
   const identity = getChatIdentity(sender, lead?.fullName)
 
   // Every child of this parent: through the lead, the HOA bookings and the phone number.
+  const linkedStudentIds = useMemo(() => getLinkedStudentIds(conversation), [conversation])
   const students = useMemo(
     () =>
-      makeStudentResolver({ students: crm.students, trialBookings: crm.trialBookings, packages: crm.packages })(lead, phone),
-    [crm.students, crm.trialBookings, crm.packages, lead, phone],
+      makeStudentResolver({ students: crm.students, trialBookings: crm.trialBookings, packages: crm.packages })(
+        lead,
+        phone,
+        linkedStudentIds,
+      ),
+    [crm.students, crm.trialBookings, crm.packages, lead, phone, linkedStudentIds],
   )
+  // A parent whose child is already in a class is not at the start of the HOA steps.
+  const isEnrolled = lead?.status === 'converted' || students.some((student) => getStudentKind(student, crm.packages) !== 'hoa')
+
+  async function linkStudent(student: Student) {
+    if (!(await onLinkStudents([...linkedStudentIds.filter((id) => id !== student.id), student.id]))) {
+      return "Couldn't link this chat to the student. Try again."
+    }
+    // A student with no number gets this parent's, so the phone finds them from now on.
+    if (phone && !student.phone?.trim() && crm.canEditStudents && student.studentType !== 'preview') {
+      const problem = await crm.onSetStudentPhone(student.id, phone)
+      if (problem) {
+        return `Linked, but the number was not saved on the student: ${problem}`
+      }
+    }
+    return null
+  }
 
   const first = useMemo(() => getFirstMessage(messages), [messages])
   const guess = useMemo(() => guessSourceAndTags(first?.text ?? '', crm.leadOptions, sourceRules), [first, crm.leadOptions, sourceRules])
@@ -123,6 +150,26 @@ export function DetailsPanel({
         {/* The slots below keep their place whether or not the chat is a lead yet, so the
             form is the same one before and after saving and only says "Saved". */}
         {lead ? <LeadHeader lead={lead} byPhone={byPhone} onUnlink={() => void onLinkLead(null)} /> : null}
+        {/* Who the school already has as students comes first: a parent of a student is not a new lead. */}
+        {students.map((student) => (
+          <StudentCard
+            key={student.id}
+            student={student}
+            crm={crm}
+            onUnlink={
+              linkedStudentIds.includes(student.id)
+                ? () => void onLinkStudents(linkedStudentIds.filter((id) => id !== student.id))
+                : undefined
+            }
+          />
+        ))}
+        <StudentLinker
+          students={crm.students}
+          packages={crm.packages}
+          shownIds={students.map((student) => student.id)}
+          isEmpty={students.length === 0}
+          onLink={linkStudent}
+        />
         {otherChats.length > 0 && onOpenChat && (
           <section className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
             <h4 className="font-semibold">This parent has another chat</h4>
@@ -274,12 +321,17 @@ export function DetailsPanel({
           </PanelSection>
         )}
         {lead && onWriteMessage ? (
-          <EnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} />
+          isEnrolled ? (
+            <details className="border-t border-pink-100 pt-4 text-xs">
+              <summary className="cursor-pointer font-semibold text-[#be185d]">Enrol another child in HOA</summary>
+              <div className="mt-3">
+                <EnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} />
+              </div>
+            </details>
+          ) : (
+            <EnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} />
+          )
         ) : null}
-
-        {students.map((student) => (
-          <StudentCard key={student.id} student={student} crm={crm} />
-        ))}
       </div>
     </aside>
   )

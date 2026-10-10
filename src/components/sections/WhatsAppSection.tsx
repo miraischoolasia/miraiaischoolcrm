@@ -14,11 +14,30 @@ type WhatsAppSectionProps = {
   crm: WhatsAppCrm
   // False while another page is showing (the page stays mounted).
   active?: boolean
+  // A number elsewhere in the app asked for its chat.
+  openRequest?: { id: number; phone: string; name: string | null; leadId: number | null } | null
 }
 
-export function WhatsAppSection({ chatwootUrl, apiUrl, currentUser, staff, crm, active = true }: WhatsAppSectionProps) {
+export function WhatsAppSection({
+  chatwootUrl,
+  apiUrl,
+  currentUser,
+  staff,
+  crm,
+  active = true,
+  openRequest = null,
+}: WhatsAppSectionProps) {
   if (apiUrl && currentUser) {
-    return <WhatsAppInbox apiUrl={apiUrl} currentUser={currentUser} staff={staff} crm={crm} active={active} />
+    return (
+      <WhatsAppInbox
+        apiUrl={apiUrl}
+        currentUser={currentUser}
+        staff={staff}
+        crm={crm}
+        active={active}
+        openRequest={openRequest}
+      />
+    )
   }
 
   const inboxUrl = `${chatwootUrl}/app/`

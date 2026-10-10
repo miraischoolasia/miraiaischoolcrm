@@ -662,7 +662,7 @@ export function LeadsSection({
                       <dt className="text-xs font-medium text-slate-500">Phone</dt>
                       <dd className="inline-flex items-center gap-1 text-slate-700">
                         {lead.phone || '-'}
-                        <WhatsAppLink phone={lead.phone} name={lead.fullName} />
+                        <WhatsAppLink phone={lead.phone} name={lead.fullName} leadId={lead.id} />
                       </dd>
                     </div>
                     <div className="flex justify-between gap-3">
@@ -839,7 +839,7 @@ export function LeadsSection({
                         )}
                         <span className="inline-flex items-center gap-1">
                           {lead.phone || '-'}
-                          <WhatsAppLink phone={lead.phone} name={lead.fullName} />
+                          <WhatsAppLink phone={lead.phone} name={lead.fullName} leadId={lead.id} />
                         </span>
                         <div className="mt-1">
                           <SourceLink

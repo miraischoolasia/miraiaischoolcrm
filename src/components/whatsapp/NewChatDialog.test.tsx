@@ -67,4 +67,22 @@ describe('NewChatDialog', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't start the chat.")
     expect(onClose).not.toHaveBeenCalled()
   })
+
+  it('opens with the number, name and lead it was asked for', async () => {
+    const onStart = vi.fn().mockResolvedValue(null)
+    render(
+      <NewChatDialog
+        leads={[lead]}
+        initial={{ phone: '012-345 6789', name: 'Mei Ling', leadId: 11 }}
+        onClose={vi.fn()}
+        onStart={onStart}
+      />,
+    )
+
+    expect(screen.getByLabelText('Phone number')).toHaveValue('012-345 6789')
+    expect(screen.getByLabelText('Name (optional)')).toHaveValue('Mei Ling')
+    await userEvent.click(screen.getByRole('button', { name: 'Start chat' }))
+
+    await waitFor(() => expect(onStart).toHaveBeenCalledWith({ phone: '012-345 6789', name: 'Mei Ling', leadId: 11 }))
+  })
 })

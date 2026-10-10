@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { normalizePhoneInput, startChat } from './startChat'
+import { findChatByPhone, normalizePhoneInput, startChat } from './startChat'
 
 function fakeClient(patch: Record<string, unknown> = {}) {
   return {
@@ -96,5 +96,45 @@ describe('startChat', () => {
     const result = await startChat(client, { phone: '60123456789', name: '' })
 
     expect(result).toMatchObject({ conversationId: null, error: expect.stringMatching(/Couldn't start/) })
+  })
+})
+
+describe('findChatByPhone', () => {
+  it('finds the open chat of a number without making anything', async () => {
+    const client = fakeClient({
+      findContactByPhone: vi.fn().mockResolvedValue({ id: 7 }),
+      listContactConversations: vi.fn().mockResolvedValue([
+        { id: 4, status: 'resolved', inbox_id: 1 },
+        { id: 6, status: 'open', inbox_id: 1 },
+        { id: 9, status: 'open', inbox_id: 2 },
+      ]),
+    })
+
+    expect(await findChatByPhone(client, '012-345 6789')).toBe(6)
+    expect(client.findContactByPhone).toHaveBeenCalledWith('60123456789')
+    expect(client.createContact).not.toHaveBeenCalled()
+    expect(client.createConversation).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the latest finished chat, and leaves it finished', async () => {
+    const client = fakeClient({
+      findContactByPhone: vi.fn().mockResolvedValue({ id: 7 }),
+      listContactConversations: vi.fn().mockResolvedValue([
+        { id: 4, status: 'resolved', inbox_id: 1 },
+        { id: 5, status: 'resolved', inbox_id: 1 },
+      ]),
+    })
+
+    expect(await findChatByPhone(client, '60123456789')).toBe(5)
+    expect(client.setStatus).not.toHaveBeenCalled()
+  })
+
+  it('says there is none for a number nobody has written from, or one that is too short', async () => {
+    const client = fakeClient()
+
+    expect(await findChatByPhone(client, '60123456789')).toBeNull()
+    expect(await findChatByPhone(client, '123')).toBeNull()
+    expect(client.findContactByPhone).toHaveBeenCalledTimes(1)
+    expect(client.createContact).not.toHaveBeenCalled()
   })
 })

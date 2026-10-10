@@ -93,7 +93,9 @@ export function makeStudentResolver({ students, trialBookings, packages }: Sourc
     }
   }
 
-  return (lead: Lead | null, chatPhone: string | null): Student[] => {
+  // linkedIds are students the team tied to the chat by hand: they count even when no
+  // phone number or lead leads to them.
+  return (lead: Lead | null, chatPhone: string | null, linkedIds: number[] = []): Student[] => {
     const found = new Map<number, Student>()
     const add = (student: Student | undefined) => {
       if (student) {
@@ -104,6 +106,9 @@ export function makeStudentResolver({ students, trialBookings, packages }: Sourc
       .map((phone) => canonicalPhone(phone))
       .filter((phone): phone is string => phone !== null)
 
+    for (const id of linkedIds) {
+      add(byId.get(id))
+    }
     if (lead) {
       if (lead.convertedStudentId !== null) {
         add(byId.get(lead.convertedStudentId))

@@ -409,6 +409,21 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
     [saveAttributes],
   )
 
+  // The students tied to this chat by hand (the whole list, replacing the old one).
+  const setStudentLinks = useCallback(
+    async (conversationId: number, studentIds: number[]) => {
+      setActionError(null)
+      try {
+        await saveAttributes(conversationId, { crm_student_ids: studentIds })
+        return true
+      } catch {
+        setActionError("Couldn't link this chat to the student. Try again.")
+        return false
+      }
+    },
+    [saveAttributes],
+  )
+
   const setStatus = useCallback(
     async (conversationId: number, status: 'open' | 'resolved') => {
       setActionError(null)
@@ -630,6 +645,7 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
     togglePinned,
     toggleStar,
     setLeadLink,
+    setStudentLinks,
     setStatus,
     send,
     dismissUnsent,

@@ -152,7 +152,7 @@ export function LeadModal({
           <label className="space-y-2">
             <span className="flex items-center gap-1 text-sm font-semibold text-slate-700">
               Phone
-              <WhatsAppLink phone={formState.phone} name={formState.fullName} />
+              <WhatsAppLink phone={formState.phone} name={formState.fullName} leadId={editingLead?.id ?? null} onOpened={onClose} />
             </span>
             <input
               type="text"

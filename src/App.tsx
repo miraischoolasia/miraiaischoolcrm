@@ -142,6 +142,7 @@ import { buildTeacherAgenda, formatClockTime } from './lib/teacherAgenda'
 import { TeacherManagementSection } from './components/sections/TeacherManagementSection'
 import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
+import { WhatsAppOpenProvider, type WhatsAppTarget } from './components/WhatsAppLink'
 import type { LeadFormValues, WhatsAppCrm } from './components/whatsapp/crm'
 import { describeHoaSlot, upcomingHoaSlots, type HoaSlot } from './lib/hoaSlots'
 import { appendLeaveNote } from './lib/chatLink'
@@ -658,6 +659,14 @@ function App() {
     () => teachers.filter((teacher) => teacher.isActive).map((teacher) => ({ id: teacher.id, name: teacher.fullName })),
     [teachers],
   )
+  // The WhatsApp button next to a phone number asks for that number's chat on the WhatsApp page.
+  const [whatsAppRequest, setWhatsAppRequest] = useState<(WhatsAppTarget & { id: number }) | null>(null)
+  const openWhatsAppChat = useCallback((target: WhatsAppTarget) => {
+    setWhatsAppRequest((current) => ({ ...target, id: (current?.id ?? 0) + 1 }))
+    setActiveSection('whatsapp')
+  }, [])
+  // Only when the school's own WhatsApp page is there to open; otherwise the button opens wa.me.
+  const canOpenWhatsAppChat = allowedSections.includes('whatsapp') && Boolean(whatsAppApiUrl && whatsAppUser)
   const {
     leadIdsWithForms,
     submissions: editingLeadFormSubmissions,
@@ -3364,6 +3373,29 @@ function App() {
     return null
   }
 
+  // A student who had no number gets the parent's, so this chat (and the Students page's
+  // WhatsApp button) find each other by phone from now on.
+  async function setStudentPhoneFromChat(studentId: number, phone: string) {
+    const student = students.find((entry) => entry.id === studentId)
+    if (!supabase || !student) {
+      return 'That student is no longer in the list.'
+    }
+    const { error } = await supabase.rpc('update_student_record', {
+      p_student_id: student.id,
+      p_full_name: student.name,
+      p_phone: phone,
+      p_teacher_id: student.classroomId ? (classroomMap.get(student.classroomId)?.teacherId ?? null) : null,
+      p_classroom_id: student.classroomId,
+      p_notes: student.notes,
+      p_student_type: student.studentType,
+    })
+    if (error) {
+      return getErrorMessage(error, "Couldn't save the phone number.")
+    }
+    await refreshStudentsAndLogs()
+    return null
+  }
+
   // The same booking the calendar makes, for a parent who is talking to us on WhatsApp.
   async function bookHoaFromChat(
     leadId: number,
@@ -3450,6 +3482,7 @@ function App() {
     },
     onAddOption: handleAddLeadOption,
     onRecordLeave: recordLeaveFromChat,
+    onSetStudentPhone: setStudentPhoneFromChat,
     onOpenLead: openEditLeadModal,
     leadIdsWithForms,
     onOpenFormAnswers: openLeadFormAnswers,
@@ -5095,6 +5128,7 @@ function App() {
   }
 
   return (
+    <WhatsAppOpenProvider value={canOpenWhatsAppChat ? openWhatsAppChat : null}>
     <main className="compact-admin min-h-screen bg-white pb-20 text-slate-900 lg:pb-0">
       {confirmDialog}
       {toastHost}
@@ -5782,6 +5816,7 @@ function App() {
                   staff={whatsAppStaff}
                   crm={whatsAppCrm}
                   active={visibleSection === 'whatsapp'}
+                  openRequest={whatsAppRequest}
                 />
               </div>
             )}
@@ -6364,6 +6399,7 @@ function App() {
         </div>
       </nav>
     </main>
+    </WhatsAppOpenProvider>
   )
 }
 

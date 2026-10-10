@@ -59,6 +59,8 @@ export type WhatsAppCrm = {
   trialDateFor: (leadId: number) => string | null
   onAddOption: (kind: LeadOptionKind, label: string, color?: string) => Promise<LeadOption | null>
   onRecordLeave: (studentId: number, text: string) => Promise<string | null>
+  // Writes the parent's number on a student who has none, so the chat finds them by phone too.
+  onSetStudentPhone: (studentId: number, phone: string) => Promise<string | null>
   onOpenLead: (leadId: number) => void
   // Leads that filled in one of the school's forms, and a way to read what they wrote.
   leadIdsWithForms: Set<number>

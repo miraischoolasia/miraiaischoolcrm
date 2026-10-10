@@ -47,6 +47,26 @@ describe('makeStudentResolver', () => {
     expect(resolve(null, '60999999999')).toEqual([])
   })
 
+  it('finds a student the team tied to the chat by hand, with no phone or lead to go on', () => {
+    const resolve = makeStudentResolver({
+      students: [student(1, 'Amy'), student(2, 'Ben')],
+      trialBookings: [],
+      packages,
+    })
+    expect(resolve(null, null, [2]).map((entry) => entry.id)).toEqual([2])
+    // A student that was deleted since is skipped, not an error.
+    expect(resolve(null, null, [99])).toEqual([])
+  })
+
+  it('shows a student found by hand and by phone once', () => {
+    const resolve = makeStudentResolver({
+      students: [student(1, 'Amy', { phone: '0123456789' })],
+      trialBookings: [],
+      packages,
+    })
+    expect(resolve(null, '60123456789', [1]).map((entry) => entry.id)).toEqual([1])
+  })
+
   it('follows the lead to the student it was converted into and to the child who came to HOA', () => {
     const resolve = makeStudentResolver({
       students: [student(1, 'Amy'), student(2, 'Ben', { studentType: 'trial' })],

@@ -279,7 +279,7 @@ export function StudentDetailModal({
                     >
                       {copied ? 'Copied' : 'Copy'}
                     </button>
-                    <WhatsAppLink phone={student.phone} name={student.name} />
+                    <WhatsAppLink phone={student.phone} name={student.name} onOpened={onClose} />
                   </>
                 )}
               </div>

@@ -7,6 +7,9 @@ import type { SourceRule } from '../../lib/sourceRules'
 import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
 
+// The enrolment steps have their own tests; here only where they are placed matters.
+vi.mock('./EnrolPanel', () => ({ EnrolPanel: () => <div>Enrol steps</div> }))
+
 const conversation = (attributes: ChatwootConversation['custom_attributes'] = {}): ChatwootConversation => ({
   id: 7,
   status: 'open',
@@ -76,6 +79,7 @@ function makeCrm(patch: Partial<WhatsAppCrm> = {}): WhatsAppCrm {
     trialDateFor: () => null,
     onAddOption: vi.fn().mockResolvedValue(null),
     onRecordLeave: vi.fn().mockResolvedValue(null),
+    onSetStudentPhone: vi.fn().mockResolvedValue(null),
     onOpenLead: vi.fn(),
     leadIdsWithForms: new Set<number>(),
     onOpenFormAnswers: vi.fn(),
@@ -91,6 +95,7 @@ function renderPanel(
   attributes?: ChatwootConversation['custom_attributes'],
   onLinkLead = vi.fn().mockResolvedValue(true),
   rules: SourceRule[] = [],
+  onLinkStudents = vi.fn().mockResolvedValue(true),
 ) {
   render(
     <DetailsPanel
@@ -101,6 +106,7 @@ function renderPanel(
       sourceRules={rules}
       onLoadOlder={vi.fn()}
       onLinkLead={onLinkLead}
+      onLinkStudents={onLinkStudents}
     />,
   )
   return onLinkLead
@@ -164,6 +170,7 @@ describe('DetailsPanel', () => {
         onManageRules={onManageRules}
         onLoadOlder={vi.fn()}
         onLinkLead={vi.fn()}
+        onLinkStudents={vi.fn().mockResolvedValue(true)}
       />,
     )
 
@@ -286,6 +293,7 @@ describe('DetailsPanel', () => {
         sourceRules={[]}
         onLoadOlder={vi.fn()}
         onLinkLead={vi.fn()}
+        onLinkStudents={vi.fn().mockResolvedValue(true)}
       />,
     )
     await userEvent.type(screen.getByLabelText('Notes'), 'Call after 5')
@@ -314,6 +322,7 @@ describe('DetailsPanel', () => {
         sourceRules={[]}
         onLoadOlder={vi.fn()}
         onLinkLead={vi.fn()}
+        onLinkStudents={vi.fn().mockResolvedValue(true)}
       />,
     )
     await userEvent.type(screen.getByLabelText('Notes'), 'my edit')
@@ -328,6 +337,7 @@ describe('DetailsPanel', () => {
         sourceRules={[]}
         onLoadOlder={vi.fn()}
         onLinkLead={vi.fn()}
+        onLinkStudents={vi.fn().mockResolvedValue(true)}
       />,
     )
 
@@ -425,6 +435,7 @@ describe('DetailsPanel', () => {
         sourceRules={[]}
         onLoadOlder={vi.fn()}
         onLinkLead={vi.fn()}
+        onLinkStudents={vi.fn().mockResolvedValue(true)}
         otherChats={[{ id: 9, title: 'jiayu', lastActivity: 1_790_000_000, isDone: false }]}
         onOpenChat={onOpenChat}
       />,
@@ -441,4 +452,82 @@ describe('DetailsPanel', () => {
     expect(screen.getByRole('heading', { level: 3 })).toHaveTextContent(lead.fullName ?? '')
   })
 
+  describe('a parent whose number matches no student', () => {
+    const ethan = { id: 1, name: 'Ethan Lim', phone: null, studentType: 'regular', packageId: 2, isActive: true } as Student
+    const packages = [{ id: 2, name: '3 Months', kind: 'regular' } as Package]
+
+    it('ties a student to the chat and writes the parent number on a student who has none', async () => {
+      const crm = makeCrm({ students: [ethan], packages })
+      const onLinkStudents = vi.fn().mockResolvedValue(true)
+      renderPanel(crm, {}, vi.fn().mockResolvedValue(true), [], onLinkStudents)
+
+      await userEvent.type(screen.getByLabelText('Is this the parent of a student? Find the child'), 'ethan')
+      await userEvent.click(screen.getByRole('button', { name: /Ethan Lim/ }))
+
+      await waitFor(() => expect(onLinkStudents).toHaveBeenCalledWith([1]))
+      expect(crm.onSetStudentPhone).toHaveBeenCalledWith(1, '60123456789')
+    })
+
+    it('does not write a number over one the student already has', async () => {
+      const crm = makeCrm({ students: [{ ...ethan, phone: '019 888 7777' }], packages })
+      const onLinkStudents = vi.fn().mockResolvedValue(true)
+      renderPanel(crm, {}, vi.fn().mockResolvedValue(true), [], onLinkStudents)
+
+      await userEvent.type(screen.getByLabelText('Is this the parent of a student? Find the child'), 'ethan')
+      await userEvent.click(screen.getByRole('button', { name: /Ethan Lim/ }))
+
+      await waitFor(() => expect(onLinkStudents).toHaveBeenCalledWith([1]))
+      expect(crm.onSetStudentPhone).not.toHaveBeenCalled()
+    })
+
+    it('shows a student tied by hand first, and can take the tie away again', async () => {
+      const onLinkStudents = vi.fn().mockResolvedValue(true)
+      renderPanel(makeCrm({ students: [ethan], packages }), { crm_student_ids: [1] }, vi.fn(), [], onLinkStudents)
+
+      expect(screen.getByText('Ethan Lim')).toBeInTheDocument()
+      expect(screen.getByText('Regular · 3 Months')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Not their child? Unlink' }))
+
+      expect(onLinkStudents).toHaveBeenCalledWith([])
+    })
+
+    it('puts the HOA steps away for a parent who already has a student in a class', () => {
+      const crm = makeCrm({ leads: [{ ...lead, convertedStudentId: 1 }], students: [ethan], packages })
+      render(
+        <DetailsPanel
+          conversation={conversation({ crm_lead_id: 11 })}
+          messages={[firstMessage]}
+          hasOlder={false}
+          crm={crm}
+          sourceRules={[]}
+          onLoadOlder={vi.fn()}
+          onLinkLead={vi.fn()}
+          onLinkStudents={vi.fn()}
+          onWriteMessage={vi.fn()}
+        />,
+      )
+
+      const summary = screen.getByText('Enrol another child in HOA')
+      expect(summary.closest('details')).not.toHaveAttribute('open')
+    })
+
+    it('keeps the HOA steps open for a lead nobody has enrolled yet', () => {
+      render(
+        <DetailsPanel
+          conversation={conversation({ crm_lead_id: 11 })}
+          messages={[firstMessage]}
+          hasOlder={false}
+          crm={makeCrm({ leads: [lead] })}
+          sourceRules={[]}
+          onLoadOlder={vi.fn()}
+          onLinkLead={vi.fn()}
+          onLinkStudents={vi.fn()}
+          onWriteMessage={vi.fn()}
+        />,
+      )
+
+      expect(screen.getByText('Enrol steps')).toBeInTheDocument()
+      expect(screen.queryByText('Enrol another child in HOA')).not.toBeInTheDocument()
+    })
+  })
 })

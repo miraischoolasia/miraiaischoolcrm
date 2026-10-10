@@ -12,6 +12,7 @@ import {
   getChatIdentity,
   onePerParent,
   getInitials,
+  getLinkedStudentIds,
   getOwner,
   getPreview,
   getRealPhone,
@@ -341,5 +342,17 @@ describe('waiting too long', () => {
     expect(formatWaiting(45 * 60)).toBe('45 min')
     expect(formatWaiting(3 * 3600 + 100)).toBe('3 h')
     expect(formatWaiting(2 * 86400 + 5)).toBe('2 d')
+  })
+})
+
+describe('getLinkedStudentIds', () => {
+  it('reads the students tied to the chat by hand', () => {
+    expect(getLinkedStudentIds({ custom_attributes: { crm_student_ids: [4, 9] } })).toEqual([4, 9])
+  })
+
+  it('is empty when none were tied, or the value is not a list', () => {
+    expect(getLinkedStudentIds({ custom_attributes: {} })).toEqual([])
+    expect(getLinkedStudentIds({ custom_attributes: null })).toEqual([])
+    expect(getLinkedStudentIds({ custom_attributes: { crm_student_ids: 'x' as unknown as number[] } })).toEqual([])
   })
 })
