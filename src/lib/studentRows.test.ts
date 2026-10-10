@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildStudentRows, filterStudentRows, sortStudentRows } from './studentRows'
-import type { Classroom, Package, Schedule, Student, Teacher } from '../types/domain'
+import type { Classroom, Package, Schedule, Student, Teacher, TrialBooking } from '../types/domain'
 
 const today = '2026-10-09'
 
@@ -92,5 +92,40 @@ describe('sortStudentRows', () => {
     expect(ids(sortStudentRows(rows, 'name'))).toEqual([2, 3, 4, 1])
     expect(ids(sortStudentRows(rows, 'ends'))).toEqual([2, 3, 1, 4])
     expect(ids(sortStudentRows(rows, 'left'))).toEqual([2, 3, 1, 4])
+  })
+})
+
+describe('HOA follow-up', () => {
+  const booking = (studentId: number, bookingDate: string): TrialBooking => ({
+    id: studentId, scheduleId: 1, bookingDate, leadId: null, studentId, childName: 'x', childAge: 7, phone: null, notes: null,
+  })
+  const hoaKid = (id: number): Student => student(id, { studentType: 'trial', remainingHours: 0 })
+  const rows = (students: Student[], bookings: TrialBooking[], attended: number[]) =>
+    buildStudentRows({
+      students, packages, classrooms: [], schedules: [], teacherMap: new Map(), trialBookings: bookings,
+      parents: new Map(), attendedStudentIds: new Set(attended), todayString: today,
+    })
+
+  it('flags a child who came to HOA in the last 30 days', () => {
+    const [row] = rows([hoaKid(1)], [booking(1, '2026-10-05')], [1])
+
+    expect(row.issues.map((issue) => issue.label)).toEqual(['Follow up after HOA'])
+    expect(row.needsFollowUp).toBe(true)
+  })
+
+  it('does not flag a child who did not come, is booked ahead, or came long ago', () => {
+    const result = rows(
+      [hoaKid(1), hoaKid(2), hoaKid(3)],
+      [booking(1, '2026-10-05'), booking(2, '2026-10-20'), booking(3, '2026-08-01')],
+      [2, 3],
+    )
+
+    expect(result.map((row) => row.needsFollowUp)).toEqual([false, false, false])
+  })
+
+  it('does not flag a deactivated child', () => {
+    const [row] = rows([{ ...hoaKid(1), isActive: false }], [booking(1, '2026-10-05')], [1])
+
+    expect(row.issues.map((issue) => issue.label)).toEqual(['Deactivated'])
   })
 })

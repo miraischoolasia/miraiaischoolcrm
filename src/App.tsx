@@ -139,6 +139,12 @@ import { ClassListingSection } from './components/sections/ClassListingSection'
 import { StudentDashboardSection } from './components/sections/StudentDashboardSection'
 import { TeacherHomeSection } from './components/sections/TeacherHomeSection'
 import { buildTeacherAgenda, formatClockTime } from './lib/teacherAgenda'
+import {
+  getClassFilterValues,
+  getLegendKeys,
+  getScheduleKinds,
+  legendEntries,
+} from './lib/calendarLegend'
 import { TeacherManagementSection } from './components/sections/TeacherManagementSection'
 import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
@@ -155,6 +161,7 @@ import { LeadsSection } from './components/sections/LeadsSection'
 import { AdminActivitySection } from './components/sections/AdminActivitySection'
 import { StudentDetailModal } from './components/StudentDetailModal'
 import { buildStudentParents } from './lib/studentParents'
+import { getAttendedStudentIds } from './lib/studentLessons'
 import { EditStudentModal } from './components/modals/EditStudentModal'
 import { CreateStudentModal } from './components/modals/CreateStudentModal'
 import { ClassroomModal } from './components/modals/ClassroomModal'
@@ -721,6 +728,10 @@ function App() {
       .map((booking) => booking.studentId)
       .filter((studentId): studentId is number => studentId !== null)
   }, [leads, selectedStudentDetailId, trialBookings])
+  const attendedStudentIds = useMemo(
+    () => getAttendedStudentIds(lessonLogs, lessonReviews),
+    [lessonLogs, lessonReviews],
+  )
   const studentParents = useMemo(
     () => buildStudentParents({ students, leads, trialBookings }),
     [students, leads, trialBookings],
@@ -5274,7 +5285,7 @@ function App() {
                             ? 'Forms'
                             : activeSection === 'activity'
                               ? 'Activity Log'
-                              : 'Student Classes & Expiry'}
+                              : 'Students'}
                 </h1>
               </div>
 
@@ -5445,38 +5456,17 @@ function App() {
                       </div>
 
                       <div className="flex w-full flex-wrap items-center gap-3 xl:w-auto xl:shrink-0">
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <span className="h-3 w-3 rounded-full bg-sky-500" />
-                          <span>Regular Class</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <span className="h-3 w-3 rounded-full border border-dashed border-slate-400 bg-slate-50" />
-                          <span>Trial - Available</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <span className="h-3 w-3 rounded-full bg-teal-500" />
-                          <span>Trial - Booked</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <span className="h-3 w-3 rounded-full bg-emerald-600" />
-                          <span>Camp Class</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <span className="h-3 w-3 rounded-full bg-orange-500" />
-                          <span>Replacement Class</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <span className="h-3 w-3 rounded-full bg-red-500" />
-                          <span>Public Holiday</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <span className="h-3 w-3 rounded-full bg-slate-300" />
-                          <span>Cancelled Day</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <span className="h-3 w-3 rounded-full bg-violet-500" />
-                          <span>Make-up</span>
-                        </div>
+                        {getLegendKeys({
+                          canEdit: canEditCalendar,
+                          kinds: getScheduleKinds(visibleSchedules, classroomMap),
+                          hasMakeups: makeupEntries.length > 0,
+                          hasCancelledDays: scheduleExceptions.length > 0,
+                        }).map((key) => (
+                          <div key={key} className="flex items-center gap-2 text-sm text-slate-600">
+                            <span className={cn('h-3 w-3 rounded-full', legendEntries[key].dot)} />
+                            <span>{legendEntries[key].label}</span>
+                          </div>
+                        ))}
                         {canEditCalendar && (
                           <button
                             type="button"
@@ -5496,7 +5486,15 @@ function App() {
                       role="group"
                       aria-label="Filter calendar by class type"
                     >
-                      {calendarClassFilterOptions.map((option) => (
+                      {calendarClassFilterOptions
+                        .filter((option) =>
+                          getClassFilterValues({
+                            canEdit: canEditCalendar,
+                            kinds: getScheduleKinds(visibleSchedules, classroomMap),
+                            all: calendarClassFilterOptions.map((entry) => entry.value),
+                          }).includes(option.value),
+                        )
+                        .map((option) => (
                         <button
                           key={option.value}
                           type="button"
@@ -5712,6 +5710,7 @@ function App() {
                 deletingClassroomId={deletingClassroomId}
                 restoringClassroomId={restoringClassroomId}
                 canEdit={can('classrooms', 'edit')}
+                simple={isTeacherAccount && !seesAllClasses}
                 onDeleteClassroom={can('classrooms', 'delete') ? handleDeleteClassroom : undefined}
                 onEditClassroom={openEditClassroom}
                 onEditSchedule={openEditSchedule}
@@ -5746,6 +5745,7 @@ function App() {
                 teacherMap={teacherMap}
                 trialBookings={trialBookings}
                 parents={studentParents}
+                attendedStudentIds={attendedStudentIds}
                 onOpenAssignPackages={
                   can('students', 'edit')
                     ? () => {

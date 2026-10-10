@@ -7,6 +7,20 @@ import type {
   Schedule,
 } from '../types/domain'
 
+// Students who were marked present in a lesson, as far as the reviews show: a
+// present student always has a review on the latest revision of that lesson.
+export function getAttendedStudentIds(
+  lessonLogs: LessonLogSummary[],
+  lessonReviews: LessonLogStudentReview[],
+) {
+  const latestLogIds = new Set(
+    Array.from(getLatestLessonLogMap(lessonLogs).values()).map((log) => log.id),
+  )
+  return new Set(
+    lessonReviews.filter((review) => latestLogIds.has(review.lessonLogId)).map((review) => review.studentId),
+  )
+}
+
 export type StudentLesson = {
   log: LessonLogSummary
   schedule: Schedule | null

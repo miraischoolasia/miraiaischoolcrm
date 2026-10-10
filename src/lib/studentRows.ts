@@ -5,6 +5,7 @@ import {
   type StudentIssue,
 } from '../domain/studentStatus'
 import { getStudentKind, type StudentKind } from './studentLink'
+import { addDays } from './teacherAgenda'
 import type { StudentParent } from './studentParents'
 import { weekdayLabels } from './schedule'
 import type { Classroom, FilterKey, Package, Schedule, Student, Teacher, TrialBooking } from '../types/domain'
@@ -36,6 +37,8 @@ export type StudentRowSources = {
   teacherMap: Map<number, Teacher>
   trialBookings: TrialBooking[]
   parents: Map<number, StudentParent>
+  // Students marked present in a lesson, so an HOA child who came can be followed up.
+  attendedStudentIds?: Set<number>
   todayString: string
 }
 
@@ -47,6 +50,7 @@ export function buildStudentRows({
   teacherMap,
   trialBookings,
   parents,
+  attendedStudentIds,
   todayString,
 }: StudentRowSources): StudentRow[] {
   const packageById = new Map(packages.map((pkg) => [pkg.id, pkg]))
@@ -76,7 +80,19 @@ export function buildStudentRows({
       { ...student, feesApply: pkg ? pkg.includesFees : true },
       todayString,
     )
+    const booking = bookingByStudent.get(student.id) ?? null
     const issues = getStudentIssues(student, status)
+    // An HOA child who came in the last 30 days and has not joined yet.
+    if (
+      student.isActive &&
+      student.studentType === 'trial' &&
+      booking &&
+      attendedStudentIds?.has(student.id) &&
+      booking.bookingDate <= todayString &&
+      booking.bookingDate >= addDays(todayString, -30)
+    ) {
+      issues.push({ label: 'Follow up after HOA', tone: 'warning', severity: 3 })
+    }
     const classroom = student.classroomId ? classroomById.get(student.classroomId) ?? null : null
     const schedule = classroom ? slotByClassroom.get(classroom.id) ?? null : null
     const teacherId = student.teacherId ?? schedule?.teacherId ?? classroom?.teacherId ?? null
@@ -96,7 +112,7 @@ export function buildStudentRows({
           : null,
       teacherName: teacherId ? teacherMap.get(teacherId)?.fullName ?? null : null,
       parent: parents.get(student.id) ?? null,
-      booking: bookingByStudent.get(student.id) ?? null,
+      booking,
     }
   })
 }

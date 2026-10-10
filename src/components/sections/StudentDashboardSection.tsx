@@ -50,6 +50,7 @@ type StudentDashboardSectionProps = {
   teacherMap?: Map<number, Teacher>
   trialBookings?: TrialBooking[]
   parents?: Map<number, StudentParent>
+  attendedStudentIds?: Set<number>
   // Opens the window that tags students with their current package.
   onOpenAssignPackages?: () => void
   // Admin only: opens the course packages settings.
@@ -92,6 +93,7 @@ export function StudentDashboardSection({
   teacherMap = NO_TEACHERS,
   trialBookings = NO_BOOKINGS,
   parents = NO_PARENTS,
+  attendedStudentIds,
   onOpenAssignPackages,
   onOpenPackages,
   onDeactivateStudent,
@@ -114,9 +116,10 @@ export function StudentDashboardSection({
         teacherMap,
         trialBookings,
         parents,
+        attendedStudentIds,
         todayString,
       }),
-    [students, packages, classrooms, schedules, teacherMap, trialBookings, parents, todayString],
+    [students, packages, classrooms, schedules, teacherMap, trialBookings, parents, attendedStudentIds, todayString],
   )
 
   const visibleRows = sortStudentRows(
@@ -162,7 +165,8 @@ export function StudentDashboardSection({
   }
 
   function renewButton(row: StudentRow) {
-    if (!canEdit || !row.needsFollowUp || row.student.studentType === 'preview') {
+    // An HOA child is followed up with the parent, not renewed.
+    if (!canEdit || !row.needsFollowUp || row.kind === 'hoa') {
       return null
     }
     return (
@@ -199,9 +203,11 @@ export function StudentDashboardSection({
         <div className="border-b border-slate-200 bg-white px-5 pt-4 sm:px-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">Students</h2>
+              <h2 className="text-lg font-semibold text-slate-900">
+                {activeCount} active {activeCount === 1 ? 'student' : 'students'}
+              </h2>
               <p className="mt-1 text-sm text-slate-500">
-                {activeCount} active · {followUpCount} need follow-up
+                {followUpCount > 0 ? `${followUpCount} need follow-up` : 'Everyone is on track'}
               </p>
             </div>
             {(canEdit || onOpenPackages) && (

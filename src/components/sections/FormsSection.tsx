@@ -340,7 +340,7 @@ export function FormsSection({
                 onChange={(event) => setSearchTerm(event.target.value)}
                 placeholder="Search for forms"
                 aria-label="Search for forms"
-                className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#fc0c97] focus:outline-none sm:w-72"
+                className="w-full rounded-xl border border-slate-200 py-2 pl-9! pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#fc0c97] focus:outline-none sm:w-72"
               />
             </div>
           </div>

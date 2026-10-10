@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildStudentLessons } from './studentLessons'
+import { buildStudentLessons, getAttendedStudentIds } from './studentLessons'
 import type { LessonLogStudentReview, LessonLogSummary } from '../types/domain'
 
 function log(id: number, lessonDate: string, revisionNumber = 1, scheduleId = 1): LessonLogSummary {
@@ -63,5 +63,17 @@ describe('buildStudentLessons', () => {
 
     expect(lessons).toHaveLength(1)
     expect(lessons[0]).toMatchObject({ status: 'present', isTrial: true })
+  })
+})
+
+describe('getAttendedStudentIds', () => {
+  it('counts a student with a review on the latest revision of a lesson', () => {
+    const ids = getAttendedStudentIds(
+      [log(1, '2026-10-01', 1), log(2, '2026-10-01', 2), log(3, '2026-10-08', 1)],
+      // Student 5 was present on revision 1 and then changed to absent on revision 2.
+      [review(1, 5, 4), review(2, 6, 4), review(3, 7, 3)],
+    )
+
+    expect([...ids].sort()).toEqual([6, 7])
   })
 })

@@ -31,6 +31,9 @@ type ClassListingSectionProps = {
   deletingClassroomId: number | null
   restoringClassroomId: number | null
   canEdit: boolean
+  // A teacher with only their own few classes: no category or age group to
+  // pick first, just the list.
+  simple?: boolean
   // Left out when the account may not archive classrooms.
   onDeleteClassroom?: (classroomId: number) => void
   onEditClassroom: (classroomId: number) => void
@@ -54,6 +57,7 @@ export function ClassListingSection({
   deletingClassroomId,
   restoringClassroomId,
   canEdit,
+  simple = false,
   onDeleteClassroom,
   onEditClassroom,
   onEditSchedule,
@@ -76,10 +80,12 @@ export function ClassListingSection({
   const archivedClassrooms = classrooms.filter(
     (classroom) => classroom.status === 'archived',
   )
-  const filteredClassrooms = activeClassrooms.filter(
-    (classroom) => classroom.ageGroup === selectedAgeGroup &&
-      (category === 'all' || classroom.category === category),
-  )
+  const filteredClassrooms = simple
+    ? activeClassrooms
+    : activeClassrooms.filter(
+        (classroom) => classroom.ageGroup === selectedAgeGroup &&
+          (category === 'all' || classroom.category === category),
+      )
   const selectedClassroom =
     filteredClassrooms.find((classroom) => classroom.id === selectedClassroomId) ??
     filteredClassrooms[0] ??
@@ -149,9 +155,11 @@ export function ClassListingSection({
             <div>
               <h2 className="text-lg font-semibold text-slate-900">My Classroom</h2>
               <p className="mt-1 text-sm text-slate-500">
-                {canEdit
-                  ? 'Browse classrooms by age group, then open each class roster and timetable.'
-                  : 'Browse assigned classrooms by age group, then open the class roster quickly.'}
+                {simple
+                  ? 'Your classes. Open one to see its roster and timetable.'
+                  : canEdit
+                    ? 'Browse classrooms by age group, then open each class roster and timetable.'
+                    : 'Browse assigned classrooms by age group, then open the class roster quickly.'}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -179,6 +187,7 @@ export function ClassListingSection({
           </div>
         ) : (
           <div className="space-y-4 p-4">
+            {!simple && (
             <div className="flex flex-wrap gap-2" aria-label="Classroom category">
               {(['all', 'regular', 'trial', 'camp'] as const).map((value) => (
                 <button key={value} type="button" aria-pressed={category === value} onClick={() => setCategory(value)} className={cn('rounded-xl border px-4 py-2 text-sm font-semibold', category === value ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]' : 'border-slate-200 text-slate-600')}>
@@ -186,6 +195,8 @@ export function ClassListingSection({
                 </button>
               ))}
             </div>
+            )}
+            {!simple && (
             <div className="space-y-3 border-b border-slate-200 pb-3">
               <div className="space-y-2">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -221,6 +232,7 @@ export function ClassListingSection({
                 </div>
               </div>
             </div>
+            )}
 
             <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
               <div className="space-y-3">
@@ -249,7 +261,13 @@ export function ClassListingSection({
                         <button
                           key={classroom.id}
                           type="button"
-                          onClick={() => setSelectedClassroomId(classroom.id)}
+                          onClick={() => {
+                            setSelectedClassroomId(classroom.id)
+                            // The page behind keeps one age group, which has to follow.
+                            if (simple) {
+                              onSelectAgeGroup(classroom.ageGroup)
+                            }
+                          }}
                           className={cn(
                             'w-full rounded-2xl border px-4 py-3.5 text-left transition',
                             selected

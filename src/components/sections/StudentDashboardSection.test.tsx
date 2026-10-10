@@ -275,6 +275,22 @@ describe('StudentDashboardSection', () => {
     expect(screen.getAllByText('#039').length).toBeGreaterThan(0)
   })
 
+  it('flags an HOA child who came lately, without offering Renew', () => {
+    renderSection([{ ...student, id: 8, name: 'Came To HOA', studentType: 'trial', remainingHours: 0 }], {
+      followUpOnly: true,
+      onToggleFollowUp: vi.fn(),
+      attendedStudentIds: new Set([8]),
+      trialBookings: [
+        { id: 1, scheduleId: 1, bookingDate: '2025-12-28', leadId: null, studentId: 8, childName: 'Came To HOA', childAge: 7, phone: null, notes: null },
+      ],
+    })
+
+    const hoaRow = row('Came To HOA')
+    expect(within(hoaRow).getByText('Follow up after HOA')).toBeInTheDocument()
+    expect(within(hoaRow).queryByRole('button', { name: 'Renew' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Needs follow-up 1' })).toBeInTheDocument()
+  })
+
   it('says when a filter finds nobody', () => {
     renderSection([student], { activeFilter: 'camp' })
 
