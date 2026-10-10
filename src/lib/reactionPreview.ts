@@ -22,6 +22,14 @@ export function mayBeReaction(message: ChatwootMessage | null | undefined) {
   )
 }
 
+// A message that looks like a reaction stays out of sight for this long after it arrived, until WhatsApp has
+// said whether it really is one (that takes a second or two). Past it, only a confirmed reaction stays hidden.
+export const REACTION_CHECK_SECONDS = 20
+
+export function isCheckingReaction(message: ChatwootMessage | null | undefined, nowSeconds: number) {
+  return Boolean(message) && nowSeconds - (message as ChatwootMessage).created_at < REACTION_CHECK_SECONDS && mayBeReaction(message)
+}
+
 export type ReactionPreview = { emoji: string; target: string }
 
 type WaRecord = {

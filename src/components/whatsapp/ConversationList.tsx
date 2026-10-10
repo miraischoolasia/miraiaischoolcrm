@@ -3,7 +3,7 @@ import { Bell, BellSlash, CaretDown, ChatCircleDots, CheckCircle, EnvelopeSimple
 import type { Icon } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { LeadTagChip } from '../LeadTagChip'
-import { formatReactionLine, type ReactionPreview } from '../../lib/reactionPreview'
+import { formatReactionLine, isCheckingReaction, type ReactionPreview } from '../../lib/reactionPreview'
 import { waIdOf } from '../../lib/waActions'
 import type { LeadOption } from '../../types/domain'
 import type { StudentKind } from '../../lib/studentLink'
@@ -313,7 +313,12 @@ export function ConversationList({
           const preview = getPreview(conversation)
           // A reaction reads like WhatsApp writes it ("You reacted 😂 to: ...") instead of just the emoji.
           const reaction = reactionPreviews?.get(waIdOf(lastMessage?.source_id) ?? '')
-          const reactionLine = reaction ? formatReactionLine(reaction.emoji, reaction.target, lastMessage?.message_type === 1) : null
+          const byUs = lastMessage?.message_type === 1
+          const reactionLine = reaction
+            ? formatReactionLine(reaction.emoji, reaction.target, byUs)
+            : isCheckingReaction(lastMessage, nowSeconds)
+              ? formatReactionLine((lastMessage?.content ?? '').trim(), null, byUs)
+              : null
           const selected = conversation.id === selectedId
           const waiting = getWaitingSeconds(conversation, nowSeconds)
           const overdue = showWaiting && waiting !== null && waiting >= OVERDUE_SECONDS

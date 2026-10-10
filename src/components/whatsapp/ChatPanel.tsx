@@ -21,6 +21,7 @@ import { MessageBubble, type BubbleAvatar, type BubbleExtras } from './MessageBu
 import { summarizeMessage } from '../../lib/specialMessages'
 import { NO_EVENTS, waIdOf, type MessageEvents, type SpecialMessage } from '../../lib/waActions'
 import { isEditCopy, withoutEditHeading } from '../../lib/editCopy'
+import { isCheckingReaction } from '../../lib/reactionPreview'
 
 type ChatPanelProps = {
   conversation: ChatwootConversation
@@ -361,6 +362,10 @@ export function ChatPanel({
           // A reaction is also written into the chat as a message of its own; it already shows on the message it is for.
           const ownWaId = waIdOf(message.source_id)
           if (ownWaId && messageEvents.reactionIds.has(ownWaId)) {
+            return null
+          }
+          // Just arrived and looks like a reaction: wait for WhatsApp to say so before showing it as a message.
+          if (isCheckingReaction(message, nowSeconds)) {
             return null
           }
           const isCopyOfEdit = isEditCopy(message.content)

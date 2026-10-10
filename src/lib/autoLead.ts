@@ -3,10 +3,10 @@ import type { SourceRule } from './sourceRules'
 import type { LeadOption } from '../types/domain'
 import type { ChatwootMessage } from './whatsappInbox'
 
-// A new chat whose first message matches a source rule becomes a lead by itself. Only chats whose
-// first message came after this moment are looked at, so the chats that were already there are
-// left alone (seconds since epoch; 10 Oct 2026, 17:37 Kuala Lumpur).
-export const AUTO_LEADS_FROM = 1_791_633_400
+// A chat whose first message matches a source rule becomes a lead by itself. Chats whose first message
+// came before this moment (seconds since epoch) are left alone. It is 0: the chats that were already
+// there are looked at too, as long as they are open, not a lead, not a student and have a real number.
+export const AUTO_LEADS_FROM = 0
 
 // What to make a lead from, or null when this chat should not become one by itself: the first thing in the
 // chat must be a message from the parent (not one the school started), written after the cut-off, and

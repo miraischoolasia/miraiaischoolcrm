@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeWaRecord, formatReactionLine, mayBeReaction } from './reactionPreview'
+import { describeWaRecord, formatReactionLine, isCheckingReaction, mayBeReaction } from './reactionPreview'
 import type { ChatwootMessage } from './whatsappInbox'
 
 const message = (overrides: Partial<ChatwootMessage> = {}): ChatwootMessage => ({
@@ -48,5 +48,15 @@ describe('formatReactionLine', () => {
     expect(formatReactionLine('❤️', '🎤 0:11', true)).toBe('You reacted ❤️ to: "🎤 0:11"')
     expect(formatReactionLine('👍', 'ok', false)).toBe('Reacted 👍 to: "ok"')
     expect(formatReactionLine('👍', '', true)).toBe('You reacted 👍 to a message')
+  })
+})
+
+describe('isCheckingReaction', () => {
+  it('holds a reaction-looking message back for a few seconds only', () => {
+    const arrived = message({ created_at: 1000 })
+
+    expect(isCheckingReaction(arrived, 1003)).toBe(true)
+    expect(isCheckingReaction(arrived, 1100)).toBe(false)
+    expect(isCheckingReaction(message({ content: 'Thanks', created_at: 1000 }), 1003)).toBe(false)
   })
 })
