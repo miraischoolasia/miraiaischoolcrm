@@ -32,6 +32,7 @@ import { findChatByPhone } from '../../lib/startChat'
 import { splitSequence } from '../../lib/outbox'
 import { summarizeMessage } from '../../lib/specialMessages'
 import { ForwardDialog } from './ForwardDialog'
+import { forwardInOrder } from '../../lib/forwardSend'
 import { useMessageEvents } from '../../hooks/useMessageEvents'
 import { useTyping } from '../../hooks/useTyping'
 import { describeStudent, getStudentKind, makeStudentResolver, type StudentKind } from '../../lib/studentLink'
@@ -431,11 +432,15 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
         }),
       )
       const parts = splitSequence([(message.content ?? '').trim(), ...files])
-      for (const targetId of targetIds) {
-        for (const part of parts) {
-          await client.sendMessage(targetId, { content: part.content, isPrivate: false, files: part.files, sender: currentUser })
-        }
-      }
+      // One part at a time: the next only goes once WhatsApp has accepted the one before, so a file
+      // is never overtaken by the text that follows it.
+      await forwardInOrder(
+        targetIds,
+        parts,
+        (targetId, part) =>
+          client.sendMessage(targetId, { content: part.content, isPrivate: false, files: part.files, sender: currentUser }),
+        inbox.waitUntilSent,
+      )
       return null
     } catch {
       return "Couldn't forward it to every chat. Check which ones got it, then try again."

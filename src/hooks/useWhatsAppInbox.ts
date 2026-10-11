@@ -665,6 +665,8 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
     setChatRole,
     setStatus,
     send,
+    // Waits until WhatsApp has accepted a message that was just posted to a chat.
+    waitUntilSent,
     dismissUnsent,
     startNewChat,
     loadMissingConversations,
