@@ -88,9 +88,12 @@ describe('checkQuickReplyFile', () => {
     expect(checkQuickReplyFile({ name: 'a.pdf', type: 'application/pdf', size: 100 })).toBeNull()
   })
 
-  it('refuses a type WhatsApp cannot play and anything over 16 MB', () => {
+  it('refuses a type WhatsApp cannot play, a photo or pdf over 16 MB and a video over 32 MB', () => {
     expect(checkQuickReplyFile({ name: 'a.webm', type: 'video/webm', size: 100 })).toMatch(/not a photo/)
-    expect(checkQuickReplyFile({ name: 'big.mp4', type: 'video/mp4', size: 17 * 1024 * 1024 })).toMatch(/16 MB/)
+    expect(checkQuickReplyFile({ name: 'big.png', type: 'image/png', size: 17 * 1024 * 1024 })).toMatch(/16 MB/)
+    expect(checkQuickReplyFile({ name: 'big.pdf', type: 'application/pdf', size: 17 * 1024 * 1024 })).toMatch(/16 MB/)
+    expect(checkQuickReplyFile({ name: 'ok.mp4', type: 'video/mp4', size: 30 * 1024 * 1024 })).toBeNull()
+    expect(checkQuickReplyFile({ name: 'big.mp4', type: 'video/mp4', size: 33 * 1024 * 1024 })).toMatch(/32 MB/)
   })
 })
 

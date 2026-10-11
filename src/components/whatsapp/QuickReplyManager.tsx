@@ -280,7 +280,7 @@ function ReplyForm({
           )}
           <p className="text-xs text-slate-500">
             Each row is sent on its own, one after the other, from the first row down. Up to {MAX_QUICK_REPLY_STEPS} rows. Files can be PNG, JPG,
-            WebP, MP4 or PDF, up to 16 MB each.
+            WebP, MP4 or PDF. Photos and PDFs up to 16 MB, videos up to 32 MB.
           </p>
         </div>
 

@@ -1,3 +1,5 @@
+import { MAX_VIDEO_BYTES, MAX_VIDEO_MB } from './outbox'
+
 // Quick replies: ready-made WhatsApp messages with optional photos, videos or
 // PDFs. This file holds the rules (search, filling in names, which files are
 // allowed) apart from the screens so they are easy to test.
@@ -18,6 +20,10 @@ export type QuickReply = {
 export const MAX_QUICK_REPLY_STEPS = 5
 // The most WhatsApp accepts for a video or document.
 export const MAX_QUICK_REPLY_FILE_BYTES = 16 * 1024 * 1024
+// A video may be bigger, the same limit as a video typed into a chat.
+export const MAX_QUICK_REPLY_VIDEO_BYTES = MAX_VIDEO_BYTES
+// What the storage bucket holds per file: the bigger of the two.
+export const QUICK_REPLY_BUCKET_BYTES = Math.max(MAX_QUICK_REPLY_FILE_BYTES, MAX_QUICK_REPLY_VIDEO_BYTES)
 export const QUICK_REPLY_FILE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'application/pdf']
 
 export const QUICK_REPLY_VARIABLES = [
@@ -33,6 +39,12 @@ export type VariableValues = Partial<Record<(typeof QUICK_REPLY_VARIABLES)[numbe
 export function checkQuickReplyFile(file: Pick<File, 'type' | 'size' | 'name'>): string | null {
   if (!QUICK_REPLY_FILE_TYPES.includes(file.type)) {
     return `${file.name} is not a photo (PNG, JPG, WebP), an MP4 video or a PDF.`
+  }
+  if (file.type.startsWith('video/')) {
+    if (file.size > MAX_QUICK_REPLY_VIDEO_BYTES) {
+      return `${file.name} is over ${MAX_VIDEO_MB} MB. Make the video shorter or smaller first.`
+    }
+    return null
   }
   if (file.size > MAX_QUICK_REPLY_FILE_BYTES) {
     return `${file.name} is over 16 MB, which WhatsApp will not take.`
