@@ -29,7 +29,7 @@ import { draftPreview, draftsFirst, type Draft } from '../../lib/draft'
 import { createWaActions, waIdOf } from '../../lib/waActions'
 import { useReactionPreviews } from '../../hooks/useReactionPreviews'
 import { findChatByPhone } from '../../lib/startChat'
-import { splitSequence } from '../../lib/outbox'
+import { fileProblem, splitSequence } from '../../lib/outbox'
 import { summarizeMessage } from '../../lib/specialMessages'
 import { ForwardDialog } from './ForwardDialog'
 import { forwardInOrder } from '../../lib/forwardSend'
@@ -431,6 +431,10 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
           return new File([blob], name, { type: blob.type })
         }),
       )
+      const tooBig = files.map((file) => fileProblem(file)).find((problem) => problem !== null)
+      if (tooBig) {
+        return tooBig
+      }
       const parts = splitSequence([(message.content ?? '').trim(), ...files])
       // One part at a time: the next only goes once WhatsApp has accepted the one before, so a file
       // is never overtaken by the text that follows it.

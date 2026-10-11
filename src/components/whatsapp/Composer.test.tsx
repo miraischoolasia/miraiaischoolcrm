@@ -233,3 +233,21 @@ describe('Composer replying', () => {
     expect(onClearReply).toHaveBeenCalled()
   })
 })
+
+describe('Composer video size', () => {
+  const quickReplies = { replies: [], isLoading: false, error: null, reload: vi.fn().mockResolvedValue(undefined) }
+
+  it('refuses a video over 32 MB with a message, and still takes a smaller one', async () => {
+    const { container } = render(<Composer onSend={vi.fn().mockResolvedValue(true)} quickReplies={quickReplies} variables={{}} />)
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    const big = new File(['x'], 'big.mp4', { type: 'video/mp4' })
+    Object.defineProperty(big, 'size', { value: 40 * 1024 * 1024 })
+    const small = new File(['x'], 'small.mp4', { type: 'video/mp4' })
+
+    await userEvent.upload(input, [big, small])
+
+    expect(screen.getByText(/"big.mp4" is 40.0 MB. A video can be at most 32 MB/)).toBeInTheDocument()
+    expect(screen.getByText('small.mp4')).toBeInTheDocument()
+    expect(screen.queryByText('big.mp4')).not.toBeInTheDocument()
+  })
+})

@@ -7,7 +7,7 @@ import type { SendInput } from '../../hooks/useWhatsAppInbox'
 import { fillVariables, unfilledVariables, type QuickReply, type VariableValues } from '../../lib/quickReplies'
 import { downloadQuickReplyMedia } from '../../lib/quickRepliesApi'
 import { isEmptyDraft, type ComposerItem, type Draft } from '../../lib/draft'
-import { fileKind } from '../../lib/outbox'
+import { fileKind, fileProblem } from '../../lib/outbox'
 import { EmojiPicker } from './EmojiPicker'
 import { insertAt, rememberEmoji } from '../../lib/emoji'
 import { QuickReplyPicker } from './QuickReplyPicker'
@@ -146,8 +146,13 @@ ${draftRequest.text}` : draftRequest.text))
   }, [voiceState, voiceFile, discardVoice, onSend, mode])
 
   function addFiles(list: FileList | File[]) {
-    setFiles((current) => [...current, ...Array.from(list)])
-    setHint(null)
+    const all = Array.from(list)
+    const accepted = all.filter((file) => fileProblem(file) === null)
+    const refused = all.map((file) => fileProblem(file)).filter((problem): problem is string => problem !== null)
+    if (accepted.length > 0) {
+      setFiles((current) => [...current, ...accepted])
+    }
+    setHint(refused.length > 0 ? refused.join(' ') : null)
   }
 
   // Puts the emoji where the cursor is, and leaves the cursor after it.

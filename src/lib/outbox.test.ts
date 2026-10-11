@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fileKind, splitSequence } from './outbox'
+import { fileKind, fileProblem, splitSequence } from './outbox'
 
 const file = (name: string, type = 'image/png') => new File(['x'], name, { type })
 
@@ -31,5 +31,21 @@ describe('fileKind', () => {
     expect(fileKind(file('a.mp4', 'video/mp4'))).toBe('video')
     expect(fileKind(file('a.ogg', 'audio/ogg'))).toBe('audio')
     expect(fileKind(file('a.pdf', 'application/pdf'))).toBe('file')
+  })
+})
+
+describe('fileProblem', () => {
+  const MB = 1024 * 1024
+
+  it('lets a video up to 32 MB through and stops a bigger one with its size', () => {
+    expect(fileProblem({ name: 'a.mp4', type: 'video/mp4', size: 32 * MB })).toBeNull()
+    expect(fileProblem({ name: 'big.mp4', type: 'video/mp4', size: 45 * MB })).toBe(
+      '"big.mp4" is 45.0 MB. A video can be at most 32 MB. Make it shorter or smaller first.',
+    )
+  })
+
+  it('leaves photos, voice notes and documents to the inbox server limit', () => {
+    expect(fileProblem({ name: 'poster.png', type: 'image/png', size: 60 * MB })).toBeNull()
+    expect(fileProblem({ name: 'fees.pdf', type: 'application/pdf', size: 60 * MB })).toBeNull()
   })
 })

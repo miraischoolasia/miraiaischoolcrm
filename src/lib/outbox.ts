@@ -29,6 +29,20 @@ export function fileKind(file: Pick<File, 'type'>) {
   return 'file'
 }
 
+// A video bigger than this is not accepted: the inbox server stops at 40 MB, and WhatsApp itself is
+// slow and unreliable with big videos, so the team is told before it is sent rather than after it fails.
+export const MAX_VIDEO_MB = 32
+export const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024
+
+// Null when the file may be sent, otherwise the sentence to show the person.
+export function fileProblem(file: Pick<File, 'name' | 'type' | 'size'>) {
+  if (fileKind(file) === 'video' && file.size > MAX_VIDEO_BYTES) {
+    const size = (file.size / (1024 * 1024)).toFixed(1)
+    return `"${file.name}" is ${size} MB. A video can be at most ${MAX_VIDEO_MB} MB. Make it shorter or smaller first.`
+  }
+  return null
+}
+
 export const CONFIRM_POLL_MS = 1500
 // Past this the message is treated as not sent, and the ones queued behind it
 // stay unsent rather than jumping ahead.
