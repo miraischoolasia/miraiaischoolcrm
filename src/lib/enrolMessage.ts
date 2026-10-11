@@ -19,6 +19,33 @@ export function formatZoomTime(date: Date) {
   return `${day}, ${time}`
 }
 
+export type CampMessageInput = {
+  childName: string
+  // The camp class and when it starts, such as "Mon 20 Oct"; null before the child is enrolled.
+  enrolled: { className: string; startDate: string; classes: number } | null
+  zoom: { startsAt: Date; link: string } | null
+  formUrl: string | null
+  paid: boolean
+}
+
+// The message to the parent for a Holiday Camp sign-up.
+export function buildCampMessage({ childName, enrolled, zoom, formUrl, paid }: CampMessageInput) {
+  const lines: string[] = []
+  lines.push(paid ? '你好，已收到款项，谢谢您！' : '你好，谢谢您！')
+  const child = childName.trim() || '孩子'
+  if (enrolled) {
+    lines.push(`${child} 已经报名 Mirai Online AI Holiday Camp（${enrolled.className}），${enrolled.startDate} 开始上课，共 ${enrolled.classes} 堂。`)
+  }
+  if (zoom) {
+    lines.push('', `老师想先和您在 Zoom 上简单聊一下，时间：${formatZoomTime(zoom.startsAt)}`, `Zoom 链接：${zoom.link.trim()}`)
+  }
+  if (formUrl) {
+    lines.push('', '麻烦您先填写这份报名表：', formUrl)
+  }
+  lines.push('', '期待见到你们！')
+  return lines.join('\n')
+}
+
 export function buildEnrolMessage({ childName, classTime, zoom, formUrl, paid }: EnrolMessageInput) {
   const lines: string[] = []
   lines.push(paid ? '你好，已收到款项，谢谢您！' : '你好，谢谢您！')

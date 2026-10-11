@@ -70,6 +70,7 @@ function makeCrm(patch: Partial<WhatsAppCrm> = {}): WhatsAppCrm {
     describeHoaBooking: () => '',
     onBookHoa: vi.fn().mockResolvedValue(null),
     onCancelHoa: vi.fn().mockResolvedValue(null),
+    onEnrolCamp: vi.fn().mockResolvedValue(null),
     leadOptions: [option(1, 'source', 'Facebook'), option(2, 'source', 'Other', 'other')],
     canEditLeads: true,
     canEditStudents: true,

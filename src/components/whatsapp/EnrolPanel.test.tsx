@@ -56,6 +56,7 @@ function makeCrm(patch: Partial<WhatsAppCrm> = {}): WhatsAppCrm {
     describeHoaBooking: () => 'Sat 17 Oct, 10:00 to 12:00',
     onBookHoa: vi.fn().mockResolvedValue(null),
     onCancelHoa: vi.fn().mockResolvedValue(null),
+    onEnrolCamp: vi.fn().mockResolvedValue(null),
     onOpenFormAnswers: vi.fn(),
     ...patch,
   } as unknown as WhatsAppCrm

@@ -18,6 +18,7 @@ import { FirstMessageCard } from './FirstMessageCard'
 import { LeadForm } from './LeadForm'
 import { LeadHeader } from './LeadCard'
 import { EnrolPanel } from './EnrolPanel'
+import { CampEnrolPanel } from './CampEnrolPanel'
 import { StudentCard } from './StudentCard'
 import { StudentLinker } from './StudentLinker'
 import { ChatRolePicker } from './ChatRolePicker'
@@ -58,6 +59,31 @@ type DetailsPanelProps = {
 
 // The side panel: who the parent is, and what the school already knows about
 // them (a lead, a student), or a way to add them.
+// Which sign-up the steps below are for.
+function ProgramSwitch({ program, onChange }: { program: 'hoa' | 'camp'; onChange: (program: 'hoa' | 'camp') => void }) {
+  const options: { key: 'hoa' | 'camp'; label: string }[] = [
+    { key: 'hoa', label: 'HOA class' },
+    { key: 'camp', label: 'Holiday Camp' },
+  ]
+  return (
+    <div role="group" aria-label="What are they signing up for" className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
+      {options.map((option) => (
+        <button
+          key={option.key}
+          type="button"
+          aria-pressed={program === option.key}
+          onClick={() => onChange(option.key)}
+          className={`rounded-md px-2 py-1.5 text-xs font-semibold ${
+            program === option.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function DetailsPanel({
   conversation,
   messages,
@@ -150,6 +176,9 @@ export function DetailsPanel({
 
   // A parent who already has a student is not a new lead: the add-lead form stays out of the way.
   const [leadFormFor, setLeadFormFor] = useState<number | null>(null)
+  // What the parent is signing up for: an HOA class, or the Holiday Camp (when there is a camp package).
+  const [program, setProgram] = useState<'hoa' | 'camp'>('hoa')
+  const hasCamp = crm.packages.some((pkg) => pkg.kind === 'camp' && pkg.isActive)
   const showLeadPart = lead !== null || students.length === 0 || leadFormFor === conversation.id
 
   const first = useMemo(() => getFirstMessage(messages), [messages])
@@ -337,13 +366,27 @@ export function DetailsPanel({
         {lead && onWriteMessage ? (
           isEnrolled ? (
             <details className="border-t border-pink-100 pt-4 text-xs">
-              <summary className="cursor-pointer font-semibold text-[#be185d]">Enrol another child in HOA</summary>
-              <div className="mt-3">
-                <EnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} />
+              <summary className="cursor-pointer font-semibold text-[#be185d]">
+                {hasCamp ? 'Enrol another child (HOA or Holiday Camp)' : 'Enrol another child in HOA'}
+              </summary>
+              <div className="mt-3 space-y-3">
+                {hasCamp && <ProgramSwitch program={program} onChange={setProgram} />}
+                {program === 'camp' && hasCamp ? (
+                  <CampEnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} />
+                ) : (
+                  <EnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} />
+                )}
               </div>
             </details>
           ) : (
-            <EnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} />
+            <div className="space-y-3">
+              {hasCamp && <ProgramSwitch program={program} onChange={setProgram} />}
+              {program === 'camp' && hasCamp ? (
+                <CampEnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} />
+              ) : (
+                <EnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} />
+              )}
+            </div>
           )
         ) : null}
       </div>

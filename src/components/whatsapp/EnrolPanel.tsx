@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle, FilePdf, Trash } from '@phosphor-icons/react'
+import { Trash } from '@phosphor-icons/react'
 import { useLeadEnrolment } from '../../hooks/useLeadEnrolment'
-import { formatDate } from '../../domain/studentStatus'
-import { buildEnrolMessage, formatZoomTime } from '../../lib/enrolMessage'
+import { buildEnrolMessage } from '../../lib/enrolMessage'
 import { buildFormUrl } from '../../lib/forms'
 import { fetchFormsFromSupabase } from '../../lib/api'
 import { cleanHoaTitle, describeHoaSlot, hoaSlotFitsAge, type HoaSlot } from '../../lib/hoaSlots'
-import { prepareReceipt } from '../../lib/receiptPdf'
 import type { Form, Lead } from '../../types/domain'
 import type { WhatsAppCrm } from './crm'
 import { PanelSection } from './PanelSection'
+import { buttonClass, fieldClass, Problem, ReceiptStep, Step, ZoomStep } from './enrolSteps'
 
 type EnrolPanelProps = {
   lead: Lead
@@ -20,46 +19,12 @@ type EnrolPanelProps = {
 }
 
 const FORM_CHOICE_KEY = 'whatsapp-enrol-form'
-const fieldClass =
-  'w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-[#fc0c97] disabled:bg-slate-50'
-const buttonClass =
-  'rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50'
-
 function readFormChoice() {
   try {
     return window.localStorage.getItem(FORM_CHOICE_KEY)
   } catch {
     return null
   }
-}
-
-function Step({ number, done, title, children }: { number: number; done: boolean; title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border border-slate-200 p-3">
-      <h5 className="flex items-center gap-2 font-semibold text-slate-800">
-        {done ? (
-          <CheckCircle size={18} weight="fill" className="text-emerald-600" aria-label="Done" />
-        ) : (
-          <span
-            aria-hidden="true"
-            className="flex h-[18px] w-[18px] items-center justify-center rounded-full border border-slate-300 text-[11px] text-slate-500"
-          >
-            {number}
-          </span>
-        )}
-        {title}
-      </h5>
-      <div className="mt-2 space-y-2">{children}</div>
-    </div>
-  )
-}
-
-function Problem({ text }: { text: string | null }) {
-  return text ? (
-    <p role="alert" className="text-red-600">
-      {text}
-    </p>
-  ) : null
 }
 
 // Enrolling a lead in an HOA class, in the order it usually happens: the parent fills in the
@@ -106,17 +71,6 @@ export function EnrolPanel({ lead, crm, userName, onWriteMessage }: EnrolPanelPr
   // Classes are split by age, so the child's own age group comes first.
   const slots = otherAges ? allSlots : allSlots.filter((slot) => hoaSlotFitsAge(slot, child?.age ?? null))
 
-  // 3. The receipt
-  const [receiptProblem, setReceiptProblem] = useState<string | null>(null)
-  const [receiptNote, setReceiptNote] = useState<string | null>(null)
-  const [uploading, setUploading] = useState(false)
-
-  // 4. Zoom
-  const [zoomAt, setZoomAt] = useState('')
-  const [zoomLink, setZoomLink] = useState('')
-  const [zoomProblem, setZoomProblem] = useState<string | null>(null)
-  const [savingZoom, setSavingZoom] = useState(false)
-
   const [includeForm, setIncludeForm] = useState(!submitted)
 
   async function bookClass() {
@@ -142,50 +96,6 @@ export function EnrolPanel({ lead, crm, userName, onWriteMessage }: EnrolPanelPr
 
   async function removeBooking(entry: (typeof bookings)[number]) {
     setBookingProblem(await crm.onCancelHoa(entry))
-  }
-
-  async function chooseReceipt(file: File | undefined) {
-    if (!file) {
-      return
-    }
-    setUploading(true)
-    setReceiptProblem(null)
-    setReceiptNote(null)
-    try {
-      const prepared = await prepareReceipt(file)
-      const problem = await enrolment.addReceipt(prepared.file)
-      if (problem) {
-        setReceiptProblem(problem)
-      } else {
-        setReceiptNote(prepared.converted ? 'The photo was saved as a PDF.' : 'Saved.')
-      }
-    } catch (error) {
-      setReceiptProblem(error instanceof Error ? error.message : "Couldn't save the receipt.")
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  async function saveZoom() {
-    const startsAt = new Date(zoomAt)
-    if (!zoomAt || Number.isNaN(startsAt.getTime())) {
-      setZoomProblem('Pick the date and time of the meeting.')
-      return
-    }
-    if (!/^https?:\/\/\S+$/i.test(zoomLink.trim())) {
-      setZoomProblem('Paste the Zoom link, starting with https://')
-      return
-    }
-    setSavingZoom(true)
-    setZoomProblem(null)
-    const problem = await enrolment.addMeeting(startsAt, zoomLink)
-    setSavingZoom(false)
-    if (problem) {
-      setZoomProblem(problem)
-      return
-    }
-    setZoomAt('')
-    setZoomLink('')
   }
 
   function writeMessage() {
@@ -349,106 +259,14 @@ export function EnrolPanel({ lead, crm, userName, onWriteMessage }: EnrolPanelPr
         )}
       </Step>
 
-      <Step number={3} done={enrolment.receipts.length > 0} title="Payment receipt">
-        {enrolment.receipts.map((receipt) => (
-          <div key={receipt.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5">
-            <button
-              type="button"
-              onClick={() => void enrolment.openReceipt(receipt).then(setReceiptProblem)}
-              className="flex min-w-0 items-center gap-1.5 text-left font-medium text-slate-800 hover:underline"
-            >
-              <FilePdf size={16} aria-hidden="true" className="shrink-0 text-red-600" />
-              <span className="truncate">{receipt.name}</span>
-            </button>
-            <span className="shrink-0 text-slate-500">{formatDate(receipt.createdAt.slice(0, 10))}</span>
-            {canEdit && (
-              <button
-                type="button"
-                onClick={() => void enrolment.removeReceipt(receipt).then(setReceiptProblem)}
-                aria-label={`Remove ${receipt.name}`}
-                className="shrink-0 rounded p-1 text-slate-500 hover:bg-slate-100"
-              >
-                <Trash size={14} aria-hidden="true" />
-              </button>
-            )}
-          </div>
-        ))}
-        {canEdit && (
-          <label className="block">
-            <span className="text-slate-600">Upload the receipt (a PDF, or a photo that becomes a PDF)</span>
-            <input
-              type="file"
-              accept="application/pdf,image/*"
-              disabled={uploading}
-              onChange={(event) => {
-                void chooseReceipt(event.target.files?.[0])
-                event.target.value = ''
-              }}
-              className="mt-1 block w-full text-xs"
-            />
-          </label>
-        )}
-        {uploading && <p className="text-slate-500">Saving...</p>}
-        {receiptNote && <p className="text-emerald-700">{receiptNote}</p>}
-        <Problem text={receiptProblem} />
-      </Step>
+      <ReceiptStep number={3} enrolment={enrolment} canEdit={canEdit} />
 
-      <Step number={4} done={enrolment.meetings.length > 0} title="Zoom with the parent">
-        {!submitted && <p className="text-slate-500">This is usually set after the parent has filled in the form.</p>}
-        {enrolment.meetings.map((meeting) => (
-          <div key={meeting.id} className="flex items-start justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5">
-            <span className="min-w-0">
-              <span className="block font-medium text-slate-900">{formatZoomTime(new Date(meeting.startsAt))}</span>
-              <a href={meeting.link} target="_blank" rel="noopener noreferrer" className="block truncate text-[#be185d] hover:underline">
-                {meeting.link}
-              </a>
-            </span>
-            {canEdit && (
-              <button
-                type="button"
-                onClick={() => void enrolment.removeMeeting(meeting).then(setZoomProblem)}
-                aria-label="Remove this Zoom meeting"
-                className="shrink-0 rounded p-1 text-slate-500 hover:bg-slate-100"
-              >
-                <Trash size={14} aria-hidden="true" />
-              </button>
-            )}
-          </div>
-        ))}
-        {canEdit && (
-          <>
-            <label className="block">
-              <span className="text-slate-600">Date and time</span>
-              <input
-                type="datetime-local"
-                value={zoomAt}
-                onChange={(event) => {
-                  setZoomAt(event.target.value)
-                  setZoomProblem(null)
-                }}
-                className={fieldClass}
-              />
-            </label>
-            <label className="block">
-              <span className="text-slate-600">Zoom link (it is different each time)</span>
-              <input
-                type="url"
-                value={zoomLink}
-                placeholder="https://zoom.us/j/..."
-                onChange={(event) => {
-                  setZoomLink(event.target.value)
-                  setZoomProblem(null)
-                }}
-                className={fieldClass}
-              />
-            </label>
-            <Problem text={zoomProblem} />
-            <button type="button" disabled={savingZoom} onClick={() => void saveZoom()} className={`${buttonClass} w-full`}>
-              {savingZoom ? 'Saving...' : 'Save the Zoom meeting'}
-            </button>
-          </>
-        )}
-      </Step>
+      <ZoomStep
+        number={4}
+        enrolment={enrolment}
+        canEdit={canEdit}
+        hint={!submitted ? 'This is usually set after the parent has filled in the form.' : null}
+      />
 
       <div className="space-y-1.5">
         {!submitted && formUrl && (

@@ -51,6 +51,16 @@ export type WhatsAppCrm = {
   describeHoaBooking: (booking: TrialBooking) => string
   // Takes the child out of the class again.
   onCancelHoa: (booking: TrialBooking) => Promise<string | null>
+  // Signs a child up for the Holiday Camp: makes the student (from this lead), puts them in the camp
+  // class, and gives them the Holiday Camp package from the start date.
+  onEnrolCamp: (input: {
+    leadId: number
+    childName: string
+    phone: string
+    classroomId: number
+    packageId: number
+    startDate: string
+  }) => Promise<string | null>
   // Make-up classes are arranged with the calendar's permission.
   canBookMakeup: boolean
   onCreateLead: (input: LeadFormValues) => Promise<{ leadId: number | null; error: string | null }>
