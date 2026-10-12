@@ -16,6 +16,8 @@ type EnrolPanelProps = {
   userName: string | null
   // Puts text in the message box, for the team to read and send.
   onWriteMessage: (text: string) => void
+  // The student is the one writing: the message speaks to them, and the form is theirs.
+  forStudent?: boolean
 }
 
 const FORM_CHOICE_KEY = 'whatsapp-enrol-form'
@@ -29,7 +31,7 @@ function readFormChoice() {
 
 // Enrolling a lead in an HOA class, in the order it usually happens: the parent fills in the
 // registration form, a class is booked, the payment receipt is kept, and a Zoom meeting is set.
-export function EnrolPanel({ lead, crm, userName, onWriteMessage }: EnrolPanelProps) {
+export function EnrolPanel({ lead, crm, userName, onWriteMessage, forStudent = false }: EnrolPanelProps) {
   const enrolment = useLeadEnrolment(lead.id, userName)
   const canEdit = crm.canEditLeads
   const submitted = crm.leadIdsWithForms.has(lead.id)
@@ -112,6 +114,7 @@ export function EnrolPanel({ lead, crm, userName, onWriteMessage }: EnrolPanelPr
         zoom: nextMeeting ? { startsAt: new Date(nextMeeting.startsAt), link: nextMeeting.link } : null,
         formUrl: includeForm && !submitted ? formUrl : null,
         paid: enrolment.receipts.length > 0,
+        toStudent: forStudent,
       }),
     )
   }
@@ -126,7 +129,7 @@ export function EnrolPanel({ lead, crm, userName, onWriteMessage }: EnrolPanelPr
       <Step number={1} done={submitted} title="Registration form">
         {submitted ? (
           <div className="flex items-center justify-between gap-2">
-            <span className="text-emerald-700">The parent has filled it in.</span>
+            <span className="text-emerald-700">{forStudent ? 'The form has been filled in.' : 'The parent has filled it in.'}</span>
             <button type="button" onClick={() => crm.onOpenFormAnswers(lead.id)} className="font-medium text-[#be185d] hover:underline">
               Read their answers
             </button>
@@ -170,7 +173,7 @@ export function EnrolPanel({ lead, crm, userName, onWriteMessage }: EnrolPanelPr
       </Step>
 
       <Step number={2} done={bookings.length > 0} title="Book an HOA class">
-        {!submitted && <p className="text-slate-500">This is usually done after the parent has filled in the form.</p>}
+        {!submitted && <p className="text-slate-500">{forStudent ? 'This is usually done after the form has been filled in.' : 'This is usually done after the parent has filled in the form.'}</p>}
         {bookings.map((entry) => (
           <div key={entry.id} className="flex items-start justify-between gap-2 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-emerald-900">
             <span>
@@ -265,7 +268,7 @@ export function EnrolPanel({ lead, crm, userName, onWriteMessage }: EnrolPanelPr
         number={4}
         enrolment={enrolment}
         canEdit={canEdit}
-        hint={!submitted ? 'This is usually set after the parent has filled in the form.' : null}
+        hint={!submitted ? (forStudent ? 'This is usually set after the form has been filled in.' : 'This is usually set after the parent has filled in the form.') : null}
       />
 
       <div className="space-y-1.5">
@@ -280,7 +283,7 @@ export function EnrolPanel({ lead, crm, userName, onWriteMessage }: EnrolPanelPr
           onClick={writeMessage}
           className="w-full rounded-lg bg-[#fc0c97] px-3 py-2 text-sm font-semibold text-white hover:bg-[#e00a87]"
         >
-          Write the message to the parent
+          {forStudent ? 'Write the message to the student' : 'Write the message to the parent'}
         </button>
         <p className="text-slate-500">It goes into the message box with what is saved above. Read it, change it, then press Send.</p>
       </div>

@@ -11,6 +11,8 @@ export type EnrolMessageInput = {
   formUrl: string | null
   // True when the payment receipt is saved, so the message can thank them.
   paid: boolean
+  // The student is the one writing: the message speaks to them (你), not to a parent (您).
+  toStudent?: boolean
 }
 
 export function formatZoomTime(date: Date) {
@@ -26,39 +28,60 @@ export type CampMessageInput = {
   zoom: { startsAt: Date; link: string } | null
   formUrl: string | null
   paid: boolean
+  toStudent?: boolean
 }
 
-// The message to the parent for a Holiday Camp sign-up.
-export function buildCampMessage({ childName, enrolled, zoom, formUrl, paid }: CampMessageInput) {
+// How the same message reads to a parent and to a student who writes themself.
+function voice(toStudent: boolean | undefined) {
+  return toStudent
+    ? {
+        thanks: '谢谢你！',
+        zoom: '老师想先在 Zoom 上和你简单聊一下',
+        form: '麻烦你先填写这份报名表（需要的话请家长一起填）：',
+        formBeforeClass: '麻烦你在上课前先填写这份报名表（需要的话请家长一起填）：',
+        bye: '期待见到你！',
+      }
+    : {
+        thanks: '谢谢您！',
+        zoom: '老师想先和您在 Zoom 上简单聊一下',
+        form: '麻烦您先填写这份报名表：',
+        formBeforeClass: '麻烦您在上课前先填写这份报名表：',
+        bye: '期待见到你们！',
+      }
+}
+
+// The message to the parent (or to the student) for a Holiday Camp sign-up.
+export function buildCampMessage({ childName, enrolled, zoom, formUrl, paid, toStudent }: CampMessageInput) {
+  const say = voice(toStudent)
   const lines: string[] = []
-  lines.push(paid ? '你好，已收到款项，谢谢您！' : '你好，谢谢您！')
-  const child = childName.trim() || '孩子'
+  lines.push(paid ? `你好，已收到款项，${say.thanks}` : `你好，${say.thanks}`)
+  const child = toStudent ? '你' : childName.trim() || '孩子'
   if (enrolled) {
     lines.push(`${child} 已经报名 Mirai Online AI Holiday Camp（${enrolled.className}），${enrolled.startDate} 开始上课，共 ${enrolled.classes} 堂。`)
   }
   if (zoom) {
-    lines.push('', `老师想先和您在 Zoom 上简单聊一下，时间：${formatZoomTime(zoom.startsAt)}`, `Zoom 链接：${zoom.link.trim()}`)
+    lines.push('', `${say.zoom}，时间：${formatZoomTime(zoom.startsAt)}`, `Zoom 链接：${zoom.link.trim()}`)
   }
   if (formUrl) {
-    lines.push('', '麻烦您先填写这份报名表：', formUrl)
+    lines.push('', say.form, formUrl)
   }
-  lines.push('', '期待见到你们！')
+  lines.push('', say.bye)
   return lines.join('\n')
 }
 
-export function buildEnrolMessage({ childName, classTime, zoom, formUrl, paid }: EnrolMessageInput) {
+export function buildEnrolMessage({ childName, classTime, zoom, formUrl, paid, toStudent }: EnrolMessageInput) {
+  const say = voice(toStudent)
   const lines: string[] = []
-  lines.push(paid ? '你好，已收到款项，谢谢您！' : '你好，谢谢您！')
-  const child = childName.trim() || '孩子'
+  lines.push(paid ? `你好，已收到款项，${say.thanks}` : `你好，${say.thanks}`)
   if (classTime) {
-    lines.push(`${child} 的 HOA 课程已经安排在 ${classTime}。`)
+    lines.push(toStudent ? `你的 HOA 课程已经安排在 ${classTime}。` : `${childName.trim() || '孩子'} 的 HOA 课程已经安排在 ${classTime}。`)
   }
   if (zoom) {
-    lines.push('', `老师想先和您在 Zoom 上简单聊一下，时间：${formatZoomTime(zoom.startsAt)}`, `Zoom 链接：${zoom.link.trim()}`)
+    lines.push('', `${say.zoom}，时间：${formatZoomTime(zoom.startsAt)}`, `Zoom 链接：${zoom.link.trim()}`)
   }
   if (formUrl) {
-    lines.push('', '麻烦您在上课前先填写这份报名表：', formUrl)
+    lines.push('', say.formBeforeClass, formUrl)
   }
-  lines.push('', '期待见到你们！')
+  lines.push('', say.bye)
   return lines.join('\n')
 }

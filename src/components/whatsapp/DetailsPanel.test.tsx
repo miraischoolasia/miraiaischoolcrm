@@ -138,6 +138,22 @@ describe('DetailsPanel', () => {
     expect(crm.onCreateLead).not.toHaveBeenCalled()
   })
 
+  it('says so when the server already has a lead for the number (the page list was behind)', async () => {
+    const crm = makeCrm({
+      onCreateLead: vi.fn().mockResolvedValue({
+        leadId: null,
+        error: 'This number already belongs to the lead "@yvonne.ywbl".',
+        existingLeadId: 21,
+      }),
+    })
+    renderPanel(crm)
+
+    await userEvent.type(screen.getByLabelText('Parent name'), 'Mei')
+    await userEvent.click(screen.getByRole('button', { name: 'Save lead' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('already belongs to the lead "@yvonne.ywbl"')
+  })
+
   it('does not guess a lead from the name; the team finds it by searching, and the chat number is saved on it', async () => {
     const named = { ...lead, id: 21, fullName: 'Mei Ling Tan', phone: '0198888888', children: [{ name: 'Ethan', age: 9, phone: null }] } as Lead
     const crm = makeCrm({ leads: [named] })
@@ -631,6 +647,58 @@ describe('DetailsPanel', () => {
   })
 
   describe('when the student is the one writing', () => {
+    const ethan = { id: 1, name: 'Ethan Lim', phone: null, studentType: 'regular', packageId: 2, isActive: true } as Student
+    const packages = [{ id: 2, name: '3 Months', kind: 'regular' } as Package]
+
+    function renderTied(role: 'student' | 'parent') {
+      render(
+        <DetailsPanel
+          conversation={conversation({ crm_lead_id: 11 })}
+          messages={[firstMessage]}
+          hasOlder={false}
+          crm={makeCrm({ leads: [{ ...lead, convertedStudentId: 1 }], students: [ethan], packages })}
+          sourceRules={[]}
+          onLoadOlder={vi.fn()}
+          onLinkLead={vi.fn()}
+          onLinkStudents={vi.fn()}
+          onWriteMessage={vi.fn()}
+          role={role}
+          onSetRole={vi.fn()}
+        />,
+      )
+    }
+
+    it('does not offer to link another child, and does not call the sign-up "another child"', () => {
+      renderTied('student')
+
+      expect(screen.queryByRole('button', { name: 'Link another child' })).not.toBeInTheDocument()
+      expect(screen.queryByText(/Enrol another child/)).not.toBeInTheDocument()
+      expect(screen.getByText('Sign up for another HOA class')).toBeInTheDocument()
+    })
+
+    it('says in the header that the student is the one writing, and what the parent still has to give', () => {
+      renderTied('student')
+
+      expect(screen.getByText('Lead · the student themself')).toBeInTheDocument()
+      // The lead has a name (Mei Ling) but only one number, which is the student's own.
+      expect(screen.getByRole('note')).toHaveTextContent("The parent's number is not saved yet.")
+      expect(screen.getByRole('note')).toHaveTextContent('Payment and the registration form need the parent.')
+    })
+
+    it('does not remind about the parent when the chat is a parent chat', () => {
+      renderTied('parent')
+
+      expect(screen.queryByRole('note')).not.toBeInTheDocument()
+      expect(screen.queryByText('Lead · the student themself')).not.toBeInTheDocument()
+    })
+
+    it('still offers both to a parent', () => {
+      renderTied('parent')
+
+      expect(screen.getByRole('button', { name: 'Link another child' })).toBeInTheDocument()
+      expect(screen.getByText('Enrol another child in HOA')).toBeInTheDocument()
+    })
+
     function renderStudentPanel(crm: WhatsAppCrm, attributes: ChatwootConversation['custom_attributes'] = {}) {
       render(
         <DetailsPanel

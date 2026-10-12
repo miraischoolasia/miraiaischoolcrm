@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { CaretLeft } from '@phosphor-icons/react'
 import { getFirstMessage, guessSourceAndTags, parentNumberUpdate, resolveChatLead } from '../../lib/chatLink'
 import { searchLeads } from '../../lib/leadSearch'
+import { parentPhoneOf } from '../../lib/studentContact'
 import { getStudentKind, makeStudentResolver } from '../../lib/studentLink'
 import type { SourceRule } from '../../lib/sourceRules'
 import {
@@ -181,6 +182,16 @@ export function DetailsPanel({
   const hasCamp = crm.packages.some((pkg) => pkg.kind === 'camp' && pkg.isActive)
   const showLeadPart = lead !== null || students.length === 0 || leadFormFor === conversation.id
 
+  // A student who writes themself cannot pay or sign the registration form alone: remind the team
+  // while the parent's name or number is still missing.
+  const missingParent =
+    role === 'student' && lead
+      ? [
+          !lead.fullName?.trim() ? 'name' : null,
+          !parentPhoneOf(lead.phone ?? '', lead.children[0]?.phone) ? 'number' : null,
+        ].filter((part): part is string => part !== null)
+      : []
+
   const first = useMemo(() => getFirstMessage(messages), [messages])
   const guess = useMemo(() => guessSourceAndTags(first?.text ?? '', crm.leadOptions, sourceRules), [first, crm.leadOptions, sourceRules])
   const found = useMemo(() => searchLeads(crm.leads, query), [crm.leads, query])
@@ -201,7 +212,9 @@ export function DetailsPanel({
       <div className="space-y-5">
         {/* The slots below keep their place whether or not the chat is a lead yet, so the
             form is the same one before and after saving and only says "Saved". */}
-        {lead ? <LeadHeader lead={lead} byPhone={byPhone} onUnlink={() => void onLinkLead(null)} /> : null}
+        {lead ? (
+          <LeadHeader lead={lead} byPhone={byPhone} isStudent={role === 'student'} onUnlink={() => void onLinkLead(null)} />
+        ) : null}
         {/* Who the school already has as students comes first: a parent of a student is not a new lead. */}
         {onSetRole ? (
           <ChatRolePicker
@@ -216,6 +229,7 @@ export function DetailsPanel({
             key={student.id}
             student={student}
             crm={crm}
+            forStudent={role === 'student'}
             onUnlink={
               linkedStudentIds.includes(student.id)
                 ? () => void onLinkStudents(linkedStudentIds.filter((id) => id !== student.id))
@@ -365,18 +379,30 @@ export function DetailsPanel({
             </ul>
           </PanelSection>
         )}
+        {lead && onWriteMessage && missingParent.length > 0 ? (
+          <p role="note" className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            The parent's {missingParent.join(' and ')} {missingParent.length > 1 ? 'are' : 'is'} not saved yet. Payment and the
+            registration form need the parent.
+          </p>
+        ) : null}
         {lead && onWriteMessage ? (
           isEnrolled ? (
             <details className="border-t border-pink-100 pt-4 text-xs">
               <summary className="cursor-pointer font-semibold text-[#be185d]">
-                {hasCamp ? 'Enrol another child (HOA or Holiday Camp)' : 'Enrol another child in HOA'}
+                {role === 'student'
+                  ? hasCamp
+                    ? 'Sign up for another course (HOA or Holiday Camp)'
+                    : 'Sign up for another HOA class'
+                  : hasCamp
+                    ? 'Enrol another child (HOA or Holiday Camp)'
+                    : 'Enrol another child in HOA'}
               </summary>
               <div className="mt-3 space-y-3">
                 {hasCamp && <ProgramSwitch program={program} onChange={setProgram} />}
                 {program === 'camp' && hasCamp ? (
-                  <CampEnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} />
+                  <CampEnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} forStudent={role === 'student'} />
                 ) : (
-                  <EnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} />
+                  <EnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} forStudent={role === 'student'} />
                 )}
               </div>
             </details>
@@ -384,9 +410,9 @@ export function DetailsPanel({
             <div className="space-y-3">
               {hasCamp && <ProgramSwitch program={program} onChange={setProgram} />}
               {program === 'camp' && hasCamp ? (
-                <CampEnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} />
+                <CampEnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} forStudent={role === 'student'} />
               ) : (
-                <EnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} />
+                <EnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} forStudent={role === 'student'} />
               )}
             </div>
           )

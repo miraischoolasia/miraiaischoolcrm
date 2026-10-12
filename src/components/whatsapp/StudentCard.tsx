@@ -8,11 +8,13 @@ type StudentCardProps = {
   crm: WhatsAppCrm
   // Set when the team tied this student to the chat by hand; takes that tie away again.
   onUnlink?: () => void
+  // The chat is the student themself, not their parent.
+  forStudent?: boolean
 }
 
 // A student already enrolled: where they are and the two things parents message
 // about most, a day they cannot come and a class to make up.
-export function StudentCard({ student, crm, onUnlink }: StudentCardProps) {
+export function StudentCard({ student, crm, onUnlink, forStudent = false }: StudentCardProps) {
   const [leave, setLeave] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [message, setMessage] = useState<{ text: string; good: boolean } | null>(null)
@@ -52,7 +54,7 @@ export function StudentCard({ student, crm, onUnlink }: StudentCardProps) {
         {!student.isActive && <p className="text-amber-700">Not active now</p>}
         {onUnlink && (
           <button type="button" onClick={onUnlink} className="mt-0.5 text-slate-500 hover:underline">
-            Not their child? Unlink
+            {forStudent ? 'Not this student? Unlink' : 'Not their child? Unlink'}
           </button>
         )}
       </div>

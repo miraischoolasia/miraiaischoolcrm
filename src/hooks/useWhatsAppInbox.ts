@@ -67,6 +67,8 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
   const [loadError, setLoadError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [messages, setMessages] = useState<ChatwootMessage[]>([])
+  // The chat the messages above were loaded for; null while a chat is still loading.
+  const [messagesChat, setMessagesChat] = useState<number | null>(null)
   // Whether the selected chat itself has older messages, and how many older chats of the same
   // parent are still to be read after it.
   const [ownHasOlder, setOwnHasOlder] = useState(false)
@@ -208,6 +210,7 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
   useEffect(() => {
     selectedRef.current = selectedId
     setMessages([])
+    setMessagesChat(null)
     setOwnHasOlder(false)
     setOlderChatCount(0)
     ownCursor.current = null
@@ -224,6 +227,7 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
           return
         }
         setMessages(mergeMessages([], latest))
+        setMessagesChat(selectedId)
         setOwnHasOlder(latest.length >= 20)
         ownCursor.current = latest.length > 0 ? Math.min(...latest.map((message) => message.id)) : null
         // The phone shows as many unread as the CRM did, so only that many need telling.
@@ -412,10 +416,10 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
 
   // Says who is on the other end of the chat: the parent, or the student themself.
   const setChatRole = useCallback(
-    async (conversationId: number, role: ChatRole | null) => {
+    async (conversationId: number, role: ChatRole | null, options: { auto?: boolean } = {}) => {
       setActionError(null)
       try {
-        await saveAttributes(conversationId, { crm_chat_role: role })
+        await saveAttributes(conversationId, { crm_chat_role: role, ...(options.auto ? { crm_role_auto: true } : {}) })
         return true
       } catch {
         setActionError("Couldn't save who is on this chat. Try again.")
@@ -648,6 +652,7 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
     selectedId,
     setSelectedId,
     messages,
+    messagesChat,
     waitingMessages,
     hasOlder,
     loadOlder,

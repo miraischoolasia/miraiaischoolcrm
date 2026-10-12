@@ -66,6 +66,9 @@ export type ChatAttributes = {
   crm_student_ids?: number[]
   // Who is on the other end of the chat: the parent of the student(s), or the student themself.
   crm_chat_role?: ChatRole | null
+  // The role above was set by the page from what the person wrote; once the team changes or takes it back,
+  // the page does not set it again.
+  crm_role_auto?: boolean
 }
 
 export type ChatRole = 'parent' | 'student'

@@ -26,6 +26,7 @@ import { useSourceRules } from '../../hooks/useSourceRules'
 import { useAutoLeads } from '../../hooks/useAutoLeads'
 import { makeLeadResolver, quickReplyValues, resolveChatLead } from '../../lib/chatLink'
 import { findChatForNumber } from '../../lib/chatForNumber'
+import { useAutoChatRole } from '../../hooks/useAutoChatRole'
 import { draftPreview, draftsFirst, type Draft } from '../../lib/draft'
 import { createWaActions, waIdOf } from '../../lib/waActions'
 import { useReactionPreviews } from '../../hooks/useReactionPreviews'
@@ -421,6 +422,15 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
     })()
   }, [openRequest, active, isLoadingChats, loadedChats, client, setSelectedId, startNewChat, crm.leads, crm.students])
 
+  // Someone who writes "我是学生" is the student themself: set it when the chat is open, once.
+  useAutoChatRole({
+    active,
+    selected: inbox.selected,
+    messages: inbox.messages,
+    messagesChat: inbox.messagesChat,
+    setChatRole: inbox.setChatRole,
+  })
+
   const forwardTargets = useMemo(
     () =>
       inbox.conversations.map((conversation) => {
@@ -505,6 +515,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
         studentLabelsOf={studentLabelsOf}
         isOlderDuplicate={isOlderDuplicate}
         isEmptyDuplicate={isEmptyDuplicate}
+        isStudentSelf={(conversation) => getChatRole(conversation) === 'student'}
         tagsOf={tagsOf}
         picOf={picOf}
         kind={kind}

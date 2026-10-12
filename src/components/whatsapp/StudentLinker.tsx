@@ -48,6 +48,11 @@ export function StudentLinker({ students, packages, shownIds, isEmpty, onLink, f
     setIsOpen(false)
   }
 
+  // A student who writes themself is the one student of this chat: there is no other child to link.
+  if (forStudent && !isEmpty) {
+    return null
+  }
+
   if (!open) {
     return (
       <button

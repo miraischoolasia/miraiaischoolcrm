@@ -28,6 +28,22 @@ describe('buildEnrolMessage', () => {
     expect(text).not.toContain('已收到款项')
   })
 
+  it('speaks to the student themself, not to a parent', () => {
+    const text = buildEnrolMessage({
+      childName: 'Ethan',
+      classTime: 'Sat 18 Oct, 10:00 to 12:00',
+      zoom: null,
+      formUrl: 'https://crm.example.com/?form=hoa',
+      paid: true,
+      toStudent: true,
+    })
+
+    expect(text).toContain('谢谢你')
+    expect(text).toContain('你的 HOA 课程已经安排在 Sat 18 Oct, 10:00 to 12:00')
+    expect(text).not.toContain('您')
+    expect(text).not.toContain('Ethan')
+  })
+
   it('calls the child "孩子" when there is no name', () => {
     expect(buildEnrolMessage({ childName: ' ', classTime: 'Sat', zoom: null, formUrl: null, paid: false })).toContain('孩子 的 HOA')
   })

@@ -243,3 +243,11 @@ describe('ConversationList duplicate chats of one parent', () => {
     expect(screen.queryByText('Older chat of this parent')).not.toBeInTheDocument()
   })
 })
+
+describe('ConversationList student writing themself', () => {
+  it('marks a chat where the student themself is on the other end', () => {
+    renderList([chat(1, 'Ethan', 60), chat(2, 'Aisha', 120)], 0, { isStudentSelf: (conversation) => conversation.id === 1 })
+
+    expect(screen.getAllByText('Student themself')).toHaveLength(1)
+  })
+})
