@@ -1,0 +1,129 @@
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
+import { familyOf } from '../../lib/family'
+import type { Person } from '../../lib/peopleApi'
+import { FamilyCard } from './FamilyCard'
+
+const person = (id: number, patch: Partial<Person>): Person => ({
+  id,
+  kind: 'contact',
+  name: null,
+  phone: null,
+  email: null,
+  contactId: null,
+  parentId: null,
+  leadId: null,
+  studentId: null,
+  ...patch,
+})
+
+const people = [
+  person(1, { kind: 'parent', name: '@yvonne.ywbl', phone: '60164655564', contactId: 482, leadId: 174 }),
+  person(2, { kind: 'student', name: 'Teoh Tze Yu', parentId: 1, studentId: 56 }),
+  person(3, { kind: 'student', name: 'Ethan Lim', parentId: 1, contactId: 600 }),
+  person(4, { kind: 'parent', name: 'Yvonne', contactId: 398, leadId: 174 }),
+]
+
+function setup(contactId: number, extra: Partial<React.ComponentProps<typeof FamilyCard>> = {}) {
+  const family = familyOf(contactId, people)!
+  const props = {
+    family,
+    childDetail: (child: Person) => (child.id === 2 ? { age: 11, label: 'HOA' } : { age: null, label: null }),
+    chatOf: (id: number) => (id === 600 ? 77 : id === 398 ? 88 : id === 482 ? 55 : null),
+    onOpenChat: vi.fn(),
+    onOpenStudent: vi.fn(),
+    ...extra,
+  }
+  render(<FamilyCard {...props} />)
+  return props
+}
+
+describe('FamilyCard', () => {
+  it('shows the parent, marks the open chat, and lists the children with what is known of them', () => {
+    setup(482)
+
+    expect(screen.getByText('@yvonne.ywbl')).toBeInTheDocument()
+    expect(screen.getByText('Parent · +60164655564')).toBeInTheDocument()
+    expect(screen.getByText('This chat')).toBeInTheDocument()
+    expect(screen.getByText('Teoh Tze Yu')).toBeInTheDocument()
+    expect(screen.getByText('11 years · HOA')).toBeInTheDocument()
+    expect(screen.getByText('Ethan Lim')).toBeInTheDocument()
+  })
+
+  it('opens the student, and the chat of a child who writes themself', async () => {
+    const props = setup(482)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open student' }))
+    expect(props.onOpenStudent).toHaveBeenCalledWith(56)
+
+    const buttons = screen.getAllByRole('button', { name: 'Open chat' })
+    await userEvent.click(buttons[buttons.length - 1])
+    expect(props.onOpenChat).toHaveBeenCalledWith(77)
+  })
+
+  it('points to the same parent\'s other chat', async () => {
+    const props = setup(482)
+
+    expect(screen.getByText(/The same parent has another chat/)).toBeInTheDocument()
+    await userEvent.click(screen.getAllByRole('button', { name: 'Open chat' })[0])
+    expect(props.onOpenChat).toHaveBeenCalledWith(88)
+  })
+
+  it('marks the student themself and offers the way to the parent', async () => {
+    const props = setup(600)
+
+    expect(screen.getByText('This chat')).toBeInTheDocument()
+    expect(screen.getAllByText('Ethan Lim')).toHaveLength(1)
+    // The parent's chat and the parent's other chat.
+    await userEvent.click(screen.getAllByRole('button', { name: 'Open chat' })[0])
+    expect(props.onOpenChat).toHaveBeenCalledWith(55)
+  })
+
+  it('says when a student has no parent saved yet', () => {
+    const lonely = [person(9, { kind: 'student', name: 'Alone', contactId: 700 })]
+    render(
+      <FamilyCard
+        family={familyOf(700, lonely)!}
+        childDetail={() => ({ age: null, label: null })}
+        chatOf={() => null}
+        onOpenChat={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Parent not saved yet')).toBeInTheDocument()
+  })
+
+  it('adds a child to the lead', async () => {
+    const onAddChild = vi.fn().mockResolvedValue(null)
+    setup(482, { onAddChild })
+
+    await userEvent.click(screen.getByRole('button', { name: /Add a child/ }))
+    await userEvent.type(screen.getByLabelText('New child name'), 'Mia')
+    await userEvent.selectOptions(screen.getByLabelText('New child age'), '9')
+    await userEvent.click(screen.getByRole('button', { name: 'Add child' }))
+
+    expect(onAddChild).toHaveBeenCalledWith('Mia', 9)
+  })
+
+  it('asks for the name and the age before adding, and shows a problem that came back', async () => {
+    const onAddChild = vi.fn().mockResolvedValue('Failed to save lead record.')
+    setup(482, { onAddChild })
+
+    await userEvent.click(screen.getByRole('button', { name: /Add a child/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add child' }))
+    expect(screen.getByRole('alert')).toHaveTextContent("Write the child's name and choose the age.")
+    expect(onAddChild).not.toHaveBeenCalled()
+
+    await userEvent.type(screen.getByLabelText('New child name'), 'Mia')
+    await userEvent.selectOptions(screen.getByLabelText('New child age'), '9')
+    await userEvent.click(screen.getByRole('button', { name: 'Add child' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to save lead record.')
+  })
+
+  it('has no add button when there is no lead to add to', () => {
+    setup(482)
+
+    expect(screen.queryByRole('button', { name: /Add a child/ })).not.toBeInTheDocument()
+  })
+})

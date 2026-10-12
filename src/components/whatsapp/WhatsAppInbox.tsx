@@ -27,6 +27,8 @@ import { useAutoLeads } from '../../hooks/useAutoLeads'
 import { makeLeadResolver, quickReplyValues, resolveChatLead } from '../../lib/chatLink'
 import { findChatForNumber } from '../../lib/chatForNumber'
 import { useAutoChatRole } from '../../hooks/useAutoChatRole'
+import { usePeople } from '../../hooks/usePeople'
+import { linkContactToLead, linkContactToStudents, setContactRole } from '../../lib/peopleApi'
 import { draftPreview, draftsFirst, type Draft } from '../../lib/draft'
 import { createWaActions, waIdOf } from '../../lib/waActions'
 import { useReactionPreviews } from '../../hooks/useReactionPreviews'
@@ -353,6 +355,41 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
 
   const quickReplies = useQuickReplies(true)
   const sourceRules = useSourceRules(true)
+  // The family table: who is whose parent. The database keeps it in step with leads and students; the
+  // page adds each WhatsApp contact and what the team ties together by hand.
+  const { people, refresh: refreshPeople } = usePeople({
+    enabled: active,
+    canEdit: crm.canEditLeads || crm.canEditStudents,
+    conversations: inbox.conversations,
+  })
+  const contactOf = useCallback(
+    (conversationId: number) =>
+      inbox.conversations.find((conversation) => conversation.id === conversationId)?.meta.sender.id ?? null,
+    [inbox.conversations],
+  )
+  const chatOfContact = useCallback(
+    (contactId: number) =>
+      inbox.conversations.find((conversation) => conversation.meta.sender.id === contactId)?.id ?? null,
+    [inbox.conversations],
+  )
+  // Tells the family table what the team just tied together, then reads it again.
+  const tellFamily = useCallback(
+    (work: Promise<unknown>) => {
+      void work.then(() => refreshPeople()).catch(() => undefined)
+    },
+    [refreshPeople],
+  )
+  const setLeadLinkAndFamily = useCallback(
+    async (conversationId: number, leadId: number | null) => {
+      const ok = await inbox.setLeadLink(conversationId, leadId)
+      const contact = contactOf(conversationId)
+      if (ok && leadId !== null && contact !== null) {
+        tellFamily(linkContactToLead(contact, leadId))
+      }
+      return ok
+    },
+    [inbox, contactOf, tellFamily],
+  )
   // A new chat that matches a source rule becomes a lead without anyone pressing "Save lead".
   useAutoLeads({
     enabled: active,
@@ -363,7 +400,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
     ready: !sourceRules.isLoading && !inbox.isLoading && crm.leads.length > 0 && crm.students.length > 0,
     hasLead: (conversation) => leadIdOf(conversation) !== null,
     hasStudents: (conversation) => studentsOf(conversation).length > 0,
-    linkLead: inbox.setLeadLink,
+    linkLead: setLeadLinkAndFamily,
   })
   // Set while the source rules window is open; phrase starts a new rule from a message.
   const [managingRules, setManagingRules] = useState<{ phrase: string } | null>(null)
@@ -613,15 +650,31 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
             sourceRules={sourceRules.rules}
             onManageRules={(phrase) => setManagingRules({ phrase })}
             onLoadOlder={() => void inbox.loadOlder()}
-            onLinkLead={(leadId) => inbox.setLeadLink(inbox.selected!.id, leadId)}
-            onLinkStudents={(ids) => inbox.setStudentLinks(inbox.selected!.id, ids)}
+            onLinkLead={(leadId) => setLeadLinkAndFamily(inbox.selected!.id, leadId)}
+            onLinkStudents={async (ids) => {
+              const ok = await inbox.setStudentLinks(inbox.selected!.id, ids)
+              const contact = contactOf(inbox.selected!.id)
+              if (ok && ids.length > 0 && contact !== null) {
+                tellFamily(linkContactToStudents(contact, ids))
+              }
+              return ok
+            }}
+            people={people}
+            chatOfContact={chatOfContact}
             userName={currentUser.name}
             onWriteMessage={(text) => {
               setDraftRequest((current) => ({ id: (current?.id ?? 0) + 1, text }))
               setDetailsOpen(false)
             }}
             role={getChatRole(inbox.selected)}
-            onSetRole={(role) => inbox.setChatRole(inbox.selected!.id, role)}
+            onSetRole={async (role) => {
+              const ok = await inbox.setChatRole(inbox.selected!.id, role)
+              const contact = contactOf(inbox.selected!.id)
+              if (ok && role !== null && contact !== null) {
+                tellFamily(setContactRole(contact, role))
+              }
+              return ok
+            }}
             otherChats={familyChatsOf(inbox.selected).map((other) => ({
               id: other.id,
               title: getChatIdentity(other.meta.sender, chatLabelOf(other)).title,

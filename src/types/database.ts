@@ -517,6 +517,48 @@ export type Database = {
         }
         Relationships: []
       }
+      people: {
+        Row: {
+          id: number
+          kind: 'contact' | 'parent' | 'student'
+          full_name: string | null
+          phone: string | null
+          email: string | null
+          chatwoot_contact_id: number | null
+          parent_id: number | null
+          lead_id: number | null
+          student_id: number | null
+          auth_user_id: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          kind?: 'contact' | 'parent' | 'student'
+          full_name?: string | null
+          phone?: string | null
+          email?: string | null
+          chatwoot_contact_id?: number | null
+          parent_id?: number | null
+          lead_id?: number | null
+          student_id?: number | null
+          auth_user_id?: string | null
+          notes?: string | null
+        }
+        Update: {
+          kind?: 'contact' | 'parent' | 'student'
+          full_name?: string | null
+          phone?: string | null
+          email?: string | null
+          chatwoot_contact_id?: number | null
+          parent_id?: number | null
+          lead_id?: number | null
+          student_id?: number | null
+          notes?: string | null
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           id: number
@@ -1245,6 +1287,33 @@ export type Database = {
     }
     Views: Record<string, never>
     Functions: {
+      ensure_contact_people: {
+        Args: {
+          p_contacts: Json
+        }
+        Returns: number
+      }
+      link_contact_to_lead: {
+        Args: {
+          p_contact_id: number
+          p_lead_id: number
+        }
+        Returns: undefined
+      }
+      link_contact_to_students: {
+        Args: {
+          p_contact_id: number
+          p_student_ids: number[]
+        }
+        Returns: undefined
+      }
+      set_contact_role: {
+        Args: {
+          p_contact_id: number
+          p_role: string
+        }
+        Returns: undefined
+      }
       set_late_feedback_edit: {
         Args: {
           p_open: boolean

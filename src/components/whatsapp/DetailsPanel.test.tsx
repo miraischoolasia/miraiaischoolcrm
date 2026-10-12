@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { Lead, LeadOption, Package, Student, TrialBooking } from '../../types/domain'
+import type { Person } from '../../lib/peopleApi'
 import type { ChatwootConversation, ChatwootMessage } from '../../lib/whatsappInbox'
 import type { SourceRule } from '../../lib/sourceRules'
 import type { WhatsAppCrm } from './crm'
@@ -643,6 +644,97 @@ describe('DetailsPanel', () => {
       expect(screen.getByRole('button', { name: 'Parent' })).toBeInTheDocument()
       await userEvent.click(screen.getByRole('button', { name: 'The student themself' }))
       expect(onSetRole).toHaveBeenCalledWith('student')
+    })
+  })
+
+  describe('the family card', () => {
+    const person = (id: number, patch: Partial<Person>): Person => ({
+      id,
+      kind: 'contact',
+      name: null,
+      phone: null,
+      email: null,
+      contactId: null,
+      parentId: null,
+      leadId: null,
+      studentId: null,
+      ...patch,
+    })
+    // The chat's contact is 3 (see conversation()).
+    const family = [
+      person(1, { kind: 'parent', name: 'Mei Ling', phone: '60123456789', contactId: 3, leadId: 11 }),
+      person(2, { kind: 'student', name: 'Ethan', parentId: 1 }),
+    ]
+
+    function renderWithFamily(crm: WhatsAppCrm) {
+      render(
+        <DetailsPanel
+          conversation={conversation({ crm_lead_id: 11 })}
+          messages={[firstMessage]}
+          hasOlder={false}
+          crm={crm}
+          sourceRules={[]}
+          onLoadOlder={vi.fn()}
+          onLinkLead={vi.fn()}
+          onLinkStudents={vi.fn()}
+          onOpenChat={vi.fn()}
+          people={family}
+          chatOfContact={() => null}
+        />,
+      )
+    }
+
+    it('shows the parent and the children from the family table', () => {
+      renderWithFamily(makeCrm({ leads: [lead] }))
+
+      const card = screen.getByRole('region', { name: 'Family' })
+      expect(card).toHaveTextContent('Mei Ling')
+      expect(card).toHaveTextContent('This chat')
+      expect(card).toHaveTextContent('Ethan')
+      // The age comes from the child written on the lead.
+      expect(card).toHaveTextContent('9 years')
+    })
+
+    it('adds a child to the lead, keeping the ones already there', async () => {
+      const crm = makeCrm({ leads: [lead] })
+      renderWithFamily(crm)
+
+      // The card's button is the first; the lead form below has its own.
+      await userEvent.click(screen.getAllByRole('button', { name: /Add a child/ })[0])
+      await userEvent.type(screen.getByLabelText('New child name'), 'Mia')
+      await userEvent.selectOptions(screen.getByLabelText('New child age'), '7')
+      await userEvent.click(screen.getByRole('button', { name: 'Add child' }))
+
+      await waitFor(() =>
+        expect(crm.onUpdateLead).toHaveBeenCalledWith(
+          11,
+          expect.objectContaining({
+            children: [
+              { name: 'Ethan', age: 9, phone: null },
+              { name: 'Mia', age: 7, phone: null },
+            ],
+          }),
+        ),
+      )
+    })
+
+    it('shows nothing when the chat is not in the family table', () => {
+      render(
+        <DetailsPanel
+          conversation={conversation()}
+          messages={[firstMessage]}
+          hasOlder={false}
+          crm={makeCrm()}
+          sourceRules={[]}
+          onLoadOlder={vi.fn()}
+          onLinkLead={vi.fn()}
+          onLinkStudents={vi.fn()}
+          onOpenChat={vi.fn()}
+          people={[]}
+        />,
+      )
+
+      expect(screen.queryByRole('region', { name: 'Family' })).not.toBeInTheDocument()
     })
   })
 

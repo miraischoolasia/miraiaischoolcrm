@@ -3,7 +3,10 @@ import { CaretLeft } from '@phosphor-icons/react'
 import { getFirstMessage, guessSourceAndTags, parentNumberUpdate, resolveChatLead } from '../../lib/chatLink'
 import { searchLeads } from '../../lib/leadSearch'
 import { parentPhoneOf } from '../../lib/studentContact'
-import { getStudentKind, makeStudentResolver } from '../../lib/studentLink'
+import { familyOf } from '../../lib/family'
+import type { Person } from '../../lib/peopleApi'
+import { FamilyCard } from './FamilyCard'
+import { describeStudent, getStudentKind, makeStudentResolver } from '../../lib/studentLink'
 import type { SourceRule } from '../../lib/sourceRules'
 import {
   formatListTime,
@@ -56,6 +59,9 @@ type DetailsPanelProps = {
   onUnstar?: (id: number) => void
   // Only on small screens, where this panel takes the place of the chat.
   onBack?: () => void
+  // The family table, and the way from a WhatsApp contact to its chat, for the family card.
+  people?: Person[]
+  chatOfContact?: (contactId: number) => number | null
 }
 
 // The side panel: who the parent is, and what the school already knows about
@@ -106,6 +112,8 @@ export function DetailsPanel({
   starredMessages = [],
   onUnstar,
   onBack,
+  people = [],
+  chatOfContact = () => null,
 }: DetailsPanelProps) {
   const sender = conversation.meta.sender
   const phone = getRealPhone(sender.phone_number)
@@ -192,6 +200,40 @@ export function DetailsPanel({
         ].filter((part): part is string => part !== null)
       : []
 
+  // The family around this chat, from the family table.
+  const family = useMemo(() => familyOf(sender.id, people), [sender.id, people])
+  const familyLead = family?.leadId != null ? (crm.leads.find((entry) => entry.id === family.leadId) ?? null) : null
+  function childDetail(person: Person) {
+    const enrolled = person.studentId !== null ? crm.students.find((entry) => entry.id === person.studentId) : undefined
+    const wanted = (person.name ?? '').toLowerCase().replace(/[\s\p{P}]/gu, '')
+    const written = familyLead?.children.find(
+      (child) => (child.name ?? '').toLowerCase().replace(/[\s\p{P}]/gu, '') === wanted && wanted !== '',
+    )
+    return {
+      age: enrolled?.age ?? written?.age ?? null,
+      label: enrolled ? describeStudent(enrolled, crm.packages) : null,
+    }
+  }
+  async function addChildToLead(childName: string, age: number) {
+    if (!familyLead) {
+      return 'There is no lead to add the child to yet.'
+    }
+    return crm.onUpdateLead(familyLead.id, {
+      fullName: familyLead.fullName ?? '',
+      phone: familyLead.phone ?? '',
+      state: familyLead.state ?? '',
+      sourceId: familyLead.sourceId,
+      picId: familyLead.picId,
+      tagIds: familyLead.tagIds,
+      status: familyLead.status,
+      children: [
+        ...familyLead.children.map((child) => ({ name: child.name, age: child.age, phone: child.phone })),
+        { name: childName, age, phone: null },
+      ],
+      notes: familyLead.notes ?? '',
+    })
+  }
+
   const first = useMemo(() => getFirstMessage(messages), [messages])
   const guess = useMemo(() => guessSourceAndTags(first?.text ?? '', crm.leadOptions, sourceRules), [first, crm.leadOptions, sourceRules])
   const found = useMemo(() => searchLeads(crm.leads, query), [crm.leads, query])
@@ -216,6 +258,16 @@ export function DetailsPanel({
           <LeadHeader lead={lead} byPhone={byPhone} isStudent={role === 'student'} onUnlink={() => void onLinkLead(null)} />
         ) : null}
         {/* Who the school already has as students comes first: a parent of a student is not a new lead. */}
+        {family && onOpenChat ? (
+          <FamilyCard
+            family={family}
+            childDetail={childDetail}
+            chatOf={chatOfContact}
+            onOpenChat={onOpenChat}
+            onOpenStudent={crm.onOpenStudent}
+            onAddChild={familyLead && crm.canEditLeads ? addChildToLead : undefined}
+          />
+        ) : null}
         {onSetRole ? (
           <ChatRolePicker
             role={role}
