@@ -24,7 +24,8 @@ import { ConversationList } from './ConversationList'
 import { useQuickReplies } from '../../hooks/useQuickReplies'
 import { useSourceRules } from '../../hooks/useSourceRules'
 import { useAutoLeads } from '../../hooks/useAutoLeads'
-import { canonicalPhone, makeLeadResolver, quickReplyValues, resolveChatLead } from '../../lib/chatLink'
+import { makeLeadResolver, quickReplyValues, resolveChatLead } from '../../lib/chatLink'
+import { findChatForNumber } from '../../lib/chatForNumber'
 import { draftPreview, draftsFirst, type Draft } from '../../lib/draft'
 import { createWaActions, waIdOf } from '../../lib/waActions'
 import { useReactionPreviews } from '../../hooks/useReactionPreviews'
@@ -240,9 +241,19 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
     },
     [inbox.conversations, leadIdOf, studentsOf],
   )
+  // An empty chat (made by a click, nobody wrote in it) is never the "newer" chat of a parent.
   const isOlderDuplicate = useCallback(
     (conversation: ChatwootConversation) =>
-      otherChatsOf(conversation).some((other) => other.last_activity_at > conversation.last_activity_at),
+      otherChatsOf(conversation).some(
+        (other) => other.last_activity_at > conversation.last_activity_at && Boolean(other.last_non_activity_message),
+      ),
+    [otherChatsOf],
+  )
+  // A chat with no message in it, while another chat of the same parent has some.
+  const isEmptyDuplicate = useCallback(
+    (conversation: ChatwootConversation) =>
+      !conversation.last_non_activity_message &&
+      otherChatsOf(conversation).some((other) => Boolean(other.last_non_activity_message)),
     [otherChatsOf],
   )
   // How many open chats belong to a lead with each tag or source, so the menus can show it.
@@ -371,7 +382,6 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
       return
     }
     handledRequest.current = openRequest.id
-    const wanted = canonicalPhone(openRequest.phone)
     const show = (conversation: ChatwootConversation | null) => {
       setSearch('')
       setTagId(null)
@@ -383,11 +393,14 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
         setSelectedId(conversation.id)
       }
     }
-    const here = loadedChats.find(
-      (conversation) =>
-        (openRequest.leadId !== null && getLinkedLeadId(conversation) === openRequest.leadId) ||
-        (wanted !== null && canonicalPhone(getRealPhone(conversation.meta.sender.phone_number)) === wanted),
-    )
+    // Also a chat whose number WhatsApp hides, when it is tied to a lead or student with this number.
+    const here = findChatForNumber({
+      conversations: loadedChats,
+      phone: openRequest.phone,
+      leadId: openRequest.leadId,
+      leads: crm.leads,
+      students: crm.students,
+    })
     if (here) {
       show(here)
       return
@@ -406,7 +419,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
       setChatPrefill({ phone: openRequest.phone, name: openRequest.name ?? '', leadId: openRequest.leadId })
       setStartingChat(true)
     })()
-  }, [openRequest, active, isLoadingChats, loadedChats, client, setSelectedId, startNewChat])
+  }, [openRequest, active, isLoadingChats, loadedChats, client, setSelectedId, startNewChat, crm.leads, crm.students])
 
   const forwardTargets = useMemo(
     () =>
@@ -491,6 +504,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
         reactionPreviews={reactionPreviews}
         studentLabelsOf={studentLabelsOf}
         isOlderDuplicate={isOlderDuplicate}
+        isEmptyDuplicate={isEmptyDuplicate}
         tagsOf={tagsOf}
         picOf={picOf}
         kind={kind}
@@ -622,6 +636,21 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
             setChatPrefill(null)
           }}
           onStart={async ({ phone, name, leadId }) => {
+            // The school may already have this parent's chat under a hidden ID; open that one
+            // instead of making a second, empty chat for the number.
+            const existing = findChatForNumber({
+              conversations: inbox.conversations,
+              phone,
+              leadId,
+              leads: crm.leads,
+              students: crm.students,
+            })
+            if (existing) {
+              setTab(getTab(existing))
+              setDetailsOpen(false)
+              inbox.setSelectedId(existing.id)
+              return null
+            }
             const result = await inbox.startNewChat({ phone, name })
             if (result.error !== null) {
               return result.error

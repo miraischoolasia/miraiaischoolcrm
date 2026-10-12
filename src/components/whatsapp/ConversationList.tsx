@@ -63,6 +63,8 @@ type ConversationListProps = {
   draftOf?: (conversation: ChatwootConversation) => string | null
   // True for an older chat of a parent who has a newer one.
   isOlderDuplicate?: (conversation: ChatwootConversation) => boolean
+  // True for a chat nobody wrote in, of a parent who has another chat with messages.
+  isEmptyDuplicate?: (conversation: ChatwootConversation) => boolean
   // Show only parents with a student of this kind, or with none yet.
   kind?: StudentKind | 'none' | null
   selectedId: number | null
@@ -135,6 +137,7 @@ export function ConversationList({
   draftOf,
   reactionPreviews,
   isOlderDuplicate,
+  isEmptyDuplicate,
   kind = null,
   selectedId,
   nowSeconds,
@@ -398,6 +401,11 @@ export function ConversationList({
                   {isOlderDuplicate?.(conversation) && (
                     <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
                       Older chat of this parent
+                    </span>
+                  )}
+                  {isEmptyDuplicate?.(conversation) && (
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                      Empty. This parent's chat is another one
                     </span>
                   )}
                   {studentLabelsOf?.(conversation).map((label) => (

@@ -125,6 +125,19 @@ describe('DetailsPanel', () => {
     expect(screen.getByLabelText(/Where did they find us/)).toHaveValue('1')
   })
 
+  it('does not make a second lead for a number that already has one', async () => {
+    const owner = { ...lead, id: 21, fullName: '@yvonne.ywbl', phone: '0198888888' } as Lead
+    const crm = makeCrm({ leads: [owner] })
+    renderPanel(crm)
+
+    await userEvent.clear(screen.getByLabelText('Phone number'))
+    await userEvent.type(screen.getByLabelText('Phone number'), '019-888 8888')
+    await userEvent.click(screen.getByRole('button', { name: 'Save lead' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('already belongs to the lead "@yvonne.ywbl"')
+    expect(crm.onCreateLead).not.toHaveBeenCalled()
+  })
+
   it('does not guess a lead from the name; the team finds it by searching, and the chat number is saved on it', async () => {
     const named = { ...lead, id: 21, fullName: 'Mei Ling Tan', phone: '0198888888', children: [{ name: 'Ethan', age: 9, phone: null }] } as Lead
     const crm = makeCrm({ leads: [named] })

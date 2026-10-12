@@ -229,3 +229,17 @@ describe('ConversationList drafts', () => {
     expect(screen.queryByText('Draft:')).not.toBeInTheDocument()
   })
 })
+
+describe('ConversationList duplicate chats of one parent', () => {
+  it('says an empty chat is not the parent\'s real chat, and leaves the real one unmarked', () => {
+    const real = chat(1, 'Yvonne', 5 * 60)
+    const empty = { ...chat(2, 'Teoh Tze Yu', 60), last_non_activity_message: null }
+    renderList([empty, real], 0, {
+      isOlderDuplicate: () => false,
+      isEmptyDuplicate: (conversation) => conversation.id === 2,
+    })
+
+    expect(screen.getAllByText("Empty. This parent's chat is another one")).toHaveLength(1)
+    expect(screen.queryByText('Older chat of this parent')).not.toBeInTheDocument()
+  })
+})
