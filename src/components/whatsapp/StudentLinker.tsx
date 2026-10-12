@@ -11,11 +11,13 @@ type StudentLinkerProps = {
   isEmpty: boolean
   // Ties the student to this chat; resolves to a message, or null when it worked.
   onLink: (student: Student) => Promise<string | null>
+  // The chat is the student themself, not the parent.
+  forStudent?: boolean
 }
 
 // For a parent whose number matches no student (the student has no number written, or WhatsApp
 // hides the parent's): find the child by name and tie them to this chat.
-export function StudentLinker({ students, packages, shownIds, isEmpty, onLink }: StudentLinkerProps) {
+export function StudentLinker({ students, packages, shownIds, isEmpty, onLink, forStudent = false }: StudentLinkerProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [busyId, setBusyId] = useState<number | null>(null)
@@ -62,7 +64,11 @@ export function StudentLinker({ students, packages, shownIds, isEmpty, onLink }:
     <div className="space-y-1.5 text-xs">
       <label className="block">
         <span className="font-semibold text-slate-700">
-          {isEmpty ? 'Is this the parent of a student? Find the child' : 'Find the child to link'}
+          {isEmpty
+            ? forStudent
+              ? 'Is this a student we already have? Find them'
+              : 'Is this the parent of a student? Find the child'
+            : 'Find the child to link'}
         </span>
         <input
           value={query}

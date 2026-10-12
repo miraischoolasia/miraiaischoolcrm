@@ -28,6 +28,22 @@ describe('ChatRolePicker', () => {
     expect(screen.queryByRole('button', { name: /themself/ })).not.toBeInTheDocument()
   })
 
+  it('still asks when no child is written down yet, without a name', async () => {
+    const onPick = vi.fn()
+    render(<ChatRolePicker role={null} studentName={null} canBeStudent onPick={onPick} />)
+
+    expect(screen.getByRole('button', { name: 'Parent' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'The student themself' }))
+
+    expect(onPick).toHaveBeenCalledWith('student')
+  })
+
+  it('says the details below are the student\'s own once the student is chosen', () => {
+    render(<ChatRolePicker role="student" studentName={null} canBeStudent onPick={vi.fn()} />)
+
+    expect(screen.getByText(/The details below are the student's own/)).toBeInTheDocument()
+  })
+
   it('takes the answer back when the chosen one is tapped again', async () => {
     const onPick = vi.fn()
     render(<ChatRolePicker role="parent" studentName="Albee" canBeStudent onPick={onPick} />)

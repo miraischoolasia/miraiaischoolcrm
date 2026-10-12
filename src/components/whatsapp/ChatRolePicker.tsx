@@ -2,8 +2,8 @@ import type { ChatRole } from '../../lib/whatsappInbox'
 
 type ChatRolePickerProps = {
   role: ChatRole | null
-  // The student the chat is about, to say it in plain words.
-  studentName: string
+  // The student the chat is about, to say it in plain words; null when no child is written down yet.
+  studentName: string | null
   // A chat tied to several children can only be the parent's.
   canBeStudent: boolean
   // Tapping the chosen one again takes the answer back (null).
@@ -11,11 +11,14 @@ type ChatRolePickerProps = {
 }
 
 // One tap that says who is on the other end of the chat, so the list can name it
-// "Albee's parent" or "Albee (student)" and nobody has to guess from a number.
+// "Albee's parent" or "Albee (student)" and nobody has to guess from a number. The lead
+// details below change with the answer: a student writing themself has their own boxes.
 export function ChatRolePicker({ role, studentName, canBeStudent, onPick }: ChatRolePickerProps) {
   const options: { value: ChatRole; label: string }[] = [
-    { value: 'parent', label: `Parent of ${studentName}` },
-    ...(canBeStudent ? [{ value: 'student' as const, label: `${studentName} themself` }] : []),
+    { value: 'parent', label: studentName ? `Parent of ${studentName}` : 'Parent' },
+    ...(canBeStudent
+      ? [{ value: 'student' as const, label: studentName ? `${studentName} themself` : 'The student themself' }]
+      : []),
   ]
 
   return (
@@ -39,6 +42,9 @@ export function ChatRolePicker({ role, studentName, canBeStudent, onPick }: Chat
         ))}
       </div>
       {role === null && <p className="text-slate-500">Pick one, so the chat list names it instead of showing a number.</p>}
+      {role === 'student' && (
+        <p className="text-slate-500">The details below are the student's own. Add the parent's when you have them.</p>
+      )}
     </section>
   )
 }

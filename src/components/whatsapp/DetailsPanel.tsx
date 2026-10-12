@@ -203,11 +203,11 @@ export function DetailsPanel({
             form is the same one before and after saving and only says "Saved". */}
         {lead ? <LeadHeader lead={lead} byPhone={byPhone} onUnlink={() => void onLinkLead(null)} /> : null}
         {/* Who the school already has as students comes first: a parent of a student is not a new lead. */}
-        {childNames.length > 0 && onSetRole ? (
+        {onSetRole ? (
           <ChatRolePicker
             role={role}
-            studentName={childNames.join(' & ')}
-            canBeStudent={childNames.length === 1}
+            studentName={childNames.length > 0 ? childNames.join(' & ') : null}
+            canBeStudent={childNames.length <= 1}
             onPick={(next) => void onSetRole(next)}
           />
         ) : null}
@@ -229,6 +229,7 @@ export function DetailsPanel({
           shownIds={students.map((student) => student.id)}
           isEmpty={students.length === 0}
           onLink={linkStudent}
+          forStudent={role === 'student'}
         />
         {otherChats.length > 0 && onOpenChat && (
           <section className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
@@ -313,6 +314,7 @@ export function DetailsPanel({
             initialName=""
             initialPhone={phone ? `+${phone}` : ''}
             guess={guess}
+            role={role}
             onCreated={async (leadId) => {
               await onLinkLead(leadId)
             }}

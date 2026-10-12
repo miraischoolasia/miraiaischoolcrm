@@ -8,6 +8,8 @@ import {
   leadStatusOptions,
 } from '../../lib/constants'
 import type { SourceGuess } from '../../lib/chatLink'
+import { leadPhoneFor, parentPhoneOf, studentPhoneOf } from '../../lib/studentContact'
+import type { ChatRole } from '../../lib/whatsappInbox'
 import type { Lead, LeadOption, LeadStatus } from '../../types/domain'
 import type { LeadFormValues, WhatsAppCrm } from './crm'
 import { FormAnswers } from './FormAnswers'
@@ -24,6 +26,8 @@ type LeadFormProps = {
   initialName: string
   initialPhone: string
   guess: SourceGuess
+  // Who the team said is on the chat. A student writing themself gets the student's own details first.
+  role?: ChatRole | null
   // Called once a new lead is saved, so the chat can be tied to it.
   onCreated: (leadId: number) => Promise<void>
 }
@@ -33,6 +37,9 @@ type ChildRow = { name: string; age: string; phone: string | null }
 type FormState = {
   fullName: string
   phone: string
+  // The two numbers of a student who writes themself; `phone` follows them (the parent's, else the student's).
+  studentPhone: string
+  parentPhone: string
   state: string
   children: ChildRow[]
   sourceId: string
@@ -49,6 +56,8 @@ function fromLead(lead: Lead): FormState {
   return {
     fullName: lead.fullName ?? '',
     phone: lead.phone ?? '',
+    studentPhone: studentPhoneOf(lead.phone ?? '', lead.children[0]?.phone),
+    parentPhone: parentPhoneOf(lead.phone ?? '', lead.children[0]?.phone),
     state: lead.state ?? '',
     children: lead.children.map((child) => ({ name: child.name ?? '', age: String(child.age), phone: child.phone ?? null })),
     sourceId: lead.sourceId !== null ? String(lead.sourceId) : '',
@@ -61,7 +70,8 @@ function fromLead(lead: Lead): FormState {
 
 // One form for a lead, whether it is being added or changed. A new lead is saved with the
 // button; after that every change is saved by itself and nothing pops up.
-export function LeadForm({ crm, lead, initialName, initialPhone, guess, onCreated }: LeadFormProps) {
+export function LeadForm({ crm, lead, initialName, initialPhone, guess, role = null, onCreated }: LeadFormProps) {
+  const isStudent = role === 'student'
   const sources = crm.leadOptions.filter((option) => option.kind === 'source' && option.isActive)
   const tags = crm.leadOptions.filter((option) => option.kind === 'tag')
   const otherSource = sources.find((option) => option.legacyKey === 'other')
@@ -74,6 +84,8 @@ export function LeadForm({ crm, lead, initialName, initialPhone, guess, onCreate
       : {
           fullName: initialName,
           phone: initialPhone,
+          studentPhone: initialPhone,
+          parentPhone: '',
           state: '',
           children: [{ name: '', age: '', phone: null }],
           sourceId: String((guess.source ?? otherSource)?.id ?? ''),
@@ -150,6 +162,40 @@ export function LeadForm({ crm, lead, initialName, initialPhone, guess, onCreate
     )
   }
 
+  // The student's own details sit in the first child row; an empty row is made when there is none.
+  const student: ChildRow = form.children[0] ?? { name: '', age: '', phone: null }
+
+  function setStudent(patch: Partial<ChildRow>, extra: Partial<FormState> = {}, typing = false) {
+    const rows = formRef.current.children.length > 0 ? formRef.current.children : [{ name: '', age: '', phone: null }]
+    change({ ...extra, children: rows.map((child, position) => (position === 0 ? { ...child, ...patch } : child)) }, typing)
+  }
+
+  // The student's number stays on the child; the lead's own number is the parent's once there is one.
+  function setStudentPhone(value: string) {
+    setStudent(
+      { phone: value.trim() || null },
+      { studentPhone: value, phone: leadPhoneFor(formRef.current.parentPhone, value) },
+      true,
+    )
+  }
+
+  function setParentPhone(value: string) {
+    const { studentPhone } = formRef.current
+    setStudent({ phone: studentPhone.trim() || null }, { parentPhone: value, phone: leadPhoneFor(value, studentPhone) }, true)
+  }
+
+  // Switching to the student's layout reads the two numbers back from what the lead holds now.
+  useEffect(() => {
+    if (!isStudent) {
+      return
+    }
+    setForm((current) => ({
+      ...current,
+      studentPhone: studentPhoneOf(current.phone, current.children[0]?.phone),
+      parentPhone: parentPhoneOf(current.phone, current.children[0]?.phone),
+    }))
+  }, [isStudent])
+
   async function save() {
     // One save at a time; what was typed meanwhile is saved right after.
     if (savingRef.current) {
@@ -157,13 +203,21 @@ export function LeadForm({ crm, lead, initialName, initialPhone, guess, onCreate
       return
     }
     const sent = formRef.current
-    const children = sent.children.filter((child) => child.age !== '' || child.name.trim() !== '')
+    const filled = sent.children.filter((child) => child.age !== '' || child.name.trim() !== '')
+    // A student writing themself keeps their own number on the child, whoever the lead's number is.
+    const children = isStudent
+      ? filled.map((child, position) => (position === 0 ? { ...child, phone: sent.studentPhone.trim() || null } : child))
+      : filled
     if (children.some((child) => child.age === '')) {
-      setError("Choose the child's age to save.")
+      setError(isStudent ? "Choose the student's age to save." : "Choose the child's age to save.")
       return
     }
     if (!sent.fullName.trim() && !children[0]?.name.trim() && !sent.phone.trim()) {
-      setError("Add the parent's name, the child's name or a phone number first.")
+      setError(
+        isStudent
+          ? "Add the student's name or a phone number first."
+          : "Add the parent's name, the child's name or a phone number first.",
+      )
       return
     }
     const values: LeadFormValues = {
@@ -240,6 +294,67 @@ export function LeadForm({ crm, lead, initialName, initialPhone, guess, onCreate
   return (
     <>
       <PanelSection title={lead ? 'Lead details' : 'Add as a new lead'}>
+        {isStudent ? (
+          <>
+            <label className="block">
+              <span className="text-slate-600">Student name</span>
+              <input
+                value={student.name}
+                disabled={!canEdit}
+                onChange={(event) => setStudent({ name: event.target.value }, {}, true)}
+                className={fieldClass}
+              />
+            </label>
+            <label className="block">
+              <span className="text-slate-600">Student age</span>
+              <select
+                value={student.age}
+                disabled={!canEdit}
+                onChange={(event) => setStudent({ age: event.target.value })}
+                className={fieldClass}
+              >
+                <option value="">Age</option>
+                {leadChildAgeOptions.map((age) => (
+                  <option key={age} value={age}>
+                    {age}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-slate-600">Student's phone number</span>
+              <input
+                type="tel"
+                value={form.studentPhone}
+                disabled={!canEdit}
+                onChange={(event) => setStudentPhone(event.target.value)}
+                placeholder="012 345 6789"
+                className={fieldClass}
+              />
+            </label>
+            <label className="block">
+              <span className="text-slate-600">Parent name (when you have it)</span>
+              <input
+                value={form.fullName}
+                disabled={!canEdit}
+                onChange={(event) => change({ fullName: event.target.value }, true)}
+                className={fieldClass}
+              />
+            </label>
+            <label className="block">
+              <span className="text-slate-600">Parent's phone number (when you have it)</span>
+              <input
+                type="tel"
+                value={form.parentPhone}
+                disabled={!canEdit}
+                onChange={(event) => setParentPhone(event.target.value)}
+                placeholder="012 345 6789"
+                className={fieldClass}
+              />
+            </label>
+          </>
+        ) : (
+          <>
         <label className="block">
           <span className="text-slate-600">Parent name</span>
           <input
@@ -310,6 +425,8 @@ export function LeadForm({ crm, lead, initialName, initialPhone, guess, onCreate
             </button>
           )}
         </div>
+          </>
+        )}
 
         <label className="block">
           <span className="text-slate-600">State</span>

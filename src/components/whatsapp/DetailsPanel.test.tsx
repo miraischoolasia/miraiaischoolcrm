@@ -594,7 +594,8 @@ describe('DetailsPanel', () => {
       expect(onSetRole).toHaveBeenCalledWith('student')
     })
 
-    it('does not ask who is on the chat when no student is tied to it', () => {
+    it('asks who is on a new chat too, before there is any child written down', async () => {
+      const onSetRole = vi.fn().mockResolvedValue(true)
       render(
         <DetailsPanel
           conversation={conversation()}
@@ -605,11 +606,98 @@ describe('DetailsPanel', () => {
           onLoadOlder={vi.fn()}
           onLinkLead={vi.fn()}
           onLinkStudents={vi.fn()}
-          onSetRole={vi.fn()}
+          onSetRole={onSetRole}
         />,
       )
 
-      expect(screen.queryByText('Who is on this chat?')).not.toBeInTheDocument()
+      expect(screen.getByText('Who is on this chat?')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Parent' })).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'The student themself' }))
+      expect(onSetRole).toHaveBeenCalledWith('student')
+    })
+  })
+
+  describe('when the student is the one writing', () => {
+    function renderStudentPanel(crm: WhatsAppCrm, attributes: ChatwootConversation['custom_attributes'] = {}) {
+      render(
+        <DetailsPanel
+          conversation={conversation(attributes)}
+          messages={[firstMessage]}
+          hasOlder={false}
+          crm={crm}
+          sourceRules={[]}
+          onLoadOlder={vi.fn()}
+          onLinkLead={vi.fn().mockResolvedValue(true)}
+          onLinkStudents={vi.fn()}
+          role="student"
+          onSetRole={vi.fn()}
+        />,
+      )
+    }
+
+    it('asks for the student\'s own details instead of the parent\'s and the children', () => {
+      renderStudentPanel(makeCrm())
+
+      expect(screen.getByLabelText('Student name')).toBeInTheDocument()
+      expect(screen.getByLabelText('Student age')).toBeInTheDocument()
+      expect(screen.getByLabelText("Student's phone number")).toHaveValue('+60123456789')
+      expect(screen.getByLabelText(/Parent name/)).toBeInTheDocument()
+      expect(screen.getByLabelText(/Parent's phone number/)).toHaveValue('')
+      expect(screen.queryByRole('button', { name: 'Add a child' })).not.toBeInTheDocument()
+      expect(screen.getByText('Is this a student we already have? Find them')).toBeInTheDocument()
+    })
+
+    it('saves the student as the child, with their own number, and no parent yet', async () => {
+      const crm = makeCrm()
+      renderStudentPanel(crm)
+
+      await userEvent.type(screen.getByLabelText('Student name'), 'Ethan')
+      await userEvent.selectOptions(screen.getByLabelText('Student age'), '12')
+      await userEvent.click(screen.getByRole('button', { name: 'Save lead' }))
+
+      await waitFor(() =>
+        expect(crm.onCreateLead).toHaveBeenCalledWith(
+          expect.objectContaining({
+            fullName: '',
+            phone: '+60123456789',
+            children: [{ name: 'Ethan', age: 12, phone: '+60123456789' }],
+          }),
+        ),
+      )
+    })
+
+    it('keeps the student\'s number on the child when the parent\'s number is added, and the lead takes the parent\'s', async () => {
+      const crm = makeCrm()
+      renderStudentPanel(crm)
+
+      await userEvent.type(screen.getByLabelText('Student name'), 'Ethan')
+      await userEvent.selectOptions(screen.getByLabelText('Student age'), '12')
+      await userEvent.type(screen.getByLabelText(/Parent's phone number/), '0198887777')
+      await userEvent.click(screen.getByRole('button', { name: 'Save lead' }))
+
+      await waitFor(() =>
+        expect(crm.onCreateLead).toHaveBeenCalledWith(
+          expect.objectContaining({
+            phone: '0198887777',
+            children: [{ name: 'Ethan', age: 12, phone: '+60123456789' }],
+          }),
+        ),
+      )
+    })
+
+    it('shows a lead that holds a student and a parent number in the right boxes', () => {
+      const both = {
+        ...lead,
+        fullName: 'Mei Ling',
+        phone: '0198887777',
+        children: [{ name: 'Ethan', age: 12, phone: '0123456789' }],
+      } as Lead
+      renderStudentPanel(makeCrm({ leads: [both] }), { crm_lead_id: 11 })
+
+      expect(screen.getByLabelText('Student name')).toHaveValue('Ethan')
+      expect(screen.getByLabelText("Student's phone number")).toHaveValue('0123456789')
+      expect(screen.getByLabelText(/Parent name/)).toHaveValue('Mei Ling')
+      expect(screen.getByLabelText(/Parent's phone number/)).toHaveValue('0198887777')
     })
   })
 })
