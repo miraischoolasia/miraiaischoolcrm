@@ -176,7 +176,7 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 pl-1">
                   {current.child.studentId !== null && onOpenStudent ? (
                     <button type="button" onClick={() => onOpenStudent(current.child.studentId as number)} className={linkClass}>
-                      Open student
+                      Student Progress
                     </button>
                   ) : null}
                   {group.people.map((child) => (

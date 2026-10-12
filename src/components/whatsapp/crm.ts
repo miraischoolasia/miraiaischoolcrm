@@ -69,7 +69,6 @@ export type WhatsAppCrm = {
   // The lead's next trial day (or last one), written the way a parent reads it.
   trialDateFor: (leadId: number) => string | null
   onAddOption: (kind: LeadOptionKind, label: string, color?: string) => Promise<LeadOption | null>
-  onRecordLeave: (studentId: number, text: string) => Promise<string | null>
   // Writes the parent's number on a student who has none, so the chat finds them by phone too.
   onSetStudentPhone: (studentId: number, phone: string) => Promise<string | null>
   onOpenLead: (leadId: number) => void

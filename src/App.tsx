@@ -151,7 +151,7 @@ import { WhatsAppSection } from './components/sections/WhatsAppSection'
 import { WhatsAppOpenProvider, type WhatsAppTarget } from './components/WhatsAppLink'
 import type { LeadFormValues, WhatsAppCrm } from './components/whatsapp/crm'
 import { describeHoaSlot, upcomingHoaSlots, type HoaSlot } from './lib/hoaSlots'
-import { appendLeaveNote, findLeadsByPhone, sameNumberMessage } from './lib/chatLink'
+import { findLeadsByPhone, sameNumberMessage } from './lib/chatLink'
 import { getChatwootUrl } from './lib/chatwoot'
 import { createChatwootClient } from './lib/chatwootClient'
 import { useWhatsAppUnread } from './hooks/useWhatsAppUnread'
@@ -3380,33 +3380,6 @@ function App() {
     return null
   }
 
-  // Leave is recorded as a dated line in the student's notes; attendance is
-  // marked on the day itself.
-  async function recordLeaveFromChat(studentId: number, text: string) {
-    const student = students.find((entry) => entry.id === studentId)
-    if (!supabase || !student) {
-      return 'That student is no longer in the list.'
-    }
-    const { error } = await supabase.rpc('update_student_record', {
-      p_student_id: student.id,
-      p_full_name: student.name,
-      p_phone: student.phone,
-      p_teacher_id: student.classroomId ? (classroomMap.get(student.classroomId)?.teacherId ?? null) : null,
-      p_classroom_id: student.classroomId,
-      p_notes: appendLeaveNote(student.notes, {
-        date: todayString,
-        text,
-        by: currentTeacher?.fullName ?? 'Staff',
-      }),
-      p_student_type: student.studentType,
-    })
-    if (error) {
-      return getErrorMessage(error, 'Failed to save the leave note.')
-    }
-    await refreshStudentsAndLogs()
-    return null
-  }
-
   // A student who had no number gets the parent's, so this chat (and the Students page's
   // WhatsApp button) find each other by phone from now on.
   async function setStudentPhoneFromChat(studentId: number, phone: string) {
@@ -3578,7 +3551,6 @@ function App() {
       return next ? formatDate(next) : null
     },
     onAddOption: handleAddLeadOption,
-    onRecordLeave: recordLeaveFromChat,
     onSetStudentPhone: setStudentPhoneFromChat,
     onOpenLead: openEditLeadModal,
     leadIdsWithForms,

@@ -54,7 +54,7 @@ describe('FamilyCard', () => {
   it('opens the student, and the chat of a child who writes themself', async () => {
     const props = setup(482)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open student' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Student Progress' }))
     expect(props.onOpenStudent).toHaveBeenCalledWith(56)
 
     const buttons = screen.getAllByRole('button', { name: 'Open chat' })
@@ -145,7 +145,7 @@ describe('FamilyCard', () => {
     expect(screen.getAllByText('NG ZE YI')).toHaveLength(1)
     expect(screen.getByText('6 years · Regular · 3 Months · did the HOA first')).toBeInTheDocument()
     // One button, and it opens the class record, where the child is now.
-    await userEvent.click(screen.getByRole('button', { name: 'Open student' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Student Progress' }))
     expect(onOpenStudent).toHaveBeenCalledTimes(1)
     expect(onOpenStudent).toHaveBeenCalledWith(37)
   })

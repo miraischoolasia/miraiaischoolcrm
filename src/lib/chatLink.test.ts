@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import type { Lead, LeadOption, Student } from '../types/domain'
 import type { ChatwootMessage } from './whatsappInbox'
 import {
-  appendLeaveNote,
   canonicalPhone,
   findLeadsByPhone,
   findStudentsByPhone,
@@ -117,20 +116,6 @@ describe('guessSourceAndTags', () => {
     expect(guessSourceAndTags('', options)).toEqual({ source: null, tags: [] })
     const hidden = [{ ...option(1, 'source', 'Facebook'), isActive: false }]
     expect(guessSourceAndTags('facebook', hidden).source).toBeNull()
-  })
-})
-
-describe('appendLeaveNote', () => {
-  it('starts the notes when there are none', () => {
-    expect(appendLeaveNote(null, { date: '2026-10-12', text: ' Sick ', by: 'Amy' })).toBe(
-      'Leave (noted 2026-10-12 by Amy): Sick',
-    )
-  })
-
-  it('keeps what is already there', () => {
-    expect(appendLeaveNote('Likes Scratch', { date: '2026-10-12', text: 'Trip', by: 'Amy' })).toBe(
-      'Likes Scratch\nLeave (noted 2026-10-12 by Amy): Trip',
-    )
   })
 })
 

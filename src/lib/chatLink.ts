@@ -186,9 +186,3 @@ export function guessSourceAndTags(text: string, options: LeadOption[], rules: S
   const tags = active.filter((option) => option.kind === 'tag' && mentions(lowered, option))
   return { source, tags }
 }
-
-// Adds a dated line to a student's notes without touching what is there.
-export function appendLeaveNote(existing: string | null, entry: { date: string; text: string; by: string }) {
-  const line = `Leave (noted ${entry.date} by ${entry.by}): ${entry.text.trim()}`
-  return existing && existing.trim() ? `${existing.trim()}\n${line}` : line
-}

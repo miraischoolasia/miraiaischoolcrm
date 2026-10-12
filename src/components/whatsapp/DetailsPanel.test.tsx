@@ -80,7 +80,6 @@ function makeCrm(patch: Partial<WhatsAppCrm> = {}): WhatsAppCrm {
     onUpdateLead: vi.fn().mockResolvedValue(null),
     trialDateFor: () => null,
     onAddOption: vi.fn().mockResolvedValue(null),
-    onRecordLeave: vi.fn().mockResolvedValue(null),
     onSetStudentPhone: vi.fn().mockResolvedValue(null),
     onOpenLead: vi.fn(),
     leadIdsWithForms: new Set<number>(),
