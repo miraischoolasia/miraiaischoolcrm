@@ -7,7 +7,7 @@ import {
   leadChildAgeOptions,
   leadStatusOptions,
 } from '../../lib/constants'
-import { findLeadsByPhone, type SourceGuess } from '../../lib/chatLink'
+import { findLeadsByPhone, sameNumberMessage, type SourceGuess } from '../../lib/chatLink'
 import { leadPhoneFor, parentPhoneOf, studentPhoneOf } from '../../lib/studentContact'
 import type { ChatRole } from '../../lib/whatsappInbox'
 import type { Lead, LeadOption, LeadStatus } from '../../types/domain'
@@ -223,10 +223,7 @@ export function LeadForm({ crm, lead, initialName, initialPhone, guess, role = n
     // One lead per number: a second lead for the same number splits the family in two.
     const sameNumber = lead ? undefined : findLeadsByPhone(sent.phone, crm.leads)[0]
     if (sameNumber) {
-      const who = sameNumber.fullName?.trim() || sameNumber.children[0]?.name?.trim() || 'another lead'
-      setError(
-        `This number already belongs to the lead "${who}". Use "Already a lead? Find them" above to link this chat to it, instead of making a second lead.`,
-      )
+      setError(sameNumberMessage(sameNumber))
       return
     }
     const values: LeadFormValues = {

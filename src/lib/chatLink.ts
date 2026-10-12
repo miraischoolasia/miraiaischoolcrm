@@ -35,6 +35,12 @@ export function findLeadsByPhone(phone: string | null | undefined, leads: Lead[]
     .sort((a, b) => b.id - a.id)
 }
 
+// What to tell the person who is about to make a second lead for a number that has one.
+export function sameNumberMessage(lead: Pick<Lead, 'fullName' | 'children'>) {
+  const who = lead.fullName?.trim() || lead.children[0]?.name?.trim() || 'another lead'
+  return `This number already belongs to the lead "${who}". Use "Already a lead? Find them" above to link this chat to it, instead of making a second lead.`
+}
+
 // The lead a chat belongs to: the one it was tied to, otherwise one with the
 // same phone number.
 export function resolveChatLead(linkedLeadId: number | null, phone: string | null, leads: Lead[]) {

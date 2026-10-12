@@ -151,7 +151,7 @@ import { WhatsAppSection } from './components/sections/WhatsAppSection'
 import { WhatsAppOpenProvider, type WhatsAppTarget } from './components/WhatsAppLink'
 import type { LeadFormValues, WhatsAppCrm } from './components/whatsapp/crm'
 import { describeHoaSlot, upcomingHoaSlots, type HoaSlot } from './lib/hoaSlots'
-import { appendLeaveNote } from './lib/chatLink'
+import { appendLeaveNote, findLeadsByPhone, sameNumberMessage } from './lib/chatLink'
 import { getChatwootUrl } from './lib/chatwoot'
 import { createChatwootClient } from './lib/chatwootClient'
 import { useWhatsAppUnread } from './hooks/useWhatsAppUnread'
@@ -3283,6 +3283,18 @@ function App() {
   async function createLeadFromChat(input: LeadFormValues) {
     if (!supabase) {
       return { leadId: null, error: 'Not connected to the database.' }
+    }
+    // The list this page holds may be behind: a form or another computer can make a lead for this
+    // number a moment before the first WhatsApp message arrives. Look at the server before making a second.
+    try {
+      const fresh = await fetchLeadsFromSupabase()
+      setLeads(fresh)
+      const existing = findLeadsByPhone(input.phone, fresh)[0]
+      if (existing) {
+        return { leadId: null, error: sameNumberMessage(existing), existingLeadId: existing.id }
+      }
+    } catch {
+      // Could not look; the save below is still the same as before.
     }
     const fullName = input.fullName.trim()
     const children = input.children.map((child) => ({ ...child, name: child.name.trim() }))

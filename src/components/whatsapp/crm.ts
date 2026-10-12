@@ -63,7 +63,8 @@ export type WhatsAppCrm = {
   }) => Promise<string | null>
   // Make-up classes are arranged with the calendar's permission.
   canBookMakeup: boolean
-  onCreateLead: (input: LeadFormValues) => Promise<{ leadId: number | null; error: string | null }>
+  // existingLeadId is set when no lead was made because the number already has one.
+  onCreateLead: (input: LeadFormValues) => Promise<{ leadId: number | null; error: string | null; existingLeadId?: number }>
   onUpdateLead: (leadId: number, input: LeadFormValues) => Promise<string | null>
   // The lead's next trial day (or last one), written the way a parent reads it.
   trialDateFor: (leadId: number) => string | null

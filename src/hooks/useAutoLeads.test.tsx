@@ -35,12 +35,20 @@ const said = (text: string): ChatwootMessage => ({
   status: 'sent',
 })
 
-function setup(overrides: { text?: string; ready?: boolean; conversations?: ChatwootConversation[]; hasLead?: boolean } = {}) {
+function setup(
+  overrides: {
+    text?: string
+    ready?: boolean
+    conversations?: ChatwootConversation[]
+    hasLead?: boolean
+    created?: { leadId: number | null; error: string | null; existingLeadId?: number }
+  } = {},
+) {
   const client = {
     listMessages: vi.fn(async () => [said(overrides.text ?? 'I saw the free trial coding advert')]),
     getConversation: vi.fn(async (id: number) => chat(id, '+60123456789')),
   }
-  const onCreateLead = vi.fn(async () => ({ leadId: 77, error: null }))
+  const onCreateLead = vi.fn(async (_values: unknown) => overrides.created ?? { leadId: 77, error: null })
   const linkLead = vi.fn(async () => true)
   const view = renderHook(() =>
     useAutoLeads({
@@ -90,6 +98,12 @@ describe('useAutoLeads', () => {
     await new Promise((resolve) => setTimeout(resolve, 30))
     expect(client.listMessages).not.toHaveBeenCalled()
     expect(onCreateLead).not.toHaveBeenCalled()
+  })
+
+  it('ties the chat to the lead a form made a moment ago instead of making a second one', async () => {
+    const { linkLead } = setup({ created: { leadId: null, error: 'This number already belongs to a lead.', existingLeadId: 12 } })
+
+    await waitFor(() => expect(linkLead).toHaveBeenCalledWith(5, 12))
   })
 
   it('does not make a second lead when the chat was tied to one a moment ago', async () => {

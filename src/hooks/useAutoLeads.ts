@@ -92,8 +92,10 @@ export function useAutoLeads({ enabled, client, conversations, crm, rules, ready
           notes: `Added by itself from the first WhatsApp message (source keyword: "${found.rule}").`,
         }
         const created = await latest.current.crm.onCreateLead(values)
-        if (created.leadId !== null) {
-          await linkLead(next.id, created.leadId)
+        // A lead for this number was made a moment ago (a form): tie the chat to that one.
+        const leadId = created.leadId ?? created.existingLeadId ?? null
+        if (leadId !== null) {
+          await linkLead(next.id, leadId)
         }
       } catch {
         // Nothing was lost: the chat still shows the normal "Add as a new lead" form.
