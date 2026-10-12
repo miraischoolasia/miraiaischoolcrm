@@ -28,6 +28,8 @@ type LeadFormProps = {
   guess: SourceGuess
   // Who the team said is on the chat. A student writing themself gets the student's own details first.
   role?: ChatRole | null
+  // False when the family card above already has the "Add a child" button.
+  showAddChild?: boolean
   // Called once a new lead is saved, so the chat can be tied to it.
   onCreated: (leadId: number) => Promise<void>
 }
@@ -70,7 +72,16 @@ function fromLead(lead: Lead): FormState {
 
 // One form for a lead, whether it is being added or changed. A new lead is saved with the
 // button; after that every change is saved by itself and nothing pops up.
-export function LeadForm({ crm, lead, initialName, initialPhone, guess, role = null, onCreated }: LeadFormProps) {
+export function LeadForm({
+  crm,
+  lead,
+  initialName,
+  initialPhone,
+  guess,
+  role = null,
+  showAddChild = true,
+  onCreated,
+}: LeadFormProps) {
   const isStudent = role === 'student'
   const sources = crm.leadOptions.filter((option) => option.kind === 'source' && option.isActive)
   const tags = crm.leadOptions.filter((option) => option.kind === 'tag')
@@ -420,7 +431,7 @@ export function LeadForm({ crm, lead, initialName, initialPhone, guess, role = n
               )}
             </div>
           ))}
-          {canEdit && form.children.length < MAX_LEAD_CHILDREN && (
+          {showAddChild && canEdit && form.children.length < MAX_LEAD_CHILDREN && (
             <button
               type="button"
               onClick={addChildRow}

@@ -239,6 +239,26 @@ export function DetailsPanel({
   const guess = useMemo(() => guessSourceAndTags(first?.text ?? '', crm.leadOptions, sourceRules), [first, crm.leadOptions, sourceRules])
   const found = useMemo(() => searchLeads(crm.leads, query), [crm.leads, query])
 
+  // Once the family card knows who this is, the pickers that say who it is move into one folded box.
+  const rolePicker = onSetRole ? (
+    <ChatRolePicker
+      role={role}
+      studentName={childNames.length > 0 ? childNames.join(' & ') : null}
+      canBeStudent={childNames.length <= 1}
+      onPick={(next) => void onSetRole(next)}
+    />
+  ) : null
+  const studentLinker = (
+    <StudentLinker
+      students={crm.students}
+      packages={crm.packages}
+      shownIds={students.map((student) => student.id)}
+      isEmpty={students.length === 0}
+      onLink={linkStudent}
+      forStudent={role === 'student'}
+    />
+  )
+
   return (
     <aside className={className}>
       {onBack && (
@@ -269,14 +289,7 @@ export function DetailsPanel({
             onAddChild={familyLead && crm.canEditLeads ? addChildToLead : undefined}
           />
         ) : null}
-        {onSetRole ? (
-          <ChatRolePicker
-            role={role}
-            studentName={childNames.length > 0 ? childNames.join(' & ') : null}
-            canBeStudent={childNames.length <= 1}
-            onPick={(next) => void onSetRole(next)}
-          />
-        ) : null}
+        {!family ? rolePicker : null}
         {students.map((student) => (
           <StudentCard
             key={student.id}
@@ -290,15 +303,17 @@ export function DetailsPanel({
             }
           />
         ))}
-        <StudentLinker
-          students={crm.students}
-          packages={crm.packages}
-          shownIds={students.map((student) => student.id)}
-          isEmpty={students.length === 0}
-          onLink={linkStudent}
-          forStudent={role === 'student'}
-        />
-        {otherChats.length > 0 && onOpenChat && (
+        {!family ? studentLinker : null}
+        {family ? (
+          <details className="rounded-lg border border-slate-200 px-3 py-2 text-xs">
+            <summary className="cursor-pointer font-medium text-slate-600">Not right? Change who this is</summary>
+            <div className="mt-3 space-y-3">
+              {rolePicker}
+              {studentLinker}
+            </div>
+          </details>
+        ) : null}
+        {otherChats.length > 0 && onOpenChat && !family && (
           <section className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
             <h4 className="font-semibold">This family has another chat</h4>
             <p className="mt-1">The parent, the student and an old chat can each have their own.</p>
@@ -382,6 +397,7 @@ export function DetailsPanel({
             initialPhone={phone ? `+${phone}` : ''}
             guess={guess}
             role={role}
+            showAddChild={!family}
             onCreated={async (leadId) => {
               await onLinkLead(leadId)
             }}

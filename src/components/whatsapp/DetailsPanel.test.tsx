@@ -718,6 +718,55 @@ describe('DetailsPanel', () => {
       )
     })
 
+    it('folds the boxes that say who this is, and the other-chat box, once the card knows', () => {
+      render(
+        <DetailsPanel
+          conversation={conversation({ crm_lead_id: 11 })}
+          messages={[firstMessage]}
+          hasOlder={false}
+          crm={makeCrm({ leads: [lead] })}
+          sourceRules={[]}
+          onLoadOlder={vi.fn()}
+          onLinkLead={vi.fn()}
+          onLinkStudents={vi.fn()}
+          onSetRole={vi.fn()}
+          onOpenChat={vi.fn()}
+          otherChats={[{ id: 9, title: 'Old chat', lastActivity: 0, isDone: false }]}
+          people={family}
+          chatOfContact={() => null}
+        />,
+      )
+
+      expect(screen.getByText('Not right? Change who this is').closest('details')).not.toBeNull()
+      // The pickers are inside the folded box, not loose in the panel.
+      expect(screen.getByText('Who is on this chat?').closest('details')).not.toBeNull()
+      expect(screen.queryByText('This family has another chat')).not.toBeInTheDocument()
+      // The card adds children; the lead form below does not repeat the button.
+      expect(screen.getAllByRole('button', { name: /Add a child/ })).toHaveLength(1)
+    })
+
+    it('keeps the boxes in the open when the chat is not placed yet', () => {
+      render(
+        <DetailsPanel
+          conversation={conversation()}
+          messages={[firstMessage]}
+          hasOlder={false}
+          crm={makeCrm()}
+          sourceRules={[]}
+          onLoadOlder={vi.fn()}
+          onLinkLead={vi.fn()}
+          onLinkStudents={vi.fn()}
+          onSetRole={vi.fn()}
+          onOpenChat={vi.fn()}
+          people={[]}
+        />,
+      )
+
+      expect(screen.queryByText('Not right? Change who this is')).not.toBeInTheDocument()
+      expect(screen.getByText('Who is on this chat?').closest('details')).toBeNull()
+      expect(screen.getByRole('button', { name: /Add a child/ })).toBeInTheDocument()
+    })
+
     it('shows nothing when the chat is not in the family table', () => {
       render(
         <DetailsPanel
