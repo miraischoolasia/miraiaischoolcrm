@@ -2975,6 +2975,15 @@ function App() {
           status: leadFormState.status,
         })
       } else {
+        // One lead per number: look at the server (the list on this page may be behind) before a second
+        // lead is made for a family that already has one.
+        const same = findLeadsByPhone(payload.phone, await fetchLeadsFromSupabase())[0]
+        if (same) {
+          const who = same.fullName?.trim() || same.children[0]?.name?.trim() || 'another lead'
+          throw new Error(
+            `This number already belongs to the lead "${who}". Open that lead instead of adding a second one.`,
+          )
+        }
         const { data, error } = await supabase
           .from('leads')
           .insert(payload)
