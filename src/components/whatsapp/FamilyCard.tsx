@@ -34,6 +34,21 @@ function initialsOf(person: Person) {
   return (letters.length > 1 ? letters[0][0] + letters[letters.length - 1][0] : (letters[0] ?? '?').slice(0, 2)).toUpperCase()
 }
 
+// A child who did the HOA and then joined a class has one student record for each. They are one child.
+function groupChildren(children: Person[]) {
+  const groups: { key: string; people: Person[] }[] = []
+  for (const child of children) {
+    const key = (child.name ?? '').toLowerCase().replace(/[\s\p{P}]/gu, '')
+    const found = key ? groups.find((group) => group.key === key) : undefined
+    if (found) {
+      found.people.push(child)
+    } else {
+      groups.push({ key: key || `person-${child.id}`, people: [child] })
+    }
+  }
+  return groups
+}
+
 const rowClass = 'flex items-center gap-2.5 rounded-lg border border-slate-200 p-2'
 const thisChatClass = 'border-[#fc0c97]/40 bg-[#fff1f8]'
 const linkClass = 'font-medium text-[#be185d] hover:underline'
@@ -125,32 +140,44 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
 
       {family.children.length > 0 && (
         <ul className="ml-4 space-y-1.5 border-l border-slate-200 pl-3">
-          {family.children.map((child) => {
-            const detail = childDetail(child)
-            const isMe = child.id === me.id
+          {groupChildren(family.children).map((group) => {
+            const details = group.people.map((child) => ({ child, ...childDetail(child) }))
+            const first = group.people[0]
+            const isMe = group.people.some((child) => child.id === me.id)
+            const age = details.map((detail) => detail.age).find((value) => value !== null) ?? null
+            const labels = [...new Set(details.map((detail) => detail.label).filter((label): label is string => Boolean(label)))]
             return (
-              <li key={child.id}>
+              <li key={group.key}>
                 <div className={`${rowClass} ${isMe ? thisChatClass : ''}`}>
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-600">
-                    {initialsOf(child)}
+                    {initialsOf(first)}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-slate-900">{nameOf(child)}</span>
+                    <span className="block truncate text-sm font-medium text-slate-900">{nameOf(first)}</span>
                     <span className="block truncate text-slate-500">
-                      {[detail.age !== null ? `${detail.age} years` : null, detail.label].filter(Boolean).join(' · ') || 'Student'}
+                      {[age !== null ? `${age} years` : null, ...labels].filter(Boolean).join(' · ') || 'Student'}
                     </span>
                   </span>
                   {isMe ? (
                     <span className="rounded-full bg-[#ffe4f2] px-2 py-0.5 text-[11px] font-medium text-[#be185d]">This chat</span>
                   ) : null}
                 </div>
-                <div className="mt-1 flex gap-3 pl-1">
-                  {child.studentId !== null && onOpenStudent ? (
-                    <button type="button" onClick={() => onOpenStudent(child.studentId as number)} className={linkClass}>
-                      Open student
-                    </button>
-                  ) : null}
-                  {openChatLink(child)}
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 pl-1">
+                  {details.map(({ child, label }) =>
+                    child.studentId !== null && onOpenStudent ? (
+                      <button
+                        key={`student-${child.id}`}
+                        type="button"
+                        onClick={() => onOpenStudent(child.studentId as number)}
+                        className={linkClass}
+                      >
+                        {details.length > 1 && label ? `Open ${label}` : 'Open student'}
+                      </button>
+                    ) : null,
+                  )}
+                  {group.people.map((child) => (
+                    <span key={`chat-${child.id}`}>{openChatLink(child)}</span>
+                  ))}
                 </div>
               </li>
             )
