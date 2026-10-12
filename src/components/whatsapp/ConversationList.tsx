@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, BellSlash, CaretDown, ChatCircleDots, CheckCircle, EnvelopeSimple, MagnifyingGlass, Plus, SpeakerHigh, SpeakerSlash, PushPin } from '@phosphor-icons/react'
+import { Bell, BellSlash, CaretDown, ChatCircleDots, CheckCircle, EnvelopeSimple, Lightning, MagnifyingGlass, Plus, SpeakerHigh, SpeakerSlash, PushPin } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { LeadTagChip } from '../LeadTagChip'
@@ -86,6 +86,9 @@ type ConversationListProps = {
   onSelect: (id: number) => void
   onLoadMore: () => void
   onNewChat: () => void
+  // Messages the automations want to send, waiting for approval. The button shows when a handler is given.
+  automationCount?: number
+  onOpenAutomations?: () => void
 }
 
 function AlertSettings() {
@@ -157,20 +160,41 @@ export function ConversationList({
   onSelect,
   onLoadMore,
   onNewChat,
+  automationCount = 0,
+  onOpenAutomations,
 }: ConversationListProps) {
   return (
     <div className={cn('flex min-h-0 flex-col border-slate-200 bg-white lg:border-r', className)}>
       <div className="border-b border-slate-200 p-3">
         <div className="mb-2 flex items-center justify-between gap-2">
           <h2 className="text-base font-semibold text-slate-900">WhatsApp</h2>
-          <button
-            type="button"
-            onClick={onNewChat}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            <Plus size={14} aria-hidden="true" />
-            New chat
-          </button>
+          <div className="flex items-center gap-1.5">
+            {onOpenAutomations && (
+              <button
+                type="button"
+                onClick={onOpenAutomations}
+                aria-label={`Automations, ${automationCount} waiting`}
+                title="Automations: messages waiting for your approval"
+                className="relative inline-flex h-[30px] items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                <Lightning size={14} aria-hidden="true" />
+                <span className="lg:hidden">Automations</span>
+                {automationCount > 0 && (
+                  <span className="min-w-5 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white">
+                    {automationCount > 99 ? '99+' : automationCount}
+                  </span>
+                )}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onNewChat}
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <Plus size={14} aria-hidden="true" />
+              New chat
+            </button>
+          </div>
         </div>
         <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-[4.5px] text-sm text-slate-500 focus-within:border-[#fc0c97]">
           <MagnifyingGlass size={16} aria-hidden="true" />

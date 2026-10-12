@@ -27,6 +27,7 @@ import {
   Funnel,
   GraduationCap,
   IdentificationBadge,
+  Lightning,
   Megaphone,
   WarningCircle,
   WhatsappLogo,
@@ -148,6 +149,7 @@ import {
 import { TeacherManagementSection } from './components/sections/TeacherManagementSection'
 import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
+import { AutomationsSection } from './components/sections/AutomationsSection'
 import { WhatsAppOpenProvider, type WhatsAppTarget } from './components/WhatsAppLink'
 import type { LeadFormValues, WhatsAppCrm } from './components/whatsapp/crm'
 import { describeHoaSlot, upcomingHoaSlots, type HoaSlot } from './lib/hoaSlots'
@@ -635,6 +637,8 @@ function App() {
     if (can('leads')) sections.push('leads')
     // Same ticks as Leads: whoever follows up leads answers their WhatsApp.
     if (can('leads') && chatwootUrl) sections.push('whatsapp')
+    // Anyone who can see Leads can look at the automations; only an admin changes them.
+    if (can('leads')) sections.push('automations')
     if (can('forms')) sections.push('forms')
     if (isTeacherAccount || can('calendar')) sections.push('calendar')
     if (isTeacherAccount || can('classrooms')) sections.push('classrooms')
@@ -1373,6 +1377,7 @@ function App() {
       { key: 'home', label: 'Today', icon: House },
       { key: 'leads', label: 'Leads', icon: Funnel, group: 'marketing' },
       { key: 'whatsapp', label: 'WhatsApp', icon: WhatsappLogo, group: 'marketing' },
+      { key: 'automations', label: 'Automations', icon: Lightning, group: 'marketing' },
       { key: 'forms', label: 'Forms', icon: ClipboardText, group: 'marketing' },
       { key: 'calendar', label: 'Calendar', icon: CalendarBlank },
       { key: 'classrooms', label: 'My Classroom', icon: Chalkboard },
@@ -5318,7 +5323,7 @@ function App() {
                         ? 'Team Board'
                         : activeSection === 'leads'
                           ? 'Sales Pipeline'
-                          : activeSection === 'whatsapp'
+                          : activeSection === 'whatsapp' || activeSection === 'automations'
                             ? 'Marketing'
                             : activeSection === 'forms'
                             ? 'Marketing'
@@ -5339,7 +5344,9 @@ function App() {
                           ? 'Leads'
                           : activeSection === 'whatsapp'
                             ? 'WhatsApp'
-                            : activeSection === 'forms'
+                            : activeSection === 'automations'
+                              ? 'Automations'
+                              : activeSection === 'forms'
                             ? 'Forms'
                             : activeSection === 'activity'
                               ? 'Activity Log'
@@ -5877,6 +5884,10 @@ function App() {
                   openRequest={whatsAppRequest}
                 />
               </div>
+            )}
+
+            {visibleSection === 'automations' && (
+              <AutomationsSection classrooms={classrooms} canEdit={isAdmin} />
             )}
 
             {visibleSection === 'forms' && (

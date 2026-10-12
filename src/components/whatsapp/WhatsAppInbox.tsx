@@ -22,6 +22,8 @@ import {
 import { ChatPanel } from './ChatPanel'
 import { ConversationList } from './ConversationList'
 import { useQuickReplies } from '../../hooks/useQuickReplies'
+import { useAutomationQueue } from '../../hooks/useAutomationQueue'
+import { canSend, type QueueItem } from '../../lib/automationQueue'
 import { useSourceRules } from '../../hooks/useSourceRules'
 import { useAutoLeads } from '../../hooks/useAutoLeads'
 import { makeLeadResolver, quickReplyValues, resolveChatLead } from '../../lib/chatLink'
@@ -32,7 +34,7 @@ import { linkContactToLead, linkContactToStudents, setContactRole } from '../../
 import { draftPreview, draftsFirst, type Draft } from '../../lib/draft'
 import { createWaActions, waIdOf } from '../../lib/waActions'
 import { useReactionPreviews } from '../../hooks/useReactionPreviews'
-import { findChatByPhone } from '../../lib/startChat'
+import { findChatByPhone, startChat } from '../../lib/startChat'
 import { fileProblem, splitSequence } from '../../lib/outbox'
 import { summarizeMessage } from '../../lib/specialMessages'
 import { ForwardDialog } from './ForwardDialog'
@@ -42,6 +44,7 @@ import { useTyping } from '../../hooks/useTyping'
 import { describeStudent, getStudentKind, makeStudentResolver, type StudentKind } from '../../lib/studentLink'
 import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
+import { AutomationQueueDialog } from './AutomationQueueDialog'
 import { NewChatDialog } from './NewChatDialog'
 import { QuickReplyManager } from './QuickReplyManager'
 import { SourceRuleManager } from './SourceRuleManager'
@@ -355,6 +358,13 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
 
   const quickReplies = useQuickReplies(true)
   const sourceRules = useSourceRules(true)
+  // Messages the automations want to send; each goes out only when a person approves it.
+  const automation = useAutomationQueue({ enabled: active })
+  const [automationOpen, setAutomationOpen] = useState(false)
+  const automationWaiting = useMemo(
+    () => automation.items.filter((entry) => canSend(entry, Date.now())).length,
+    [automation.items],
+  )
   // The family table: who is whose parent. The database keeps it in step with leads and students; the
   // page adds each WhatsApp contact and what the team ties together by hand.
   const { people, refresh: refreshPeople } = usePeople({
@@ -510,6 +520,41 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
       return "Couldn't forward it to every chat. Check which ones got it, then try again."
     }
   }
+  // Sends an approved automation message to the parent's chat: the chat the school already has for
+  // the number (also one whose number WhatsApp hides), else the one the server has, else a new one.
+  // Resolves to an error message, or null once WhatsApp has accepted the message.
+  async function sendQueued(entry: QueueItem, message: string) {
+    const known = findChatForNumber({
+      conversations: inbox.conversations,
+      phone: entry.phone,
+      leadId: entry.leadId,
+      leads: crm.leads,
+      students: crm.students,
+    })
+    let conversationId = known?.id ?? null
+    if (known && known.status === 'resolved') {
+      await inbox.setStatus(known.id, 'open')
+    }
+    if (conversationId === null) {
+      const started = await startChat(client, { phone: entry.phone, name: entry.parentName ?? '' })
+      if (started.error !== null) {
+        return started.error
+      }
+      conversationId = started.conversationId
+    }
+    try {
+      const sent = await client.sendMessage(conversationId, {
+        content: message,
+        isPrivate: false,
+        files: [],
+        sender: currentUser,
+      })
+      await inbox.waitUntilSent(conversationId, sent.id)
+      return null
+    } catch {
+      return "WhatsApp didn't accept the message. Check the chat before trying again."
+    }
+  }
   // What {parent name}, {child name} and the like become in the open chat.
   const quickReplyFill = useMemo(() => {
     if (!inbox.selected) {
@@ -573,6 +618,8 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
         }}
         onLoadMore={() => void inbox.loadMore(tab === 'done' ? 'resolved' : 'open')}
         onNewChat={() => setStartingChat(true)}
+        automationCount={automationWaiting}
+        onOpenAutomations={() => setAutomationOpen(true)}
       />
 
       {inbox.selected ? (
@@ -726,6 +773,21 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
             }
             return null
           }}
+        />
+      )}
+      {automationOpen && (
+        <AutomationQueueDialog
+          items={automation.items}
+          settings={automation.settings}
+          sentToday={automation.sentToday}
+          canEdit={crm.canEditLeads}
+          isLoading={automation.isLoading}
+          loadError={automation.error}
+          progress={automation.progress}
+          onClose={() => setAutomationOpen(false)}
+          onSaveMessage={automation.saveMessage}
+          onSkip={automation.skip}
+          onApprove={(entries) => automation.approve(entries, sendQueued)}
         />
       )}
       {managingRules && (

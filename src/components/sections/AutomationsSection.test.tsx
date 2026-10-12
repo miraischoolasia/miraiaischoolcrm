@@ -1,0 +1,259 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { newFlowDraft, type AutomationFlow } from '../../lib/automationFlows'
+import type { Classroom } from '../../types/domain'
+import { AutomationsSection } from './AutomationsSection'
+
+// The canvas needs a real browser layout; here it is replaced by a few buttons that do what a click
+// on the canvas does.
+vi.mock('../automations/FlowCanvas', () => ({
+  FlowCanvas: ({
+    graph,
+    triggerLabel,
+    onSelect,
+    onAddAfter,
+  }: {
+    graph: { nodes: { id: string }[] }
+    triggerLabel: string
+    onSelect: (id: string | null) => void
+    onAddAfter: (from: string, port: 'out' | 'yes' | 'no', kind: 'message' | 'age' | 'classroom') => void
+  }) => (
+    <div data-testid="canvas">
+      {triggerLabel} · {graph.nodes.length} blocks
+      <button type="button" onClick={() => onSelect('trigger')}>
+        canvas trigger
+      </button>
+      <button type="button" onClick={() => onSelect(null)}>
+        canvas empty space
+      </button>
+      <button type="button" onClick={() => onAddAfter('trigger', 'out', 'age')}>
+        canvas add age after trigger
+      </button>
+      <button type="button" onClick={() => onAddAfter('m1', 'out', 'message')}>
+        canvas add message after m1
+      </button>
+      {graph.nodes.map((node) => (
+        <button key={node.id} type="button" onClick={() => onSelect(node.id)}>
+          canvas block {node.id}
+        </button>
+      ))}
+    </div>
+  ),
+}))
+
+const hook = vi.hoisted(() => ({
+  state: {
+    flows: [] as unknown[],
+    isLoading: false,
+    error: null as string | null,
+    reload: vi.fn(),
+    save: vi.fn(),
+    toggle: vi.fn(),
+    remove: vi.fn(),
+    runNow: vi.fn(),
+  },
+}))
+vi.mock('../../hooks/useAutomationFlows', () => ({ useAutomationFlows: () => hook.state }))
+
+const flow = (change: Partial<AutomationFlow> = {}): AutomationFlow => {
+  const base = newFlowDraft()
+  return {
+    id: 1,
+    name: 'Class reminder',
+    trigger: 'class_start',
+    enabled: false,
+    graph: base.graph,
+    lastRunAt: null,
+    lastError: null,
+    ...change,
+  }
+}
+
+const room: Classroom = {
+  id: 1,
+  name: 'Coder A',
+  category: 'regular',
+  ageGroup: '9-11 Years Old',
+  programLevel: 'Coder Foundation',
+  teacherId: null,
+  status: 'active',
+  notes: null,
+  archivedAt: null,
+}
+
+function setup(canEdit = true) {
+  render(<AutomationsSection classrooms={[room]} canEdit={canEdit} />)
+}
+
+async function openFirst() {
+  await userEvent.click(screen.getByRole('button', { name: /Class reminder A regular class starts/ }))
+}
+
+describe('AutomationsSection', () => {
+  beforeEach(() => {
+    hook.state.flows = [flow(), flow({ id: 2, name: 'Zoom reminder', trigger: 'zoom_start', enabled: true })]
+    hook.state.isLoading = false
+    hook.state.error = null
+    hook.state.save.mockReset().mockResolvedValue({ error: null, flow: flow() })
+    hook.state.toggle.mockReset().mockResolvedValue(null)
+    hook.state.remove.mockReset().mockResolvedValue(null)
+    hook.state.runNow.mockReset().mockResolvedValue({ queued: 2, error: null })
+  })
+
+  it('lists the flows first, with whether each is live', () => {
+    setup()
+    expect(screen.getByText('Class reminder')).toBeInTheDocument()
+    expect(screen.getByText('Zoom reminder')).toBeInTheDocument()
+    expect(screen.getByText('A regular class starts · 1 message')).toBeInTheDocument()
+    expect(screen.getByText('LIVE')).toBeInTheDocument()
+    expect(screen.queryByTestId('canvas')).not.toBeInTheDocument()
+  })
+
+  it('opens a flow as the canvas alone, with no panel until a card is clicked', async () => {
+    setup()
+    await openFirst()
+    expect(screen.getByTestId('canvas')).toHaveTextContent('A regular class starts · 1 blocks')
+    expect(screen.getByLabelText('Flow name')).toHaveValue('Class reminder')
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Message')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('When')).not.toBeInTheDocument()
+  })
+
+  it('opens the settings of a block in the left panel when its card is clicked, and closes them', async () => {
+    setup()
+    await openFirst()
+    await userEvent.click(screen.getByRole('button', { name: 'canvas block m1' }))
+    expect(screen.getByRole('complementary')).toBeInTheDocument()
+    expect(screen.getByLabelText('Message')).toHaveValue(
+      'Hi {child}, a reminder that you have class today at {time}. Please be on time.',
+    )
+    expect(screen.getByLabelText('How long before')).toHaveValue(1)
+
+    await userEvent.click(screen.getByRole('button', { name: /Close/ }))
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'canvas block m1' }))
+    expect(screen.getByLabelText('Message')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'canvas empty space' }))
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument()
+  })
+
+  it('opens the trigger settings when the first card is clicked', async () => {
+    setup()
+    await openFirst()
+    await userEvent.click(screen.getByRole('button', { name: 'canvas trigger' }))
+    expect(screen.getByLabelText('When')).toHaveValue('class_start')
+    await userEvent.selectOptions(screen.getByLabelText('When'), 'zoom_start')
+    expect(screen.getByTestId('canvas')).toHaveTextContent('A Zoom meeting starts')
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+  })
+
+  it('changes a block from the left panel and saves it', async () => {
+    setup()
+    await openFirst()
+    await userEvent.click(screen.getByRole('button', { name: 'canvas block m1' }))
+    fireEvent.change(screen.getByLabelText('How long before'), { target: { value: '2' } })
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+    await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+    const saved = hook.state.save.mock.calls[0][0]
+    expect(saved.graph.nodes[0]).toMatchObject({ id: 'm1', mins: 120 })
+  })
+
+  it('switches a flow on from the list and says what happens next', async () => {
+    setup()
+    fireEvent.click(screen.getByRole('switch', { name: 'Class reminder on or off' }))
+    await waitFor(() => expect(hook.state.toggle).toHaveBeenCalledWith(1, true))
+    expect(await screen.findByText(/"Class reminder" is on\./)).toBeInTheDocument()
+  })
+
+  it('runs the flows now and says how many messages were added', async () => {
+    setup()
+    fireEvent.click(screen.getByRole('button', { name: 'Run now' }))
+    expect(await screen.findByText('2 messages added to the approval queue in WhatsApp.')).toBeInTheDocument()
+  })
+
+  it('shows a flow that failed the last time it ran', async () => {
+    hook.state.flows = [flow({ lastError: 'invalid input syntax for type integer' })]
+    setup()
+    expect(screen.getByText('Has a problem')).toBeInTheDocument()
+    await openFirst()
+    expect(screen.getByRole('alert')).toHaveTextContent('invalid input syntax for type integer')
+  })
+
+  it('asks for a name before a new flow is saved', async () => {
+    hook.state.save.mockResolvedValue({ error: 'Give the flow a name.', flow: null })
+    setup()
+    await userEvent.click(screen.getByRole('button', { name: 'New flow' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+    expect(await screen.findByText('Give the flow a name.')).toBeInTheDocument()
+  })
+
+  it('saves what was typed for a new flow', async () => {
+    setup()
+    await userEvent.click(screen.getByRole('button', { name: 'New flow' }))
+    await userEvent.type(screen.getByLabelText('Flow name'), 'Trial reminder')
+    await userEvent.click(screen.getByRole('button', { name: 'canvas trigger' }))
+    await userEvent.selectOptions(screen.getByLabelText('When'), 'trial_start')
+    await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+    await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+    expect(hook.state.save.mock.calls[0][0]).toMatchObject({ id: null, name: 'Trial reminder', trigger: 'trial_start' })
+  })
+
+  it('adds the next step with the "+" after a card and opens it in the panel', async () => {
+    setup()
+    await openFirst()
+    await userEvent.click(screen.getByRole('button', { name: 'canvas add age after trigger' }))
+    expect(screen.getByLabelText('Lowest age')).toBeInTheDocument()
+    expect(screen.getByTestId('canvas')).toHaveTextContent('2 blocks')
+
+    await userEvent.click(screen.getByRole('button', { name: 'canvas add message after m1' }))
+    expect(screen.getByLabelText('Message')).toBeInTheDocument()
+    expect(screen.getByTestId('canvas')).toHaveTextContent('3 blocks')
+    await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+    await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+    const { edges } = hook.state.save.mock.calls[0][0].graph
+    expect(edges).toContainEqual({ from: 'trigger', port: 'out', to: 'c1' })
+    expect(edges).toContainEqual({ from: 'm1', port: 'out', to: 'm2' })
+  })
+
+  it('is read only for someone who is not an admin', async () => {
+    setup(false)
+    expect(screen.getByRole('switch', { name: 'Class reminder on or off' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'New flow' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Run now' })).not.toBeInTheDocument()
+    await openFirst()
+    expect(screen.getByText(/Only an admin can change it/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save flow' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Flow name')).toBeDisabled()
+
+    // Looking is allowed: the card opens, but nothing in it can be changed and nothing is added.
+    await userEvent.click(screen.getByRole('button', { name: 'canvas block m1' }))
+    expect(screen.getByLabelText('Message')).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Delete block' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'canvas add message after m1' }))
+    expect(screen.getByTestId('canvas')).toHaveTextContent('1 blocks')
+  })
+
+  it('tests a child against the flow', async () => {
+    setup()
+    await openFirst()
+    expect(screen.queryByText(/This child would get/)).not.toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Test age'), '9')
+    expect(
+      await screen.findByText('Hi Ethan, a reminder that you have class today at 8:30 pm. Please be on time.'),
+    ).toBeInTheDocument()
+  })
+
+  it('goes back to the list, asking first when there are unsaved changes', async () => {
+    setup()
+    await openFirst()
+    await userEvent.type(screen.getByLabelText('Flow name'), ' edited')
+    await userEvent.click(screen.getByRole('button', { name: /Automations/ }))
+    expect(await screen.findByText(/changes you have not saved/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Leave' }))
+    expect(await screen.findByText('Zoom reminder')).toBeInTheDocument()
+    expect(screen.queryByTestId('canvas')).not.toBeInTheDocument()
+  })
+})

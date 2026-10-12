@@ -559,6 +559,82 @@ export type Database = {
         }
         Relationships: []
       }
+      automation_queue: {
+        Row: {
+          id: number
+          rule_key: string
+          rule_name: string
+          dedupe_key: string
+          phone: string
+          parent_name: string | null
+          child_name: string | null
+          lead_id: number | null
+          student_id: number | null
+          message: string
+          status: 'pending' | 'sending' | 'sent' | 'failed' | 'skipped' | 'expired'
+          due_at: string
+          expires_at: string | null
+          decided_by: string | null
+          decided_at: string | null
+          sent_at: string | null
+          error: string | null
+          created_at: string
+        }
+        Insert: never
+        Update: {
+          message?: string
+          status?: 'pending' | 'sending' | 'sent' | 'failed' | 'skipped' | 'expired'
+          decided_by?: string | null
+          decided_at?: string | null
+          sent_at?: string | null
+          error?: string | null
+        }
+        Relationships: []
+      }
+      automation_settings: {
+        Row: {
+          id: boolean
+          paused: boolean
+          daily_cap: number
+          gap_seconds: number
+          updated_at: string
+        }
+        Insert: never
+        Update: {
+          paused?: boolean
+          daily_cap?: number
+          gap_seconds?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      automation_flows: {
+        Row: {
+          id: number
+          name: string
+          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start'
+          enabled: boolean
+          graph: Json
+          last_run_at: string | null
+          last_error: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          name: string
+          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start'
+          enabled?: boolean
+          graph?: Json
+        }
+        Update: {
+          name?: string
+          trigger_type?: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start'
+          enabled?: boolean
+          graph?: Json
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           id: number
@@ -1287,6 +1363,10 @@ export type Database = {
     }
     Views: Record<string, never>
     Functions: {
+      run_automation_rules: {
+        Args: Record<string, never>
+        Returns: number
+      }
       ensure_contact_people: {
         Args: {
           p_contacts: Json
