@@ -4,7 +4,11 @@ import { leadChildAgeOptions } from '../../lib/constants'
 import type { Family } from '../../lib/family'
 import type { Person } from '../../lib/peopleApi'
 
-export type ChildDetail = { age: number | null; label: string | null }
+// kind says what the record is, so a child with an HOA record and a class record shows the class one.
+export type ChildDetail = { age: number | null; label: string | null; kind?: 'hoa' | 'trial' | 'regular' | 'camp' | null }
+
+// The record that says where the child is now: a class before a camp before an HOA.
+const KIND_RANK = { regular: 0, camp: 1, trial: 2, hoa: 3 } as const
 
 type FamilyCardProps = {
   family: Family
@@ -145,7 +149,12 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
             const first = group.people[0]
             const isMe = group.people.some((child) => child.id === me.id)
             const age = details.map((detail) => detail.age).find((value) => value !== null) ?? null
-            const labels = [...new Set(details.map((detail) => detail.label).filter((label): label is string => Boolean(label)))]
+            const ranked = [...details].sort(
+              (a, b) => (a.kind ? KIND_RANK[a.kind] : 9) - (b.kind ? KIND_RANK[b.kind] : 9),
+            )
+            const current = ranked[0]
+            const didHoa = details.length > 1 && details.some((detail) => detail.kind === 'hoa' || detail.kind === 'trial')
+              && current.kind !== 'hoa' && current.kind !== 'trial'
             return (
               <li key={group.key}>
                 <div className={`${rowClass} ${isMe ? thisChatClass : ''}`}>
@@ -155,7 +164,9 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-slate-900">{nameOf(first)}</span>
                     <span className="block truncate text-slate-500">
-                      {[age !== null ? `${age} years` : null, ...labels].filter(Boolean).join(' · ') || 'Student'}
+                      {[age !== null ? `${age} years` : null, current.label, didHoa ? 'did the HOA first' : null]
+                        .filter(Boolean)
+                        .join(' · ') || 'Student'}
                     </span>
                   </span>
                   {isMe ? (
@@ -163,18 +174,11 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
                   ) : null}
                 </div>
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 pl-1">
-                  {details.map(({ child, label }) =>
-                    child.studentId !== null && onOpenStudent ? (
-                      <button
-                        key={`student-${child.id}`}
-                        type="button"
-                        onClick={() => onOpenStudent(child.studentId as number)}
-                        className={linkClass}
-                      >
-                        {details.length > 1 && label ? `Open ${label}` : 'Open student'}
-                      </button>
-                    ) : null,
-                  )}
+                  {current.child.studentId !== null && onOpenStudent ? (
+                    <button type="button" onClick={() => onOpenStudent(current.child.studentId as number)} className={linkClass}>
+                      Open student
+                    </button>
+                  ) : null}
                   {group.people.map((child) => (
                     <span key={`chat-${child.id}`}>{openChatLink(child)}</span>
                   ))}

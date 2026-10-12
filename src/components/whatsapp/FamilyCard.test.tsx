@@ -121,7 +121,7 @@ describe('FamilyCard', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Failed to save lead record.')
   })
 
-  it('shows a child who did the HOA and then joined a class as one child, with both', async () => {
+  it('shows a child who did the HOA and then joined a class as one child, one button, the class record', async () => {
     const twice = [
       person(1, { kind: 'parent', name: 'Mum', phone: '60195593237', contactId: 10, leadId: 5 }),
       person(2, { kind: 'student', name: 'NG ZE YI', parentId: 1, studentId: 32 }),
@@ -132,7 +132,9 @@ describe('FamilyCard', () => {
       <FamilyCard
         family={familyOf(10, twice)!}
         childDetail={(child) =>
-          child.studentId === 32 ? { age: 6, label: 'HOA' } : { age: 6, label: 'Regular · 3 Months' }
+          child.studentId === 32
+            ? { age: 6, label: 'HOA', kind: 'hoa' }
+            : { age: 6, label: 'Regular · 3 Months', kind: 'regular' }
         }
         chatOf={() => null}
         onOpenChat={vi.fn()}
@@ -141,11 +143,11 @@ describe('FamilyCard', () => {
     )
 
     expect(screen.getAllByText('NG ZE YI')).toHaveLength(1)
-    expect(screen.getByText('6 years · HOA · Regular · 3 Months')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Open Regular · 3 Months' }))
+    expect(screen.getByText('6 years · Regular · 3 Months · did the HOA first')).toBeInTheDocument()
+    // One button, and it opens the class record, where the child is now.
+    await userEvent.click(screen.getByRole('button', { name: 'Open student' }))
+    expect(onOpenStudent).toHaveBeenCalledTimes(1)
     expect(onOpenStudent).toHaveBeenCalledWith(37)
-    await userEvent.click(screen.getByRole('button', { name: 'Open HOA' }))
-    expect(onOpenStudent).toHaveBeenCalledWith(32)
   })
 
   it('has no add button when there is no lead to add to', () => {

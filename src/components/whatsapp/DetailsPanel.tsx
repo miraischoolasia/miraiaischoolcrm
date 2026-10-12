@@ -212,6 +212,7 @@ export function DetailsPanel({
     return {
       age: enrolled?.age ?? written?.age ?? null,
       label: enrolled ? describeStudent(enrolled, crm.packages) : null,
+      kind: enrolled ? getStudentKind(enrolled, crm.packages) : null,
     }
   }
   async function addChildToLead(childName: string, age: number) {
