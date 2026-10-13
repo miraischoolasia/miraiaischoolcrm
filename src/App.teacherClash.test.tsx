@@ -122,6 +122,7 @@ async function openNewReplacementClass() {
   render(<App />)
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'admin-1' } }))
+  await userEvent.click((await screen.findAllByRole('button', { name: 'Calendar' }))[0])
   await userEvent.click(await screen.findByRole('button', { name: 'Add Class' }))
   return within(await screen.findByRole('dialog'))
 }

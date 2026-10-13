@@ -40,6 +40,10 @@ vi.mock('./lib/api', async (importOriginal) => ({
 }))
 
 const teacher = { id: 1, authUserId: 'user-1', username: 'teacher', fullName: 'Test Teacher', role: 'admin', isActive: true, permissions: {} }
+// Everybody starts on Today.
+const TODAY_GREETING = /^Good (morning|afternoon|evening),/
+const findToday = () => screen.findByRole('heading', { name: TODAY_GREETING })
+
 async function signIn(id = 'user-1') {
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id } }))
 }
@@ -63,7 +67,7 @@ describe('login data loading', () => {
     await screen.findByText('Unable to load your workspace')
     expect(mocks.signOut).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
-    await screen.findByText('Calendar ready')
+    await findToday()
     expect(mocks.signOut).not.toHaveBeenCalled()
   })
 
@@ -80,13 +84,13 @@ describe('login data loading', () => {
     render(<App />)
     await screen.findByText('Sign in to continue.')
     await signIn()
-    await screen.findByText('Calendar ready')
+    await findToday()
     let resolveTeachers!: (value: unknown[]) => void
     mocks.teachers.mockReturnValueOnce(new Promise((resolve) => { resolveTeachers = resolve }))
     await signIn('user-2')
     expect(mocks.signOut).not.toHaveBeenCalled()
     await act(async () => resolveTeachers([{ ...teacher, authUserId: 'user-2' }]))
-    await waitFor(() => expect(screen.getByText('Calendar ready')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: TODAY_GREETING })).toBeInTheDocument())
     expect(mocks.signOut).not.toHaveBeenCalled()
   })
 
@@ -100,14 +104,14 @@ describe('login data loading', () => {
     render(<App />)
     await screen.findByText('Sign in to continue.')
     await signIn()
-    await screen.findByText('Calendar ready')
+    await findToday()
 
     expect(mocks.teachers).toHaveBeenCalledTimes(1)
     expect(mocks.leads).toHaveBeenCalledTimes(1)
 
     await act(async () => mocks.listener?.('TOKEN_REFRESHED', { user: { id: 'user-1' } }))
 
-    expect(screen.getByText('Calendar ready')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: TODAY_GREETING })).toBeInTheDocument()
     expect(mocks.teachers).toHaveBeenCalledTimes(1)
     expect(mocks.leads).toHaveBeenCalledTimes(1)
   })

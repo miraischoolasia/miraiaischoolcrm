@@ -16,6 +16,8 @@ export type AgendaState = 'submitted' | 'open' | 'missing' | 'later'
 export type AgendaItem = {
   key: string
   scheduleId: number
+  // Who teaches it; the admin's Today lists every teacher's classes.
+  teacherId: number
   date: string
   title: string
   subtitle: string
@@ -35,7 +37,8 @@ export type AgendaItem = {
 }
 
 export type AgendaSources = {
-  teacherId: number
+  // Null: every teacher's classes (the admin's Today).
+  teacherId: number | null
   schedules: Schedule[]
   exceptions: ScheduleException[]
   classroomMap: Map<number, Classroom>
@@ -87,7 +90,7 @@ export function getAgendaItems(
   const { teacherId, exceptions, classroomMap, lessonLogs, makeupEntries, getRosterIds } = sources
   const latestLogs = getLatestLessonLogMap(lessonLogs)
   const mine = sources.schedules.filter(
-    (schedule) => schedule.teacherId === teacherId && schedule.status === 'active',
+    (schedule) => (teacherId === null || schedule.teacherId === teacherId) && schedule.status === 'active',
   )
   const makeupByDay = new Map<string, MakeupEntry[]>()
   for (const entry of makeupEntries) {
@@ -158,6 +161,7 @@ export function getAgendaItems(
       items.push({
         key: `${schedule.id}:${date}`,
         scheduleId: schedule.id,
+        teacherId: schedule.teacherId,
         date,
         title: classroom?.name ?? schedule.title,
         subtitle:

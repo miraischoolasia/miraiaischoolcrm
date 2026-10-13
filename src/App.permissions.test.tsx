@@ -102,9 +102,10 @@ describe('account permissions', () => {
   it('shows only the ticked modules, and leads without edit are view-only', async () => {
     await signInAs('staff', { leads: { level: 'view' }, activity: { level: 'view' } })
 
-    // Leads sits in the Marketing group, so the first page is Leads itself.
+    // Everybody starts on Today; Leads sits in the Marketing group.
+    expect(navLabels()).toEqual(['Today', 'Marketing', 'Activity Log'])
+    await userEvent.click(screen.getAllByRole('button', { name: /^Leads$/ })[0])
     expect((await screen.findAllByRole('button', { name: 'View' })).length).toBeGreaterThan(0)
-    expect(navLabels()).toEqual(['Marketing', 'Activity Log'])
     expect(screen.queryByRole('button', { name: /Add Lead/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Delete lead' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Convert/ })).not.toBeInTheDocument()
@@ -117,6 +118,7 @@ describe('account permissions', () => {
 
   it('gives edit without delete: add and convert need their ticks', async () => {
     await signInAs('staff', { leads: { level: 'edit' } })
+    await userEvent.click(screen.getAllByRole('button', { name: /^Leads$/ })[0])
 
     expect(await screen.findByRole('button', { name: /Add Lead/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Delete lead' })).not.toBeInTheDocument()
@@ -141,11 +143,24 @@ describe('account permissions', () => {
     expect(await screen.findByText('Calendar ready')).toBeInTheDocument()
   })
 
-  it('does not give Today to an admin', async () => {
+  it('starts an admin on Today, with the full calendar one click away', async () => {
     await signInAs('admin', {})
 
+    expect(await screen.findByRole('heading', { name: /^Good (morning|afternoon|evening),/ })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Classes today' })).toBeInTheDocument()
+    expect(screen.queryByText('Calendar ready')).not.toBeInTheDocument()
+    expect(navLabels()[0]).toBe('Today')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open full calendar' }))
     expect(await screen.findByText('Calendar ready')).toBeInTheDocument()
-    expect(navLabels()).not.toContain('Today')
+  })
+
+  it('gives a staff account only the Today blocks it has ticked', async () => {
+    await signInAs('staff', { leads: { level: 'view' } })
+
+    expect(await screen.findByRole('region', { name: 'Leads' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Classes today' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Students to follow up' })).not.toBeInTheDocument()
   })
 
   it('adds the ticked modules to a teacher account', async () => {

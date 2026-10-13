@@ -155,6 +155,7 @@ async function signInAndOpenMakeupCard() {
   render(<App />)
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'admin-1' } }))
+  await userEvent.click((await screen.findAllByRole('button', { name: 'Calendar' }))[0])
   await userEvent.click(await screen.findByRole('button', { name: 'make-up card' }))
 }
 
@@ -200,6 +201,7 @@ describe('make-up card on the 29th-31st', () => {
     render(<App />)
     await screen.findByText('Sign in to continue.')
     await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'admin-1' } }))
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Calendar' }))[0])
 
     expect(await screen.findByText('Completed')).toBeInTheDocument()
   })

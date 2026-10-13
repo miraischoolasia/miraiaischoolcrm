@@ -140,6 +140,10 @@ import { SummaryBar } from './components/SummaryBar'
 import { ClassListingSection } from './components/sections/ClassListingSection'
 import { StudentDashboardSection } from './components/sections/StudentDashboardSection'
 import { TeacherHomeSection } from './components/sections/TeacherHomeSection'
+import { AdminHomeSection } from './components/sections/AdminHomeSection'
+import { buildStudentRows } from './lib/studentRows'
+import { useAutomationSummary } from './hooks/useAutomationSummary'
+import { useStaffReplyStats } from './hooks/useStaffReplyStats'
 import { buildTeacherAgenda, formatClockTime } from './lib/teacherAgenda'
 import {
   getClassFilterValues,
@@ -635,7 +639,10 @@ function App() {
   const seesAllClasses = can('calendar') || can('classrooms') || can('students')
   const allowedSections = useMemo(() => {
     const sections: AppSection[] = []
-    if (isTeacherAccount) sections.push('home')
+    // A teacher's own day, or the admin's / staff's overview of the school.
+    if (isTeacherAccount || isAdmin || can('calendar') || can('students') || can('leads')) {
+      sections.push('home')
+    }
     if (can('leads')) sections.push('leads')
     // Same ticks as Leads: whoever follows up leads answers their WhatsApp.
     if (can('leads') && chatwootUrl) sections.push('whatsapp')
@@ -665,7 +672,14 @@ function App() {
     () => (whatsAppApiUrl && canUseWhatsApp ? createChatwootClient(whatsAppApiUrl) : null),
     [canUseWhatsApp],
   )
-  const { unread: unreadWhatsApp } = useWhatsAppUnread(whatsAppClient)
+  const { unread: unreadWhatsApp, waiting: waitingWhatsApp } = useWhatsAppUnread(whatsAppClient)
+  // The admin's / staff's Today (a teacher has their own).
+  const showAdminHome = visibleSection === 'home' && !isTeacherAccount
+  const { summary: automationSummary, unavailable: automationUnavailable } = useAutomationSummary(
+    showAdminHome && can('leads'),
+  )
+  // The admin reads how each person answers the chats; only an admin, and only when asked.
+  const staffReplies = useStaffReplyStats(isAdmin && showAdminHome ? whatsAppClient : null)
   const whatsAppUser = useMemo(
     () => (effectiveTeacher ? { id: effectiveTeacher.id, name: effectiveTeacher.fullName } : null),
     [effectiveTeacher],
@@ -818,6 +832,70 @@ function App() {
         missing: teacherAgenda.todo.filter((item) => item.classroomId === classroom.id).length,
       }))
   }, [teacherAgenda, currentSession?.teacherId, schedules, classroomMap, classroomStudentMap])
+  // What the admin sees on Today: every teacher's classes, and who owes attendance. Only worked
+  // out while that page is open, and only for an account that has the calendar.
+  const adminAgenda = useMemo(
+    () =>
+      showAdminHome && can('calendar')
+        ? buildTeacherAgenda(
+            {
+              teacherId: null,
+              schedules,
+              exceptions: scheduleExceptions,
+              classroomMap,
+              lessonLogs,
+              makeupEntries,
+              getRosterIds: getScheduleRosterStudentIds,
+            },
+            todayString,
+          )
+        : null,
+    // Same dependencies as teacherAgenda above.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+    [
+      showAdminHome,
+      can,
+      schedules,
+      scheduleExceptions,
+      classroomMap,
+      lessonLogs,
+      makeupEntries,
+      students,
+      trialBookingMap,
+      makeupMap,
+      scheduleParticipantMap,
+      todayString,
+    ],
+  )
+  const adminStudentRows = useMemo(
+    () =>
+      showAdminHome && can('students')
+        ? buildStudentRows({
+            students: listedStudents,
+            packages,
+            classrooms,
+            schedules,
+            teacherMap,
+            trialBookings,
+            parents: studentParents,
+            attendedStudentIds,
+            todayString,
+          })
+        : null,
+    [
+      showAdminHome,
+      can,
+      listedStudents,
+      packages,
+      classrooms,
+      schedules,
+      teacherMap,
+      trialBookings,
+      studentParents,
+      attendedStudentIds,
+      todayString,
+    ],
+  )
   const editingStudent =
     students.find((student) => student.id === editingStudentId) ?? null
   const editingTeacher =
@@ -967,12 +1045,13 @@ function App() {
     }
   }, [activeSection, allowedSections])
 
-  // A teacher starts on Today, not on the full calendar.
+  // Everybody starts on Today, not on the full calendar.
+  const hasHome = allowedSections.includes('home')
   useEffect(() => {
-    if (isTeacherAccount) {
+    if (hasHome) {
       setActiveSection('home')
     }
-  }, [isTeacherAccount, currentSession?.teacherId])
+  }, [hasHome, isTeacherAccount, currentSession?.teacherId])
 
   useEffect(() => {
     if (!selectedStudentDetailId) {
@@ -5321,7 +5400,9 @@ function App() {
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#be185d]">
                   {activeSection === 'home'
-                    ? 'Teacher Home'
+                    ? isTeacherAccount
+                      ? 'Teacher Home'
+                      : 'Admin Home'
                     : activeSection === 'calendar'
                     ? 'Calendar Board'
                     : activeSection === 'classrooms'
@@ -5501,6 +5582,56 @@ function App() {
                     setActiveSection('classrooms')
                   }
                 }}
+              />
+            )}
+
+            {showAdminHome && (
+              <AdminHomeSection
+                adminName={effectiveTeacher?.fullName ?? 'there'}
+                todayString={todayString}
+                isLoading={isLoading}
+                teacherNames={teacherNames}
+                agenda={adminAgenda}
+                studentRows={adminStudentRows}
+                leads={can('leads') ? leads : null}
+                unreadForms={can('forms') ? unreadFormSubmissions : null}
+                whatsApp={
+                  can('leads') && chatwootUrl && whatsAppApiUrl
+                    ? { unread: unreadWhatsApp, waiting: waitingWhatsApp }
+                    : null
+                }
+                automations={
+                  can('leads') ? { summary: automationSummary, unavailable: automationUnavailable } : null
+                }
+                canRenew={can('students', 'edit')}
+                teamReplies={
+                  isAdmin && whatsAppClient
+                    ? {
+                        staff: teachers.map((teacher) => ({ id: teacher.id, name: teacher.fullName })),
+                        data: staffReplies.data,
+                        isLoading: staffReplies.isLoading,
+                        progress: staffReplies.progress,
+                        error: staffReplies.error,
+                        onLoad: (range) => void staffReplies.load(range),
+                      }
+                    : null
+                }
+                onTakeAttendance={(item) =>
+                  void openAttendanceForEvent(item.scheduleId, item.date, item.title)
+                }
+                onOpenCalendar={() => setActiveSection('calendar')}
+                onOpenStudent={openStudentDetail}
+                onRenewStudent={openStudentRenewal}
+                onOpenFollowUpStudents={() => {
+                  setStudentFilter('all')
+                  setStudentFollowUpOnly(true)
+                  setActiveSection('students')
+                }}
+                onOpenLeads={() => setActiveSection('leads')}
+                onOpenLeadTasks={openFollowUpModal}
+                onOpenForms={() => setActiveSection('forms')}
+                onOpenWhatsApp={() => setActiveSection('whatsapp')}
+                onOpenAutomations={() => setActiveSection('automations')}
               />
             )}
 

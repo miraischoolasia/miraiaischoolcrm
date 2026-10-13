@@ -85,6 +85,7 @@ async function openLeads() {
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'user-4' } }))
   await screen.findByText(/Workspace$/)
+  await userEvent.click(screen.getAllByRole('button', { name: /^Leads$/ })[0])
   return within(await screen.findByRole('table'))
 }
 

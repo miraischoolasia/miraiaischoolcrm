@@ -110,6 +110,7 @@ async function openLeadsAndSelect(names: string[]) {
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'user-4' } }))
   await screen.findByText(/Workspace$/)
+  await userEvent.click(screen.getAllByRole('button', { name: /^Leads$/ })[0])
   const table = within(await screen.findByRole('table'))
   for (const name of names) {
     await userEvent.click(table.getByRole('checkbox', { name: `Select ${name}` }))

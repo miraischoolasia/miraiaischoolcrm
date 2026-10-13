@@ -58,6 +58,7 @@ async function openBulkImportAndPickFile() {
   render(<App />)
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'admin-1' } }))
+  await userEvent.click((await screen.findAllByRole('button', { name: 'Calendar' }))[0])
   await screen.findByText('Calendar ready')
 
   await userEvent.click(screen.getAllByRole('button', { name: /^Leads$/ })[0])

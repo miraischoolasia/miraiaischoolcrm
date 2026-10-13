@@ -10,7 +10,7 @@ const now = new Date(2026, 9, 9, 15, 10)
 
 function item(overrides: Partial<AgendaItem>): AgendaItem {
   return {
-    key: 'k', scheduleId: 1, date: today, title: 'FRI C006', subtitle: '9-11 Years Old · Coder Pro', classroomId: 6, kind: 'regular',
+    key: 'k', scheduleId: 1, teacherId: 9, date: today, title: 'FRI C006', subtitle: '9-11 Years Old · Coder Pro', classroomId: 6, kind: 'regular',
     startTime: '16:00', endTime: '17:30', makeupMinutes: 0, isMakeupOnly: false, studentCount: 5, log: null, editableUntil: null,
     state: 'open', minutes: 90, ...overrides,
   }
