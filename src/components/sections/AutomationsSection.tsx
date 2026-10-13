@@ -3,12 +3,19 @@ import { Plus } from '@phosphor-icons/react'
 import { FlowEditor } from '../automations/FlowEditor'
 import { ChatActivityCard } from '../automations/ChatActivityCard'
 import { ContactsCard } from '../automations/ContactsCard'
+import { AutoSendCard } from '../automations/AutoSendCard'
 import { OptoutsCard } from '../automations/OptoutsCard'
 import { RecipePicker } from '../automations/RecipePicker'
 import { FlowSwitch } from '../automations/FlowSwitch'
 import { useAutomationContacts } from '../../hooks/useAutomationContacts'
+import { useSourceRules } from '../../hooks/useSourceRules'
 import { useAutomationFlows } from '../../hooks/useAutomationFlows'
-import { useAutomationForms, useAutomationOptouts, useAutomationStats } from '../../hooks/useAutomationExtras'
+import {
+  useAutoSend,
+  useAutomationForms,
+  useAutomationOptouts,
+  useAutomationStats,
+} from '../../hooks/useAutomationExtras'
 import { useChatWebhook } from '../../hooks/useChatWebhook'
 import { useConfirm } from '../../hooks/useConfirm'
 import { cn } from '../../lib/cn'
@@ -39,6 +46,8 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
   const flowStats = useAutomationStats({ enabled: true })
   const optouts = useAutomationOptouts({ enabled: true })
   const forms = useAutomationForms({ enabled: true })
+  const autoSend = useAutoSend({ enabled: true })
+  const sourceRules = useSourceRules(true)
 
   // What the source, tag, PIC and form blocks can tick (hidden options are not offered).
   const filterOptions = useMemo<FilterOptions>(() => {
@@ -52,8 +61,11 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
       tag: choices('tag'),
       pic: choices('pic'),
       form: forms.map((form) => ({ id: form.id, label: form.name })),
+      keyword: sourceRules.rules
+        .filter((rule) => rule.isActive)
+        .map((rule) => ({ id: String(rule.id), label: rule.phrase })),
     }
-  }, [leadOptions, forms])
+  }, [leadOptions, forms, sourceRules.rules])
   const { confirm, dialog } = useConfirm()
   // null shows the list.
   const [open, setOpen] = useState<number | 'new' | null>(null)
@@ -82,13 +94,25 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
 
   async function toggle(id: number, name: string, enabled: boolean) {
     setNotice(null)
+    const sendsByItself = automation.flows.find((entry) => entry.id === id)?.graph.settings?.autoSend === true
+    if (
+      enabled &&
+      sendsByItself &&
+      !(await confirm(`"${name}" sends by itself. Its messages will go to parents on WhatsApp without anyone approving them. Turn it on?`, {
+        confirmLabel: 'Turn on',
+      }))
+    ) {
+      return
+    }
     const problem = await automation.toggle(id, enabled)
     setNotice(
       problem
         ? { text: problem, isError: true }
         : {
             text: enabled
-              ? `"${name}" is on. Its messages appear under the lightning button in WhatsApp within 15 minutes.`
+              ? sendsByItself
+                ? `"${name}" is on. Its messages go out by themselves, inside the limits and hours under "Sending by itself".`
+                : `"${name}" is on. Its messages appear under the lightning button in WhatsApp within 15 minutes.`
               : `"${name}" is off.`,
             isError: false,
           },
@@ -156,7 +180,7 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-2xl text-sm text-slate-600">
           Each flow checks every 15 minutes. The messages it makes wait for approval under the lightning button in
-          WhatsApp; nothing is sent by itself.
+          WhatsApp, unless the flow is set to send by itself.
         </p>
         <div className="flex gap-2">
           {canEdit && (
@@ -195,6 +219,13 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
         onUpdate={contactList.update}
         onRemove={contactList.remove}
       />
+      <AutoSendCard
+        settings={autoSend.settings}
+        autoFlows={flows.filter((entry) => entry.enabled && entry.graph.settings?.autoSend === true).length}
+        canEdit={canEdit}
+        loadError={autoSend.error}
+        onSave={autoSend.save}
+      />
       <OptoutsCard optouts={optouts.optouts} loadError={optouts.error} onAllowAgain={optouts.allowAgain} />
       {canEdit && (
         <ChatActivityCard
@@ -232,6 +263,9 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
               <button type="button" onClick={() => setOpen(flow.id)} className="min-w-0 flex-1 text-left">
                 <span className="block truncate text-sm font-semibold text-slate-900">{flow.name}</span>
                 <span className="mt-0.5 block text-xs text-slate-500">{describeFlow(flow)}</span>
+                {flow.graph.settings?.autoSend === true && (
+                  <span className="mt-0.5 block text-xs font-semibold text-amber-700">Sends by itself</span>
+                )}
                 {describeStats(flowStats.stats.get(flow.id)) && (
                   <span className="mt-0.5 block text-xs text-slate-600">{describeStats(flowStats.stats.get(flow.id))}</span>
                 )}

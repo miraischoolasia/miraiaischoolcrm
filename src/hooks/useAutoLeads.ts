@@ -127,6 +127,7 @@ export function useAutoLeads({
           status: 'new',
           children: [],
           notes: `Added by itself from the first WhatsApp message (${phone ? '' : 'WhatsApp hides the number; '}source keyword: "${found.rule}").`,
+          sourceRuleId: found.guess.ruleId ?? null,
         }
         const created = await latest.current.crm.onCreateLead(values)
         // A lead for this number was made a moment ago (a form): tie the chat to that one.

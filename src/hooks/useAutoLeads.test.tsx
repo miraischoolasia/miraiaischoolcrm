@@ -83,6 +83,12 @@ describe('useAutoLeads', () => {
     )
   })
 
+  it('remembers which rule the lead came in with', async () => {
+    const { onCreateLead } = setup()
+    await waitFor(() => expect(onCreateLead).toHaveBeenCalledTimes(1))
+    expect(onCreateLead).toHaveBeenCalledWith(expect.objectContaining({ sourceRuleId: 1 }))
+  })
+
   it('does not make a lead when no rule matches', async () => {
     const { client, onCreateLead } = setup({ text: 'How much are the classes?' })
 

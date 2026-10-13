@@ -145,7 +145,12 @@ describe('flowSteps', () => {
         expect(draft.enabled).toBe(false)
         expect(draft.id).toBeNull()
         expect(analyzeFlow(draft.graph).simple).toBe(true)
-        expect(validateDraft(draft)).toBeNull()
+        // The source recipe is only finished once a source is ticked.
+        if (recipe.key === 'lead_from_source' || recipe.key === 'lead_from_keyword') {
+          expect(validateDraft(draft)).toMatch(/ticked/)
+        } else {
+          expect(validateDraft(draft)).toBeNull()
+        }
       },
     )
 

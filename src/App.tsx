@@ -3412,6 +3412,7 @@ function App() {
         children,
         notes: input.notes.trim() || null,
         added_date: todayString,
+        source_rule_id: input.sourceRuleId ?? null,
       })
       .select('id')
       .single()

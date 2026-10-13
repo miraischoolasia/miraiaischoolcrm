@@ -422,3 +422,6 @@ verify_jwt = false
 # database, is what authorises it.
 [functions.chat-activity]
 verify_jwt = false
+
+[functions.auto-sender]
+verify_jwt = false

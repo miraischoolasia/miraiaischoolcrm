@@ -322,6 +322,11 @@ export function FlowInspector({
       tag: { title: 'Tag', plural: 'tags', hint: 'Leads with any ticked tag follow the Yes line; everyone else follows No.' },
       pic: { title: 'PIC', plural: 'people in charge', hint: 'Leads handled by a ticked person follow the Yes line; everyone else follows No.' },
       form: { title: 'Form', plural: 'forms', hint: 'Leads who filled in a ticked form follow the Yes line; everyone else follows No.' },
+      keyword: {
+        title: 'Source keyword',
+        plural: 'source keywords',
+        hint: 'Leads that came in with a ticked source keyword (the phrase in their first WhatsApp message) follow the Yes line; everyone else follows No.',
+      },
     }[node.kind]
     // A ticked choice that was deleted stays in the list so it can be unticked.
     const known = filterOptions[node.kind]

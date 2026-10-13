@@ -221,6 +221,32 @@ const message = (id: string, mins: number, text: string, extra: Partial<MessageN
 
 export const FLOW_RECIPES: FlowRecipe[] = [
   {
+    key: 'lead_from_keyword',
+    title: 'Message leads who came in with a source keyword',
+    summary: 'A lead is made from a WhatsApp first message with the keyword you pick: say hello five minutes later.',
+    build: () =>
+      recipeDraft(
+        'Welcome leads from a source keyword',
+        'lead_created',
+        [{ id: 'c1', type: 'condition', kind: 'keyword', x: 0, y: 0, ids: [] }],
+        [message('m1', 5, 'Hi {parent}, thank you for your interest in Mirai AI School! How can we help you today?', { after: true })],
+        { stopStages: ['converted', 'lost'] },
+      ),
+  },
+  {
+    key: 'lead_from_source',
+    title: 'Message leads from one source',
+    summary: 'A lead comes in from the source you pick (for example Facebook Ads): say hello five minutes later.',
+    build: () =>
+      recipeDraft(
+        'Welcome leads from a source',
+        'lead_created',
+        [{ id: 'c1', type: 'condition', kind: 'source', x: 0, y: 0, ids: [] }],
+        [message('m1', 5, 'Hi {parent}, thank you for your interest in Mirai AI School! How can we help you today?', { after: true })],
+        { stopStages: ['converted', 'lost'] },
+      ),
+  },
+  {
     key: 'follow_up_quiet',
     title: 'Follow up a parent who went quiet',
     summary: 'We wrote and they did not reply: nudge after 4 hours, 1 day and 3 days. Stops when they reply.',

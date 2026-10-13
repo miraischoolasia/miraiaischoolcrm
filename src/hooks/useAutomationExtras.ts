@@ -2,6 +2,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchFlowStats, type FlowStats } from '../lib/automationStats'
 import { deleteOptout, fetchOptouts, optoutsErrorMessage, type AutomationOptout } from '../lib/automationOptouts'
+import {
+  DEFAULT_AUTO_SEND,
+  autoSendErrorMessage,
+  fetchAutoSend,
+  saveAutoSend,
+  validateAutoSend,
+  type AutoSendSettings,
+} from '../lib/autoSend'
 
 // What each flow has done so far. A page without the numbers still works, so a failure is not shown.
 export function useAutomationStats({ enabled }: { enabled: boolean }) {
@@ -84,4 +92,51 @@ export function useAutomationOptouts({ enabled }: { enabled: boolean }) {
   }, [])
 
   return { optouts, error, reload, allowAgain }
+}
+
+// The rules for messages sent by themselves, and whether the sender program is running.
+export function useAutoSend({ enabled }: { enabled: boolean }) {
+  const [settings, setSettings] = useState<AutoSendSettings>(DEFAULT_AUTO_SEND)
+  const [error, setError] = useState<string | null>(null)
+
+  const reload = useCallback(async () => {
+    if (!enabled) {
+      return
+    }
+    try {
+      setSettings(await fetchAutoSend())
+      setError(null)
+    } catch (problem) {
+      setError(autoSendErrorMessage(problem, "Couldn't load the sending rules."))
+    }
+  }, [enabled])
+
+  useEffect(() => {
+    if (!enabled) {
+      return
+    }
+    void reload()
+    const timer = window.setInterval(() => void reload(), 60_000)
+    return () => window.clearInterval(timer)
+  }, [enabled, reload])
+
+  const save = useCallback(
+    async (change: Partial<Omit<AutoSendSettings, 'senderSeenAt'>>): Promise<string | null> => {
+      const problem = validateAutoSend({ ...settings, ...change })
+      if (problem) {
+        return problem
+      }
+      try {
+        await saveAutoSend(change)
+        setSettings((current) => ({ ...current, ...change }))
+        return null
+      } catch (failure) {
+        await reload()
+        return autoSendErrorMessage(failure, "Couldn't save the change.")
+      }
+    },
+    [settings, reload],
+  )
+
+  return { settings, error, save, reload }
 }

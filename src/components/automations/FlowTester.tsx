@@ -163,6 +163,7 @@ export function FlowTester({
             ['tag', 'Tag', 'tagId', 'Test tag', 'No tag'],
             ['pic', 'PIC', 'picId', 'Test PIC', 'Nobody'],
             ['form', 'Form', 'formId', 'Test form', 'No form'],
+            ['keyword', 'Keyword', 'keywordId', 'Test source keyword', 'No keyword'],
           ] as const
         ).map(([kind, label, field, aria, none]) =>
           filterOptions[kind].length === 0 ? null : (

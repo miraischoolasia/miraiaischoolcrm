@@ -579,6 +579,8 @@ export type Database = {
           sent_at: string | null
           error: string | null
           created_at: string
+          sent_by_automation: boolean
+          auto_blocked: string | null
         }
         Insert: never
         Update: {
@@ -597,6 +599,9 @@ export type Database = {
           paused: boolean
           daily_cap: number
           gap_seconds: number
+          send_from_hour: number
+          send_until_hour: number
+          sender_seen_at: string | null
           updated_at: string
         }
         Insert: never
@@ -604,6 +609,8 @@ export type Database = {
           paused?: boolean
           daily_cap?: number
           gap_seconds?: number
+          send_from_hour?: number
+          send_until_hour?: number
           updated_at?: string
         }
         Relationships: []
@@ -743,6 +750,7 @@ export type Database = {
           source: string
           source_id: number | null
           pic_id: number | null
+          source_rule_id: number | null
           state: string | null
           tag_ids: number[]
           checks: Record<string, { at: string | null; by: number | null }>
@@ -769,6 +777,7 @@ export type Database = {
           source?: string
           source_id?: number | null
           pic_id?: number | null
+          source_rule_id?: number | null
           state?: string | null
           tag_ids?: number[]
           checks?: Record<string, boolean | { at: string | null; by: number | null }>
@@ -795,6 +804,7 @@ export type Database = {
           source?: string
           source_id?: number | null
           pic_id?: number | null
+          source_rule_id?: number | null
           state?: string | null
           tag_ids?: number[]
           checks?: Record<string, boolean | { at: string | null; by: number | null }>
@@ -1487,6 +1497,7 @@ export type Database = {
           p_pic?: number | null
           p_tag?: number | null
           p_form?: string | null
+          p_keyword?: number | null
         }
         Returns: number
       }

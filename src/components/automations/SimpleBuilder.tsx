@@ -47,12 +47,19 @@ const FILTER_KINDS: { kind: Exclude<NewBlockKind, 'message'>; label: string; hin
   { kind: 'source', label: 'Source', hint: 'Where the lead came from' },
   { kind: 'tag', label: 'Tag', hint: 'Leads with a tag' },
   { kind: 'form', label: 'Form', hint: 'Filled in a form' },
+  { kind: 'keyword', label: 'Source keyword', hint: 'The phrase in their first message' },
   { kind: 'age', label: 'Age', hint: 'How old the child is' },
   { kind: 'stage', label: 'Lead stage', hint: 'New, Contacted, ...' },
   { kind: 'pic', label: 'PIC', hint: 'Who handles the lead' },
   { kind: 'classroom', label: 'Class', hint: 'Which class' },
   { kind: 'hours', label: 'Lessons left', hint: 'Nearly out of lessons' },
 ]
+
+// "A lead comes in from a source" is the new-lead trigger with a Source filter in front. It is shown as
+// one choice in the picker so nobody has to know that.
+const FROM_SOURCE = 'lead_from_source'
+// Likewise "a lead comes in with a source keyword": the new-lead trigger with a Source keyword filter.
+const FROM_KEYWORD = 'lead_from_keyword'
 
 const fieldClass =
   'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#fc0c97] disabled:bg-slate-50 disabled:text-slate-500'
@@ -93,6 +100,30 @@ export function SimpleBuilder({
     const result = addMessageStep(draft.graph, draft.trigger)
     onGraphChange(result.graph)
     setOpenId(result.id)
+  }
+
+  const sourceFilter = parts.filters.find((filter) => filter.kind === 'source')
+  const keywordFilter = parts.filters.find((filter) => filter.kind === 'keyword')
+  const triggerValue =
+    draft.trigger === 'lead_created' && keywordFilter
+      ? FROM_KEYWORD
+      : draft.trigger === 'lead_created' && sourceFilter
+        ? FROM_SOURCE
+        : draft.trigger
+
+  function changeWhen(value: string) {
+    if (value !== FROM_SOURCE && value !== FROM_KEYWORD) {
+      onTriggerChange(value as FlowTrigger)
+      return
+    }
+    // The filter first, then the trigger, so the trigger change sees the filter in the flow.
+    if (value === FROM_SOURCE && !sourceFilter) {
+      addFilterOf('source')
+    }
+    if (value === FROM_KEYWORD && !keywordFilter) {
+      addFilterOf('keyword')
+    }
+    onTriggerChange('lead_created')
   }
 
   function addFilterOf(kind: Exclude<NewBlockKind, 'message'>) {
@@ -169,13 +200,19 @@ export function SimpleBuilder({
             <Lightning size={18} weight="fill" className="shrink-0 text-[#fc0c97]" aria-hidden="true" />
             <select
               aria-label="When"
-              value={draft.trigger}
+              value={triggerValue}
               disabled={readOnly}
-              onChange={(event) => onTriggerChange(event.target.value as FlowTrigger)}
+              onChange={(event) => changeWhen(event.target.value)}
               className={cn(fieldClass, 'w-full')}
             >
               {TRIGGER_GROUPS.map((group) => (
                 <optgroup key={group.label} label={group.label}>
+                  {group.keys[0] === 'lead_created' && (
+                    <option value={FROM_SOURCE}>A lead comes in from a source</option>
+                  )}
+                  {group.keys[0] === 'lead_created' && (
+                    <option value={FROM_KEYWORD}>A lead comes in with a source keyword</option>
+                  )}
                   {group.keys.map((key) => (
                     <option key={key} value={key}>
                       {TRIGGERS.find((entry) => entry.key === key)?.label ?? key}
@@ -185,7 +222,11 @@ export function SimpleBuilder({
               ))}
             </select>
           </div>
-          <p className="text-xs text-slate-500">Starts every time {info.phrase}.</p>
+          <p className="text-xs text-slate-500">
+            Starts every time {info.phrase}.
+            {triggerValue === FROM_SOURCE && ' Tick the sources under "Who it is for".'}
+            {triggerValue === FROM_KEYWORD && ' Tick the source keywords under "Who it is for".'}
+          </p>
         </div>
       </section>
 

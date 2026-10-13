@@ -23,6 +23,7 @@ const item = (change: Partial<QueueItem>): QueueItem => ({
   sentAt: null,
   error: null,
   createdAt: '2026-10-13T09:00:00+08:00',
+  autoBlocked: null,
   ...change,
 })
 

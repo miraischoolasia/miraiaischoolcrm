@@ -18,6 +18,28 @@ export function FlowSettingsCard({ settings, readOnly, onChange }: FlowSettingsC
   return (
     <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-3">
       <h3 className="text-sm font-semibold text-slate-900">For the whole flow</h3>
+      <div
+        className={cn(
+          'space-y-1 rounded-lg border p-3',
+          settings?.autoSend === true ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-slate-50',
+        )}
+      >
+        <label className="flex items-start gap-2 text-sm font-semibold text-slate-900">
+          <input
+            type="checkbox"
+            checked={settings?.autoSend === true}
+            disabled={readOnly}
+            onChange={(event) => onChange({ autoSend: event.target.checked })}
+            className="mt-0.5 h-4 w-4 accent-[#fc0c97]"
+          />
+          <span>Send by itself (no approval)</span>
+        </label>
+        <p className="text-xs text-slate-600">
+          {settings?.autoSend === true
+            ? 'The messages of this flow go out on their own, at the right time, inside the daily limit and the hours set on the Automations page. Only to people who have written to us before; anyone else waits in the approval queue.'
+            : 'Off: every message waits in the approval queue (the lightning button) until someone sends it.'}
+        </p>
+      </div>
       <fieldset disabled={readOnly} className="space-y-1.5">
         <legend className="text-xs font-semibold text-slate-600">Send nothing to leads who are</legend>
         <div className="grid gap-1 sm:grid-cols-2">

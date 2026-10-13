@@ -26,6 +26,8 @@ export type LeadFormValues = {
   status: LeadStatus
   children: { name: string; age: number; phone: string | null }[]
   notes: string
+  // The source keyword rule the first message matched (a new lead only), so automations can ask about it.
+  sourceRuleId?: number | null
 }
 
 // Each action resolves to an error message, or null when it worked.

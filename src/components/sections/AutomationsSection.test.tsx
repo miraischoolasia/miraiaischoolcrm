@@ -86,6 +86,15 @@ const contactHook = vi.hoisted(() => ({
 vi.mock('../../hooks/useAutomationContacts', () => ({ useAutomationContacts: () => contactHook.state }))
 
 const extras = vi.hoisted(() => ({
+  autoSend: {
+    paused: false,
+    dailyCap: 40,
+    gapSeconds: 30,
+    fromHour: 9,
+    untilHour: 21,
+    senderSeenAt: null as string | null,
+  },
+  saveAutoSend: vi.fn(),
   stats: new Map<number, unknown>(),
   forms: [] as { id: string; name: string }[],
   optouts: [] as { phone: string; reason: string | null; createdAt: string }[],
@@ -95,6 +104,7 @@ const extras = vi.hoisted(() => ({
 vi.mock('../../hooks/useAutomationExtras', () => ({
   useAutomationStats: () => ({ stats: extras.stats, reload: vi.fn() }),
   useAutomationForms: () => extras.forms,
+  useAutoSend: () => ({ settings: extras.autoSend, error: null, save: extras.saveAutoSend, reload: vi.fn() }),
   useAutomationOptouts: () => ({
     optouts: extras.optouts,
     error: extras.optoutError,
@@ -112,6 +122,14 @@ const chatHook = vi.hoisted(() => ({
   },
 }))
 vi.mock('../../hooks/useChatWebhook', () => ({ useChatWebhook: () => chatHook.state }))
+
+const rulesHook = vi.hoisted(() => ({
+  rules: [
+    { id: 12, phrase: 'free trial coding', sourceId: 3, tagIds: [], isActive: true },
+    { id: 13, phrase: 'old advert', sourceId: 3, tagIds: [], isActive: false },
+  ],
+}))
+vi.mock('../../hooks/useSourceRules', () => ({ useSourceRules: () => ({ rules: rulesHook.rules, isLoading: false, error: null }) }))
 
 const flow = (change: Partial<AutomationFlow> = {}): AutomationFlow => {
   const base = newFlowDraft()
@@ -184,6 +202,8 @@ describe('AutomationsSection', () => {
     chatHook.state.isLoading = false
     chatHook.state.reload.mockReset()
     extras.stats = new Map()
+    extras.autoSend = { paused: false, dailyCap: 40, gapSeconds: 30, fromHour: 9, untilHour: 21, senderSeenAt: null }
+    extras.saveAutoSend.mockReset().mockResolvedValue(null)
     extras.forms = []
     extras.optouts = []
     extras.optoutError = null
@@ -694,6 +714,97 @@ describe('AutomationsSection', () => {
     })
   })
 
+  describe('sending by itself', () => {
+    const autoFlow = () =>
+      flow({
+        id: 5,
+        name: 'Ads follow up',
+        trigger: 'lead_created',
+        graph: {
+          trigger: { x: 24, y: 140 },
+          nodes: [{ id: 'm1', type: 'message', x: 300, y: 140, mins: 5, after: true, text: 'Hi {parent}' }],
+          edges: [{ from: 'trigger', port: 'out', to: 'm1' }],
+          settings: { autoSend: true },
+        },
+      })
+
+    it('keeps a flow going through the approval queue until its switch is ticked, and saves the switch', async () => {
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Class reminder A regular class starts/ }))
+      const box = screen.getByRole('checkbox', { name: /Send by itself/ })
+      expect(box).not.toBeChecked()
+      expect(screen.getByText(/waits in the approval queue/)).toBeInTheDocument()
+
+      await userEvent.click(box)
+      expect(screen.getByRole('checkbox', { name: /Send by itself/ })).toBeChecked()
+      await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+      await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+      expect(hook.state.save.mock.calls[0][0].graph.settings).toEqual({ autoSend: true })
+    })
+
+    it('leaves the switch out of the saved flow when it is ticked and then cleared', async () => {
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Class reminder A regular class starts/ }))
+      await userEvent.click(screen.getByRole('checkbox', { name: /Send by itself/ }))
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('checkbox', { name: /Send by itself/ }))
+      // Back to what was saved: nothing is left over in the flow, so there is nothing to save.
+      expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument()
+    })
+
+    it('marks a flow that sends by itself and asks before turning it on', async () => {
+      hook.state.flows = [autoFlow()]
+      setup()
+      expect(screen.getByText('Sends by itself')).toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole('switch', { name: 'Ads follow up on or off' }))
+      expect(await screen.findByText(/without anyone approving them/)).toBeInTheDocument()
+      expect(hook.state.toggle).not.toHaveBeenCalled()
+      await userEvent.click(screen.getByRole('button', { name: 'Turn on' }))
+      await waitFor(() => expect(hook.state.toggle).toHaveBeenCalledWith(5, true))
+      expect(await screen.findByText(/go out by themselves/)).toBeInTheDocument()
+    })
+
+    it('does not ask when a flow that goes through approval is turned on', async () => {
+      setup()
+      await userEvent.click(screen.getByRole('switch', { name: 'Class reminder on or off' }))
+      await waitFor(() => expect(hook.state.toggle).toHaveBeenCalledWith(1, true))
+    })
+
+    it('shows the rules, pauses everything and saves a new daily limit', async () => {
+      hook.state.flows = [{ ...autoFlow(), enabled: true }]
+      extras.autoSend.senderSeenAt = null
+      setup()
+      expect(screen.getByText('1 flow sends by itself')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: /Sending by itself/ }))
+      expect(screen.getByRole('alert')).toHaveTextContent(/has not connected yet/)
+
+      await userEvent.click(screen.getByRole('checkbox', { name: /Pause everything/ }))
+      expect(extras.saveAutoSend).toHaveBeenCalledWith({ paused: true })
+
+      const limit = screen.getByLabelText('Most messages a day')
+      fireEvent.change(limit, { target: { value: '25' } })
+      fireEvent.blur(limit)
+      await waitFor(() => expect(extras.saveAutoSend).toHaveBeenCalledWith({ dailyCap: 25 }))
+    })
+
+    it('says when the sender program is running', async () => {
+      hook.state.flows = [{ ...autoFlow(), enabled: true }]
+      extras.autoSend.senderSeenAt = new Date().toISOString()
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Sending by itself/ }))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(screen.getByText(/Sender program: running/)).toBeInTheDocument()
+    })
+
+    it('does not let someone who cannot edit change the rules', async () => {
+      setup(false)
+      await userEvent.click(screen.getByRole('button', { name: /Sending by itself/ }))
+      expect(screen.getByRole('checkbox', { name: /Pause everything/ })).toBeDisabled()
+      expect(screen.getByLabelText('Most messages a day')).toBeDisabled()
+    })
+  })
+
   describe('simple view and recipes', () => {
     it('opens a flow as a list of three steps, with the canvas one click away', async () => {
       setup()
@@ -726,6 +837,63 @@ describe('AutomationsSection', () => {
       expect(saved).toMatchObject({ id: null, trigger: 'parent_no_reply', enabled: false })
       expect(saved.graph.nodes.filter((node: { type: string }) => node.type === 'message')).toHaveLength(3)
       expect(saved.graph.settings).toMatchObject({ stopStages: ['converted', 'lost'], cooldownDays: 14 })
+    })
+
+    it('offers "a lead comes in from a source" as a trigger: the new-lead trigger with a Source filter', async () => {
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: 'New flow' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Start with a blank flow' }))
+      await userEvent.type(screen.getByLabelText('Flow name'), 'Facebook welcome')
+
+      await userEvent.selectOptions(screen.getByLabelText('When'), 'lead_from_source')
+      expect(screen.getByLabelText('When')).toHaveValue('lead_from_source')
+      expect(screen.getByText(/Tick the sources under/)).toBeInTheDocument()
+      // The Source filter was added in front, open, with the sources (not the hidden one) to tick.
+      expect(screen.getByRole('checkbox', { name: 'Facebook Ads' })).toBeInTheDocument()
+      expect(screen.queryByRole('checkbox', { name: 'Old source' })).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Facebook Ads' }))
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add a message' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+      await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+      const saved = hook.state.save.mock.calls[0][0]
+      expect(saved.trigger).toBe('lead_created')
+      expect(saved.graph.nodes[0]).toMatchObject({ type: 'condition', kind: 'source', ids: ['3'] })
+      expect(saved.graph.nodes[1]).toMatchObject({ type: 'message', after: true })
+    })
+
+    it('offers "a lead comes in with a source keyword" with the keywords of the inbox to tick', async () => {
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: 'New flow' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Start with a blank flow' }))
+      await userEvent.type(screen.getByLabelText('Flow name'), 'Keyword welcome')
+
+      await userEvent.selectOptions(screen.getByLabelText('When'), 'lead_from_keyword')
+      expect(screen.getByLabelText('When')).toHaveValue('lead_from_keyword')
+      expect(screen.getByText(/Tick the source keywords under/)).toBeInTheDocument()
+      // Only the active rules are offered, by their phrase.
+      expect(screen.getByRole('checkbox', { name: 'free trial coding' })).toBeInTheDocument()
+      expect(screen.queryByRole('checkbox', { name: 'old advert' })).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('checkbox', { name: 'free trial coding' }))
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add a message' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+      await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+      const saved = hook.state.save.mock.calls[0][0]
+      expect(saved.trigger).toBe('lead_created')
+      expect(saved.graph.nodes[0]).toMatchObject({ type: 'condition', kind: 'keyword', ids: ['12'] })
+      expect(saved.graph.nodes[1]).toMatchObject({ type: 'message', after: true })
+    })
+
+    it('starts a flow for one source from the recipe list', async () => {
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: 'New flow' }))
+      await userEvent.click(screen.getByRole('button', { name: /Message leads from one source/ }))
+      expect(screen.getByLabelText('When')).toHaveValue('lead_from_source')
+      // The Source filter is already in front, with nothing ticked: the sources are left to the person.
+      expect(screen.getByRole('button', { name: 'Any source?' })).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Any source?' }))
+      expect(screen.getByRole('checkbox', { name: 'Facebook Ads' })).not.toBeChecked()
     })
 
     it('does not offer a recipe that tells the team until there is a contact to tell', async () => {

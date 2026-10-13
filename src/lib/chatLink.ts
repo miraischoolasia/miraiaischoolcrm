@@ -144,7 +144,7 @@ export function getFirstMessage(messages: ChatwootMessage[]): FirstMessage | nul
 }
 
 // rule is the phrase of the first rule that matched, when a rule made the guess.
-export type SourceGuess = { source: LeadOption | null; tags: LeadOption[]; rule?: string }
+export type SourceGuess = { source: LeadOption | null; tags: LeadOption[]; rule?: string; ruleId?: number }
 
 function wordsOf(label: string) {
   return label
@@ -174,6 +174,7 @@ export function guessSourceAndTags(text: string, options: LeadOption[], rules: S
       source: active.find((option) => option.kind === 'source' && option.id === byRule.sourceId) ?? null,
       tags: active.filter((option) => option.kind === 'tag' && byRule.tagIds.includes(option.id)),
       rule: byRule.rules[0].phrase,
+      ruleId: byRule.rules[0].id,
     }
   }
   const lowered = text.toLowerCase()

@@ -261,6 +261,11 @@ export function AutomationQueueDialog({
                             onBlur={() => void saveEdit(item)}
                             className="mt-2 w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#fc0c97] disabled:bg-slate-50"
                           />
+                          {item.autoBlocked && item.status === 'pending' && (
+                            <p className="mt-1 text-xs text-amber-800">
+                              Not sent by itself: {item.autoBlocked} Send it from here if it is fine.
+                            </p>
+                          )}
                           {item.error && item.status === 'failed' && (
                             <p className="mt-1 text-xs text-red-700">Last try: {item.error}</p>
                           )}

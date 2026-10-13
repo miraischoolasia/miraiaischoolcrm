@@ -257,6 +257,7 @@ export function LeadForm({
       status: sent.status,
       children: children.map((child) => ({ name: child.name, age: Number(child.age), phone: child.phone })),
       notes: sent.notes,
+      ...(lead ? {} : { sourceRuleId: guess.ruleId ?? null }),
     }
     savingRef.current = true
     setIsSaving(true)

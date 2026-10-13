@@ -62,6 +62,7 @@ const PICKS: { kind: NewBlockKind; label: string; hint: string }[] = [
   { kind: 'tag', label: 'Check the tag', hint: 'Leads with a tag' },
   { kind: 'pic', label: 'Check the PIC', hint: 'Who handles the lead' },
   { kind: 'form', label: 'Check the form', hint: 'Which form they filled in' },
+  { kind: 'keyword', label: 'Check the source keyword', hint: 'The phrase in their first message' },
 ]
 
 // The "+" after a card, and the small menu it opens. It sits to the right of the exit it belongs to.

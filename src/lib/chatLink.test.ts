@@ -95,6 +95,14 @@ describe('getFirstMessage', () => {
 })
 
 describe('guessSourceAndTags', () => {
+  it('gives the id of the rule that matched, so the lead can remember it', () => {
+    const guess = guessSourceAndTags('Hi, free trial coding please', [], [
+      { id: 1, phrase: 'free trial coding', sourceId: 1, tagIds: [2], isActive: true },
+    ])
+    expect(guess.rule).toBe('free trial coding')
+    expect(guess.ruleId).toBe(1)
+  })
+
   const options = [
     option(1, 'source', 'Facebook'),
     option(2, 'source', 'Other', 'other'),

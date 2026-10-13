@@ -100,6 +100,32 @@ describe('what a child gets', () => {
     expect(simulateFlow(split, { age: null, classroomId: null }).messages.map((m) => m.id)).toEqual(['mNo'])
   })
 
+  it('answers a source keyword condition by the keyword the lead came in with', () => {
+    const graph: FlowGraph = {
+      trigger: { x: 0, y: 0 },
+      nodes: [
+        { id: 'k1', type: 'condition', kind: 'keyword', x: 0, y: 0, ids: ['12', '15'] },
+        { id: 'm1', type: 'message', x: 0, y: 0, mins: 5, after: true, text: 'Welcome' },
+      ],
+      edges: [
+        { from: TRIGGER_ID, port: 'out', to: 'k1' },
+        { from: 'k1', port: 'yes', to: 'm1' },
+      ],
+    }
+    expect(simulateFlow(graph, { age: null, classroomId: null, keywordId: 15 }).messages).toHaveLength(1)
+    expect(simulateFlow(graph, { age: null, classroomId: null, keywordId: 3 }).messages).toHaveLength(0)
+    // A lead that came in without a keyword never matches.
+    expect(simulateFlow(graph, { age: null, classroomId: null }).messages).toHaveLength(0)
+    expect(validateDraft({ id: null, name: 'KW', trigger: 'lead_created', enabled: false, graph })).toBeNull()
+    const empty: FlowGraph = {
+      ...graph,
+      nodes: graph.nodes.map((node) => (node.id === 'k1' ? { ...node, ids: [] } : node)) as FlowGraph['nodes'],
+    }
+    expect(validateDraft({ id: null, name: 'KW', trigger: 'lead_created', enabled: false, graph: empty })).toBe(
+      'A source keyword block needs at least one source keyword ticked.',
+    )
+  })
+
   it('answers a class condition by the class the child is in', () => {
     const graph: FlowGraph = {
       trigger: { x: 0, y: 0 },
@@ -465,6 +491,17 @@ describe('source, tag, PIC and form blocks', () => {
 })
 
 describe('settings of the whole flow', () => {
+  it('keeps the send-by-itself switch only while it is on, and reads it back', () => {
+    const base = newFlowDraft().graph
+    const on = updateSettings(base, { autoSend: true })
+    expect(on.settings).toEqual({ autoSend: true })
+    expect(parseGraph(JSON.parse(JSON.stringify(on))).settings).toEqual({ autoSend: true })
+    const off = updateSettings(on, { autoSend: false })
+    expect('settings' in off).toBe(false)
+    // Only a real true counts.
+    expect(parseGraph({ ...base, settings: { autoSend: 'yes' } }).settings).toBeUndefined()
+  })
+
   const base: FlowGraph = { trigger: { x: 0, y: 0 }, nodes: [], edges: [] }
 
   it('are added and taken away again', () => {
@@ -501,7 +538,7 @@ describe('the tester inputs', () => {
   it('turn text into a pretend child, and nothing typed is no test', () => {
     expect(isTesting(EMPTY_TEST)).toBe(false)
     expect(isTesting({ ...EMPTY_TEST, tagId: '7' })).toBe(true)
-    expect(testChildOf({ ...EMPTY_TEST, age: '9', stage: 'new', sourceId: '3', formId: 'abc' })).toEqual({
+    expect(testChildOf({ ...EMPTY_TEST, age: '9', stage: 'new', sourceId: '3', formId: 'abc', keywordId: '12' })).toEqual({
       age: 9,
       classroomId: null,
       hours: null,
@@ -510,6 +547,7 @@ describe('the tester inputs', () => {
       picId: null,
       tagId: null,
       formId: 'abc',
+      keywordId: 12,
     })
   })
 
