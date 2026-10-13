@@ -79,6 +79,8 @@ describe('how long before', () => {
 describe('message text', () => {
   it('fills the placeholders with an example child', () => {
     expect(previewMessage('Hi {child}, {class} at {time}')).toBe('Hi Ethan, Coder A at 8:30 pm')
+    // The parent's phone the Malaysian way, and the child's name in small letters with no spaces.
+    expect(previewMessage('login {child_lower} / {parent_phone}')).toBe('login ethan / 0123456789')
   })
 
   it('lists words in braces the database would not replace', () => {

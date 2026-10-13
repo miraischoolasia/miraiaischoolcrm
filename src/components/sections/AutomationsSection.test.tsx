@@ -765,6 +765,17 @@ describe('AutomationsSection', () => {
       expect(await screen.findByText(/go out by themselves/)).toBeInTheDocument()
     })
 
+    it('offers the parent phone and the child name in small letters to put in a message', async () => {
+      setup()
+      await openFirst()
+      await userEvent.click(screen.getByRole('button', { name: 'canvas block m1' }))
+      const message = screen.getByLabelText('Message')
+      fireEvent.change(message, { target: { value: '' } })
+      await userEvent.click(screen.getByRole('button', { name: '{child_lower}' }))
+      await userEvent.click(screen.getByRole('button', { name: '{parent_phone}' }))
+      expect(message).toHaveValue('{child_lower}{parent_phone}')
+    })
+
     it('does not ask when a flow that goes through approval is turned on', async () => {
       setup()
       await userEvent.click(screen.getByRole('switch', { name: 'Class reminder on or off' }))
