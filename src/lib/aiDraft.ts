@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import type { ChatwootMessage } from './whatsappInbox'
+import { waIdOf } from './waActions'
 
 // AI reply drafts: the last messages of a chat go to the `ai-draft` function, which asks the AI for the
 // reply the team would write next. It comes back as a suggestion shown in grey in the message box;
@@ -17,7 +18,9 @@ export type AiDraftSuggestion = { id: number | null; text: string; note: string 
 export type AiDraftOutcome =
   { kind: 'draft'; suggestion: AiDraftSuggestion } | { kind: 'skip' } | { kind: 'error'; message: string }
 
-type RequestMessage = { from: 'parent' | 'team'; text: string }
+// replyTo is the message this one quotes in WhatsApp: a bare "Yes" only means something next to the
+// question it answers.
+type RequestMessage = { from: 'parent' | 'team'; text: string; replyTo?: string }
 
 export type AiDraftBody = {
   chatId: number
@@ -76,6 +79,13 @@ export function buildDraftBody(
   if (!target) {
     return null
   }
+  const byId = new Map(messages.map((entry) => [entry.id, entry]))
+  const byWaId = new Map(
+    messages.flatMap((entry) => {
+      const waId = waIdOf(entry.source_id)
+      return waId ? [[waId, entry] as const] : []
+    }),
+  )
   const history: RequestMessage[] = []
   for (const message of messages) {
     if (!isConversationMessage(message)) {
@@ -83,7 +93,16 @@ export function buildDraftBody(
     }
     const text = textOf(message)
     if (text) {
-      history.push({ from: message.message_type === 0 ? 'parent' : 'team', text })
+      const attributes = message.content_attributes
+      const quoted =
+        (attributes?.in_reply_to ? byId.get(attributes.in_reply_to) : undefined) ??
+        (attributes?.in_reply_to_external_id ? byWaId.get(attributes.in_reply_to_external_id) : undefined)
+      const replyTo = quoted ? textOf(quoted).slice(0, 300) : ''
+      history.push({
+        from: message.message_type === 0 ? 'parent' : 'team',
+        text,
+        ...(replyTo ? { replyTo } : {}),
+      })
     }
   }
   const hasChild = Boolean(context.childName) || context.childAge !== null

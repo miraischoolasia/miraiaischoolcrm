@@ -1,7 +1,8 @@
 // The parts of the AI reply draft that do not need Deno or the network: what is asked, how the
 // question is built and how the answer is read. Kept in their own file so they can be tested.
 
-export type DraftMessage = { from: 'parent' | 'team'; text: string }
+// replyTo is the message this one quotes in WhatsApp (a "Yes" answers the question it quotes).
+export type DraftMessage = { from: 'parent' | 'team'; text: string; replyTo?: string }
 
 export type DraftInput = {
   chatId: number
@@ -45,8 +46,9 @@ export function validateInput(body: unknown): { ok: true; value: DraftInput } | 
     }
     const item = entry as Record<string, unknown>
     const text = typeof item.text === 'string' ? scrub(item.text.trim()).slice(0, MAX_TEXT) : ''
+    const replyTo = typeof item.replyTo === 'string' ? scrub(item.replyTo.trim()).slice(0, 300) : ''
     if (text !== '' && (item.from === 'parent' || item.from === 'team')) {
-      messages.push({ from: item.from, text })
+      messages.push(replyTo === '' ? { from: item.from, text } : { from: item.from, text, replyTo })
     }
   }
   if (messages.length === 0) {
@@ -95,7 +97,9 @@ export function buildSystemPrompt(knowledge: string): string {
   return `你是 Mirai AI School 的客服同事，帮同事写「要发给家长的 WhatsApp 回复草稿」。草稿会放在同事的输入框里，同事看过、修改后才会自己发出去。
 
 规则：
-1. 只写同事「下一条」要发的消息（可以分成几行短句）。一次只往流程前进一步：看聊天记录判断现在在哪一步，不重复问家长已经回答过的问题。
+1. 只写同事「下一条」要发的消息（可以分成几行短句）。一次只往流程前进一步：看聊天记录判断现在在哪一步。
+   - 家长已经回答过的问题，不能再问一次，也不能换个说法再问。家长答「有」「Yes」「没有」「还好」「not well」，就算已经回答，直接进入流程的下一步，不要追问细节。
+   - 家长的消息带「引用回复」时，那条回答是针对被引用的那个问题。家长一次回答了几个问题，就按引用或顺序对应，全部算已回答。
 2. 只能使用下面【知识库】里的资料。资料里没有的（例如付款方式、报名表格、退款、投诉、calendar 里没有的时间），不要编、不要承诺；草稿里避开这些，并在 staff_note 用一句话告诉同事缺什么、要自己补。
 3. 语言：跟家长最后一条消息的语言走（中文、英文或马来文）。写中文时用知识库「说话方式」里的马来西亚华人 WhatsApp 口语。
 4. 家长只是说谢谢、OK、👍 之类、不需要回复时，skip 设为 true，reply 留空。
@@ -118,7 +122,9 @@ export function buildUserPrompt(input: DraftInput): string {
   }
   lines.push('', '聊天记录（旧 → 新）：')
   for (const message of input.messages) {
-    lines.push(`${message.from === 'parent' ? '家长' : '我们'}：${message.text}`)
+    const who = message.from === 'parent' ? '家长' : '我们'
+    const quote = message.replyTo ? `（引用回复「${message.replyTo}」）` : ''
+    lines.push(`${who}${quote}：${message.text}`)
   }
   lines.push('', '请写同事下一条要发给家长的回复。')
   return lines.join('\n')

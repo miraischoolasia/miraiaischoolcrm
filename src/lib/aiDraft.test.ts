@@ -96,6 +96,24 @@ describe('what is asked', () => {
     ])
   })
 
+  it('sends which question a quoted reply answers', () => {
+    const question = message({ message_type: 1, content: '孩子有玩过电脑游戏吗？', source_id: 'WAID:ABC' })
+    const second = message({ message_type: 1, content: '有用 ChatGPT 吗？', source_id: 'WAID:DEF' })
+    const list = [
+      question,
+      second,
+      message({ content: 'Yes', content_attributes: { in_reply_to: question.id } }),
+      message({ content: 'Yes not well', content_attributes: { in_reply_to_external_id: 'DEF' } }),
+    ]
+    const body = buildDraftBody(7, list, { childName: null, childAge: null, teamName: null }, false)
+    expect(body?.messages).toEqual([
+      { from: 'team', text: '孩子有玩过电脑游戏吗？' },
+      { from: 'team', text: '有用 ChatGPT 吗？' },
+      { from: 'parent', text: 'Yes', replyTo: '孩子有玩过电脑游戏吗？' },
+      { from: 'parent', text: 'Yes not well', replyTo: '有用 ChatGPT 吗？' },
+    ])
+  })
+
   it('keeps the last 20 messages and has no child when nothing is known', () => {
     const list = Array.from({ length: 30 }, (_, i) => message({ content: `m${i}` }))
     const body = buildDraftBody(1, list, { childName: null, childAge: null, teamName: null }, true)
@@ -221,6 +239,23 @@ describe('the function side', () => {
     expect(prompt).toContain('孩子：Ethan，9 岁')
     expect(prompt).toContain('家长：HOA 多少钱？')
     expect(prompt).toContain('我们：妈咪 RM38 哦')
+  })
+
+  it('puts the quoted question next to the answer, and does not let the AI ask again', () => {
+    const checked = validateInput({
+      chatId: 1,
+      lastMessageId: 2,
+      messages: [
+        { from: 'team', text: '孩子有玩过电脑游戏吗？' },
+        { from: 'parent', text: 'Yes', replyTo: '孩子有玩过电脑游戏吗？ 0123456789' },
+      ],
+    })
+    if (!checked.ok) {
+      throw new Error('should be valid')
+    }
+    expect(checked.value.messages[1].replyTo).toBe('孩子有玩过电脑游戏吗？ [number]')
+    expect(buildUserPrompt(checked.value)).toContain('家长（引用回复「孩子有玩过电脑游戏吗？ [number]」）：Yes')
+    expect(buildSystemPrompt('x')).toContain('不能再问一次')
   })
 
   it('reads the answer, also inside a code fence, and refuses nonsense', () => {
