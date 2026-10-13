@@ -75,7 +75,7 @@ export function FlowWorkbench({
           </select>
           <p className="flex items-start gap-1.5 text-xs text-slate-500">
             <Flag size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
-            Every child at {triggerInfo(draft.trigger).phrase} walks through this flow.
+            Every time {triggerInfo(draft.trigger).phrase}, the family walks through this flow.
           </p>
         </section>
       </div>

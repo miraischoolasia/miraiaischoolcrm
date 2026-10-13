@@ -16,6 +16,8 @@ export type FlowTrigger =
   | 'club_fee_expiry'
   | 'lead_created'
   | 'form_submitted'
+  | 'parent_no_reply'
+  | 'parent_waiting'
 
 export type TriggerInfo = {
   key: FlowTrigger
@@ -74,6 +76,20 @@ export const TRIGGERS: TriggerInfo[] = [
     key: 'form_submitted',
     label: 'A form is submitted',
     phrase: 'a form is submitted',
+    classroomCategory: null,
+    afterOnly: true,
+  },
+  {
+    key: 'parent_no_reply',
+    label: 'A parent has not replied',
+    phrase: 'a parent has not replied to our message',
+    classroomCategory: null,
+    afterOnly: true,
+  },
+  {
+    key: 'parent_waiting',
+    label: 'A parent is waiting for a reply',
+    phrase: 'a parent is waiting for our reply',
     classroomCategory: null,
     afterOnly: true,
   },

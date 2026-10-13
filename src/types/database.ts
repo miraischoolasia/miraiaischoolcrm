@@ -631,7 +631,7 @@ export type Database = {
         Row: {
           id: number
           name: string
-          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted'
+          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting'
           enabled: boolean
           graph: Json
           last_run_at: string | null
@@ -642,13 +642,13 @@ export type Database = {
         }
         Insert: {
           name: string
-          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted'
+          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting'
           enabled?: boolean
           graph?: Json
         }
         Update: {
           name?: string
-          trigger_type?: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted'
+          trigger_type?: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting'
           enabled?: boolean
           graph?: Json
         }
@@ -1422,6 +1422,14 @@ export type Database = {
       run_automation_rules: {
         Args: Record<string, never>
         Returns: number
+      }
+      chat_webhook_info: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          webhook_key: string
+          last_received_at: string | null
+          chats: number
+        }[]
       }
       queue_automation_test: {
         Args: {

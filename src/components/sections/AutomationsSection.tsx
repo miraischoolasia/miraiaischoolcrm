@@ -1,10 +1,12 @@
 import { useCallback, useState } from 'react'
 import { Plus } from '@phosphor-icons/react'
 import { FlowEditor } from '../automations/FlowEditor'
+import { ChatActivityCard } from '../automations/ChatActivityCard'
 import { ContactsCard } from '../automations/ContactsCard'
 import { FlowSwitch } from '../automations/FlowSwitch'
 import { useAutomationContacts } from '../../hooks/useAutomationContacts'
 import { useAutomationFlows } from '../../hooks/useAutomationFlows'
+import { useChatWebhook } from '../../hooks/useChatWebhook'
 import { useConfirm } from '../../hooks/useConfirm'
 import { cn } from '../../lib/cn'
 import { describeFlow } from '../../lib/automationFlows'
@@ -25,6 +27,8 @@ type AutomationsSectionProps = {
 export function AutomationsSection({ classrooms, canEdit }: AutomationsSectionProps) {
   const automation = useAutomationFlows({ enabled: true })
   const contactList = useAutomationContacts({ enabled: true })
+  // The address Chatwoot calls is a secret only an admin can read.
+  const chatWebhook = useChatWebhook({ enabled: canEdit })
   const { confirm, dialog } = useConfirm()
   // null shows the list.
   const [open, setOpen] = useState<number | 'new' | null>(null)
@@ -151,6 +155,14 @@ export function AutomationsSection({ classrooms, canEdit }: AutomationsSectionPr
         onUpdate={contactList.update}
         onRemove={contactList.remove}
       />
+      {canEdit && (
+        <ChatActivityCard
+          info={chatWebhook.info}
+          loadError={chatWebhook.error}
+          isLoading={chatWebhook.isLoading}
+          onReload={() => void chatWebhook.reload()}
+        />
+      )}
       {notice && (
         <p
           role={notice.isError ? 'alert' : 'status'}

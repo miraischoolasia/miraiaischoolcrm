@@ -79,6 +79,16 @@ const contactHook = vi.hoisted(() => ({
 }))
 vi.mock('../../hooks/useAutomationContacts', () => ({ useAutomationContacts: () => contactHook.state }))
 
+const chatHook = vi.hoisted(() => ({
+  state: {
+    info: null as { key: string; lastReceivedAt: Date | null; chats: number } | null,
+    error: null as string | null,
+    isLoading: false,
+    reload: vi.fn(),
+  },
+}))
+vi.mock('../../hooks/useChatWebhook', () => ({ useChatWebhook: () => chatHook.state }))
+
 const flow = (change: Partial<AutomationFlow> = {}): AutomationFlow => {
   const base = newFlowDraft()
   return {
@@ -129,6 +139,10 @@ describe('AutomationsSection', () => {
     contactHook.state.add.mockReset().mockResolvedValue(null)
     contactHook.state.update.mockReset().mockResolvedValue(null)
     contactHook.state.remove.mockReset().mockResolvedValue(null)
+    chatHook.state.info = { key: 'abcdef0123456789abcdef', lastReceivedAt: null, chats: 0 }
+    chatHook.state.error = null
+    chatHook.state.isLoading = false
+    chatHook.state.reload.mockReset()
   })
 
   it('lists the flows first, with whether each is live', () => {
@@ -378,6 +392,41 @@ describe('AutomationsSection', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Leave' }))
     expect(await screen.findByText('Zoom reminder')).toBeInTheDocument()
     expect(screen.queryByTestId('canvas')).not.toBeInTheDocument()
+  })
+
+  describe('parent replies', () => {
+    it('says it is not connected until a message has arrived, and shows the address to paste', async () => {
+      setup()
+      expect(screen.getByRole('button', { name: /Parent replies/ })).toHaveTextContent('Not connected yet')
+      await userEvent.click(screen.getByRole('button', { name: /Parent replies/ }))
+      expect((screen.getByLabelText('Webhook address') as HTMLInputElement).value).toContain(
+        '/functions/v1/chat-activity?key=abcdef0123456789abcdef',
+      )
+      expect(screen.getByText(/No message has arrived yet/)).toBeInTheDocument()
+    })
+
+    it('shows when the last message arrived and checks again on request', async () => {
+      chatHook.state.info = { key: 'abcdef0123456789abcdef', lastReceivedAt: new Date(Date.now() - 5 * 60000), chats: 12 }
+      setup()
+      expect(screen.getByRole('button', { name: /Parent replies/ })).toHaveTextContent('Last message 5 minutes ago')
+      await userEvent.click(screen.getByRole('button', { name: /Parent replies/ }))
+      expect(screen.getByText(/Connected: 12 chats known/)).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Check again' }))
+      expect(chatHook.state.reload).toHaveBeenCalledTimes(1)
+    })
+
+    it('shows why the address could not be loaded', async () => {
+      chatHook.state.info = null
+      chatHook.state.error = 'Parent replies are not set up in the database yet.'
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Parent replies/ }))
+      expect(screen.getByRole('alert')).toHaveTextContent('not set up in the database yet')
+    })
+
+    it('is hidden from someone who is not an admin', () => {
+      setup(false)
+      expect(screen.queryByRole('button', { name: /Parent replies/ })).not.toBeInTheDocument()
+    })
   })
 
   describe('new triggers', () => {

@@ -1,0 +1,149 @@
+import { describe, expect, it } from 'vitest'
+import { parseChatwootEvent } from '../../supabase/functions/chat-activity/logic'
+import { chatWebhookAddress, chatWebhookErrorMessage, describeAgo, isWebhookRecent } from './chatActivity'
+
+const incoming = {
+  event: 'message_created',
+  id: 9000,
+  content: 'Hello, is there a class on Saturday?',
+  created_at: '2026-10-13T05:30:00.000Z',
+  message_type: 'incoming',
+  private: false,
+  sender: { id: 42, name: 'Stella', type: 'contact', phone_number: '+60 12-255 2285' },
+  conversation: {
+    id: 77,
+    status: 'open',
+    meta: { sender: { id: 42, name: 'Stella', phone_number: '+60122552285' } },
+    contact_inbox: { contact_id: 42, source_id: '60122552285' },
+  },
+}
+
+describe('reading what the WhatsApp inbox sends for a message', () => {
+  it('takes a message from the parent', () => {
+    const parsed = parseChatwootEvent(incoming)
+    expect(parsed).toEqual({
+      ok: true,
+      message: {
+        conversationId: 77,
+        contactId: 42,
+        direction: 'incoming',
+        at: new Date('2026-10-13T05:30:00.000Z'),
+        name: 'Stella',
+        phone: '60122552285',
+      },
+    })
+  })
+
+  it('takes a message from the team, with the chat contact (not the team member) as the contact', () => {
+    const parsed = parseChatwootEvent({
+      ...incoming,
+      message_type: 'outgoing',
+      sender: { id: 5, name: 'Lex', type: 'user' },
+    })
+    expect(parsed).toMatchObject({
+      ok: true,
+      message: { direction: 'outgoing', contactId: 42, name: 'Stella', phone: '60122552285' },
+    })
+  })
+
+  it('finds the contact from the chat when the payload has no meta', () => {
+    const parsed = parseChatwootEvent({
+      ...incoming,
+      message_type: 'outgoing',
+      sender: { id: 5, name: 'Lex', type: 'user' },
+      conversation: { id: 77, contact_inbox: { contact_id: 42, source_id: '60122552285' } },
+    })
+    expect(parsed).toMatchObject({ ok: true, message: { contactId: 42, phone: '60122552285' } })
+  })
+
+  it('never takes a team member as the contact of an outgoing message', () => {
+    const parsed = parseChatwootEvent({
+      ...incoming,
+      message_type: 'outgoing',
+      sender: { id: 5, name: 'Lex', type: 'user' },
+      conversation: { id: 77 },
+    })
+    expect(parsed).toMatchObject({ ok: true, message: { contactId: null, name: null, phone: null } })
+  })
+
+  it('uses the sender as the contact for a parent message when the chat says nothing more', () => {
+    const parsed = parseChatwootEvent({ ...incoming, conversation: { id: 77 } })
+    expect(parsed).toMatchObject({ ok: true, message: { contactId: 42, name: 'Stella', phone: '60122552285' } })
+  })
+
+  it('reads the numeric message types of the API as well', () => {
+    expect(parseChatwootEvent({ ...incoming, message_type: 0 })).toMatchObject({
+      ok: true,
+      message: { direction: 'incoming' },
+    })
+    expect(parseChatwootEvent({ ...incoming, message_type: 1 })).toMatchObject({
+      ok: true,
+      message: { direction: 'outgoing' },
+    })
+  })
+
+  it('reads a time written in seconds', () => {
+    const parsed = parseChatwootEvent({ ...incoming, created_at: 1781328600 })
+    expect(parsed).toMatchObject({ ok: true })
+    if (parsed.ok) {
+      expect(parsed.message.at.getTime()).toBe(1781328600 * 1000)
+    }
+  })
+
+  it('ignores private notes, activity lines and every other event', () => {
+    expect(parseChatwootEvent({ ...incoming, private: true })).toEqual({ ok: false, reason: 'private note' })
+    expect(parseChatwootEvent({ ...incoming, message_type: 'activity' })).toMatchObject({ ok: false })
+    expect(parseChatwootEvent({ ...incoming, message_type: 2 })).toMatchObject({ ok: false })
+    expect(parseChatwootEvent({ ...incoming, event: 'conversation_status_changed' })).toMatchObject({ ok: false })
+    expect(parseChatwootEvent({ ...incoming, conversation: {} })).toEqual({ ok: false, reason: 'no chat' })
+    expect(parseChatwootEvent(null)).toMatchObject({ ok: false })
+    expect(parseChatwootEvent('text')).toMatchObject({ ok: false })
+  })
+
+  it('does not trust ids that are not whole numbers', () => {
+    expect(parseChatwootEvent({ ...incoming, conversation: { id: -3 } })).toMatchObject({ ok: false })
+    expect(parseChatwootEvent({ ...incoming, conversation: { id: '12abc' } })).toMatchObject({ ok: false })
+    const parsed = parseChatwootEvent({ ...incoming, conversation: { id: '77', meta: { sender: { id: '42' } } } })
+    expect(parsed).toMatchObject({ ok: true, message: { conversationId: 77, contactId: 42 } })
+  })
+})
+
+describe('the address given to the WhatsApp inbox', () => {
+  it('is the function address with the key', () => {
+    expect(chatWebhookAddress('abc123def456ghi789', 'https://x.supabase.co')).toBe(
+      'https://x.supabase.co/functions/v1/chat-activity?key=abc123def456ghi789',
+    )
+    expect(chatWebhookAddress('k k', 'https://x.supabase.co/')).toBe(
+      'https://x.supabase.co/functions/v1/chat-activity?key=k%20k',
+    )
+  })
+
+  it('is empty when the project address is unknown', () => {
+    expect(chatWebhookAddress('abc', '')).toBe('')
+    expect(chatWebhookAddress('abc', undefined)).toBe(chatWebhookAddress('abc', import.meta.env.VITE_SUPABASE_URL))
+  })
+
+  it('says how long ago a message arrived', () => {
+    const now = new Date('2026-10-13T12:00:00Z')
+    expect(describeAgo(new Date('2026-10-13T11:59:50Z'), now)).toBe('just now')
+    expect(describeAgo(new Date('2026-10-13T11:59:00Z'), now)).toBe('1 minute ago')
+    expect(describeAgo(new Date('2026-10-13T11:15:00Z'), now)).toBe('45 minutes ago')
+    expect(describeAgo(new Date('2026-10-13T09:00:00Z'), now)).toBe('3 hours ago')
+    expect(describeAgo(new Date('2026-10-10T12:00:00Z'), now)).toBe('3 days ago')
+  })
+
+  it('counts a message from the last day as working', () => {
+    const now = new Date('2026-10-13T12:00:00Z')
+    expect(isWebhookRecent(null, now)).toBe(false)
+    expect(isWebhookRecent(new Date('2026-10-13T00:00:00Z'), now)).toBe(true)
+    expect(isWebhookRecent(new Date('2026-10-11T00:00:00Z'), now)).toBe(false)
+  })
+
+  it('explains a missing setup in words', () => {
+    expect(chatWebhookErrorMessage(new Error('function chat_webhook_info does not exist'))).toBe(
+      'Parent replies are not set up in the database yet.',
+    )
+    expect(chatWebhookErrorMessage(new Error('Only an admin can see this.'))).toBe('Only an admin can see this.')
+    expect(chatWebhookErrorMessage(new Error('boom'))).toBe("Couldn't load the address.")
+  })
+})

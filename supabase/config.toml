@@ -417,3 +417,8 @@ enabled = true
 # checking (the visitor's session token is what authorises it).
 [functions.notify-form-submission]
 verify_jwt = false
+
+# The WhatsApp inbox (Chatwoot) calls this one with no login; the key in its address, checked in the
+# database, is what authorises it.
+[functions.chat-activity]
+verify_jwt = false
