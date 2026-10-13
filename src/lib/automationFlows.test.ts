@@ -9,6 +9,7 @@ import {
   disconnect,
   edgeKey,
   newFlowDraft,
+  normalizeTestPhone,
   parseGraph,
   previewMessage,
   removeNode,
@@ -38,6 +39,22 @@ const split: FlowGraph = {
 }
 
 const draft = (change: Partial<FlowDraft> = {}): FlowDraft => ({ ...newFlowDraft(), name: 'Class reminder', ...change })
+
+describe('the number a test is sent to', () => {
+  it('turns what a person types into digits with the country code', () => {
+    expect(normalizeTestPhone('012-345 6789')).toBe('60123456789')
+    expect(normalizeTestPhone('+60 12 345 6789')).toBe('60123456789')
+    expect(normalizeTestPhone('0060123456789')).toBe('60123456789')
+    expect(normalizeTestPhone('60123456789')).toBe('60123456789')
+  })
+
+  it('refuses what cannot be a WhatsApp number', () => {
+    expect(normalizeTestPhone('')).toBeNull()
+    expect(normalizeTestPhone('12345')).toBeNull()
+    expect(normalizeTestPhone('abc')).toBeNull()
+    expect(normalizeTestPhone('1'.repeat(16))).toBeNull()
+  })
+})
 
 describe('how long before', () => {
   it('shows the largest unit that divides evenly', () => {

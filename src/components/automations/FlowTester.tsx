@@ -1,5 +1,7 @@
+import { useState } from 'react'
+import { PaperPlaneTilt } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
-import { describeOffset, previewMessage, type FlowTestResult } from '../../lib/automationFlows'
+import { describeOffset, normalizeTestPhone, previewMessage, type FlowTestResult } from '../../lib/automationFlows'
 import type { Classroom } from '../../types/domain'
 
 type FlowTesterProps = {
@@ -9,15 +11,79 @@ type FlowTesterProps = {
   outcome: FlowTestResult
   onTestAge: (value: string) => void
   onTestClass: (value: string) => void
+  // Only an admin can send a test.
+  canSend: boolean
+  // Why the test cannot be sent right now (the flow has unsaved changes), or null.
+  sendBlockedReason: string | null
+  // Resolves to how many messages were added to the approval queue, or an error.
+  onSend: (phone: string) => Promise<{ queued: number; error: string | null }>
 }
+
+const PHONE_KEY = 'mirai.flowTestPhone'
 
 const fieldClass =
   'rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-[#fc0c97]'
 
+function readSavedPhone() {
+  try {
+    return window.localStorage.getItem(PHONE_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function rememberPhone(phone: string) {
+  try {
+    window.localStorage.setItem(PHONE_KEY, phone)
+  } catch {
+    // A private window cannot keep it; the person types it again next time.
+  }
+}
+
 // A strip above the canvas: type in an age and a class and the blocks that child would walk through
-// light up, with the messages that child would get listed underneath.
-export function FlowTester({ classrooms, testAge, testClass, outcome, onTestAge, onTestClass }: FlowTesterProps) {
+// light up, with the messages that child would get listed underneath. An admin can also send those
+// messages to their own phone through the approval queue, to try the whole path.
+export function FlowTester({
+  classrooms,
+  testAge,
+  testClass,
+  outcome,
+  onTestAge,
+  onTestClass,
+  canSend,
+  sendBlockedReason,
+  onSend,
+}: FlowTesterProps) {
   const testing = testAge !== '' || testClass !== ''
+  const [phone, setPhone] = useState(readSavedPhone)
+  const [isSending, setIsSending] = useState(false)
+  const [sendNotice, setSendNotice] = useState<{ text: string; isError: boolean } | null>(null)
+
+  async function send() {
+    const digits = normalizeTestPhone(phone)
+    if (digits === null) {
+      setSendNotice({ text: 'Type your own WhatsApp number, like 012-345 6789.', isError: true })
+      return
+    }
+    setIsSending(true)
+    setSendNotice(null)
+    const result = await onSend(digits)
+    setIsSending(false)
+    if (result.error) {
+      setSendNotice({ text: result.error, isError: true })
+      return
+    }
+    rememberPhone(phone)
+    const one = result.queued === 1
+    setSendNotice(
+      result.queued === 0
+        ? { text: 'This child would get no message, so nothing was added.', isError: false }
+        : {
+            text: `${result.queued} test ${one ? 'message' : 'messages'} added. Open the lightning button in WhatsApp and approve ${one ? 'it' : 'them'}: ${one ? 'it goes' : 'they go'} to +${digits}.`,
+            isError: false,
+          },
+    )
+  }
 
   return (
     <div className="border-b border-slate-200 bg-white px-3 py-2">
@@ -78,6 +144,44 @@ export function FlowTester({ classrooms, testAge, testClass, outcome, onTestAge,
               ))}
           </ul>
         ))}
+      {canSend && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2 text-sm text-slate-700">
+          <span className="font-semibold text-slate-900">Send a test to my phone</span>
+          <input
+            type="tel"
+            inputMode="tel"
+            aria-label="My phone number"
+            placeholder="012-345 6789"
+            value={phone}
+            onChange={(event) => setPhone(event.target.value)}
+            className={cn(fieldClass, 'w-40')}
+          />
+          <button
+            type="button"
+            disabled={isSending || sendBlockedReason !== null}
+            onClick={() => void send()}
+            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <PaperPlaneTilt size={14} aria-hidden="true" />
+            {isSending ? 'Adding…' : 'Send test'}
+          </button>
+          {sendBlockedReason !== null && <span className="text-xs text-amber-800">{sendBlockedReason}</span>}
+          <p className="basis-full text-xs text-slate-500">
+            Uses the age and class above. The messages wait for your approval under the lightning button first.
+          </p>
+          {sendNotice && (
+            <p
+              role={sendNotice.isError ? 'alert' : 'status'}
+              className={cn(
+                'basis-full rounded-lg px-3 py-1.5 text-sm',
+                sendNotice.isError ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800',
+              )}
+            >
+              {sendNotice.text}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   )
 }

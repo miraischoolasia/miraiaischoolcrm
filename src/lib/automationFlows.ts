@@ -528,7 +528,10 @@ export function automationFlowsErrorMessage(problem: unknown, fallback: string) 
         : ''
   const code =
     typeof problem === 'object' && problem && 'code' in problem ? String((problem as { code: unknown }).code) : ''
-  if (/automation_flows|run_automation_rules/.test(text) && /(does not exist|schema cache|Could not find)/.test(text)) {
+  if (
+    /automation_flows|run_automation_rules|queue_automation_test/.test(text) &&
+    /(does not exist|schema cache|Could not find)/.test(text)
+  ) {
     return 'Automations are not set up in the database yet.'
   }
   if (/row-level security|permission denied|Only an admin/i.test(text)) {
@@ -539,6 +542,38 @@ export function automationFlowsErrorMessage(problem: unknown, fallback: string) 
     return text
   }
   return fallback
+}
+
+// What a person types as their own number ("012-345 6789", "+60 12 345 6789") as digits with the
+// country code, or null when it cannot be a WhatsApp number.
+export function normalizeTestPhone(input: string): string | null {
+  let digits = input.replace(/\D/g, '')
+  if (digits.startsWith('00')) {
+    digits = digits.slice(2)
+  }
+  if (digits.startsWith('0')) {
+    digits = `60${digits.slice(1)}`
+  }
+  return /^[0-9]{8,15}$/.test(digits) ? digits : null
+}
+
+// Adds the messages a pretend child would get from a saved flow to the approval queue, for this
+// number. Resolves to how many were added.
+export async function queueFlowTest(
+  flowId: number,
+  phone: string,
+  child: { age: number | null; classroomId: number | null },
+): Promise<number> {
+  const { data, error } = await requireSupabase().rpc('queue_automation_test', {
+    p_flow_id: flowId,
+    p_phone: phone,
+    p_age: child.age,
+    p_classroom_id: child.classroomId,
+  })
+  if (error) {
+    throw error
+  }
+  return typeof data === 'number' ? data : 0
 }
 
 const COLUMNS = 'id, name, trigger_type, enabled, graph, last_run_at, last_error'

@@ -52,6 +52,7 @@ const hook = vi.hoisted(() => ({
     toggle: vi.fn(),
     remove: vi.fn(),
     runNow: vi.fn(),
+    sendTest: vi.fn(),
   },
 }))
 vi.mock('../../hooks/useAutomationFlows', () => ({ useAutomationFlows: () => hook.state }))
@@ -99,6 +100,8 @@ describe('AutomationsSection', () => {
     hook.state.toggle.mockReset().mockResolvedValue(null)
     hook.state.remove.mockReset().mockResolvedValue(null)
     hook.state.runNow.mockReset().mockResolvedValue({ queued: 2, error: null })
+    hook.state.sendTest.mockReset().mockResolvedValue({ queued: 1, error: null })
+    window.localStorage.removeItem('mirai.flowTestPhone')
   })
 
   it('lists the flows first, with whether each is live', () => {
@@ -197,6 +200,61 @@ describe('AutomationsSection', () => {
     await userEvent.tab()
     expect(amount).toHaveValue(1)
     expect(screen.getByLabelText('Unit')).toHaveValue('hours')
+  })
+
+  it('sends a test of the saved flow to the number typed, with the age and class tried above', async () => {
+    setup()
+    await openFirst()
+    await userEvent.type(screen.getByLabelText('Test age'), '9')
+    await userEvent.selectOptions(screen.getByLabelText('Test class'), '1')
+    await userEvent.type(screen.getByLabelText('My phone number'), '012-345 6789')
+    await userEvent.click(screen.getByRole('button', { name: /Send test/ }))
+    await waitFor(() => expect(hook.state.sendTest).toHaveBeenCalledTimes(1))
+    expect(hook.state.sendTest).toHaveBeenCalledWith(1, '60123456789', { age: 9, classroomId: 1 })
+    expect(await screen.findByText(/1 test message added\. .* to \+60123456789\./)).toBeInTheDocument()
+    // The number is remembered for next time.
+    expect(window.localStorage.getItem('mirai.flowTestPhone')).toBe('012-345 6789')
+  })
+
+  it('asks for a number it can use before sending a test', async () => {
+    setup()
+    await openFirst()
+    await userEvent.type(screen.getByLabelText('My phone number'), '123')
+    await userEvent.click(screen.getByRole('button', { name: /Send test/ }))
+    expect(await screen.findByText(/Type your own WhatsApp number/)).toBeInTheDocument()
+    expect(hook.state.sendTest).not.toHaveBeenCalled()
+  })
+
+  it('shows why a test could not be sent', async () => {
+    hook.state.sendTest.mockResolvedValue({ queued: 0, error: 'There are already 20 test messages waiting.' })
+    setup()
+    await openFirst()
+    await userEvent.type(screen.getByLabelText('My phone number'), '0123456789')
+    await userEvent.click(screen.getByRole('button', { name: /Send test/ }))
+    expect(await screen.findByText('There are already 20 test messages waiting.')).toBeInTheDocument()
+  })
+
+  it('says when the pretend child gets nothing', async () => {
+    hook.state.sendTest.mockResolvedValue({ queued: 0, error: null })
+    setup()
+    await openFirst()
+    await userEvent.type(screen.getByLabelText('My phone number'), '0123456789')
+    await userEvent.click(screen.getByRole('button', { name: /Send test/ }))
+    expect(await screen.findByText(/would get no message, so nothing was added/)).toBeInTheDocument()
+  })
+
+  it('does not send a test while the flow has changes that are not saved', async () => {
+    setup()
+    await openFirst()
+    await userEvent.type(screen.getByLabelText('Flow name'), ' edited')
+    expect(screen.getByRole('button', { name: /Send test/ })).toBeDisabled()
+    expect(screen.getByText(/Save the flow first/)).toBeInTheDocument()
+  })
+
+  it('offers the test only to an admin', async () => {
+    setup(false)
+    await openFirst()
+    expect(screen.queryByLabelText('My phone number')).not.toBeInTheDocument()
   })
 
   it('switches a flow on from the list and says what happens next', async () => {

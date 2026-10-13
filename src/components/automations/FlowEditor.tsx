@@ -32,6 +32,12 @@ type FlowEditorProps = {
   canEdit: boolean
   onSave: (draft: FlowDraft) => Promise<{ error: string | null; flow: AutomationFlow | null }>
   onDelete: (id: number) => Promise<string | null>
+  // Queues this flow's messages for a pretend child to the given number, for approval in WhatsApp.
+  onSendTest: (
+    flowId: number,
+    phone: string,
+    child: { age: number | null; classroomId: number | null },
+  ) => Promise<{ queued: number; error: string | null }>
   onSaved: (flow: AutomationFlow) => void
   onDeleted: () => void
   onBack: () => void
@@ -46,6 +52,7 @@ export function FlowEditor({
   canEdit,
   onSave,
   onDelete,
+  onSendTest,
   onSaved,
   onDeleted,
   onBack,
@@ -308,6 +315,18 @@ export function FlowEditor({
             outcome={outcome}
             onTestAge={setTestAge}
             onTestClass={setTestClass}
+            canSend={canEdit}
+            sendBlockedReason={
+              draft.id === null || dirty ? 'Save the flow first: the test sends the saved version.' : null
+            }
+            onSend={(phone) =>
+              draft.id === null
+                ? Promise.resolve({ queued: 0, error: 'Save the flow first.' })
+                : onSendTest(draft.id, phone, {
+                    age: testAge === '' ? null : Number(testAge),
+                    classroomId: testClass === '' ? null : Number(testClass),
+                  })
+            }
           />
           <div className="h-[420px] md:h-auto md:min-h-0 md:flex-1">
             <FlowCanvas

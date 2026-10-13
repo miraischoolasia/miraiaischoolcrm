@@ -1367,6 +1367,15 @@ export type Database = {
         Args: Record<string, never>
         Returns: number
       }
+      queue_automation_test: {
+        Args: {
+          p_flow_id: number
+          p_phone: string
+          p_age?: number | null
+          p_classroom_id?: number | null
+        }
+        Returns: number
+      }
       ensure_contact_people: {
         Args: {
           p_contacts: Json

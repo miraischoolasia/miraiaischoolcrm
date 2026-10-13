@@ -3,6 +3,7 @@ import {
   automationFlowsErrorMessage,
   deleteFlow,
   fetchFlows,
+  queueFlowTest,
   runFlowsNow,
   saveFlow,
   setFlowEnabled,
@@ -12,6 +13,8 @@ import {
 } from '../lib/automationFlows'
 
 export type RunNowResult = { queued: number; error: null } | { queued: 0; error: string }
+
+export type SendTestResult = { queued: number; error: string | null }
 
 // The automation flows, with the few things an admin can do to them. Each action resolves to an
 // error message, or null when it worked.
@@ -92,5 +95,22 @@ export function useAutomationFlows({ enabled }: { enabled: boolean }) {
     }
   }, [reload])
 
-  return { flows, isLoading, error, reload, save, toggle, remove, runNow }
+  // Puts the messages a pretend child would get from this saved flow into the approval queue for one
+  // phone number (the admin's own), to try the whole path without a real class.
+  const sendTest = useCallback(
+    async (
+      flowId: number,
+      phone: string,
+      child: { age: number | null; classroomId: number | null },
+    ): Promise<SendTestResult> => {
+      try {
+        return { queued: await queueFlowTest(flowId, phone, child), error: null }
+      } catch (failure) {
+        return { queued: 0, error: automationFlowsErrorMessage(failure, "Couldn't send the test.") }
+      }
+    },
+    [],
+  )
+
+  return { flows, isLoading, error, reload, save, toggle, remove, runNow, sendTest }
 }

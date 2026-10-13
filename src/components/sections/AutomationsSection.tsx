@@ -88,6 +88,7 @@ export function AutomationsSection({ classrooms, canEdit }: AutomationsSectionPr
           canEdit={canEdit}
           onSave={automation.save}
           onDelete={automation.remove}
+          onSendTest={automation.sendTest}
           onSaved={(saved) => setOpen(saved.id)}
           onDeleted={() => {
             setDirty(false)
