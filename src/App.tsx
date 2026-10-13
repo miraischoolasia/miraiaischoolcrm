@@ -3236,7 +3236,9 @@ function App() {
     setCreateStudentFormState({
       packageId: '',
       startDate: todayString,
-      fullName: lead.fullName ?? lead.children[0]?.name ?? '',
+      // The student is the child, not the parent: the lead's own name is the parent's (or a WhatsApp
+      // username), so it is only a last resort.
+      fullName: lead.children[0]?.name?.trim() || lead.fullName?.trim() || '',
       phone: lead.children[0]?.phone ?? lead.phone ?? '',
       classroomId: '',
       initialHours: '0',
