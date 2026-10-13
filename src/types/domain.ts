@@ -9,6 +9,7 @@ export type AppSection =
   | 'leads'
   | 'whatsapp'
   | 'automations'
+  | 'ai-knowledge'
   | 'forms'
   | 'activity'
 export type FilterKey = 'all' | 'hoa' | 'trial' | 'regular' | 'camp'

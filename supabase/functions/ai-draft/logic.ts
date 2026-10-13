@@ -69,6 +69,28 @@ export function validateInput(body: unknown): { ok: true; value: DraftInput } | 
   }
 }
 
+// The school notes an admin keeps in the CRM (ai_knowledge_notes), as the one text the AI reads.
+export type KnowledgeNote = { title: string; body: string }
+
+// Most characters of knowledge sent to the AI in one question; the notes are read in order, so what
+// does not fit is the end of the last notes.
+export const MAX_KNOWLEDGE_CHARS = 60000
+
+export function composeKnowledge(notes: KnowledgeNote[]): string {
+  const parts: string[] = []
+  for (const note of notes) {
+    const title = note.title.trim()
+    const body = note.body.trim()
+    if (title !== '' && body !== '') {
+      parts.push(`## ${title}\n${body}`)
+    }
+  }
+  return parts.join('\n\n').slice(0, MAX_KNOWLEDGE_CHARS)
+}
+
+export const EMPTY_KNOWLEDGE =
+  '（知识库现在是空的，没有任何资料可以用。所有细节都不要写，在 staff_note 告诉同事要自己补。）'
+
 export function buildSystemPrompt(knowledge: string): string {
   return `你是 Mirai AI School 的客服同事，帮同事写「要发给家长的 WhatsApp 回复草稿」。草稿会放在同事的输入框里，同事看过、修改后才会自己发出去。
 
@@ -82,7 +104,7 @@ export function buildSystemPrompt(knowledge: string): string {
 7. 只输出一个 JSON 对象，格式：{"reply": "草稿文字", "skip": false, "staff_note": "给同事的一句提醒，没有就留空"}。不要输出其他东西。
 
 【知识库】
-${knowledge}`
+${knowledge.trim() === '' ? EMPTY_KNOWLEDGE : knowledge}`
 }
 
 export function buildUserPrompt(input: DraftInput): string {

@@ -635,6 +635,43 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_knowledge_notes: {
+        Row: {
+          id: number
+          title: string
+          body: string
+          enabled: boolean
+          sort_order: number
+          created_by: string | null
+          created_at: string
+          updated_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          title: string
+          body?: string
+          enabled?: boolean
+        }
+        Update: {
+          title?: string
+          body?: string
+          enabled?: boolean
+        }
+        Relationships: []
+      }
+      ai_knowledge_note_versions: {
+        Row: {
+          id: number
+          note_id: number
+          title: string
+          body: string
+          written_at: string
+          written_by: string | null
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       leads: {
         Row: {
           id: number
@@ -1375,6 +1412,12 @@ export type Database = {
           p_classroom_id?: number | null
         }
         Returns: number
+      }
+      reorder_ai_knowledge_notes: {
+        Args: {
+          p_ids: number[]
+        }
+        Returns: undefined
       }
       mark_ai_draft_accepted: {
         Args: {

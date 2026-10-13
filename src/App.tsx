@@ -27,6 +27,7 @@ import {
   Funnel,
   GraduationCap,
   IdentificationBadge,
+  Brain,
   Lightning,
   Megaphone,
   WarningCircle,
@@ -149,6 +150,7 @@ import {
 import { TeacherManagementSection } from './components/sections/TeacherManagementSection'
 import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
+import { AiKnowledgeSection } from './components/sections/AiKnowledgeSection'
 import { AutomationsSection } from './components/sections/AutomationsSection'
 import { WhatsAppOpenProvider, type WhatsAppTarget } from './components/WhatsAppLink'
 import type { LeadFormValues, WhatsAppCrm } from './components/whatsapp/crm'
@@ -639,6 +641,8 @@ function App() {
     if (can('leads') && chatwootUrl) sections.push('whatsapp')
     // Anyone who can see Leads can look at the automations; only an admin changes them.
     if (can('leads')) sections.push('automations')
+    // What the AI reply drafts know about the school; same rule: everybody who sees Leads reads it, an admin edits.
+    if (can('leads')) sections.push('ai-knowledge')
     if (can('forms')) sections.push('forms')
     if (isTeacherAccount || can('calendar')) sections.push('calendar')
     if (isTeacherAccount || can('classrooms')) sections.push('classrooms')
@@ -1378,6 +1382,7 @@ function App() {
       { key: 'leads', label: 'Leads', icon: Funnel, group: 'marketing' },
       { key: 'whatsapp', label: 'WhatsApp', icon: WhatsappLogo, group: 'marketing' },
       { key: 'automations', label: 'Automations', icon: Lightning, group: 'marketing' },
+      { key: 'ai-knowledge', label: 'AI Knowledge', icon: Brain, group: 'marketing' },
       { key: 'forms', label: 'Forms', icon: ClipboardText, group: 'marketing' },
       { key: 'calendar', label: 'Calendar', icon: CalendarBlank },
       { key: 'classrooms', label: 'My Classroom', icon: Chalkboard },
@@ -5323,7 +5328,9 @@ function App() {
                         ? 'Team Board'
                         : activeSection === 'leads'
                           ? 'Sales Pipeline'
-                          : activeSection === 'whatsapp' || activeSection === 'automations'
+                          : activeSection === 'whatsapp' ||
+                          activeSection === 'automations' ||
+                          activeSection === 'ai-knowledge'
                             ? 'Marketing'
                             : activeSection === 'forms'
                             ? 'Marketing'
@@ -5346,6 +5353,8 @@ function App() {
                             ? 'WhatsApp'
                             : activeSection === 'automations'
                               ? 'Automations'
+                              : activeSection === 'ai-knowledge'
+                              ? 'AI Knowledge'
                               : activeSection === 'forms'
                             ? 'Forms'
                             : activeSection === 'activity'
@@ -5889,6 +5898,8 @@ function App() {
             {visibleSection === 'automations' && (
               <AutomationsSection classrooms={classrooms} canEdit={isAdmin} />
             )}
+
+            {visibleSection === 'ai-knowledge' && <AiKnowledgeSection canEdit={isAdmin} />}
 
             {visibleSection === 'forms' && (
               <FormsSection

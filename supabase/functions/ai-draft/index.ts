@@ -2,8 +2,9 @@
 //
 // A signed-in staff member who may edit Leads sends the last messages of a chat (phone numbers and
 // emails already removed by the browser, and again here), and this function asks Google Gemini for the
-// reply the team would write next, using the school knowledge in knowledge.ts. The answer is only a
-// suggestion shown as grey text in the message box; nothing is sent from here.
+// reply the team would write next, using the school knowledge notes an admin keeps in the CRM
+// (ai_knowledge_notes; the text bundled in knowledge.ts is used when there are no notes at all). The
+// answer is only a suggestion shown as grey text in the message box; nothing is sent from here.
 //
 // Secrets (set in Supabase, never in the browser):
 //   GEMINI_API_KEY   required
@@ -11,7 +12,7 @@
 //   AI_DAILY_CAP     optional, most drafts per day for the whole school, default 300
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { KNOWLEDGE } from './knowledge.ts'
-import { buildSystemPrompt, buildUserPrompt, parseModelReply, validateInput } from './logic.ts'
+import { buildSystemPrompt, buildUserPrompt, composeKnowledge, parseModelReply, validateInput } from './logic.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,6 +28,28 @@ function jsonResponse(body: unknown, status: number) {
 }
 
 const DEFAULT_MODEL = 'gemini-3.5-flash-lite'
+
+// Every note that is switched on, in the order the admin put them. With no notes at all (the table is
+// missing or empty) the text bundled with the function is used, so the AI never loses its knowledge.
+async function loadKnowledge(admin: ReturnType<typeof createClient>): Promise<string> {
+  const { data, error } = await admin
+    .from('ai_knowledge_notes')
+    .select('title, body, enabled')
+    .order('sort_order', { ascending: true })
+    .order('id', { ascending: true })
+  if (error) {
+    console.error('Could not read the knowledge notes', error.message)
+    return KNOWLEDGE
+  }
+  if (!data || data.length === 0) {
+    return KNOWLEDGE
+  }
+  return composeKnowledge(
+    data
+      .filter((note: { enabled: boolean }) => note.enabled)
+      .map((note: { title: string; body: string }) => ({ title: note.title, body: note.body })),
+  )
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -117,6 +140,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: 'The AI draft limit for today has been reached.' }, 429)
   }
 
+  const knowledge = await loadKnowledge(admin)
   const model = Deno.env.get('GEMINI_MODEL') || DEFAULT_MODEL
   const startedAt = Date.now()
   let answer: string
@@ -127,7 +151,7 @@ Deno.serve(async (req) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
         body: JSON.stringify({
-          systemInstruction: { parts: [{ text: buildSystemPrompt(KNOWLEDGE) }] },
+          systemInstruction: { parts: [{ text: buildSystemPrompt(knowledge) }] },
           contents: [{ role: 'user', parts: [{ text: buildUserPrompt(input) }] }],
           generationConfig: { temperature: 0.4, maxOutputTokens: 1024, responseMimeType: 'application/json' },
         }),
