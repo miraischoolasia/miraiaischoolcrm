@@ -555,6 +555,21 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
       return "WhatsApp didn't accept the message. Check the chat before trying again."
     }
   }
+  // What the AI reply suggestion may know: the child's first name and age and who is writing. Phone
+  // numbers and the parent's name are never given to it. Null (feature off) for people who cannot edit leads.
+  const aiContext = useMemo(() => {
+    if (!inbox.selected || !crm.canEditLeads) {
+      return null
+    }
+    const sender = inbox.selected.meta.sender
+    const { lead } = resolveChatLead(getLinkedLeadId(inbox.selected), getRealPhone(sender.phone_number), crm.leads)
+    const child = lead?.children[0]
+    return {
+      childName: child?.name?.trim() ? child.name.trim().split(/\s+/)[0] : null,
+      childAge: typeof child?.age === 'number' && child.age > 0 ? child.age : null,
+      teamName: currentUser.name || null,
+    }
+  }, [inbox.selected, crm.canEditLeads, crm.leads, currentUser.name])
   // What {parent name}, {child name} and the like become in the open chat.
   const quickReplyFill = useMemo(() => {
     if (!inbox.selected) {
@@ -660,6 +675,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
             onToggleStar={(message) => void inbox.toggleStar(inbox.selected!.id, message.id)}
             onForward={setForwarding}
             onTyping={showTyping}
+            aiContext={aiContext}
             onReact={(message, emoji) => {
               const waId = waIdOf(message.source_id)
               if (waId) {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { PlusCircle, FileText, Image as ImageIcon, Lightning, Microphone, PaperPlaneTilt, Paperclip, Smiley, Trash, VideoCamera, X } from '@phosphor-icons/react'
+import { PlusCircle, FileText, Image as ImageIcon, Lightning, Microphone, PaperPlaneTilt, Paperclip, Smiley, Sparkle, Trash, VideoCamera, X } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { useAutoGrow } from '../../hooks/useAutoGrow'
 import { useVoiceRecorder } from '../../hooks/useVoiceRecorder'
@@ -33,6 +33,17 @@ type ComposerProps = {
   onSendSpecial?: (message: SpecialMessage) => Promise<string | null>
   // Called as the team writes a reply, so the parent can be shown "typing...".
   onTyping?: () => void
+  // A reply the AI suggests for the parent's last message. It is shown in grey where the text would
+  // be; clicking it turns it into the real text. Nothing is sent by itself.
+  aiSuggestion?: { text: string; note: string } | null
+  aiLoading?: boolean
+  aiError?: string | null
+  // Whether there is an unanswered message the AI could answer (shows the "Suggest a reply" button).
+  aiAvailable?: boolean
+  onAiSuggest?: () => void
+  // The grey text was used / put away.
+  onAiUse?: () => void
+  onAiDismiss?: () => void
 }
 
 const SPECIAL_CHOICES: { kind: SpecialKind; label: string }[] = [
@@ -95,6 +106,13 @@ export function Composer({
   onClearReply,
   onSendSpecial,
   onTyping,
+  aiSuggestion = null,
+  aiLoading = false,
+  aiError = null,
+  aiAvailable = false,
+  onAiSuggest,
+  onAiUse,
+  onAiDismiss,
 }: ComposerProps) {
   const [specialMenu, setSpecialMenu] = useState(false)
   const [special, setSpecial] = useState<SpecialKind | null>(null)
@@ -108,6 +126,26 @@ export function Composer({
   const [emojiOpen, setEmojiOpen] = useState(false)
   const textarea = useRef<HTMLTextAreaElement>(null)
   useAutoGrow(textarea, text)
+  // The grey suggestion only shows while the box is empty and the person is writing a reply.
+  const showSuggestion = Boolean(aiSuggestion) && mode === 'reply' && text === '' && queue.length === 0 && files.length === 0
+  const focusAfterUse = useRef(false)
+  useEffect(() => {
+    if (focusAfterUse.current && text !== '') {
+      focusAfterUse.current = false
+      const field = textarea.current
+      field?.focus()
+      field?.setSelectionRange(text.length, text.length)
+    }
+  }, [text])
+  function useSuggestion() {
+    if (!aiSuggestion) {
+      return
+    }
+    focusAfterUse.current = true
+    setText(aiSuggestion.text)
+    setHint(null)
+    onAiUse?.()
+  }
   const lastDraft = useRef<number | null>(draftRequest?.id ?? null)
   // Kept after what is already typed, so nothing the team wrote is lost.
   useEffect(() => {
@@ -275,7 +313,7 @@ ${draftRequest.text}` : draftRequest.text))
           }
         />
       )}
-      <div className="mb-2 flex gap-4 text-sm font-medium">
+      <div className="mb-2 flex items-center gap-4 text-sm font-medium">
         {(
           [
             ['reply', 'Reply to parent'],
@@ -294,6 +332,18 @@ ${draftRequest.text}` : draftRequest.text))
             {label}
           </button>
         ))}
+        {onAiSuggest && aiAvailable && mode === 'reply' && !showSuggestion && text === '' && (
+          <button
+            type="button"
+            onClick={onAiSuggest}
+            disabled={aiLoading}
+            aria-label="Suggest a reply"
+            className="ml-auto inline-flex items-center gap-1 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+          >
+            <Sparkle size={13} weight="fill" className="text-[#fc0c97]" aria-hidden="true" />
+            {aiLoading ? 'Writing a reply…' : 'Suggest a reply'}
+          </button>
+        )}
       </div>
 
       {mode === 'note' && (
@@ -417,6 +467,26 @@ ${draftRequest.text}` : draftRequest.text))
       ) : (
         <div className="flex items-end gap-1.5 sm:gap-2">
           <div className="relative min-w-0 flex-1">
+          {showSuggestion && aiSuggestion ? (
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Use the suggested reply"
+              title="Click to use this reply"
+              onClick={useSuggestion}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === 'Tab') {
+                  event.preventDefault()
+                  useSuggestion()
+                } else if (event.key === 'Escape') {
+                  onAiDismiss?.()
+                }
+              }}
+              className="min-h-[40px] w-full cursor-pointer whitespace-pre-wrap rounded-lg border border-slate-200 py-2 pl-3 pr-16 text-sm leading-5 text-slate-400 outline-none focus:border-[#fc0c97]"
+            >
+              {aiSuggestion.text}
+            </div>
+          ) : (
           <textarea
             ref={textarea}
             value={text}
@@ -443,6 +513,18 @@ ${draftRequest.text}` : draftRequest.text))
             aria-label={mode === 'note' ? 'Private note' : 'Message to parent'}
             className="min-h-[40px] w-full resize-none rounded-lg border border-slate-200 py-2 pl-3 pr-10 text-sm leading-5 outline-none focus:border-[#fc0c97]"
           />
+          )}
+          {showSuggestion && (
+            <button
+              type="button"
+              onClick={onAiDismiss}
+              aria-label="Dismiss the suggested reply"
+              title="Dismiss"
+              className="absolute right-9 top-2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            >
+              <X size={14} />
+            </button>
+          )}
           <button
             type="button"
             data-emoji-toggle
@@ -544,6 +626,16 @@ ${draftRequest.text}` : draftRequest.text))
       {special && onSendSpecial && <SpecialMessageDialog kind={special} onClose={() => setSpecial(null)} onSend={onSendSpecial} />}
       {isLoadingMedia && <p className="mt-2 text-xs text-slate-500">Loading the photo or video...</p>}
       {(hint || voice.error) &&<p className="mt-2 text-xs text-red-600">{hint ?? voice.error}</p>}
+      {showSuggestion && (
+        <p className="mt-1.5 text-[11px] text-slate-500">
+          <Sparkle size={11} weight="fill" className="mr-1 inline text-[#fc0c97]" aria-hidden="true" />
+          AI suggestion: click the grey text to use it, then check it before you send.
+          {aiSuggestion?.note ? <span className="ml-1 font-semibold text-amber-700">{aiSuggestion.note}</span> : null}
+        </p>
+      )}
+      {aiError && !showSuggestion && text === '' && mode === 'reply' && (
+        <p className="mt-1.5 text-[11px] text-slate-500">{aiError}</p>
+      )}
       {voice.state !== 'recording' && (
         <p className="mt-1.5 hidden text-[11px] text-slate-400 sm:block">Enter to send. Ctrl+Enter for a new line.</p>
       )}

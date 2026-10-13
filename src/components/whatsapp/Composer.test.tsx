@@ -251,3 +251,98 @@ describe('Composer video size', () => {
     expect(screen.queryByText('big.mp4')).not.toBeInTheDocument()
   })
 })
+
+describe('Composer AI suggestion', () => {
+  const quickReplies = { replies: [], isLoading: false, error: null, reload: vi.fn().mockResolvedValue(undefined) }
+  const suggestion = { text: 'Hi 妈咪😊 孩子几岁呢？', note: '付款方式没有资料' }
+
+  function setupAi(props: Partial<React.ComponentProps<typeof Composer>> = {}) {
+    const handlers = { onAiUse: vi.fn(), onAiDismiss: vi.fn(), onAiSuggest: vi.fn(), onSend: vi.fn().mockResolvedValue(true) }
+    render(
+      <Composer
+        quickReplies={quickReplies}
+        variables={{}}
+        aiSuggestion={suggestion}
+        aiAvailable
+        {...handlers}
+        {...props}
+      />,
+    )
+    return handlers
+  }
+
+  it('shows the suggestion as grey text in place of the box, with its note, and sends nothing', () => {
+    const { onSend } = setupAi()
+    expect(screen.getByRole('button', { name: 'Use the suggested reply' })).toHaveTextContent('Hi 妈咪😊 孩子几岁呢？')
+    expect(screen.getByRole('button', { name: 'Use the suggested reply' })).toHaveClass('text-slate-400')
+    expect(screen.queryByLabelText('Message to parent')).not.toBeInTheDocument()
+    expect(screen.getByText('付款方式没有资料')).toBeInTheDocument()
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it('turns into the real text, in the box and ready to edit, when it is clicked', async () => {
+    const { onAiUse, onSend } = setupAi()
+    await userEvent.click(screen.getByRole('button', { name: 'Use the suggested reply' }))
+    const box = screen.getByLabelText('Message to parent')
+    expect(box).toHaveValue('Hi 妈咪😊 孩子几岁呢？')
+    expect(box).toHaveFocus()
+    expect(box).not.toHaveClass('text-slate-400')
+    expect(onAiUse).toHaveBeenCalledTimes(1)
+    expect(onSend).not.toHaveBeenCalled()
+    // It is ordinary text now: it can be changed.
+    await userEvent.type(box, ' ok')
+    expect(box).toHaveValue('Hi 妈咪😊 孩子几岁呢？ ok')
+  })
+
+  it('can be put away', async () => {
+    const { onAiDismiss } = setupAi()
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss the suggested reply' }))
+    expect(onAiDismiss).toHaveBeenCalledTimes(1)
+  })
+
+  it('is used with Enter on the grey text and put away with Escape', async () => {
+    const { onAiUse, onAiDismiss } = setupAi()
+    const grey = screen.getByRole('button', { name: 'Use the suggested reply' })
+    grey.focus()
+    await userEvent.keyboard('{Escape}')
+    expect(onAiDismiss).toHaveBeenCalledTimes(1)
+    await userEvent.keyboard('{Enter}')
+    expect(onAiUse).toHaveBeenCalledTimes(1)
+    expect(screen.getByLabelText('Message to parent')).toHaveValue('Hi 妈咪😊 孩子几岁呢？')
+  })
+
+  it('is not shown for a private note', async () => {
+    setupAi()
+    await userEvent.click(screen.getByRole('button', { name: 'Private note' }))
+    expect(screen.queryByRole('button', { name: 'Use the suggested reply' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Private note')).toBeInTheDocument()
+  })
+
+  it('is not shown when something is already written', () => {
+    setupAi({ draft: { mode: 'reply', text: 'Hello', queue: [], files: [] } })
+    expect(screen.queryByRole('button', { name: 'Use the suggested reply' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Message to parent')).toHaveValue('Hello')
+  })
+
+  it('offers to write a reply when there is none, and says it is writing', async () => {
+    const { onAiSuggest } = setupAi({ aiSuggestion: null })
+    await userEvent.click(screen.getByRole('button', { name: 'Suggest a reply' }))
+    expect(onAiSuggest).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables the button while the reply is being written, and shows a failure quietly', () => {
+    setupAi({ aiSuggestion: null, aiLoading: true })
+    expect(screen.getByRole('button', { name: 'Suggest a reply' })).toBeDisabled()
+    expect(screen.getByText('Writing a reply…')).toBeInTheDocument()
+  })
+
+  it('shows why there is no suggestion', () => {
+    setupAi({ aiSuggestion: null, aiError: 'The AI key has not been set up yet.' })
+    expect(screen.getByText('The AI key has not been set up yet.')).toBeInTheDocument()
+  })
+
+  it('has no button when the feature is off', () => {
+    setupAi({ aiSuggestion: null, onAiSuggest: undefined })
+    expect(screen.queryByRole('button', { name: 'Suggest a reply' })).not.toBeInTheDocument()
+  })
+})

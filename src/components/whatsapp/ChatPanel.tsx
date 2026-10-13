@@ -22,6 +22,8 @@ import { summarizeMessage } from '../../lib/specialMessages'
 import { NO_EVENTS, waIdOf, type MessageEvents, type SpecialMessage } from '../../lib/waActions'
 import { isEditCopy, withoutEditHeading } from '../../lib/editCopy'
 import { isCheckingReaction } from '../../lib/reactionPreview'
+import { useAiSuggestion } from '../../hooks/useAiSuggestion'
+import type { AiDraftContext } from '../../lib/aiDraft'
 
 type ChatPanelProps = {
   conversation: ChatwootConversation
@@ -71,6 +73,9 @@ type ChatPanelProps = {
   starredIds?: number[]
   onToggleStar?: (message: ChatwootMessage) => void
   onForward?: (message: ChatwootMessage) => void
+  // Turns on the grey AI reply suggestion for this chat, with what the AI may know about the child.
+  // Left out where the feature is not wanted (people who cannot edit leads).
+  aiContext?: AiDraftContext | null
 }
 
 // The round icon buttons at the top of a chat.
@@ -135,8 +140,17 @@ export function ChatPanel({
   starredIds = [],
   onToggleStar,
   onForward,
+  aiContext = null,
 }: ChatPanelProps) {
   const identity = getChatIdentity(conversation.meta.sender, leadName)
+  // The grey reply suggestion; asked for only when the box is empty and the parent wrote last.
+  const ai = useAiSuggestion({
+    enabled: aiContext !== null,
+    conversationId: conversation.id,
+    messages,
+    context: aiContext ?? { childName: null, childAge: null, teamName: null },
+    hasDraft: draft != null,
+  })
   const owner = handledBy ?? getOwner(conversation)
   const done = conversation.status === 'resolved'
   // The message the next one will answer (quote).
@@ -430,6 +444,13 @@ export function ChatPanel({
         onClearReply={() => setReplyTo(null)}
         onSendSpecial={onSendSpecial}
         onTyping={onTyping}
+        aiSuggestion={ai.suggestion ? { text: ai.suggestion.text, note: ai.suggestion.note } : null}
+        aiLoading={ai.isLoading}
+        aiError={ai.error}
+        aiAvailable={ai.available}
+        onAiSuggest={aiContext !== null ? ai.suggest : undefined}
+        onAiUse={ai.markUsed}
+        onAiDismiss={ai.dismiss}
       />
     </div>
   )

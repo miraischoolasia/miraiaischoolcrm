@@ -1376,6 +1376,12 @@ export type Database = {
         }
         Returns: number
       }
+      mark_ai_draft_accepted: {
+        Args: {
+          p_id: number
+        }
+        Returns: undefined
+      }
       ensure_contact_people: {
         Args: {
           p_contacts: Json
