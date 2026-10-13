@@ -4968,9 +4968,8 @@ function App() {
       await refreshStudentsAndLogs()
       closeAttendanceModal()
     } catch (error) {
-      setAttendanceSaveError(
-        error instanceof Error ? error.message : 'Failed to submit attendance.',
-      )
+      // Supabase errors are plain objects: show the server's reason.
+      setAttendanceSaveError(getErrorMessage(error, 'Failed to submit attendance.'))
     } finally {
       setIsSavingAttendance(false)
     }
