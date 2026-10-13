@@ -55,6 +55,8 @@ const PICKS: { kind: NewBlockKind; label: string; hint: string }[] = [
   { kind: 'message', label: 'Send a message', hint: 'A WhatsApp message to approve' },
   { kind: 'age', label: 'Check the age', hint: 'Split by the child’s age' },
   { kind: 'classroom', label: 'Check the class', hint: 'Split by the class' },
+  { kind: 'hours', label: 'Check lessons left', hint: 'Children nearly out of lessons' },
+  { kind: 'stage', label: 'Check the lead stage', hint: 'New, Contacted, ...' },
 ]
 
 // The "+" after a card, and the small menu it opens. It sits to the right of the exit it belongs to.
@@ -186,6 +188,8 @@ type FlowCanvasProps = {
   triggerLabel: string
   selectedId: string | null
   classroomName: (id: number) => string
+  // The name of a saved contact, for a message that goes to one.
+  contactName: (id: number) => string
   // What a test child would walk through; null shows everything normally.
   highlight: CanvasHighlight | null
   readOnly: boolean
@@ -203,6 +207,7 @@ export function FlowCanvas({
   triggerLabel,
   selectedId,
   classroomName,
+  contactName,
   highlight,
   readOnly,
   onGraphChange,
@@ -269,7 +274,7 @@ export function FlowCanvas({
         type: isMessage(node) ? 'message' : 'condition',
         position: { x: node.x, y: node.y },
         data: isMessage(node)
-          ? { kind: 'message', title: describeNode(node), body: node.text, ...common(node.id, ['out']) }
+          ? { kind: 'message', title: describeNode(node, classroomName, contactName), body: node.text, ...common(node.id, ['out']) }
           : {
               kind: 'condition',
               title: 'If',
@@ -282,7 +287,7 @@ export function FlowCanvas({
       })
     }
     return list
-  }, [graph, triggerLabel, selectedId, selectedEdge, classroomName, highlight, readOnly, adding, onPlus, onPick])
+  }, [graph, triggerLabel, selectedId, selectedEdge, classroomName, contactName, highlight, readOnly, adding, onPlus, onPick])
 
   const [nodes, setNodes] = useState<Node<CanvasNodeData>[]>(derived)
   useEffect(() => {

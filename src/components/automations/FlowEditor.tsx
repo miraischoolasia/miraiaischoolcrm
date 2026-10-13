@@ -7,6 +7,7 @@ import {
   draftOf,
   newFlowDraft,
   removeNode,
+  sendAfterOnly,
   simulateFlow,
   triggerInfo,
   unreachableMessages,
@@ -18,7 +19,8 @@ import {
   type FlowTrigger,
   type NewBlockKind,
 } from '../../lib/automationFlows'
-import type { Classroom } from '../../types/domain'
+import type { AutomationContact } from '../../lib/automationContacts'
+import type { Classroom, LeadStatus } from '../../types/domain'
 import { FlowCanvas } from './FlowCanvas'
 import { FlowSwitch } from './FlowSwitch'
 import { FlowTester } from './FlowTester'
@@ -28,6 +30,8 @@ type FlowEditorProps = {
   // null starts a new flow.
   flow: AutomationFlow | null
   classrooms: Classroom[]
+  // The saved contacts a message can be sent to instead of the family.
+  contacts: AutomationContact[]
   // Only an admin can change a flow.
   canEdit: boolean
   onSave: (draft: FlowDraft) => Promise<{ error: string | null; flow: AutomationFlow | null }>
@@ -49,6 +53,7 @@ type FlowEditorProps = {
 export function FlowEditor({
   flow,
   classrooms,
+  contacts,
   canEdit,
   onSave,
   onDelete,
@@ -63,6 +68,8 @@ export function FlowEditor({
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [testAge, setTestAge] = useState('')
   const [testClass, setTestClass] = useState('')
+  const [testHours, setTestHours] = useState('')
+  const [testStage, setTestStage] = useState('')
   const [notice, setNotice] = useState<{ text: string; isError: boolean } | null>(null)
   const [isWorking, setIsWorking] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -85,19 +92,26 @@ export function FlowEditor({
     return (id: number) => names.get(id) ?? `Class ${id}`
   }, [classrooms])
 
+  const contactName = useMemo(() => {
+    const names = new Map(contacts.map((contact) => [contact.id, contact.name]))
+    return (id: number) => names.get(id) ?? 'a removed contact'
+  }, [contacts])
+
   const readOnly = !canEdit || isWorking
   const selectedNode = draft.graph.nodes.find((node) => node.id === selectedId) ?? null
   // The panel on the left is there only while a card is selected.
   const panelOpen = selectedId === TRIGGER_ID || selectedNode !== null
 
-  const testing = testAge !== '' || testClass !== ''
+  const testing = testAge !== '' || testClass !== '' || testHours !== '' || testStage !== ''
   const outcome = useMemo(
     () =>
       simulateFlow(draft.graph, {
         age: testAge === '' ? null : Number(testAge),
         classroomId: testClass === '' ? null : Number(testClass),
+        hours: testHours === '' ? null : Number(testHours),
+        stage: testStage === '' ? null : (testStage as LeadStatus),
       }),
-    [draft.graph, testAge, testClass],
+    [draft.graph, testAge, testClass, testHours, testStage],
   )
   const highlight = useMemo(() => (testing ? { nodes: outcome.nodes, edges: outcome.edges } : null), [testing, outcome])
   const loose = useMemo(() => unreachableMessages(draft.graph), [draft.graph])
@@ -116,7 +130,7 @@ export function FlowEditor({
     if (result.id === null) {
       return
     }
-    setGraph(result.graph)
+    setGraph(triggerInfo(draft.trigger).afterOnly ? sendAfterOnly(result.graph) : result.graph)
     setSelectedId(result.id)
   }
 
@@ -293,9 +307,14 @@ export function FlowEditor({
               selectedId={selectedId}
               selectedNode={selectedNode}
               classrooms={classrooms}
+              contacts={contacts}
               readOnly={readOnly}
               onTriggerChange={(trigger: FlowTrigger) => {
-                setDraft({ ...draft, trigger })
+                setDraft({
+                  ...draft,
+                  trigger,
+                  graph: triggerInfo(trigger).afterOnly ? sendAfterOnly(draft.graph) : draft.graph,
+                })
                 setNotice(null)
               }}
               onClose={() => setSelectedId(null)}
@@ -312,9 +331,13 @@ export function FlowEditor({
             classrooms={classrooms}
             testAge={testAge}
             testClass={testClass}
+            testHours={testHours}
+            testStage={testStage}
             outcome={outcome}
             onTestAge={setTestAge}
             onTestClass={setTestClass}
+            onTestHours={setTestHours}
+            onTestStage={setTestStage}
             canSend={canEdit}
             sendBlockedReason={
               draft.id === null || dirty ? 'Save the flow first: the test sends the saved version.' : null
@@ -334,6 +357,7 @@ export function FlowEditor({
               triggerLabel={triggerInfo(draft.trigger).label}
               selectedId={selectedId}
               classroomName={classroomName}
+              contactName={contactName}
               highlight={highlight}
               readOnly={!canEdit}
               onGraphChange={setGraph}

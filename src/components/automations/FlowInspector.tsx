@@ -13,12 +13,16 @@ import {
   type FlowTrigger,
   type OffsetUnit,
 } from '../../lib/automationFlows'
+import { displayContactPhone, type AutomationContact } from '../../lib/automationContacts'
+import { leadStatusOptions } from '../../lib/constants'
 import type { Classroom } from '../../types/domain'
 
 type FlowInspectorProps = {
   node: FlowNode | null
   trigger: FlowTrigger
   classrooms: Classroom[]
+  // The saved contacts a message can be sent to instead of the family.
+  contacts: AutomationContact[]
   readOnly: boolean
   onChange: (change: Record<string, unknown>) => void
   onDelete: () => void
@@ -32,10 +36,12 @@ const fieldClass =
 // goes to the block only while the number is a valid one.
 function OffsetField({
   mins,
+  after,
   readOnly,
   onChange,
 }: {
   mins: number
+  after: boolean
   readOnly: boolean
   onChange: (mins: number) => void
 }) {
@@ -54,7 +60,7 @@ function OffsetField({
     <>
       <input
         type="number"
-        aria-label="How long before"
+        aria-label={after ? 'How long after' : 'How long before'}
         min={1}
         step="any"
         value={text}
@@ -92,7 +98,15 @@ function OffsetField({
 }
 
 // The settings of the block that is selected on the canvas.
-export function FlowInspector({ node, trigger, classrooms, readOnly, onChange, onDelete }: FlowInspectorProps) {
+export function FlowInspector({
+  node,
+  trigger,
+  classrooms,
+  contacts,
+  readOnly,
+  onChange,
+  onDelete,
+}: FlowInspectorProps) {
   const messageRef = useRef<HTMLTextAreaElement>(null)
 
   if (!node) {
@@ -124,9 +138,58 @@ export function FlowInspector({ node, trigger, classrooms, readOnly, onChange, o
         <h3 className="text-sm font-semibold text-slate-900">Message</h3>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
           <span>Send it</span>
-          <OffsetField key={node.id} mins={node.mins} readOnly={readOnly} onChange={(mins) => onChange({ mins })} />
-          <span>before it starts</span>
+          <OffsetField
+            key={node.id}
+            mins={node.mins}
+            after={info.afterOnly === true || node.after === true}
+            readOnly={readOnly}
+            onChange={(mins) => onChange({ mins })}
+          />
+          {info.afterOnly ? (
+            <span>after it happens</span>
+          ) : (
+            <select
+              aria-label="Before or after"
+              value={node.after === true ? 'after' : 'before'}
+              disabled={readOnly}
+              onChange={(event) => onChange({ after: event.target.value === 'after' })}
+              className={fieldClass}
+            >
+              <option value="before">before it starts</option>
+              <option value="after">after it starts</option>
+            </select>
+          )}
         </div>
+        <label className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
+          <span>Send to</span>
+          <select
+            aria-label="Send to"
+            value={typeof node.contactId === 'number' ? String(node.contactId) : ''}
+            disabled={readOnly}
+            onChange={(event) => onChange({ contactId: event.target.value === '' ? null : Number(event.target.value) })}
+            className={cn(fieldClass, 'min-w-0 flex-1')}
+          >
+            <option value="">The parent of the child</option>
+            {contacts.map((contact) => (
+              <option key={contact.id} value={contact.id}>
+                {contact.name} · {displayContactPhone(contact)}
+              </option>
+            ))}
+            {typeof node.contactId === 'number' && !contacts.some((contact) => contact.id === node.contactId) && (
+              <option value={node.contactId}>A contact that was removed</option>
+            )}
+          </select>
+        </label>
+        {typeof node.contactId === 'number' && (
+          <p className="mt-1 text-xs text-slate-500">
+            This message goes to the contact, not to the family. It still waits for approval in WhatsApp.
+          </p>
+        )}
+        {typeof node.contactId !== 'number' && contacts.length === 0 && (
+          <p className="mt-1 text-xs text-slate-500">
+            To send to someone else, add a contact in the Contacts box on the Automations page.
+          </p>
+        )}
         <textarea
           ref={messageRef}
           aria-label="Message"
@@ -195,6 +258,57 @@ export function FlowInspector({ node, trigger, classrooms, readOnly, onChange, o
             className={cn(fieldClass, 'w-20')}
           />
         </div>
+      </>
+    )
+  } else if (node.kind === 'hours') {
+    body = (
+      <>
+        <h3 className="text-sm font-semibold text-slate-900">Lessons left</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Children with this many lesson hours left, or fewer, follow the Yes line; everyone else follows No. Only
+          children (not leads) have lessons.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
+          <input
+            type="number"
+            aria-label="Hours left"
+            min={0}
+            max={500}
+            value={node.max}
+            disabled={readOnly}
+            onChange={(event) => onChange({ max: Number(event.target.value) })}
+            className={cn(fieldClass, 'w-24')}
+          />
+          <span>hours left or fewer</span>
+        </div>
+      </>
+    )
+  } else if (node.kind === 'stage') {
+    body = (
+      <>
+        <h3 className="text-sm font-semibold text-slate-900">Lead stage</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Leads in a ticked stage, at the moment the message is due, follow the Yes line; everyone else follows No.
+        </p>
+        <fieldset className="mt-3 grid gap-1 sm:grid-cols-2" disabled={readOnly}>
+          {leadStatusOptions.map((option) => (
+            <label key={option.key} className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={node.stages.includes(option.key)}
+                onChange={(event) =>
+                  onChange({
+                    stages: event.target.checked
+                      ? [...node.stages, option.key]
+                      : node.stages.filter((stage) => stage !== option.key),
+                  })
+                }
+                className="h-4 w-4 accent-[#fc0c97]"
+              />
+              <span>{option.label}</span>
+            </label>
+          ))}
+        </fieldset>
       </>
     )
   } else {

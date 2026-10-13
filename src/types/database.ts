@@ -608,11 +608,30 @@ export type Database = {
         }
         Relationships: []
       }
+      automation_contacts: {
+        Row: {
+          id: number
+          name: string
+          phone: string
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          name: string
+          phone: string
+        }
+        Update: {
+          name?: string
+          phone?: string
+        }
+        Relationships: []
+      }
       automation_flows: {
         Row: {
           id: number
           name: string
-          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start'
+          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted'
           enabled: boolean
           graph: Json
           last_run_at: string | null
@@ -623,13 +642,13 @@ export type Database = {
         }
         Insert: {
           name: string
-          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start'
+          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted'
           enabled?: boolean
           graph?: Json
         }
         Update: {
           name?: string
-          trigger_type?: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start'
+          trigger_type?: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted'
           enabled?: boolean
           graph?: Json
         }

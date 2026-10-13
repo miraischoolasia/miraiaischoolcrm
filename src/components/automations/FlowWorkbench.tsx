@@ -8,6 +8,7 @@ import {
   type FlowNode,
   type FlowTrigger,
 } from '../../lib/automationFlows'
+import type { AutomationContact } from '../../lib/automationContacts'
 import type { Classroom } from '../../types/domain'
 import { FlowInspector } from './FlowInspector'
 
@@ -17,6 +18,7 @@ type FlowWorkbenchProps = {
   selectedId: string
   selectedNode: FlowNode | null
   classrooms: Classroom[]
+  contacts: AutomationContact[]
   readOnly: boolean
   onTriggerChange: (trigger: FlowTrigger) => void
   onClose: () => void
@@ -34,6 +36,7 @@ export function FlowWorkbench({
   selectedId,
   selectedNode,
   classrooms,
+  contacts,
   readOnly,
   onTriggerChange,
   onClose,
@@ -90,6 +93,7 @@ export function FlowWorkbench({
         node={selectedNode}
         trigger={draft.trigger}
         classrooms={classrooms}
+        contacts={contacts}
         readOnly={readOnly}
         onChange={(change) => onNodeChange(selectedNode.id, change)}
         onDelete={() => onNodeDelete(selectedNode.id)}

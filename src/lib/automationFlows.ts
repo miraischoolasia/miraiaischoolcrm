@@ -1,10 +1,21 @@
 import { supabase } from './supabase'
+import { leadStatusOptions } from './constants'
+import type { LeadStatus } from '../types/domain'
 
 // Automation flows: the drag-and-drop canvas on the Automations page. A flow is one trigger and a
 // small graph of conditions and messages. The database runs every enabled flow every 15 minutes and
 // adds the messages it makes to the approval queue; nothing is sent until a person approves it.
 
-export type FlowTrigger = 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start'
+export type FlowTrigger =
+  | 'class_start'
+  | 'replacement_start'
+  | 'trial_start'
+  | 'zoom_start'
+  | 'lesson_expiry'
+  | 'account_fee_expiry'
+  | 'club_fee_expiry'
+  | 'lead_created'
+  | 'form_submitted'
 
 export type TriggerInfo = {
   key: FlowTrigger
@@ -14,6 +25,9 @@ export type TriggerInfo = {
   phrase: string
   // The kind of classroom a class condition can pick from; null when the event has no class.
   classroomCategory: 'regular' | 'trial' | null
+  // The event has already happened when a flow sees it (a lead was added, a form was sent), so a
+  // message can only go after it.
+  afterOnly?: boolean
 }
 
 export const TRIGGERS: TriggerInfo[] = [
@@ -31,6 +45,38 @@ export const TRIGGERS: TriggerInfo[] = [
   },
   { key: 'trial_start', label: 'A trial class starts', phrase: 'a trial class starts', classroomCategory: 'trial' },
   { key: 'zoom_start', label: 'A Zoom meeting starts', phrase: 'a Zoom meeting starts', classroomCategory: null },
+  {
+    key: 'lesson_expiry',
+    label: "A child's lesson period ends",
+    phrase: "a child's lesson period ends",
+    classroomCategory: 'regular',
+  },
+  {
+    key: 'account_fee_expiry',
+    label: "A child's account fee ends",
+    phrase: "a child's account fee ends",
+    classroomCategory: 'regular',
+  },
+  {
+    key: 'club_fee_expiry',
+    label: "A child's Mirai Club fee ends",
+    phrase: "a child's Mirai Club fee ends",
+    classroomCategory: 'regular',
+  },
+  {
+    key: 'lead_created',
+    label: 'A new lead is added',
+    phrase: 'a new lead is added',
+    classroomCategory: null,
+    afterOnly: true,
+  },
+  {
+    key: 'form_submitted',
+    label: 'A form is submitted',
+    phrase: 'a form is submitted',
+    classroomCategory: null,
+    afterOnly: true,
+  },
 ]
 
 export function triggerInfo(key: FlowTrigger): TriggerInfo {
@@ -39,10 +85,23 @@ export function triggerInfo(key: FlowTrigger): TriggerInfo {
 
 type Placed = { id: string; x: number; y: number }
 
-export type MessageNode = Placed & { type: 'message'; mins: number; text: string }
+// contactId: a saved contact (see automationContacts) the message goes to instead of the family; left out or
+// null means the parent of the child the event is about.
+// after: sent that long AFTER the event (left out or false: before it).
+export type MessageNode = Placed & {
+  type: 'message'
+  mins: number
+  text: string
+  contactId?: number | null
+  after?: boolean
+}
 export type AgeCondition = Placed & { type: 'condition'; kind: 'age'; min: number | null; max: number | null }
 export type ClassroomCondition = Placed & { type: 'condition'; kind: 'classroom'; ids: number[] }
-export type ConditionNode = AgeCondition | ClassroomCondition
+// Yes when the child has this many lesson hours left, or fewer.
+export type HoursCondition = Placed & { type: 'condition'; kind: 'hours'; max: number }
+// Yes when the lead is in one of these stages.
+export type StageCondition = Placed & { type: 'condition'; kind: 'stage'; stages: LeadStatus[] }
+export type ConditionNode = AgeCondition | ClassroomCondition | HoursCondition | StageCondition
 export type FlowNode = MessageNode | ConditionNode
 
 export type FlowPort = 'out' | 'yes' | 'no'
@@ -75,7 +134,7 @@ export type FlowDraft = {
 
 export const TRIGGER_ID = 'trigger'
 export const MIN_OFFSET_MINUTES = 3
-export const MAX_OFFSET_MINUTES = 7 * 24 * 60
+export const MAX_OFFSET_MINUTES = 60 * 24 * 60
 export const MAX_NODES = 40
 
 export const PLACEHOLDERS = [
@@ -84,6 +143,7 @@ export const PLACEHOLDERS = [
   { token: '{time}', hint: 'The start time, like 8:30 pm' },
   { token: '{date}', hint: 'The day, like Tue 14 Oct' },
   { token: '{class}', hint: 'The class name' },
+  { token: '{hours_left}', hint: 'Lesson hours the child has left' },
 ] as const
 
 const SAMPLE_VALUES: Record<string, string> = {
@@ -92,6 +152,7 @@ const SAMPLE_VALUES: Record<string, string> = {
   '{time}': '8:30 pm',
   '{date}': 'Tue 14 Oct',
   '{class}': 'Coder A',
+  '{hours_left}': '2',
 }
 
 // The text with the placeholders replaced by an example child, so the writer sees what a parent
@@ -136,9 +197,14 @@ export function isMessage(node: FlowNode): node is MessageNode {
 }
 
 // A one-line reading of a block, for the canvas and the list.
-export function describeNode(node: FlowNode, classroomName: (id: number) => string = (id) => `Class ${id}`) {
+export function describeNode(
+  node: FlowNode,
+  classroomName: (id: number) => string = (id) => `Class ${id}`,
+  contactName: (id: number) => string = (id) => `Contact ${id}`,
+) {
   if (isMessage(node)) {
-    return `${describeOffset(node.mins)} before`
+    const when = `${describeOffset(node.mins)} ${node.after === true ? 'after' : 'before'}`
+    return typeof node.contactId === 'number' ? `${when} · to ${contactName(node.contactId)}` : when
   }
   if (node.kind === 'age') {
     if (node.min !== null && node.max !== null) {
@@ -148,6 +214,13 @@ export function describeNode(node: FlowNode, classroomName: (id: number) => stri
       return `Age ${node.min} or older?`
     }
     return `Age ${node.max} or younger?`
+  }
+  if (node.kind === 'hours') {
+    return node.max === 1 ? '1 hour left or fewer?' : `${node.max} hours left or fewer?`
+  }
+  if (node.kind === 'stage') {
+    const labels = node.stages.map((stage) => leadStatusOptions.find((option) => option.key === stage)?.label ?? stage)
+    return labels.length === 0 ? 'Any stage?' : `Stage is ${labels.join(' or ')}?`
   }
   const names = node.ids.map(classroomName)
   return names.length <= 2 ? `In ${names.join(' or ')}?` : `In ${names.length} classes?`
@@ -205,7 +278,7 @@ export function nextNodeId(graph: FlowGraph, prefix: 'm' | 'c') {
   return `${prefix}${n}`
 }
 
-export type NewBlockKind = 'message' | 'age' | 'classroom'
+export type NewBlockKind = 'message' | 'age' | 'classroom' | 'hours' | 'stage'
 
 export function addNode(
   graph: FlowGraph,
@@ -231,7 +304,11 @@ export function addNode(
   const node: ConditionNode =
     kind === 'age'
       ? { id, type: 'condition', kind: 'age', x, y, min: 10, max: null }
-      : { id, type: 'condition', kind: 'classroom', x, y, ids: [] }
+      : kind === 'hours'
+        ? { id, type: 'condition', kind: 'hours', x, y, max: 2 }
+        : kind === 'stage'
+          ? { id, type: 'condition', kind: 'stage', x, y, stages: ['new'] }
+          : { id, type: 'condition', kind: 'classroom', x, y, ids: [] }
   return { graph: { ...graph, nodes: [...graph.nodes, node] }, id }
 }
 
@@ -261,6 +338,18 @@ export function addNodeAfter(
   }
   const added = addNode(graph, kind, { x, y })
   return { graph: connect(added.graph, { from, port, to: added.id }), id: added.id }
+}
+
+// A flow that starts when something has already happened (a lead was added, a form was sent) can only
+// send after it, so every message is set to go after.
+export function sendAfterOnly(graph: FlowGraph): FlowGraph {
+  if (graph.nodes.every((node) => node.type !== 'message' || node.after === true)) {
+    return graph
+  }
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node) => (node.type === 'message' && node.after !== true ? { ...node, after: true } : node)),
+  }
 }
 
 export function removeNode(graph: FlowGraph, id: string): FlowGraph {
@@ -314,7 +403,13 @@ export function disconnect(graph: FlowGraph, key: string): FlowGraph {
   return { ...graph, edges: graph.edges.filter((edge) => edgeKey(edge) !== key) }
 }
 
-export type FlowTestChild = { age: number | null; classroomId: number | null }
+// hours: lesson hours left; stage: the lead's stage. null is unknown, which never matches a question.
+export type FlowTestChild = {
+  age: number | null
+  classroomId: number | null
+  hours?: number | null
+  stage?: LeadStatus | null
+}
 
 export type FlowTestResult = {
   nodes: Set<string>
@@ -349,6 +444,12 @@ export function simulateFlow(graph: FlowGraph, child: FlowTestChild): FlowTestRe
         const { age } = child
         const matches = age !== null && (node.min === null || age >= node.min) && (node.max === null || age <= node.max)
         port = matches ? 'yes' : 'no'
+      } else if (node.kind === 'hours') {
+        const hours = child.hours ?? null
+        port = hours !== null && hours <= node.max ? 'yes' : 'no'
+      } else if (node.kind === 'stage') {
+        const stage = child.stage ?? null
+        port = stage !== null && node.stages.includes(stage) ? 'yes' : 'no'
       } else {
         port = child.classroomId !== null && node.ids.includes(child.classroomId) ? 'yes' : 'no'
       }
@@ -380,10 +481,13 @@ export function validateDraft(draft: FlowDraft): string | null {
   for (const node of draft.graph.nodes) {
     if (isMessage(node)) {
       if (!Number.isInteger(node.mins) || node.mins < MIN_OFFSET_MINUTES) {
-        return `A message must be set at least ${MIN_OFFSET_MINUTES} minutes before.`
+        return `A message must be set at least ${MIN_OFFSET_MINUTES} minutes before or after.`
       }
       if (node.mins > MAX_OFFSET_MINUTES) {
-        return 'A message can be set up to 7 days before.'
+        return 'A message can be set up to 60 days before or after.'
+      }
+      if (triggerInfo(draft.trigger).afterOnly && node.after !== true) {
+        return `This starts when ${triggerInfo(draft.trigger).phrase}, so a message can only be sent after it.`
       }
       if (node.text.trim() === '') {
         return 'Every message needs text.'
@@ -402,6 +506,14 @@ export function validateDraft(draft: FlowDraft): string | null {
       }
       if (node.min !== null && node.max !== null && node.min > node.max) {
         return 'The lowest age is higher than the highest age.'
+      }
+    } else if (node.kind === 'hours') {
+      if (!Number.isInteger(node.max) || node.max < 0 || node.max > 500) {
+        return 'Hours left must be a whole number from 0 to 500.'
+      }
+    } else if (node.kind === 'stage') {
+      if (node.stages.length === 0) {
+        return 'A stage block needs at least one stage ticked.'
       }
     } else if (node.ids.length === 0) {
       return 'A class block needs at least one class ticked.'
@@ -484,9 +596,19 @@ export function parseGraph(raw: unknown): FlowGraph {
         type: 'message',
         mins: numberOr(node.mins, 60),
         text: typeof node.text === 'string' ? node.text : '',
+        ...(typeof node.contactId === 'number' ? { contactId: node.contactId } : {}),
+        ...(node.after === true ? { after: true } : {}),
       })
     } else if (node.type === 'condition' && node.kind === 'age') {
       nodes.push({ ...base, type: 'condition', kind: 'age', min: ageOrNull(node.min), max: ageOrNull(node.max) })
+    } else if (node.type === 'condition' && node.kind === 'hours') {
+      nodes.push({ ...base, type: 'condition', kind: 'hours', max: numberOr(node.max, 2) })
+    } else if (node.type === 'condition' && node.kind === 'stage') {
+      const known = new Set<string>(leadStatusOptions.map((option) => option.key))
+      const stages = Array.isArray(node.stages)
+        ? node.stages.filter((stage): stage is LeadStatus => typeof stage === 'string' && known.has(stage))
+        : []
+      nodes.push({ ...base, type: 'condition', kind: 'stage', stages })
     } else if (node.type === 'condition' && node.kind === 'classroom') {
       const ids = Array.isArray(node.ids) ? node.ids.filter((id): id is number => typeof id === 'number') : []
       nodes.push({ ...base, type: 'condition', kind: 'classroom', ids })

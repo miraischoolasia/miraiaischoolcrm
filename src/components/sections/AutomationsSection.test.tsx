@@ -17,7 +17,11 @@ vi.mock('../automations/FlowCanvas', () => ({
     graph: { nodes: { id: string }[] }
     triggerLabel: string
     onSelect: (id: string | null) => void
-    onAddAfter: (from: string, port: 'out' | 'yes' | 'no', kind: 'message' | 'age' | 'classroom') => void
+    onAddAfter: (
+      from: string,
+      port: 'out' | 'yes' | 'no',
+      kind: 'message' | 'age' | 'classroom' | 'hours' | 'stage',
+    ) => void
   }) => (
     <div data-testid="canvas">
       {triggerLabel} · {graph.nodes.length} blocks
@@ -29,6 +33,12 @@ vi.mock('../automations/FlowCanvas', () => ({
       </button>
       <button type="button" onClick={() => onAddAfter('trigger', 'out', 'age')}>
         canvas add age after trigger
+      </button>
+      <button type="button" onClick={() => onAddAfter('trigger', 'out', 'hours')}>
+        canvas add hours after trigger
+      </button>
+      <button type="button" onClick={() => onAddAfter('trigger', 'out', 'stage')}>
+        canvas add stage after trigger
       </button>
       <button type="button" onClick={() => onAddAfter('m1', 'out', 'message')}>
         canvas add message after m1
@@ -56,6 +66,18 @@ const hook = vi.hoisted(() => ({
   },
 }))
 vi.mock('../../hooks/useAutomationFlows', () => ({ useAutomationFlows: () => hook.state }))
+
+const contactHook = vi.hoisted(() => ({
+  state: {
+    contacts: [] as unknown[],
+    error: null as string | null,
+    reload: vi.fn(),
+    add: vi.fn(),
+    update: vi.fn(),
+    remove: vi.fn(),
+  },
+}))
+vi.mock('../../hooks/useAutomationContacts', () => ({ useAutomationContacts: () => contactHook.state }))
 
 const flow = (change: Partial<AutomationFlow> = {}): AutomationFlow => {
   const base = newFlowDraft()
@@ -102,6 +124,11 @@ describe('AutomationsSection', () => {
     hook.state.runNow.mockReset().mockResolvedValue({ queued: 2, error: null })
     hook.state.sendTest.mockReset().mockResolvedValue({ queued: 1, error: null })
     window.localStorage.removeItem('mirai.flowTestPhone')
+    contactHook.state.contacts = [{ id: 4, name: 'Lex', phone: '60123456789' }]
+    contactHook.state.error = null
+    contactHook.state.add.mockReset().mockResolvedValue(null)
+    contactHook.state.update.mockReset().mockResolvedValue(null)
+    contactHook.state.remove.mockReset().mockResolvedValue(null)
   })
 
   it('lists the flows first, with whether each is live', () => {
@@ -351,5 +378,153 @@ describe('AutomationsSection', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Leave' }))
     expect(await screen.findByText('Zoom reminder')).toBeInTheDocument()
     expect(screen.queryByTestId('canvas')).not.toBeInTheDocument()
+  })
+
+  describe('new triggers', () => {
+    it('lets a message go after the event and saves it', async () => {
+      setup()
+      await openFirst()
+      await userEvent.click(screen.getByRole('button', { name: 'canvas block m1' }))
+      expect(screen.getByLabelText('Before or after')).toHaveValue('before')
+      await userEvent.selectOptions(screen.getByLabelText('Before or after'), 'after')
+      expect(screen.getByLabelText('How long after')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+      await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+      expect(hook.state.save.mock.calls[0][0].graph.nodes[0]).toMatchObject({ id: 'm1', after: true })
+    })
+
+    it('sets every message to go after when the trigger is a new lead', async () => {
+      setup()
+      await openFirst()
+      await userEvent.click(screen.getByRole('button', { name: 'canvas trigger' }))
+      await userEvent.selectOptions(screen.getByLabelText('When'), 'lead_created')
+      await userEvent.click(screen.getByRole('button', { name: 'canvas block m1' }))
+      expect(screen.getByText('after it happens')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Before or after')).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+      await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+      const saved = hook.state.save.mock.calls[0][0]
+      expect(saved.trigger).toBe('lead_created')
+      expect(saved.graph.nodes[0]).toMatchObject({ id: 'm1', after: true })
+    })
+
+    it('adds a lessons-left block and changes the hours', async () => {
+      setup()
+      await openFirst()
+      await userEvent.click(screen.getByRole('button', { name: 'canvas add hours after trigger' }))
+      const hours = screen.getByLabelText('Hours left')
+      expect(hours).toHaveValue(2)
+      fireEvent.change(hours, { target: { value: '4' } })
+      await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+      await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+      const nodes = hook.state.save.mock.calls[0][0].graph.nodes
+      expect(nodes).toContainEqual(expect.objectContaining({ kind: 'hours', max: 4 }))
+    })
+
+    it('adds a lead-stage block and ticks stages', async () => {
+      setup()
+      await openFirst()
+      await userEvent.click(screen.getByRole('button', { name: 'canvas add stage after trigger' }))
+      expect(screen.getByRole('checkbox', { name: 'New' })).toBeChecked()
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Contacted' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+      await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+      const nodes = hook.state.save.mock.calls[0][0].graph.nodes
+      expect(nodes).toContainEqual(expect.objectContaining({ kind: 'stage', stages: ['new', 'contacted'] }))
+    })
+
+    it('tests a lessons-left question with the lessons-left box', async () => {
+      hook.state.flows = [
+        flow({
+          graph: {
+            trigger: { x: 0, y: 0 },
+            nodes: [
+              { id: 'h1', type: 'condition', kind: 'hours', x: 0, y: 0, max: 2 },
+              { id: 'm1', type: 'message', x: 0, y: 0, mins: 60, text: 'Only {child} is low', contactId: 4 },
+            ],
+            edges: [
+              { from: 'trigger', port: 'out', to: 'h1' },
+              { from: 'h1', port: 'yes', to: 'm1' },
+            ],
+          },
+        }),
+      ]
+      setup()
+      await openFirst()
+      await userEvent.type(screen.getByLabelText('Test lessons left'), '1')
+      expect(await screen.findByText('Only Ethan is low')).toBeInTheDocument()
+      await userEvent.clear(screen.getByLabelText('Test lessons left'))
+      await userEvent.type(screen.getByLabelText('Test lessons left'), '5')
+      expect(await screen.findByText('This child would get no message.')).toBeInTheDocument()
+    })
+  })
+
+  describe('contacts', () => {
+    it('lists the contacts, and adds one with a name and a number', async () => {
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Contacts/ }))
+      expect(screen.getByText('Lex')).toBeInTheDocument()
+      expect(screen.getByText('+60 12-345 6789')).toBeInTheDocument()
+
+      await userEvent.type(screen.getByLabelText('Contact name'), 'Teacher Mei')
+      await userEvent.type(screen.getByLabelText('Contact WhatsApp number'), '012-999 8888')
+      await userEvent.click(screen.getByRole('button', { name: 'Add contact' }))
+      expect(contactHook.state.add).toHaveBeenCalledWith('Teacher Mei', '012-999 8888')
+    })
+
+    it('shows why a contact was not saved', async () => {
+      contactHook.state.add.mockResolvedValue('Type the WhatsApp number, like 012-345 6789 or +60 12 345 6789.')
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Contacts/ }))
+      await userEvent.type(screen.getByLabelText('Contact name'), 'Mei')
+      await userEvent.click(screen.getByRole('button', { name: 'Add contact' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('Type the WhatsApp number')
+    })
+
+    it('changes and removes a contact, asking before removing', async () => {
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Contacts/ }))
+      await userEvent.click(screen.getByRole('button', { name: 'Change Lex' }))
+      expect(screen.getByLabelText('Contact name')).toHaveValue('Lex')
+      expect(screen.getByLabelText('Contact WhatsApp number')).toHaveValue('+60123456789')
+      await userEvent.clear(screen.getByLabelText('Contact name'))
+      await userEvent.type(screen.getByLabelText('Contact name'), 'Lex Chew')
+      await userEvent.click(screen.getByRole('button', { name: 'Save contact' }))
+      expect(contactHook.state.update).toHaveBeenCalledWith(4, 'Lex Chew', '+60123456789')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Remove Lex' }))
+      expect(contactHook.state.remove).not.toHaveBeenCalled()
+      const buttons = screen.getAllByRole('button', { name: 'Remove' })
+      await userEvent.click(buttons[buttons.length - 1])
+      await waitFor(() => expect(contactHook.state.remove).toHaveBeenCalledWith(4))
+    })
+
+    it('is read-only for someone who is not an admin', async () => {
+      setup(false)
+      await userEvent.click(screen.getByRole('button', { name: /Contacts/ }))
+      expect(screen.getByText('Lex')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Contact name')).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Remove Lex' })).not.toBeInTheDocument()
+    })
+
+    it('sends a message to a contact when one is chosen under Send to, and back to the parent', async () => {
+      setup()
+      await openFirst()
+      await userEvent.click(screen.getByRole('button', { name: 'canvas block m1' }))
+      const sendTo = screen.getByLabelText('Send to')
+      expect(sendTo).toHaveValue('')
+      expect(screen.getByRole('option', { name: 'Lex · +60 12-345 6789' })).toBeInTheDocument()
+
+      await userEvent.selectOptions(sendTo, '4')
+      expect(screen.getByText(/goes to the contact, not to the family/)).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+      await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+      expect(hook.state.save.mock.calls[0][0].graph.nodes[0]).toMatchObject({ id: 'm1', contactId: 4 })
+
+      await userEvent.selectOptions(screen.getByLabelText('Send to'), '')
+      await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+      await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(2))
+      expect(hook.state.save.mock.calls[1][0].graph.nodes[0].contactId ?? null).toBeNull()
+    })
   })
 })

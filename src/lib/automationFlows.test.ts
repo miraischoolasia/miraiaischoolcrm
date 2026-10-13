@@ -7,6 +7,7 @@ import {
   describeNode,
   describeOffset,
   disconnect,
+  triggerInfo,
   edgeKey,
   newFlowDraft,
   normalizeTestPhone,
@@ -21,6 +22,7 @@ import {
   validateDraft,
   type FlowDraft,
   type FlowGraph,
+  type MessageNode,
 } from './automationFlows'
 
 // trigger -> age 10 or older? -> yes: message 1 hour before / no: message 30 minutes before
@@ -109,6 +111,41 @@ describe('what a child gets', () => {
     expect(simulateFlow(graph, { age: 9, classroomId: 3 }).messages).toHaveLength(1)
     expect(simulateFlow(graph, { age: 9, classroomId: 5 }).messages).toHaveLength(0)
     expect(simulateFlow(graph, { age: 9, classroomId: null }).messages).toHaveLength(0)
+  })
+
+  it('answers a lessons-left condition: at or under the number is Yes, unknown is No', () => {
+    const graph: FlowGraph = {
+      trigger: { x: 0, y: 0 },
+      nodes: [
+        { id: 'h1', type: 'condition', kind: 'hours', x: 0, y: 0, max: 2 },
+        { id: 'm1', type: 'message', x: 0, y: 0, mins: 60, text: 'Low' },
+      ],
+      edges: [
+        { from: TRIGGER_ID, port: 'out', to: 'h1' },
+        { from: 'h1', port: 'yes', to: 'm1' },
+      ],
+    }
+    expect(simulateFlow(graph, { age: 9, classroomId: null, hours: 2 }).messages).toHaveLength(1)
+    expect(simulateFlow(graph, { age: 9, classroomId: null, hours: 0 }).messages).toHaveLength(1)
+    expect(simulateFlow(graph, { age: 9, classroomId: null, hours: 3 }).messages).toHaveLength(0)
+    expect(simulateFlow(graph, { age: 9, classroomId: null }).messages).toHaveLength(0)
+  })
+
+  it('answers a lead-stage condition by the lead stage', () => {
+    const graph: FlowGraph = {
+      trigger: { x: 0, y: 0 },
+      nodes: [
+        { id: 's1', type: 'condition', kind: 'stage', x: 0, y: 0, stages: ['new', 'contacted'] },
+        { id: 'm1', type: 'message', x: 0, y: 0, mins: 60, text: 'Still open', after: true },
+      ],
+      edges: [
+        { from: TRIGGER_ID, port: 'out', to: 's1' },
+        { from: 's1', port: 'yes', to: 'm1' },
+      ],
+    }
+    expect(simulateFlow(graph, { age: null, classroomId: null, stage: 'new' }).messages).toHaveLength(1)
+    expect(simulateFlow(graph, { age: null, classroomId: null, stage: 'converted' }).messages).toHaveLength(0)
+    expect(simulateFlow(graph, { age: null, classroomId: null }).messages).toHaveLength(0)
   })
 
   it('can send several messages for one event and survives a loop', () => {
@@ -218,6 +255,12 @@ describe('editing the graph', () => {
     )
     expect(describeNode(split.nodes[1])).toBe('1 hour before')
   })
+
+  it('says who a message goes to when it is for a contact', () => {
+    const toLex = { ...(split.nodes[1] as MessageNode), contactId: 4 }
+    expect(describeNode(toLex, undefined, () => 'Lex')).toBe('1 hour before · to Lex')
+    expect(describeNode({ ...toLex, contactId: null })).toBe('1 hour before')
+  })
 })
 
 describe('checking a flow before it is saved', () => {
@@ -232,7 +275,7 @@ describe('checking a flow before it is saved', () => {
       validateDraft(
         draft({ graph: { ...split, nodes: [{ id: 'm1', type: 'message', x: 0, y: 0, mins: 2, text: 'x' }] } }),
       ),
-    ).toBe('A message must be set at least 3 minutes before.')
+    ).toBe('A message must be set at least 3 minutes before or after.')
     expect(
       validateDraft(
         draft({
@@ -246,6 +289,114 @@ describe('checking a flow before it is saved', () => {
         }),
       ),
     ).toBe('The lowest age is higher than the highest age.')
+  })
+})
+
+describe('after-the-event messages and the new triggers', () => {
+  const afterOnlyDraft = (change: Partial<FlowDraft> = {}): FlowDraft =>
+    draft({
+      trigger: 'lead_created',
+      graph: {
+        trigger: { x: 0, y: 0 },
+        nodes: [{ id: 'm1', type: 'message', x: 0, y: 0, mins: 5, text: 'Welcome', after: true }],
+        edges: [{ from: TRIGGER_ID, port: 'out', to: 'm1' }],
+      },
+      ...change,
+    })
+
+  it('describes a message as before or after the event', () => {
+    const message: MessageNode = { id: 'm', type: 'message', x: 0, y: 0, mins: 60, text: 'Hi' }
+    expect(describeNode(message)).toBe('1 hour before')
+    expect(describeNode({ ...message, after: true })).toBe('1 hour after')
+  })
+
+  it('describes the lessons-left and stage questions', () => {
+    expect(describeNode({ id: 'h', type: 'condition', kind: 'hours', x: 0, y: 0, max: 2 })).toBe(
+      '2 hours left or fewer?',
+    )
+    expect(describeNode({ id: 'h', type: 'condition', kind: 'hours', x: 0, y: 0, max: 1 })).toBe(
+      '1 hour left or fewer?',
+    )
+    expect(describeNode({ id: 's', type: 'condition', kind: 'stage', x: 0, y: 0, stages: [] })).toBe('Any stage?')
+    expect(describeNode({ id: 's', type: 'condition', kind: 'stage', x: 0, y: 0, stages: ['new'] })).toMatch(
+      /^Stage is .+\?$/,
+    )
+  })
+
+  it('says a new-lead flow can only send after it', () => {
+    expect(triggerInfo('lead_created').afterOnly).toBe(true)
+    expect(triggerInfo('form_submitted').afterOnly).toBe(true)
+    expect(triggerInfo('class_start').afterOnly).toBeFalsy()
+    expect(validateDraft(afterOnlyDraft())).toBeNull()
+    const before = afterOnlyDraft({
+      graph: {
+        trigger: { x: 0, y: 0 },
+        nodes: [{ id: 'm1', type: 'message', x: 0, y: 0, mins: 5, text: 'Welcome' }],
+        edges: [{ from: TRIGGER_ID, port: 'out', to: 'm1' }],
+      },
+    })
+    expect(validateDraft(before)).toMatch(/can only be sent after it/)
+  })
+
+  it('accepts up to 60 days and rejects more', () => {
+    const withMins = (mins: number) =>
+      afterOnlyDraft({
+        graph: {
+          trigger: { x: 0, y: 0 },
+          nodes: [{ id: 'm1', type: 'message', x: 0, y: 0, mins, text: 'x', after: true }],
+          edges: [{ from: TRIGGER_ID, port: 'out', to: 'm1' }],
+        },
+      })
+    expect(validateDraft(withMins(60 * 24 * 60))).toBeNull()
+    expect(validateDraft(withMins(60 * 24 * 60 + 1))).toBe('A message can be set up to 60 days before or after.')
+  })
+
+  it('checks the hours and the stages before saving', () => {
+    const withCondition = (node: FlowGraph['nodes'][number]) =>
+      draft({
+        graph: {
+          trigger: { x: 0, y: 0 },
+          nodes: [node, { id: 'm1', type: 'message', x: 0, y: 0, mins: 60, text: 'x' }],
+          edges: [
+            { from: TRIGGER_ID, port: 'out', to: node.id },
+            { from: node.id, port: 'yes', to: 'm1' },
+          ],
+        },
+      })
+    expect(
+      validateDraft(withCondition({ id: 'h', type: 'condition', kind: 'hours', x: 0, y: 0, max: 501 })),
+    ).toBe('Hours left must be a whole number from 0 to 500.')
+    expect(
+      validateDraft(withCondition({ id: 's', type: 'condition', kind: 'stage', x: 0, y: 0, stages: [] })),
+    ).toBe('A stage block needs at least one stage ticked.')
+    expect(
+      validateDraft(withCondition({ id: 'h', type: 'condition', kind: 'hours', x: 0, y: 0, max: 2 })),
+    ).toBeNull()
+  })
+
+  it('adds the new blocks with sensible starting values', () => {
+    const empty: FlowGraph = { trigger: { x: 0, y: 0 }, nodes: [], edges: [] }
+    const hours = addNode(empty, 'hours', { x: 1, y: 2 }).graph.nodes[0]
+    expect(hours).toMatchObject({ type: 'condition', kind: 'hours', max: 2 })
+    const stage = addNode(empty, 'stage', { x: 1, y: 2 }).graph.nodes[0]
+    expect(stage).toMatchObject({ type: 'condition', kind: 'stage', stages: ['new'] })
+  })
+
+  it('reads the new blocks and the after flag back, dropping unknown stages', () => {
+    const graph = parseGraph({
+      trigger: { x: 0, y: 0 },
+      nodes: [
+        { id: 'm1', type: 'message', mins: 5, text: 'Hi', after: true },
+        { id: 'm2', type: 'message', mins: 5, text: 'Hi', after: 'yes' },
+        { id: 'h', type: 'condition', kind: 'hours', max: 3 },
+        { id: 's', type: 'condition', kind: 'stage', stages: ['new', 'bogus', 7] },
+      ],
+      edges: [],
+    })
+    expect(graph.nodes[0]).toMatchObject({ id: 'm1', after: true })
+    expect('after' in graph.nodes[1]).toBe(false)
+    expect(graph.nodes[2]).toMatchObject({ kind: 'hours', max: 3 })
+    expect(graph.nodes[3]).toMatchObject({ kind: 'stage', stages: ['new'] })
   })
 })
 
@@ -269,5 +420,20 @@ describe('reading the graph from the database', () => {
     expect(graph.nodes.map((n) => n.id)).toEqual(['m1', 'c1'])
     expect(graph.edges).toEqual([{ from: 'trigger', port: 'out', to: 'm1' }])
     expect(parseGraph(null).nodes).toEqual([])
+  })
+
+  it('keeps the contact a message goes to, and ignores anything that is not an id', () => {
+    const graph = parseGraph({
+      trigger: { x: 0, y: 0 },
+      nodes: [
+        { id: 'a', type: 'message', mins: 60, text: 'Team', contactId: 4 },
+        { id: 'b', type: 'message', mins: 60, text: 'Parent', contactId: null },
+        { id: 'c', type: 'message', mins: 60, text: 'Odd', contactId: 'abc' },
+      ],
+      edges: [],
+    })
+    expect(graph.nodes[0]).toMatchObject({ id: 'a', contactId: 4 })
+    expect('contactId' in graph.nodes[1]).toBe(false)
+    expect('contactId' in graph.nodes[2]).toBe(false)
   })
 })

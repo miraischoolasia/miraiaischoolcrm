@@ -1,7 +1,9 @@
 import { useCallback, useState } from 'react'
 import { Plus } from '@phosphor-icons/react'
 import { FlowEditor } from '../automations/FlowEditor'
+import { ContactsCard } from '../automations/ContactsCard'
 import { FlowSwitch } from '../automations/FlowSwitch'
+import { useAutomationContacts } from '../../hooks/useAutomationContacts'
 import { useAutomationFlows } from '../../hooks/useAutomationFlows'
 import { useConfirm } from '../../hooks/useConfirm'
 import { cn } from '../../lib/cn'
@@ -22,6 +24,7 @@ type AutomationsSectionProps = {
 // the right).
 export function AutomationsSection({ classrooms, canEdit }: AutomationsSectionProps) {
   const automation = useAutomationFlows({ enabled: true })
+  const contactList = useAutomationContacts({ enabled: true })
   const { confirm, dialog } = useConfirm()
   // null shows the list.
   const [open, setOpen] = useState<number | 'new' | null>(null)
@@ -85,6 +88,7 @@ export function AutomationsSection({ classrooms, canEdit }: AutomationsSectionPr
           key={open === 'new' ? 'new' : openFlow?.id}
           flow={open === 'new' ? null : openFlow}
           classrooms={classrooms}
+          contacts={contactList.contacts}
           canEdit={canEdit}
           onSave={automation.save}
           onDelete={automation.remove}
@@ -139,6 +143,14 @@ export function AutomationsSection({ classrooms, canEdit }: AutomationsSectionPr
           {automation.error}
         </p>
       )}
+      <ContactsCard
+        contacts={contactList.contacts}
+        loadError={contactList.error}
+        canEdit={canEdit}
+        onAdd={contactList.add}
+        onUpdate={contactList.update}
+        onRemove={contactList.remove}
+      />
       {notice && (
         <p
           role={notice.isError ? 'alert' : 'status'}

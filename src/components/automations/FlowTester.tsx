@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { PaperPlaneTilt } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
+import { leadStatusOptions } from '../../lib/constants'
 import { describeOffset, normalizeTestPhone, previewMessage, type FlowTestResult } from '../../lib/automationFlows'
 import type { Classroom } from '../../types/domain'
 
@@ -8,9 +9,13 @@ type FlowTesterProps = {
   classrooms: Classroom[]
   testAge: string
   testClass: string
+  testHours: string
+  testStage: string
   outcome: FlowTestResult
   onTestAge: (value: string) => void
   onTestClass: (value: string) => void
+  onTestHours: (value: string) => void
+  onTestStage: (value: string) => void
   // Only an admin can send a test.
   canSend: boolean
   // Why the test cannot be sent right now (the flow has unsaved changes), or null.
@@ -47,14 +52,18 @@ export function FlowTester({
   classrooms,
   testAge,
   testClass,
+  testHours,
+  testStage,
   outcome,
   onTestAge,
   onTestClass,
+  onTestHours,
+  onTestStage,
   canSend,
   sendBlockedReason,
   onSend,
 }: FlowTesterProps) {
-  const testing = testAge !== '' || testClass !== ''
+  const testing = testAge !== '' || testClass !== '' || testHours !== '' || testStage !== ''
   const [phone, setPhone] = useState(readSavedPhone)
   const [isSending, setIsSending] = useState(false)
   const [sendNotice, setSendNotice] = useState<{ text: string; isError: boolean } | null>(null)
@@ -89,39 +98,73 @@ export function FlowTester({
     <div className="border-b border-slate-200 bg-white px-3 py-2">
       <div className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
         <span className="font-semibold text-slate-900">Try it with a child</span>
-        <span>Age</span>
-        <input
-          type="number"
-          aria-label="Test age"
-          min={0}
-          max={30}
-          value={testAge}
-          placeholder="unknown"
-          onChange={(event) => onTestAge(event.target.value)}
-          className={cn(fieldClass, 'w-28')}
-        />
-        <span>Class</span>
-        <select
-          aria-label="Test class"
-          value={testClass}
-          onChange={(event) => onTestClass(event.target.value)}
-          className={cn(fieldClass, 'max-w-[170px]')}
-        >
-          <option value="">Not in a class</option>
-          {classrooms
-            .filter((room) => room.status === 'active')
-            .map((room) => (
-              <option key={room.id} value={room.id}>
-                {room.name}
+        <span className="flex items-center gap-2">
+          <span>Age</span>
+          <input
+            type="number"
+            aria-label="Test age"
+            min={0}
+            max={30}
+            value={testAge}
+            placeholder="unknown"
+            onChange={(event) => onTestAge(event.target.value)}
+            className={cn(fieldClass, 'w-28')}
+          />
+        </span>
+        <span className="flex items-center gap-2">
+          <span>Class</span>
+          <select
+            aria-label="Test class"
+            value={testClass}
+            onChange={(event) => onTestClass(event.target.value)}
+            className={cn(fieldClass, 'max-w-[170px]')}
+          >
+            <option value="">Not in a class</option>
+            {classrooms
+              .filter((room) => room.status === 'active')
+              .map((room) => (
+                <option key={room.id} value={room.id}>
+                  {room.name}
+                </option>
+              ))}
+          </select>
+        </span>
+        <span className="flex items-center gap-2">
+          <span>Lessons left</span>
+          <input
+            type="number"
+            aria-label="Test lessons left"
+            min={0}
+            value={testHours}
+            placeholder="unknown"
+            onChange={(event) => onTestHours(event.target.value)}
+            className={cn(fieldClass, 'w-24')}
+          />
+        </span>
+        <span className="flex items-center gap-2">
+          <span>Lead stage</span>
+          <select
+            aria-label="Test lead stage"
+            value={testStage}
+            onChange={(event) => onTestStage(event.target.value)}
+            className={cn(fieldClass, 'max-w-[150px]')}
+          >
+            <option value="">Not a lead</option>
+            {leadStatusOptions.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label}
               </option>
             ))}
-        </select>
+          </select>
+        </span>
         {testing && (
           <button
             type="button"
             onClick={() => {
               onTestAge('')
               onTestClass('')
+              onTestHours('')
+              onTestStage('')
             }}
             className="text-xs font-semibold text-slate-600 hover:underline"
           >
@@ -138,7 +181,9 @@ export function FlowTester({
               .sort((a, b) => b.mins - a.mins)
               .map((message) => (
                 <li key={message.id} className="rounded-lg bg-emerald-50 px-3 py-1.5 text-emerald-900">
-                  <span className="block text-xs text-emerald-800">{describeOffset(message.mins)} before</span>
+                  <span className="block text-xs text-emerald-800">
+                    {describeOffset(message.mins)} {message.after === true ? 'after' : 'before'}
+                  </span>
                   {previewMessage(message.text)}
                 </li>
               ))}
@@ -167,7 +212,7 @@ export function FlowTester({
           </button>
           {sendBlockedReason !== null && <span className="text-xs text-amber-800">{sendBlockedReason}</span>}
           <p className="basis-full text-xs text-slate-500">
-            Uses the age and class above. The messages wait for your approval under the lightning button first.
+            Uses the age and class above (lessons left and lead stage are filled in for the test). The messages wait for your approval under the lightning button first.
           </p>
           {sendNotice && (
             <p
