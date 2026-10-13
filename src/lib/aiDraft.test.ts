@@ -1,9 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatwootMessage } from './whatsappInbox'
-import { buildDraftBody, markAiDraftAccepted, messageNeedingReply, requestAiDraft, scrubText } from './aiDraft'
+import {
+  buildDraftBody,
+  markAiDraftAccepted,
+  messageNeedingReply,
+  recordAiDraftSent,
+  requestAiDraft,
+  scrubText,
+} from './aiDraft'
 import {
   buildSystemPrompt,
   buildUserPrompt,
+  lastParentText,
   parseModelReply,
   scrub,
   validateInput,
@@ -231,6 +239,21 @@ describe('what comes back', () => {
     await expect(markAiDraftAccepted(7)).resolves.toBeUndefined()
     expect(client.rpc).toHaveBeenCalledWith('mark_ai_draft_accepted', { p_id: 7 })
   })
+
+  it('records what the team sent against the draft, without numbers, and never throws', async () => {
+    client.rpc.mockReset()
+    client.rpc.mockResolvedValue({ error: null })
+    await recordAiDraftSent(7, '  妈咪，我的号码是 012-345 6789，email a@b.com  ')
+    expect(client.rpc).toHaveBeenCalledWith('record_ai_draft_sent', {
+      p_id: 7,
+      p_text: '妈咪，我的号码是 [number]，email [email]',
+    })
+    client.rpc.mockClear()
+    await recordAiDraftSent(7, '   ')
+    expect(client.rpc).not.toHaveBeenCalled()
+    client.rpc.mockRejectedValue(new Error('offline'))
+    await expect(recordAiDraftSent(7, 'Hi')).resolves.toBeUndefined()
+  })
 })
 
 describe('the function side', () => {
@@ -301,15 +324,49 @@ describe('the function side', () => {
   })
 
   it('reads the answer, also inside a code fence, and refuses nonsense', () => {
-    expect(parseModelReply('{"reply":"Hi 妈咪😊","skip":false,"staff_note":"需确认付款方式"}')).toEqual({
+    expect(
+      parseModelReply('{"reply":"Hi 妈咪😊","skip":false,"category":"enrol","staff_note":"需确认付款方式"}'),
+    ).toEqual({
       reply: 'Hi 妈咪😊',
       skip: false,
       staffNote: '需确认付款方式',
+      category: 'enrol',
     })
     expect(parseModelReply('```json\n{"reply":"OK","skip":false}\n```')).toMatchObject({ reply: 'OK', skip: false })
-    expect(parseModelReply('{"reply":"","skip":true}')).toEqual({ reply: '', skip: true, staffNote: '' })
+    expect(parseModelReply('{"reply":"","skip":true}')).toEqual({
+      reply: '',
+      skip: true,
+      staffNote: '',
+      category: 'other',
+    })
     expect(parseModelReply('{"reply":"   ","skip":false}')).toMatchObject({ skip: true })
     expect(parseModelReply('')).toBeNull()
     expect(parseModelReply('Sorry, I cannot')).toBeNull()
+  })
+
+  it('reads the kind of question, and treats an unknown kind as other', () => {
+    expect(parseModelReply('{"reply":"RM38 哦","skip":false,"category":"PRICE"}')).toMatchObject({ category: 'price' })
+    expect(parseModelReply('{"reply":"Hi","skip":false,"category":"weather"}')).toMatchObject({ category: 'other' })
+    expect(parseModelReply('{"reply":"Hi","skip":false}')).toMatchObject({ category: 'other' })
+  })
+
+  it('finds the parent message a draft answers only when it is the last one', () => {
+    expect(
+      lastParentText([
+        { from: 'team', text: 'Hi' },
+        { from: 'parent', text: '多少钱？' },
+      ]),
+    ).toBe('多少钱？')
+    expect(
+      lastParentText([
+        { from: 'parent', text: '多少钱？' },
+        { from: 'team', text: 'RM38' },
+      ]),
+    ).toBeNull()
+    expect(lastParentText([])).toBeNull()
+  })
+
+  it('asks the model for the kind of question', () => {
+    expect(buildSystemPrompt('')).toContain('"category"')
   })
 })

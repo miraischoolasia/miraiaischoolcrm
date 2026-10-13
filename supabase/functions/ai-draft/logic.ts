@@ -15,7 +15,33 @@ export type DraftInput = {
   regenerate: boolean
 }
 
-export type DraftResult = { reply: string; skip: boolean; staffNote: string }
+// What kind of question the parent asked. The CRM shows, per kind, how often the team used the draft
+// as written, which is what decides where a draft may one day be sent without a person.
+export const DRAFT_CATEGORIES = [
+  'info',
+  'schedule',
+  'price',
+  'enrol',
+  'followup',
+  'complaint',
+  'refund',
+  'health',
+  'other',
+] as const
+export type DraftCategory = (typeof DRAFT_CATEGORIES)[number]
+
+export type DraftResult = { reply: string; skip: boolean; staffNote: string; category: DraftCategory }
+
+export function normalizeCategory(value: unknown): DraftCategory {
+  const text = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  return (DRAFT_CATEGORIES as readonly string[]).includes(text) ? (text as DraftCategory) : 'other'
+}
+
+// The parent's last message when it is the last one of the chat (what the draft answers), else null.
+export function lastParentText(messages: DraftMessage[]): string | null {
+  const last = messages[messages.length - 1]
+  return last && last.from === 'parent' ? last.text : null
+}
 
 export const MAX_MESSAGES = 30
 export const MAX_TEXT = 1500
@@ -113,7 +139,17 @@ export function buildSystemPrompt(knowledge: string): string {
 4. 家长只是说谢谢、OK、👍 之类、不需要回复时，skip 设为 true，reply 留空。
 5. 聊天里最后一条是同事发的、家长还没回复时，skip 设为 true，reply 留空。
 6. 不要写「体验课」。不要编截止日期或「只剩几个位置」。价钱按知识库的流程，家长没问就不主动讲。
-7. 只输出一个 JSON 对象，格式：{"reply": "草稿文字", "skip": false, "staff_note": "给同事的一句提醒，没有就留空"}。不要输出其他东西。
+7. category 是家长最后一条消息的类型，只能是下面其中一个：
+   - info：问学校、课程内容、怎么上课
+   - schedule：问或讨论上课时间、哪一天
+   - price：问价钱、费用、优惠
+   - enrol：要报名、付款、表格、收据
+   - followup：寒暄、回答同事的问题（年龄、有没有用过电脑）、其他流程中的一般回复
+   - complaint：不满、投诉、抱怨
+   - refund：退款、取消、换课
+   - health：孩子的健康、特殊需要、安全
+   - other：不属于以上任何一种
+8. 只输出一个 JSON 对象，格式：{"reply": "草稿文字", "skip": false, "category": "info", "staff_note": "给同事的一句提醒，没有就留空"}。不要输出其他东西。
 
 【知识库】
 ${knowledge.trim() === '' ? EMPTY_KNOWLEDGE : knowledge}`
@@ -165,7 +201,12 @@ export function parseModelReply(raw: string): DraftResult | null {
         const reply = typeof parsed.reply === 'string' ? parsed.reply.trim() : ''
         const skip = parsed.skip === true || reply === ''
         const note = typeof parsed.staff_note === 'string' ? parsed.staff_note.trim() : ''
-        return { reply: skip ? '' : reply.slice(0, 4000), skip, staffNote: note.slice(0, 300) }
+        return {
+          reply: skip ? '' : reply.slice(0, 4000),
+          skip,
+          staffNote: note.slice(0, 300),
+          category: normalizeCategory(parsed.category),
+        }
       }
     } catch {
       // Try the next reading.

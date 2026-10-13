@@ -19,6 +19,20 @@ const hook = vi.hoisted(() => ({
 }))
 vi.mock('../../hooks/useAiKnowledge', () => ({ useAiKnowledge: () => hook.state }))
 
+const learning = vi.hoisted(() => ({
+  state: {
+    isLoading: false,
+    error: null as string | null,
+    reload: vi.fn(),
+    gaps: [] as unknown[],
+    examples: [] as unknown[],
+    report: { drafts: 0, answered: 0, asIs: 0, edited: 0, replaced: 0, byCategory: [] as unknown[] },
+    closeGap: vi.fn(),
+    closeExample: vi.fn(),
+  },
+}))
+vi.mock('../../hooks/useAiLearning', () => ({ useAiLearning: () => learning.state }))
+
 const note = (change: Partial<KnowledgeNote> = {}): KnowledgeNote => ({
   id: 1,
   title: '学校',
@@ -37,6 +51,13 @@ beforeEach(() => {
   hook.state.remove.mockReset().mockResolvedValue(null)
   hook.state.move.mockReset().mockResolvedValue(null)
   hook.state.loadVersions.mockReset().mockResolvedValue({ versions: [], error: null })
+  learning.state.isLoading = false
+  learning.state.error = null
+  learning.state.gaps = []
+  learning.state.examples = []
+  learning.state.report = { drafts: 0, answered: 0, asIs: 0, edited: 0, replaced: 0, byCategory: [] }
+  learning.state.closeGap.mockReset().mockResolvedValue(null)
+  learning.state.closeExample.mockReset().mockResolvedValue(null)
 })
 
 describe('the list of notes', () => {
@@ -181,5 +202,97 @@ describe('one note', () => {
     expect(screen.getByLabelText(/Text the AI reads/)).toHaveAttribute('readonly')
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Older versions/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('learning from the chats', () => {
+  const gap = { note: '缺少付款方式', count: 3, lastAt: '2026-10-13T03:00:00Z', example: '怎么付款？' }
+  const example = {
+    id: 11,
+    createdAt: '2026-10-13T02:00:00Z',
+    category: 'info',
+    parentText: '你们有什么课？',
+    draft: '妈咪，孩子几岁呢？',
+    sentText: '我们有 HOA 和 Holiday Camp 哦😊',
+    outcome: 'replaced',
+  }
+
+  it('shows the tabs to an admin with how many things wait, and nothing to someone else', () => {
+    learning.state.gaps = [gap]
+    learning.state.examples = [example]
+    const { unmount } = render(<AiKnowledgeSection canEdit />)
+    expect(screen.getByRole('tab', { name: 'To fill in (1)' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Replies to learn from (1)' })).toBeInTheDocument()
+    unmount()
+    render(<AiKnowledgeSection canEdit={false} />)
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+  })
+
+  it('opens a new note from a reminder, and marks the reminder done once the note is saved', async () => {
+    learning.state.gaps = [gap]
+    hook.state.save.mockResolvedValue({ error: null, note: note({ id: 3, title: 'Payment', body: 'QR' }) })
+    const user = userEvent.setup()
+    render(<AiKnowledgeSection canEdit />)
+    await user.click(screen.getByRole('tab', { name: 'To fill in (1)' }))
+    expect(screen.getByText('缺少付款方式')).toBeInTheDocument()
+    expect(screen.getByText(/Came up 3 times/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Write the answer' }))
+    expect(screen.getByText(/The AI asked for this: 缺少付款方式/)).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Title'), 'Payment')
+    await user.type(screen.getByLabelText(/Text the AI reads/), 'QR')
+    await user.click(screen.getByRole('button', { name: 'Add note' }))
+
+    await waitFor(() => expect(learning.state.closeGap).toHaveBeenCalledWith('缺少付款方式'))
+    expect(await screen.findByText('Saved. The AI reads it from the next draft.')).toBeInTheDocument()
+  })
+
+  it('shows the AI draft beside what the team sent and copies it into a note for review, not straight into the AI', async () => {
+    learning.state.examples = [example]
+    const user = userEvent.setup()
+    render(<AiKnowledgeSection canEdit />)
+    await user.click(screen.getByRole('tab', { name: 'Replies to learn from (1)' }))
+    expect(screen.getByText('妈咪，孩子几岁呢？')).toBeInTheDocument()
+    expect(screen.getByText('我们有 HOA 和 Holiday Camp 哦😊')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Teach the AI this' }))
+    const box = screen.getByLabelText(/Text the AI reads/) as HTMLTextAreaElement
+    expect(box.value).toContain('例子（家长问 → 我们回）：')
+    expect(box.value).toContain('家长：你们有什么课？')
+    expect(box.value).toContain('我们：我们有 HOA 和 Holiday Camp 哦😊')
+    // Nothing is saved until the admin presses Save.
+    expect(hook.state.save).not.toHaveBeenCalled()
+    expect(learning.state.closeExample).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+  })
+
+  it('puts an example away without teaching it', async () => {
+    learning.state.examples = [example]
+    const user = userEvent.setup()
+    render(<AiKnowledgeSection canEdit />)
+    await user.click(screen.getByRole('tab', { name: 'Replies to learn from (1)' }))
+    await user.click(screen.getByRole('button', { name: 'Skip' }))
+    expect(learning.state.closeExample).toHaveBeenCalledWith(11)
+  })
+
+  it('shows how the drafts are doing and which kinds always need a person', async () => {
+    learning.state.report = {
+      drafts: 40,
+      answered: 34,
+      asIs: 30,
+      edited: 3,
+      replaced: 1,
+      byCategory: [
+        { category: 'info', total: 31, asIs: 30, edited: 1, replaced: 0 },
+        { category: 'price', total: 3, asIs: 0, edited: 2, replaced: 1 },
+      ],
+    }
+    const user = userEvent.setup()
+    render(<AiKnowledgeSection canEdit />)
+    await user.click(screen.getByRole('tab', { name: 'Report' }))
+    expect(screen.getByText('88%')).toBeInTheDocument()
+    expect(screen.getByText('Could be sent without a person')).toBeInTheDocument()
+    expect(screen.getByText('Always a person')).toBeInTheDocument()
+    expect(screen.getByText(/Nothing is sent without a person today/)).toBeInTheDocument()
   })
 })

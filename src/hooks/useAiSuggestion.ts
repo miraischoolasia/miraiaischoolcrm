@@ -21,6 +21,9 @@ type Entry =
 // second person opening it, does not ask again.
 const entries = new Map<string, Entry>()
 const MAX_ENTRIES = 200
+// The id of the draft made for each parent message, kept after the suggestion is used or put away, so
+// that what the team then sends can be recorded against it.
+const draftIds = new Map<string, number>()
 
 function remember(key: string, entry: Entry) {
   entries.delete(key)
@@ -29,6 +32,7 @@ function remember(key: string, entry: Entry) {
     const oldest = entries.keys().next().value
     if (oldest !== undefined) {
       entries.delete(oldest)
+      draftIds.delete(oldest)
     }
   }
 }
@@ -83,6 +87,9 @@ export function useAiSuggestion({
       remember(key, { status: 'loading' })
       refresh()
       const outcome = await request(body)
+      if (outcome.kind === 'draft' && outcome.suggestion.id !== null) {
+        draftIds.set(key, outcome.suggestion.id)
+      }
       remember(key, entryOf(outcome))
       refresh()
     },
@@ -121,6 +128,8 @@ export function useAiSuggestion({
 
   return {
     available: enabled && key !== null,
+    // The draft made for the message the next reply will answer, even once it has been used or put away.
+    draftId: key === null ? null : (draftIds.get(key) ?? null),
     suggestion: entry?.status === 'ready' ? entry.suggestion : null,
     isLoading: entry?.status === 'loading',
     error: entry?.status === 'error' ? entry.message : null,
@@ -133,4 +142,5 @@ export function useAiSuggestion({
 // Only for tests: forget what was asked.
 export function resetAiSuggestions() {
   entries.clear()
+  draftIds.clear()
 }

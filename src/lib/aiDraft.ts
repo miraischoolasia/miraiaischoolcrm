@@ -178,6 +178,20 @@ export async function requestAiDraft(body: AiDraftBody): Promise<AiDraftOutcome>
   }
 }
 
+// Records what the team really sent for the parent message a suggestion was made for (used as it was,
+// changed, or replaced by something else), so the AI's drafts can be compared with it. Never blocks sending.
+export async function recordAiDraftSent(id: number, text: string): Promise<void> {
+  const cleaned = scrubText(text.trim()).slice(0, 4000)
+  if (!supabase || cleaned === '') {
+    return
+  }
+  try {
+    await supabase.rpc('record_ai_draft_sent', { p_id: id, p_text: cleaned })
+  } catch {
+    // Only a statistic; the message has already gone out.
+  }
+}
+
 // Records that someone used a suggestion, so how often it helps can be measured. Never blocks writing.
 export async function markAiDraftAccepted(id: number): Promise<void> {
   if (!supabase) {

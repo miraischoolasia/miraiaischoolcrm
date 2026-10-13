@@ -16,6 +16,11 @@ type NoteEditorProps = {
   onDeleted: () => void
   onBack: () => void
   onDirtyChange: (dirty: boolean) => void
+  // Text put into the box from a reminder or an example. It is not saved until the admin presses Save,
+  // so the note counts as changed from the start.
+  prefill?: { title?: string; body?: string }
+  // What the text came from, shown above the box.
+  banner?: string
 }
 
 export function formatNoteTime(iso: string) {
@@ -42,13 +47,20 @@ export function NoteEditor({
   onDeleted,
   onBack,
   onDirtyChange,
+  prefill,
+  banner,
 }: NoteEditorProps) {
-  const [draft, setDraft] = useState<NoteDraft>(() => ({
+  const original: NoteDraft = {
     title: note?.title ?? '',
     body: note?.body ?? '',
     enabled: note?.enabled ?? true,
+  }
+  const [draft, setDraft] = useState<NoteDraft>(() => ({
+    ...original,
+    title: prefill?.title ?? original.title,
+    body: prefill?.body ?? original.body,
   }))
-  const [baseline, setBaseline] = useState(() => JSON.stringify(draft))
+  const [baseline, setBaseline] = useState(() => JSON.stringify(original))
   const [notice, setNotice] = useState<{ text: string; isError: boolean } | null>(null)
   const [isWorking, setIsWorking] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -148,6 +160,7 @@ export function NoteEditor({
       {readOnly && (
         <p className="rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-700">Only an admin can change the notes.</p>
       )}
+      {banner && <p className="whitespace-pre-wrap rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">{banner}</p>}
 
       <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
         <label className="block">

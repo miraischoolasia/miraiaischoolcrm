@@ -12,7 +12,14 @@
 //   AI_DAILY_CAP     optional, most drafts per day for the whole school, default 300
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { KNOWLEDGE } from './knowledge.ts'
-import { buildSystemPrompt, buildUserPrompt, composeKnowledge, parseModelReply, validateInput } from './logic.ts'
+import {
+  buildSystemPrompt,
+  buildUserPrompt,
+  composeKnowledge,
+  lastParentText,
+  parseModelReply,
+  validateInput,
+} from './logic.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -109,7 +116,7 @@ Deno.serve(async (req) => {
   if (!input.regenerate) {
     const { data: existing } = await admin
       .from('ai_drafts')
-      .select('id, draft, skipped, staff_note')
+      .select('id, draft, skipped, staff_note, category')
       .eq('chat_id', input.chatId)
       .eq('last_message_id', input.lastMessageId)
       .order('id', { ascending: false })
@@ -123,6 +130,7 @@ Deno.serve(async (req) => {
           reply: existing.draft ?? '',
           skip: existing.skipped === true,
           staffNote: existing.staff_note ?? '',
+          category: existing.category ?? 'other',
           cached: true,
         },
         200,
@@ -189,6 +197,8 @@ Deno.serve(async (req) => {
       draft: result.skip ? null : result.reply,
       skipped: result.skip,
       staff_note: result.staffNote || null,
+      parent_text: lastParentText(input.messages),
+      category: result.category,
       model,
       latency_ms: Date.now() - startedAt,
     })
@@ -205,6 +215,7 @@ Deno.serve(async (req) => {
       reply: result.reply,
       skip: result.skip,
       staffNote: result.staffNote,
+      category: result.category,
       cached: false,
     },
     200,

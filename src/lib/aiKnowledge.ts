@@ -68,6 +68,12 @@ export function aiKnowledgeErrorMessage(problem: unknown, fallback: string) {
   ) {
     return 'The AI knowledge notes are not set up in the database yet.'
   }
+  if (
+    /ai_drafts|resolve_ai_gap|review_ai_example|record_ai_draft_sent/.test(text) &&
+    /(does not exist|schema cache|Could not find)/.test(text)
+  ) {
+    return 'The AI learning is not set up in the database yet.'
+  }
   if (/row-level security|permission denied|Only an admin/i.test(text)) {
     return 'Only an admin can change the AI knowledge.'
   }

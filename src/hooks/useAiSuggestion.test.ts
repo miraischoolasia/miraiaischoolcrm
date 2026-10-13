@@ -122,4 +122,21 @@ describe('useAiSuggestion', () => {
     expect(accepted).toHaveBeenCalledWith(5)
     expect(second.hook.result.current.suggestion).toBeNull()
   })
+
+  it('keeps the draft id after the suggestion is used, so what is sent can be recorded against it', async () => {
+    const { hook } = setup({ conversationId: 10 })
+    await waitFor(() => expect(hook.result.current.draftId).toBe(5))
+    act(() => hook.result.current.markUsed())
+    expect(hook.result.current.suggestion).toBeNull()
+    expect(hook.result.current.draftId).toBe(5)
+  })
+
+  it('has no draft id when nothing was suggested or the team spoke last', async () => {
+    const skipped = setup({ conversationId: 11, outcome: { kind: 'skip' } })
+    await act(async () => {})
+    expect(skipped.hook.result.current.draftId).toBeNull()
+    const answered = setup({ messages: [message({ message_type: 1, content: 'Hi' })], conversationId: 12 })
+    await act(async () => {})
+    expect(answered.hook.result.current.draftId).toBeNull()
+  })
 })

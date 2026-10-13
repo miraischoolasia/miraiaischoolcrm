@@ -23,7 +23,7 @@ import { NO_EVENTS, waIdOf, type MessageEvents, type SpecialMessage } from '../.
 import { isEditCopy, withoutEditHeading } from '../../lib/editCopy'
 import { isCheckingReaction } from '../../lib/reactionPreview'
 import { useAiSuggestion } from '../../hooks/useAiSuggestion'
-import type { AiDraftContext } from '../../lib/aiDraft'
+import { recordAiDraftSent, type AiDraftContext } from '../../lib/aiDraft'
 
 type ChatPanelProps = {
   conversation: ChatwootConversation
@@ -151,6 +151,24 @@ export function ChatPanel({
     context: aiContext ?? { children: [], teamName: null },
     hasDraft: draft != null,
   })
+  // What goes out is recorded against the AI draft made for the parent message it answers, so the
+  // draft can later be compared with what the team really wrote. The id is read before sending,
+  // because the parent message stops needing a reply the moment ours is on its way.
+  async function sendAndRecord(input: SendInput) {
+    const draftId = ai.draftId
+    const sent = await onSend(input)
+    if (sent && draftId !== null && !input.isPrivate) {
+      const written = input.sequence
+        .filter((part): part is string => typeof part === 'string')
+        .map((part) => part.trim())
+        .filter((part) => part !== '')
+        .join('\n\n')
+      if (written !== '') {
+        void recordAiDraftSent(draftId, written)
+      }
+    }
+    return sent
+  }
   const owner = handledBy ?? getOwner(conversation)
   const done = conversation.status === 'resolved'
   // The message the next one will answer (quote).
@@ -433,7 +451,7 @@ export function ChatPanel({
       )}
       <Composer
         key={conversation.id}
-        onSend={onSend}
+        onSend={sendAndRecord}
         quickReplies={quickReplies}
         variables={quickReplyValues}
         onManageQuickReplies={onManageQuickReplies}

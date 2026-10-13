@@ -654,6 +654,31 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_drafts: {
+        Row: {
+          id: number
+          created_at: string
+          requested_by: string | null
+          chat_id: number
+          last_message_id: number
+          draft: string | null
+          skipped: boolean
+          staff_note: string | null
+          model: string | null
+          latency_ms: number | null
+          accepted_at: string | null
+          parent_text: string | null
+          category: string | null
+          sent_text: string | null
+          sent_at: string | null
+          sent_by: string | null
+          gap_resolved_at: string | null
+          reviewed_at: string | null
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       ai_knowledge_notes: {
         Row: {
           id: number
@@ -1447,6 +1472,25 @@ export type Database = {
         Returns: undefined
       }
       mark_ai_draft_accepted: {
+        Args: {
+          p_id: number
+        }
+        Returns: undefined
+      }
+      record_ai_draft_sent: {
+        Args: {
+          p_id: number
+          p_text: string
+        }
+        Returns: undefined
+      }
+      resolve_ai_gap: {
+        Args: {
+          p_note: string
+        }
+        Returns: number
+      }
+      review_ai_example: {
         Args: {
           p_id: number
         }
