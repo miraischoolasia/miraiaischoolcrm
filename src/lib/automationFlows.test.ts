@@ -213,9 +213,9 @@ describe('checking a flow before it is saved', () => {
     expect(validateDraft(draft({ graph: { ...split, nodes: [] } }))).toBe('Add at least one message block.')
     expect(
       validateDraft(
-        draft({ graph: { ...split, nodes: [{ id: 'm1', type: 'message', x: 0, y: 0, mins: 4, text: 'x' }] } }),
+        draft({ graph: { ...split, nodes: [{ id: 'm1', type: 'message', x: 0, y: 0, mins: 2, text: 'x' }] } }),
       ),
-    ).toBe('A message must be set at least 5 minutes before.')
+    ).toBe('A message must be set at least 3 minutes before.')
     expect(
       validateDraft(
         draft({

@@ -74,7 +74,7 @@ export type FlowDraft = {
 }
 
 export const TRIGGER_ID = 'trigger'
-export const MIN_OFFSET_MINUTES = 5
+export const MIN_OFFSET_MINUTES = 3
 export const MAX_OFFSET_MINUTES = 7 * 24 * 60
 export const MAX_NODES = 40
 
@@ -380,7 +380,7 @@ export function validateDraft(draft: FlowDraft): string | null {
   for (const node of draft.graph.nodes) {
     if (isMessage(node)) {
       if (!Number.isInteger(node.mins) || node.mins < MIN_OFFSET_MINUTES) {
-        return 'A message must be set at least 5 minutes before.'
+        return `A message must be set at least ${MIN_OFFSET_MINUTES} minutes before.`
       }
       if (node.mins > MAX_OFFSET_MINUTES) {
         return 'A message can be set up to 7 days before.'

@@ -161,6 +161,44 @@ describe('AutomationsSection', () => {
     expect(saved.graph.nodes[0]).toMatchObject({ id: 'm1', mins: 120 })
   })
 
+  it('lets the unit be changed freely and clearing the number leaves no 0 behind', async () => {
+    setup()
+    await openFirst()
+    await userEvent.click(screen.getByRole('button', { name: 'canvas block m1' }))
+    const amount = screen.getByLabelText('How long before')
+    const unit = screen.getByLabelText('Unit')
+
+    await userEvent.selectOptions(unit, 'minutes')
+    await userEvent.clear(amount)
+    expect(amount).toHaveValue(null)
+    await userEvent.type(amount, '3')
+    expect(amount).toHaveValue(3)
+
+    // Hours and days can still be picked afterwards.
+    await userEvent.selectOptions(unit, 'hours')
+    expect(unit).toHaveValue('hours')
+    await userEvent.selectOptions(unit, 'days')
+    expect(unit).toHaveValue('days')
+    await userEvent.selectOptions(unit, 'minutes')
+    expect(unit).toHaveValue('minutes')
+    expect(amount).toHaveValue(3)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+    await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+    expect(hook.state.save.mock.calls[0][0].graph.nodes[0]).toMatchObject({ id: 'm1', mins: 3 })
+  })
+
+  it('puts an emptied number back to what the block has when the box is left', async () => {
+    setup()
+    await openFirst()
+    await userEvent.click(screen.getByRole('button', { name: 'canvas block m1' }))
+    const amount = screen.getByLabelText('How long before')
+    await userEvent.clear(amount)
+    await userEvent.tab()
+    expect(amount).toHaveValue(1)
+    expect(screen.getByLabelText('Unit')).toHaveValue('hours')
+  })
+
   it('switches a flow on from the list and says what happens next', async () => {
     setup()
     fireEvent.click(screen.getByRole('switch', { name: 'Class reminder on or off' }))

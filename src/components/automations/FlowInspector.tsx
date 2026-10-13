@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { Trash } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import {
@@ -27,6 +27,70 @@ type FlowInspectorProps = {
 const fieldClass =
   'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#fc0c97] disabled:bg-slate-50 disabled:text-slate-500'
 
+// "Send it [3] [minutes] before it starts". The number and the unit are kept as typed, so clearing the
+// box does not turn into a 0 and picking a unit never snaps back to another one; the total in minutes
+// goes to the block only while the number is a valid one.
+function OffsetField({
+  mins,
+  readOnly,
+  onChange,
+}: {
+  mins: number
+  readOnly: boolean
+  onChange: (mins: number) => void
+}) {
+  const initial = splitOffset(mins)
+  const [unit, setUnit] = useState<OffsetUnit>(initial.unit)
+  const [text, setText] = useState(String(initial.value))
+
+  function commit(value: string, nextUnit: OffsetUnit) {
+    const amount = Number(value)
+    if (value.trim() !== '' && Number.isFinite(amount) && amount > 0) {
+      onChange(toOffsetMinutes(amount, nextUnit))
+    }
+  }
+
+  return (
+    <>
+      <input
+        type="number"
+        aria-label="How long before"
+        min={1}
+        step="any"
+        value={text}
+        disabled={readOnly}
+        onChange={(event) => {
+          setText(event.target.value)
+          commit(event.target.value, unit)
+        }}
+        onBlur={() => {
+          // An empty or unusable box goes back to the value the block really has.
+          const amount = Number(text)
+          if (text.trim() === '' || !Number.isFinite(amount) || amount <= 0) {
+            setText(String(Math.round((mins / toOffsetMinutes(1, unit)) * 100) / 100))
+          }
+        }}
+        className={cn(fieldClass, 'w-20')}
+      />
+      <select
+        aria-label="Unit"
+        value={unit}
+        disabled={readOnly}
+        onChange={(event) => {
+          const next = event.target.value as OffsetUnit
+          setUnit(next)
+          commit(text, next)
+        }}
+        className={fieldClass}
+      >
+        <option value="minutes">minutes</option>
+        <option value="hours">hours</option>
+        <option value="days">days</option>
+      </select>
+    </>
+  )
+}
+
 // The settings of the block that is selected on the canvas.
 export function FlowInspector({ node, trigger, classrooms, readOnly, onChange, onDelete }: FlowInspectorProps) {
   const messageRef = useRef<HTMLTextAreaElement>(null)
@@ -54,33 +118,13 @@ export function FlowInspector({ node, trigger, classrooms, readOnly, onChange, o
 
   let body
   if (isMessage(node)) {
-    const offset = splitOffset(node.mins)
     const unknown = unknownPlaceholders(node.text)
     body = (
       <>
         <h3 className="text-sm font-semibold text-slate-900">Message</h3>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
           <span>Send it</span>
-          <input
-            type="number"
-            aria-label="How long before"
-            min={1}
-            value={offset.value}
-            disabled={readOnly}
-            onChange={(event) => onChange({ mins: toOffsetMinutes(Number(event.target.value) || 0, offset.unit) })}
-            className={cn(fieldClass, 'w-20')}
-          />
-          <select
-            aria-label="Unit"
-            value={offset.unit}
-            disabled={readOnly}
-            onChange={(event) => onChange({ mins: toOffsetMinutes(offset.value, event.target.value as OffsetUnit) })}
-            className={fieldClass}
-          >
-            <option value="minutes">minutes</option>
-            <option value="hours">hours</option>
-            <option value="days">days</option>
-          </select>
+          <OffsetField key={node.id} mins={node.mins} readOnly={readOnly} onChange={(mins) => onChange({ mins })} />
           <span>before it starts</span>
         </div>
         <textarea

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Trash } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import {
@@ -59,6 +59,14 @@ export function FlowEditor({
   const [notice, setNotice] = useState<{ text: string; isError: boolean } | null>(null)
   const [isWorking, setIsWorking] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const panelRef = useRef<HTMLElement>(null)
+
+  // On a phone the panel sits under the canvas; bring it into view when a card is picked.
+  useEffect(() => {
+    if (selectedId !== null && window.matchMedia?.('(max-width: 767px)').matches) {
+      panelRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [selectedId])
 
   const dirty = JSON.stringify(draft) !== baseline
   useEffect(() => {
@@ -140,7 +148,7 @@ export function FlowEditor({
   }
 
   return (
-    <div className="flex h-[calc(100vh-170px)] min-h-[620px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white md:h-[calc(100vh-170px)] md:min-h-[620px]">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-slate-200 px-4 py-2.5">
         <button
           type="button"
@@ -267,9 +275,12 @@ export function FlowEditor({
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      <div className="flex flex-col md:min-h-0 md:flex-1 md:flex-row">
         {panelOpen && selectedId !== null && (
-          <aside className="order-2 max-h-[55%] w-full shrink-0 overflow-y-auto border-t border-slate-200 p-4 md:order-1 md:max-h-none md:w-[360px] md:border-r md:border-t-0">
+          <aside
+            ref={panelRef}
+            className="order-2 w-full shrink-0 border-t border-slate-200 p-4 md:order-1 md:w-[360px] md:overflow-y-auto md:border-r md:border-t-0"
+          >
             <FlowWorkbench
               draft={draft}
               selectedId={selectedId}
@@ -289,7 +300,7 @@ export function FlowEditor({
             />
           </aside>
         )}
-        <div className="order-1 flex min-h-[340px] min-w-0 flex-1 flex-col md:order-2">
+        <div className="order-1 flex min-w-0 flex-col md:order-2 md:flex-1">
           <FlowTester
             classrooms={classrooms}
             testAge={testAge}
@@ -298,7 +309,7 @@ export function FlowEditor({
             onTestAge={setTestAge}
             onTestClass={setTestClass}
           />
-          <div className="min-h-0 flex-1">
+          <div className="h-[420px] md:h-auto md:min-h-0 md:flex-1">
             <FlowCanvas
               graph={draft.graph}
               triggerLabel={triggerInfo(draft.trigger).label}
