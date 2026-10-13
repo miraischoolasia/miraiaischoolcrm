@@ -235,6 +235,10 @@ export function DetailsPanel({
     })
   }
 
+  // WhatsApp hid the number, so the name the chat shows (the username) is all there is to call the parent.
+  const chatName = (sender.name ?? '').replace(/\s*\+\d{10,12}$/, '').trim()
+  const nameWithoutNumber = !phone && role !== 'student' && chatName !== '' && /[^\d\s+()-]/.test(chatName) ? chatName : ''
+
   const first = useMemo(() => getFirstMessage(messages), [messages])
   const guess = useMemo(() => guessSourceAndTags(first?.text ?? '', crm.leadOptions, sourceRules), [first, crm.leadOptions, sourceRules])
   const found = useMemo(() => searchLeads(crm.leads, query), [crm.leads, query])
@@ -393,11 +397,11 @@ export function DetailsPanel({
             key={conversation.id}
             crm={crm}
             lead={lead}
-            initialName=""
+            initialName={nameWithoutNumber}
+            fallbackName={nameWithoutNumber}
             initialPhone={phone ? `+${phone}` : ''}
             guess={guess}
             role={role}
-            showAddChild={!family}
             onCreated={async (leadId) => {
               await onLinkLead(leadId)
             }}

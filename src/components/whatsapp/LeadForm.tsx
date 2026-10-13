@@ -24,12 +24,12 @@ type LeadFormProps = {
   lead: Lead | null
   // Name and number as the chat knows them, for a new lead. The number is empty when WhatsApp hides it.
   initialName: string
+  // Written as the parent's name when the lead has none (a chat whose number WhatsApp hides).
+  fallbackName?: string
   initialPhone: string
   guess: SourceGuess
   // Who the team said is on the chat. A student writing themself gets the student's own details first.
   role?: ChatRole | null
-  // False when the family card above already has the "Add a child" button.
-  showAddChild?: boolean
   // Called once a new lead is saved, so the chat can be tied to it.
   onCreated: (leadId: number) => Promise<void>
 }
@@ -76,10 +76,10 @@ export function LeadForm({
   crm,
   lead,
   initialName,
+  fallbackName = '',
   initialPhone,
   guess,
   role = null,
-  showAddChild = true,
   onCreated,
 }: LeadFormProps) {
   const isStudent = role === 'student'
@@ -144,6 +144,16 @@ export function LeadForm({
     // Only a newer version of the lead should reset the form.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updatedAt])
+
+  // A lead with no parent name takes the name the chat shows, and keeps it.
+  const leadHasName = lead ? lead.fullName !== null && lead.fullName.trim() !== '' : true
+  useEffect(() => {
+    if (lead && !leadHasName && fallbackName && crm.canEditLeads && !isStudent && !dirtyRef.current) {
+      change({ fullName: fallbackName })
+    }
+    // Once per lead and name; change() only writes into the form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead?.id, leadHasName, fallbackName])
 
   // A late first message or rule can change the guess; use it while nothing was typed.
   const guessKey = `${guess.source?.id ?? ''}-${guess.tags.map((tag) => tag.id).join(',')}`
@@ -431,7 +441,7 @@ export function LeadForm({
               )}
             </div>
           ))}
-          {showAddChild && canEdit && form.children.length < MAX_LEAD_CHILDREN && (
+          {canEdit && form.children.length < MAX_LEAD_CHILDREN && (
             <button
               type="button"
               onClick={addChildRow}

@@ -740,8 +740,8 @@ describe('DetailsPanel', () => {
       // The pickers are inside the folded box, not loose in the panel.
       expect(screen.getByText('Who is on this chat?').closest('details')).not.toBeNull()
       expect(screen.queryByText('This family has another chat')).not.toBeInTheDocument()
-      // The card adds children; the lead form below does not repeat the button.
-      expect(screen.getAllByRole('button', { name: /Add a child/ })).toHaveLength(1)
+      // The card adds a named child; the lead form below keeps its own button for a child known only by age.
+      expect(screen.getAllByRole('button', { name: /Add a child/ })).toHaveLength(2)
     })
 
     it('keeps the boxes in the open when the chat is not placed yet', () => {
@@ -920,5 +920,68 @@ describe('DetailsPanel', () => {
       expect(screen.getByLabelText(/Parent name/)).toHaveValue('Mei Ling')
       expect(screen.getByLabelText(/Parent's phone number/)).toHaveValue('0198887777')
     })
+  })
+})
+
+describe('a chat whose number WhatsApp hides', () => {
+  const hidden = (name: string, attributes: ChatwootConversation['custom_attributes'] = {}): ChatwootConversation => ({
+    ...conversation(attributes),
+    meta: { sender: { id: 3, name, phone_number: null, identifier: null } },
+  })
+
+  function renderHidden(crm: WhatsAppCrm, chat: ChatwootConversation) {
+    render(
+      <DetailsPanel
+        conversation={chat}
+        messages={[firstMessage]}
+        hasOlder={false}
+        crm={crm}
+        sourceRules={[]}
+        onLoadOlder={vi.fn()}
+        onLinkLead={vi.fn().mockResolvedValue(true)}
+        onLinkStudents={vi.fn().mockResolvedValue(true)}
+      />,
+    )
+  }
+
+  it('writes the name the chat shows as the parent name of a new lead', () => {
+    renderHidden(makeCrm(), hidden('jasmineooi'))
+    expect(screen.getByLabelText('Parent name')).toHaveValue('jasmineooi')
+  })
+
+  it('leaves the parent name empty when the chat has a real number, or only digits for a name', () => {
+    renderHidden(makeCrm(), conversation())
+    expect(screen.getByLabelText('Parent name')).toHaveValue('')
+  })
+
+  it('does not copy a name that is only digits', () => {
+    renderHidden(makeCrm(), hidden('+60 12 345 6789'))
+    expect(screen.getByLabelText('Parent name')).toHaveValue('')
+  })
+
+  it('fills and saves the name of a lead that has none', async () => {
+    const crm = makeCrm({ leads: [{ ...lead, fullName: null, phone: null } as unknown as Lead] })
+    renderHidden(crm, hidden('jasmineooi', { crm_lead_id: 11 }))
+
+    expect(screen.getByLabelText('Parent name')).toHaveValue('jasmineooi')
+    await waitFor(() =>
+      expect(crm.onUpdateLead).toHaveBeenCalledWith(11, expect.objectContaining({ fullName: 'jasmineooi' })),
+    )
+  })
+
+  it('keeps the name a lead already has', async () => {
+    const crm = makeCrm({ leads: [{ ...lead, fullName: 'Mrs Ooi', phone: null } as Lead] })
+    renderHidden(crm, hidden('jasmineooi', { crm_lead_id: 11 }))
+
+    expect(screen.getByLabelText('Parent name')).toHaveValue('Mrs Ooi')
+    expect(crm.onUpdateLead).not.toHaveBeenCalled()
+  })
+
+  it('lets a second child be added to a lead that has one', async () => {
+    const crm = makeCrm({ leads: [{ ...lead, fullName: 'Mrs Ooi', phone: null } as Lead] })
+    renderHidden(crm, hidden('jasmineooi', { crm_lead_id: 11 }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add a child' }))
+    expect(screen.getByLabelText('Child 2 age')).toBeInTheDocument()
   })
 })
