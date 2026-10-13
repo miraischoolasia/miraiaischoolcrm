@@ -6029,7 +6029,7 @@ function App() {
             )}
 
             {visibleSection === 'automations' && (
-              <AutomationsSection classrooms={classrooms} canEdit={isAdmin} />
+              <AutomationsSection classrooms={classrooms} canEdit={isAdmin} leadOptions={leadOptions} />
             )}
 
             {visibleSection === 'ai-knowledge' && <AiKnowledgeSection canEdit={isAdmin} />}

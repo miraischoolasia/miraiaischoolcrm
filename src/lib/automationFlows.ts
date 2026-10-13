@@ -18,6 +18,10 @@ export type FlowTrigger =
   | 'form_submitted'
   | 'parent_no_reply'
   | 'parent_waiting'
+  | 'trial_booked'
+  | 'package_start'
+  | 'lead_idle'
+  | 'task_due'
 
 export type TriggerInfo = {
   key: FlowTrigger
@@ -93,6 +97,33 @@ export const TRIGGERS: TriggerInfo[] = [
     classroomCategory: null,
     afterOnly: true,
   },
+  {
+    key: 'trial_booked',
+    label: 'A trial class is booked',
+    phrase: 'a trial class is booked',
+    classroomCategory: null,
+    afterOnly: true,
+  },
+  {
+    key: 'package_start',
+    label: 'A package is bought or renewed',
+    phrase: 'a package is bought or renewed',
+    classroomCategory: null,
+    afterOnly: true,
+  },
+  {
+    key: 'lead_idle',
+    label: 'A lead has not been touched',
+    phrase: 'a lead has not been touched',
+    classroomCategory: null,
+    afterOnly: true,
+  },
+  {
+    key: 'task_due',
+    label: 'A lead task is due',
+    phrase: 'a lead task is due (the task is {class})',
+    classroomCategory: null,
+  },
 ]
 
 export function triggerInfo(key: FlowTrigger): TriggerInfo {
@@ -117,16 +148,36 @@ export type ClassroomCondition = Placed & { type: 'condition'; kind: 'classroom'
 export type HoursCondition = Placed & { type: 'condition'; kind: 'hours'; max: number }
 // Yes when the lead is in one of these stages.
 export type StageCondition = Placed & { type: 'condition'; kind: 'stage'; stages: LeadStatus[] }
-export type ConditionNode = AgeCondition | ClassroomCondition | HoursCondition | StageCondition
+// Yes when the lead's source, tag (any of them), PIC or form (one it has filled in) is one of the ticked.
+// The ids are kept as text: numbers for source, tag and PIC, the form's id for a form.
+export type ChoiceKind = 'source' | 'tag' | 'pic' | 'form'
+export const CHOICE_KINDS: ChoiceKind[] = ['source', 'tag', 'pic', 'form']
+export type ChoiceCondition = Placed & { type: 'condition'; kind: ChoiceKind; ids: string[] }
+export type ConditionNode = AgeCondition | ClassroomCondition | HoursCondition | StageCondition | ChoiceCondition
+
+// What a person can tick in a choice block, by kind.
+export type FilterChoice = { id: string; label: string }
+export type FilterOptions = Record<ChoiceKind, FilterChoice[]>
+export const EMPTY_FILTER_OPTIONS: FilterOptions = { source: [], tag: [], pic: [], form: [] }
+
+export function isChoiceCondition(node: FlowNode): node is ChoiceCondition {
+  return node.type === 'condition' && (CHOICE_KINDS as string[]).includes(node.kind)
+}
 export type FlowNode = MessageNode | ConditionNode
 
 export type FlowPort = 'out' | 'yes' | 'no'
 export type FlowEdge = { from: string; port: FlowPort; to: string }
 
+// Settings of the whole flow.
+//   stopStages    a lead in one of these stages gets nothing from this flow
+//   cooldownDays  the same person gets nothing from this flow again within this many days
+export type FlowSettings = { stopStages?: LeadStatus[]; cooldownDays?: number }
+
 export type FlowGraph = {
   trigger: { x: number; y: number }
   nodes: FlowNode[]
   edges: FlowEdge[]
+  settings?: FlowSettings
 }
 
 export type AutomationFlow = {
@@ -217,6 +268,7 @@ export function describeNode(
   node: FlowNode,
   classroomName: (id: number) => string = (id) => `Class ${id}`,
   contactName: (id: number) => string = (id) => `Contact ${id}`,
+  choiceName: (kind: ChoiceKind, id: string) => string = (_kind, id) => id,
 ) {
   if (isMessage(node)) {
     const when = `${describeOffset(node.mins)} ${node.after === true ? 'after' : 'before'}`
@@ -237,6 +289,14 @@ export function describeNode(
   if (node.kind === 'stage') {
     const labels = node.stages.map((stage) => leadStatusOptions.find((option) => option.key === stage)?.label ?? stage)
     return labels.length === 0 ? 'Any stage?' : `Stage is ${labels.join(' or ')}?`
+  }
+  if (isChoiceCondition(node)) {
+    const label = { source: 'Source', tag: 'Tag', pic: 'PIC', form: 'Form' }[node.kind]
+    const names = node.ids.map((id) => choiceName(node.kind, id))
+    if (names.length === 0) {
+      return `Any ${label.toLowerCase()}?`
+    }
+    return names.length <= 2 ? `${label} is ${names.join(' or ')}?` : `${label} is one of ${names.length}?`
   }
   const names = node.ids.map(classroomName)
   return names.length <= 2 ? `In ${names.join(' or ')}?` : `In ${names.length} classes?`
@@ -294,7 +354,7 @@ export function nextNodeId(graph: FlowGraph, prefix: 'm' | 'c') {
   return `${prefix}${n}`
 }
 
-export type NewBlockKind = 'message' | 'age' | 'classroom' | 'hours' | 'stage'
+export type NewBlockKind = 'message' | 'age' | 'classroom' | 'hours' | 'stage' | ChoiceKind
 
 export function addNode(
   graph: FlowGraph,
@@ -324,7 +384,9 @@ export function addNode(
         ? { id, type: 'condition', kind: 'hours', x, y, max: 2 }
         : kind === 'stage'
           ? { id, type: 'condition', kind: 'stage', x, y, stages: ['new'] }
-          : { id, type: 'condition', kind: 'classroom', x, y, ids: [] }
+          : kind === 'source' || kind === 'tag' || kind === 'pic' || kind === 'form'
+            ? { id, type: 'condition', kind, x, y, ids: [] }
+            : { id, type: 'condition', kind: 'classroom', x, y, ids: [] }
   return { graph: { ...graph, nodes: [...graph.nodes, node] }, id }
 }
 
@@ -366,6 +428,20 @@ export function sendAfterOnly(graph: FlowGraph): FlowGraph {
     ...graph,
     nodes: graph.nodes.map((node) => (node.type === 'message' && node.after !== true ? { ...node, after: true } : node)),
   }
+}
+
+// The settings of the whole flow; an empty setting is left out so an untouched flow stays as it was.
+export function updateSettings(graph: FlowGraph, change: FlowSettings): FlowGraph {
+  const next: FlowSettings = { ...graph.settings, ...change }
+  if (!next.stopStages || next.stopStages.length === 0) {
+    delete next.stopStages
+  }
+  if (!next.cooldownDays || next.cooldownDays <= 0) {
+    delete next.cooldownDays
+  }
+  const rest: FlowGraph = { ...graph }
+  delete rest.settings
+  return Object.keys(next).length === 0 ? rest : { ...rest, settings: next }
 }
 
 export function removeNode(graph: FlowGraph, id: string): FlowGraph {
@@ -425,6 +501,50 @@ export type FlowTestChild = {
   classroomId: number | null
   hours?: number | null
   stage?: LeadStatus | null
+  sourceId?: number | null
+  picId?: number | null
+  tagId?: number | null
+  formId?: string | null
+}
+
+// What is typed in the tester, as text.
+export type TestInputs = {
+  age: string
+  classroomId: string
+  hours: string
+  stage: string
+  sourceId: string
+  picId: string
+  tagId: string
+  formId: string
+}
+export const EMPTY_TEST: TestInputs = {
+  age: '',
+  classroomId: '',
+  hours: '',
+  stage: '',
+  sourceId: '',
+  picId: '',
+  tagId: '',
+  formId: '',
+}
+
+export function isTesting(test: TestInputs) {
+  return Object.values(test).some((value) => value !== '')
+}
+
+export function testChildOf(test: TestInputs): FlowTestChild {
+  const number = (value: string) => (value === '' ? null : Number(value))
+  return {
+    age: number(test.age),
+    classroomId: number(test.classroomId),
+    hours: number(test.hours),
+    stage: test.stage === '' ? null : (test.stage as LeadStatus),
+    sourceId: number(test.sourceId),
+    picId: number(test.picId),
+    tagId: number(test.tagId),
+    formId: test.formId === '' ? null : test.formId,
+  }
 }
 
 export type FlowTestResult = {
@@ -466,6 +586,14 @@ export function simulateFlow(graph: FlowGraph, child: FlowTestChild): FlowTestRe
       } else if (node.kind === 'stage') {
         const stage = child.stage ?? null
         port = stage !== null && node.stages.includes(stage) ? 'yes' : 'no'
+      } else if (isChoiceCondition(node)) {
+        const chosen = {
+          source: child.sourceId ?? null,
+          pic: child.picId ?? null,
+          tag: child.tagId ?? null,
+          form: child.formId ?? null,
+        }[node.kind]
+        port = chosen !== null && node.ids.some((id) => id.toLowerCase() === String(chosen).toLowerCase()) ? 'yes' : 'no'
       } else {
         port = child.classroomId !== null && node.ids.includes(child.classroomId) ? 'yes' : 'no'
       }
@@ -531,9 +659,18 @@ export function validateDraft(draft: FlowDraft): string | null {
       if (node.stages.length === 0) {
         return 'A stage block needs at least one stage ticked.'
       }
+    } else if (isChoiceCondition(node)) {
+      if (node.ids.length === 0) {
+        const label = { source: 'source', tag: 'tag', pic: 'PIC', form: 'form' }[node.kind]
+        return `A ${label} block needs at least one ${label} ticked.`
+      }
     } else if (node.ids.length === 0) {
       return 'A class block needs at least one class ticked.'
     }
+  }
+  const settings = draft.graph.settings
+  if (settings?.cooldownDays !== undefined && (!Number.isInteger(settings.cooldownDays) || settings.cooldownDays < 0 || settings.cooldownDays > 365)) {
+    return 'The days before messaging the same person again must be 0 to 365.'
   }
   return null
 }
@@ -625,6 +762,11 @@ export function parseGraph(raw: unknown): FlowGraph {
         ? node.stages.filter((stage): stage is LeadStatus => typeof stage === 'string' && known.has(stage))
         : []
       nodes.push({ ...base, type: 'condition', kind: 'stage', stages })
+    } else if (node.type === 'condition' && (CHOICE_KINDS as unknown[]).includes(node.kind)) {
+      const ids = Array.isArray(node.ids)
+        ? node.ids.filter((id): id is string => typeof id === 'string' && id.length <= 64)
+        : []
+      nodes.push({ ...base, type: 'condition', kind: node.kind as ChoiceKind, ids })
     } else if (node.type === 'condition' && node.kind === 'classroom') {
       const ids = Array.isArray(node.ids) ? node.ids.filter((id): id is number => typeof id === 'number') : []
       nodes.push({ ...base, type: 'condition', kind: 'classroom', ids })
@@ -647,7 +789,24 @@ export function parseGraph(raw: unknown): FlowGraph {
       edges.push({ from: edge.from, port: edge.port, to: edge.to })
     }
   }
-  return { trigger: { x: numberOr(trigger.x, 24), y: numberOr(trigger.y, 140) }, nodes, edges }
+  const graph: FlowGraph = { trigger: { x: numberOr(trigger.x, 24), y: numberOr(trigger.y, 140) }, nodes, edges }
+  const rawSettings = source.settings
+  if (rawSettings && typeof rawSettings === 'object' && !Array.isArray(rawSettings)) {
+    const settings = rawSettings as Record<string, unknown>
+    const known = new Set<string>(leadStatusOptions.map((option) => option.key))
+    const stopStages = Array.isArray(settings.stopStages)
+      ? settings.stopStages.filter((stage): stage is LeadStatus => typeof stage === 'string' && known.has(stage))
+      : []
+    const days = typeof settings.cooldownDays === 'number' && Number.isInteger(settings.cooldownDays) ? settings.cooldownDays : 0
+    const next: FlowSettings = {
+      ...(stopStages.length > 0 ? { stopStages } : {}),
+      ...(days > 0 && days <= 365 ? { cooldownDays: days } : {}),
+    }
+    if (Object.keys(next).length > 0) {
+      graph.settings = next
+    }
+  }
+  return graph
 }
 
 function requireSupabase() {
@@ -700,13 +859,19 @@ export function normalizeTestPhone(input: string): string | null {
 export async function queueFlowTest(
   flowId: number,
   phone: string,
-  child: { age: number | null; classroomId: number | null },
+  child: FlowTestChild,
 ): Promise<number> {
   const { data, error } = await requireSupabase().rpc('queue_automation_test', {
     p_flow_id: flowId,
     p_phone: phone,
     p_age: child.age,
     p_classroom_id: child.classroomId,
+    p_hours: child.hours ?? null,
+    p_stage: child.stage ?? null,
+    p_source: child.sourceId ?? null,
+    p_pic: child.picId ?? null,
+    p_tag: child.tagId ?? null,
+    p_form: child.formId ?? null,
   })
   if (error) {
     throw error

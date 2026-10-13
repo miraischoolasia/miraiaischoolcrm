@@ -4,13 +4,16 @@ import {
   TRIGGERS,
   TRIGGER_ID,
   triggerInfo,
+  type FilterOptions,
   type FlowDraft,
   type FlowNode,
+  type FlowSettings,
   type FlowTrigger,
 } from '../../lib/automationFlows'
 import type { AutomationContact } from '../../lib/automationContacts'
 import type { Classroom } from '../../types/domain'
 import { FlowInspector } from './FlowInspector'
+import { FlowSettingsCard } from './FlowSettingsCard'
 
 type FlowWorkbenchProps = {
   draft: FlowDraft
@@ -19,8 +22,10 @@ type FlowWorkbenchProps = {
   selectedNode: FlowNode | null
   classrooms: Classroom[]
   contacts: AutomationContact[]
+  filterOptions: FilterOptions
   readOnly: boolean
   onTriggerChange: (trigger: FlowTrigger) => void
+  onSettingsChange: (change: FlowSettings) => void
   onClose: () => void
   onNodeChange: (id: string, change: Record<string, unknown>) => void
   onNodeDelete: (id: string) => void
@@ -37,8 +42,10 @@ export function FlowWorkbench({
   selectedNode,
   classrooms,
   contacts,
+  filterOptions,
   readOnly,
   onTriggerChange,
+  onSettingsChange,
   onClose,
   onNodeChange,
   onNodeDelete,
@@ -78,6 +85,8 @@ export function FlowWorkbench({
             Every time {triggerInfo(draft.trigger).phrase}, the family walks through this flow.
           </p>
         </section>
+
+        <FlowSettingsCard settings={draft.graph.settings} readOnly={readOnly} onChange={onSettingsChange} />
       </div>
     )
   }
@@ -94,6 +103,7 @@ export function FlowWorkbench({
         trigger={draft.trigger}
         classrooms={classrooms}
         contacts={contacts}
+        filterOptions={filterOptions}
         readOnly={readOnly}
         onChange={(change) => onNodeChange(selectedNode.id, change)}
         onDelete={() => onNodeDelete(selectedNode.id)}

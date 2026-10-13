@@ -3,12 +3,14 @@ import { Trash } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import {
   PLACEHOLDERS,
+  isChoiceCondition,
   isMessage,
   previewMessage,
   splitOffset,
   toOffsetMinutes,
   triggerInfo,
   unknownPlaceholders,
+  type FilterOptions,
   type FlowNode,
   type FlowTrigger,
   type OffsetUnit,
@@ -23,6 +25,8 @@ type FlowInspectorProps = {
   classrooms: Classroom[]
   // The saved contacts a message can be sent to instead of the family.
   contacts: AutomationContact[]
+  // What a source, tag, PIC or form block can tick.
+  filterOptions: FilterOptions
   readOnly: boolean
   onChange: (change: Record<string, unknown>) => void
   onDelete: () => void
@@ -103,6 +107,7 @@ export function FlowInspector({
   trigger,
   classrooms,
   contacts,
+  filterOptions,
   readOnly,
   onChange,
   onDelete,
@@ -306,6 +311,45 @@ export function FlowInspector({
                 className="h-4 w-4 accent-[#fc0c97]"
               />
               <span>{option.label}</span>
+            </label>
+          ))}
+        </fieldset>
+      </>
+    )
+  } else if (isChoiceCondition(node)) {
+    const copy = {
+      source: { title: 'Source', plural: 'sources', hint: 'Leads that came from a ticked source follow the Yes line; everyone else follows No.' },
+      tag: { title: 'Tag', plural: 'tags', hint: 'Leads with any ticked tag follow the Yes line; everyone else follows No.' },
+      pic: { title: 'PIC', plural: 'people in charge', hint: 'Leads handled by a ticked person follow the Yes line; everyone else follows No.' },
+      form: { title: 'Form', plural: 'forms', hint: 'Leads who filled in a ticked form follow the Yes line; everyone else follows No.' },
+    }[node.kind]
+    // A ticked choice that was deleted stays in the list so it can be unticked.
+    const known = filterOptions[node.kind]
+    const choices = [
+      ...known,
+      ...node.ids.filter((id) => !known.some((choice) => choice.id === id)).map((id) => ({ id, label: 'A removed choice' })),
+    ]
+    body = (
+      <>
+        <h3 className="text-sm font-semibold text-slate-900">{copy.title}</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          {copy.hint} A family\’s child is checked through the parent\’s lead.
+        </p>
+        <fieldset className="mt-3 grid gap-1 sm:grid-cols-2" disabled={readOnly}>
+          {choices.length === 0 && <p className="text-sm text-slate-500">No {copy.plural} yet.</p>}
+          {choices.map((choice) => (
+            <label key={choice.id} className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={node.ids.includes(choice.id)}
+                onChange={(event) =>
+                  onChange({
+                    ids: event.target.checked ? [...node.ids, choice.id] : node.ids.filter((id) => id !== choice.id),
+                  })
+                }
+                className="h-4 w-4 accent-[#fc0c97]"
+              />
+              <span className="truncate">{choice.label}</span>
             </label>
           ))}
         </fieldset>

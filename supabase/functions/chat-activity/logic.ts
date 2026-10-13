@@ -10,6 +10,8 @@ export type ChatMessage = {
   name: string | null
   // Digits only; the database decides whether it is a real number.
   phone: string | null
+  // The parent's whole message was just a request to stop (STOP, unsubscribe, 不要再发...).
+  optOut: boolean
 }
 
 export type ParsedEvent = { ok: true; message: ChatMessage } | { ok: false; reason: string }
@@ -51,6 +53,42 @@ function asTime(value: unknown): Date | null {
     return Number.isNaN(time.getTime()) ? null : time
   }
   return null
+}
+
+// What a parent writes, and nothing else, to be left alone. The WHOLE message must be one of these, so a
+// sentence that merely contains the word does not count.
+const STOP_WORDS = new Set([
+  'stop',
+  'stopmessages',
+  'stopsending',
+  'stopmessaging',
+  'unsubscribe',
+  'optout',
+  'jangan hantar',
+  'janganhantar',
+  'berhenti',
+  '不要再发',
+  '不要再发了',
+  '别再发',
+  '别再发了',
+  '不要发了',
+  '别发了',
+  '取消订阅',
+  '退订',
+  '停止',
+])
+
+export function isStopRequest(content: unknown): boolean {
+  if (typeof content !== 'string') {
+    return false
+  }
+  const text = content
+    .toLowerCase()
+    .replace(/[\s.,!?;:'"()\[\]。，！？；：、]+/g, '')
+  if (text === '' || text.length > 40) {
+    return false
+  }
+  return STOP_WORDS.has(text) || STOP_WORDS.has(content.toLowerCase().replace(/[.,!?;:'"()\[\]。，！？；：、]+/g, '').trim())
 }
 
 // message_type is 'incoming' / 'outgoing' in a webhook (0 / 1 in the API). Activity and template
@@ -110,6 +148,7 @@ export function parseChatwootEvent(payload: unknown): ParsedEvent {
       at,
       name: asText(contactSource?.name),
       phone: asDigits(contactSource?.phone_number) ?? asDigits(contactInbox?.source_id),
+      optOut: direction === 'incoming' && isStopRequest(body.content),
     },
   }
 }

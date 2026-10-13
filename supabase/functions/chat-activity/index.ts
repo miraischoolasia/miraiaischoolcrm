@@ -59,6 +59,7 @@ Deno.serve(async (req) => {
     p_at: message.at.toISOString(),
     p_name: message.name,
     p_phone: message.phone,
+    p_opt_out: message.optOut,
   })
 
   if (error) {

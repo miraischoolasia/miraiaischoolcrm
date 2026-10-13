@@ -10,6 +10,7 @@ import {
   validateDraft,
   type AutomationFlow,
   type FlowDraft,
+  type FlowTestChild,
 } from '../lib/automationFlows'
 
 export type RunNowResult = { queued: number; error: null } | { queued: 0; error: string }
@@ -101,7 +102,7 @@ export function useAutomationFlows({ enabled }: { enabled: boolean }) {
     async (
       flowId: number,
       phone: string,
-      child: { age: number | null; classroomId: number | null },
+      child: FlowTestChild,
     ): Promise<SendTestResult> => {
       try {
         return { queued: await queueFlowTest(flowId, phone, child), error: null }

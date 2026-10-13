@@ -1,21 +1,28 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Plus } from '@phosphor-icons/react'
 import { FlowEditor } from '../automations/FlowEditor'
 import { ChatActivityCard } from '../automations/ChatActivityCard'
 import { ContactsCard } from '../automations/ContactsCard'
+import { OptoutsCard } from '../automations/OptoutsCard'
+import { RecipePicker } from '../automations/RecipePicker'
 import { FlowSwitch } from '../automations/FlowSwitch'
 import { useAutomationContacts } from '../../hooks/useAutomationContacts'
 import { useAutomationFlows } from '../../hooks/useAutomationFlows'
+import { useAutomationForms, useAutomationOptouts, useAutomationStats } from '../../hooks/useAutomationExtras'
 import { useChatWebhook } from '../../hooks/useChatWebhook'
 import { useConfirm } from '../../hooks/useConfirm'
 import { cn } from '../../lib/cn'
-import { describeFlow } from '../../lib/automationFlows'
-import type { Classroom } from '../../types/domain'
+import { EMPTY_FILTER_OPTIONS, describeFlow, type FilterOptions, type FlowDraft } from '../../lib/automationFlows'
+import { describeStats } from '../../lib/automationStats'
+import type { FlowRecipe } from '../../lib/flowSteps'
+import type { Classroom, LeadOption } from '../../types/domain'
 
 type AutomationsSectionProps = {
   classrooms: Classroom[]
   // Only an admin can add, change or remove a flow; others can look at them.
   canEdit: boolean
+  // The lead sources, PICs and tags a flow can ask about.
+  leadOptions?: LeadOption[]
 }
 
 // The automation flows: when something starts, who gets which message and how long before.
@@ -24,14 +31,35 @@ type AutomationsSectionProps = {
 //
 // Two views: the list of flows, and one flow open as a workbench (settings on the left, canvas on
 // the right).
-export function AutomationsSection({ classrooms, canEdit }: AutomationsSectionProps) {
+export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: AutomationsSectionProps) {
   const automation = useAutomationFlows({ enabled: true })
   const contactList = useAutomationContacts({ enabled: true })
   // The address Chatwoot calls is a secret only an admin can read.
   const chatWebhook = useChatWebhook({ enabled: canEdit })
+  const flowStats = useAutomationStats({ enabled: true })
+  const optouts = useAutomationOptouts({ enabled: true })
+  const forms = useAutomationForms({ enabled: true })
+
+  // What the source, tag, PIC and form blocks can tick (hidden options are not offered).
+  const filterOptions = useMemo<FilterOptions>(() => {
+    const choices = (kind: LeadOption['kind']) =>
+      leadOptions
+        .filter((option) => option.kind === kind && option.isActive)
+        .map((option) => ({ id: String(option.id), label: option.label }))
+    return {
+      ...EMPTY_FILTER_OPTIONS,
+      source: choices('source'),
+      tag: choices('tag'),
+      pic: choices('pic'),
+      form: forms.map((form) => ({ id: form.id, label: form.name })),
+    }
+  }, [leadOptions, forms])
   const { confirm, dialog } = useConfirm()
   // null shows the list.
   const [open, setOpen] = useState<number | 'new' | null>(null)
+  // A new flow starts from the recipe list; the recipe picked (or none for a blank flow) is kept here.
+  const [choosing, setChoosing] = useState(false)
+  const [startFrom, setStartFrom] = useState<FlowDraft | null>(null)
   const [dirty, setDirty] = useState(false)
   const [notice, setNotice] = useState<{ text: string; isError: boolean } | null>(null)
   const [isRunning, setIsRunning] = useState(false)
@@ -85,15 +113,27 @@ export function AutomationsSection({ classrooms, canEdit }: AutomationsSectionPr
     )
   }
 
+  function pickRecipe(recipe: FlowRecipe | null) {
+    setStartFrom(recipe ? recipe.build(contactList.contacts) : null)
+    setChoosing(false)
+    setOpen('new')
+  }
+
+  if (choosing) {
+    return <RecipePicker contacts={contactList.contacts} onPick={pickRecipe} onBack={() => setChoosing(false)} />
+  }
+
   if (open !== null && (open === 'new' || openFlow)) {
     return (
       <section>
         <FlowEditor
           key={open === 'new' ? 'new' : openFlow?.id}
           flow={open === 'new' ? null : openFlow}
+          startFrom={open === 'new' ? startFrom : null}
           classrooms={classrooms}
           contacts={contactList.contacts}
           canEdit={canEdit}
+          filterOptions={filterOptions}
           onSave={automation.save}
           onDelete={automation.remove}
           onSendTest={automation.sendTest}
@@ -132,7 +172,7 @@ export function AutomationsSection({ classrooms, canEdit }: AutomationsSectionPr
           {canEdit && (
             <button
               type="button"
-              onClick={() => setOpen('new')}
+              onClick={() => setChoosing(true)}
               className="flex items-center gap-1 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white hover:bg-[#de0a84]"
             >
               <Plus size={14} weight="bold" aria-hidden="true" />
@@ -155,6 +195,7 @@ export function AutomationsSection({ classrooms, canEdit }: AutomationsSectionPr
         onUpdate={contactList.update}
         onRemove={contactList.remove}
       />
+      <OptoutsCard optouts={optouts.optouts} loadError={optouts.error} onAllowAgain={optouts.allowAgain} />
       {canEdit && (
         <ChatActivityCard
           info={chatWebhook.info}
@@ -191,6 +232,9 @@ export function AutomationsSection({ classrooms, canEdit }: AutomationsSectionPr
               <button type="button" onClick={() => setOpen(flow.id)} className="min-w-0 flex-1 text-left">
                 <span className="block truncate text-sm font-semibold text-slate-900">{flow.name}</span>
                 <span className="mt-0.5 block text-xs text-slate-500">{describeFlow(flow)}</span>
+                {describeStats(flowStats.stats.get(flow.id)) && (
+                  <span className="mt-0.5 block text-xs text-slate-600">{describeStats(flowStats.stats.get(flow.id))}</span>
+                )}
                 {flow.lastError && <span className="mt-1 block text-xs font-semibold text-red-700">Has a problem</span>}
               </button>
               <span

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { newFlowDraft, type AutomationFlow } from '../../lib/automationFlows'
-import type { Classroom } from '../../types/domain'
+import type { Classroom, LeadOption } from '../../types/domain'
 import { AutomationsSection } from './AutomationsSection'
 
 // The canvas needs a real browser layout; here it is replaced by a few buttons that do what a click
@@ -20,7 +20,7 @@ vi.mock('../automations/FlowCanvas', () => ({
     onAddAfter: (
       from: string,
       port: 'out' | 'yes' | 'no',
-      kind: 'message' | 'age' | 'classroom' | 'hours' | 'stage',
+      kind: 'message' | 'age' | 'classroom' | 'hours' | 'stage' | 'source' | 'tag' | 'pic' | 'form',
     ) => void
   }) => (
     <div data-testid="canvas">
@@ -39,6 +39,12 @@ vi.mock('../automations/FlowCanvas', () => ({
       </button>
       <button type="button" onClick={() => onAddAfter('trigger', 'out', 'stage')}>
         canvas add stage after trigger
+      </button>
+      <button type="button" onClick={() => onAddAfter('trigger', 'out', 'source')}>
+        canvas add source after trigger
+      </button>
+      <button type="button" onClick={() => onAddAfter('trigger', 'out', 'form')}>
+        canvas add form after trigger
       </button>
       <button type="button" onClick={() => onAddAfter('m1', 'out', 'message')}>
         canvas add message after m1
@@ -79,6 +85,24 @@ const contactHook = vi.hoisted(() => ({
 }))
 vi.mock('../../hooks/useAutomationContacts', () => ({ useAutomationContacts: () => contactHook.state }))
 
+const extras = vi.hoisted(() => ({
+  stats: new Map<number, unknown>(),
+  forms: [] as { id: string; name: string }[],
+  optouts: [] as { phone: string; reason: string | null; createdAt: string }[],
+  optoutError: null as string | null,
+  allowAgain: vi.fn(),
+}))
+vi.mock('../../hooks/useAutomationExtras', () => ({
+  useAutomationStats: () => ({ stats: extras.stats, reload: vi.fn() }),
+  useAutomationForms: () => extras.forms,
+  useAutomationOptouts: () => ({
+    optouts: extras.optouts,
+    error: extras.optoutError,
+    reload: vi.fn(),
+    allowAgain: extras.allowAgain,
+  }),
+}))
+
 const chatHook = vi.hoisted(() => ({
   state: {
     info: null as { key: string; lastReceivedAt: Date | null; chats: number } | null,
@@ -115,12 +139,28 @@ const room: Classroom = {
   archivedAt: null,
 }
 
+const leadOptions = [
+  { id: 3, kind: 'source', label: 'Facebook Ads', isActive: true, legacyKey: null, color: null },
+  { id: 4, kind: 'source', label: 'Old source', isActive: false, legacyKey: null, color: null },
+  { id: 7, kind: 'tag', label: 'Hot', isActive: true, legacyKey: null, color: null },
+  { id: 9, kind: 'pic', label: 'Lex', isActive: true, legacyKey: null, color: null },
+] as LeadOption[]
+
 function setup(canEdit = true) {
-  render(<AutomationsSection classrooms={[room]} canEdit={canEdit} />)
+  render(<AutomationsSection classrooms={[room]} canEdit={canEdit} leadOptions={leadOptions} />)
 }
 
+// The editor opens in the simple list; most of these tests are about the canvas, so they switch to it.
 async function openFirst() {
   await userEvent.click(screen.getByRole('button', { name: /Class reminder A regular class starts/ }))
+  await userEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+}
+
+// A new flow starts on the recipe list; this takes the blank one and shows the canvas.
+async function newBlankFlow() {
+  await userEvent.click(screen.getByRole('button', { name: 'New flow' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Start with a blank flow' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Advanced' }))
 }
 
 describe('AutomationsSection', () => {
@@ -143,6 +183,11 @@ describe('AutomationsSection', () => {
     chatHook.state.error = null
     chatHook.state.isLoading = false
     chatHook.state.reload.mockReset()
+    extras.stats = new Map()
+    extras.forms = []
+    extras.optouts = []
+    extras.optoutError = null
+    extras.allowAgain.mockReset().mockResolvedValue(null)
   })
 
   it('lists the flows first, with whether each is live', () => {
@@ -251,7 +296,11 @@ describe('AutomationsSection', () => {
     await userEvent.type(screen.getByLabelText('My phone number'), '012-345 6789')
     await userEvent.click(screen.getByRole('button', { name: /Send test/ }))
     await waitFor(() => expect(hook.state.sendTest).toHaveBeenCalledTimes(1))
-    expect(hook.state.sendTest).toHaveBeenCalledWith(1, '60123456789', { age: 9, classroomId: 1 })
+    expect(hook.state.sendTest).toHaveBeenCalledWith(
+      1,
+      '60123456789',
+      expect.objectContaining({ age: 9, classroomId: 1, hours: null, stage: null }),
+    )
     expect(await screen.findByText(/1 test message added\. .* to \+60123456789\./)).toBeInTheDocument()
     // The number is remembered for next time.
     expect(window.localStorage.getItem('mirai.flowTestPhone')).toBe('012-345 6789')
@@ -322,14 +371,14 @@ describe('AutomationsSection', () => {
   it('asks for a name before a new flow is saved', async () => {
     hook.state.save.mockResolvedValue({ error: 'Give the flow a name.', flow: null })
     setup()
-    await userEvent.click(screen.getByRole('button', { name: 'New flow' }))
+    await newBlankFlow()
     await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
     expect(await screen.findByText('Give the flow a name.')).toBeInTheDocument()
   })
 
   it('saves what was typed for a new flow', async () => {
     setup()
-    await userEvent.click(screen.getByRole('button', { name: 'New flow' }))
+    await newBlankFlow()
     await userEvent.type(screen.getByLabelText('Flow name'), 'Trial reminder')
     await userEvent.click(screen.getByRole('button', { name: 'canvas trigger' }))
     await userEvent.selectOptions(screen.getByLabelText('When'), 'trial_start')
@@ -392,6 +441,74 @@ describe('AutomationsSection', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Leave' }))
     expect(await screen.findByText('Zoom reminder')).toBeInTheDocument()
     expect(screen.queryByTestId('canvas')).not.toBeInTheDocument()
+  })
+
+  describe('filters, settings and results', () => {
+    it('adds a source block that offers the sources (not hidden ones) and keeps the ticked ones', async () => {
+      setup()
+      await openFirst()
+      await userEvent.click(screen.getByRole('button', { name: 'canvas add source after trigger' }))
+      expect(screen.getByRole('checkbox', { name: 'Facebook Ads' })).not.toBeChecked()
+      expect(screen.queryByRole('checkbox', { name: 'Old source' })).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Facebook Ads' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+      await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+      const nodes = hook.state.save.mock.calls[0][0].graph.nodes
+      expect(nodes).toContainEqual(expect.objectContaining({ kind: 'source', ids: ['3'] }))
+    })
+
+    it('offers the forms by name', async () => {
+      extras.forms = [{ id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', name: 'Summer camp form' }]
+      setup()
+      await openFirst()
+      await userEvent.click(screen.getByRole('button', { name: 'canvas add form after trigger' }))
+      expect(screen.getByRole('checkbox', { name: 'Summer camp form' })).toBeInTheDocument()
+    })
+
+    it('stops a flow for chosen stages and for the same person within some days', async () => {
+      setup()
+      await openFirst()
+      await userEvent.click(screen.getByRole('button', { name: 'canvas trigger' }))
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Converted' }))
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Lost' }))
+      fireEvent.change(screen.getByLabelText('Days before the same person is messaged again'), {
+        target: { value: '30' },
+      })
+      await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+      await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+      expect(hook.state.save.mock.calls[0][0].graph.settings).toEqual({
+        stopStages: ['converted', 'lost'],
+        cooldownDays: 30,
+      })
+    })
+
+    it('leaves the settings out of a flow that never used them', async () => {
+      setup()
+      await openFirst()
+      await userEvent.click(screen.getByRole('button', { name: 'canvas block m1' }))
+      fireEvent.change(screen.getByLabelText('How long before'), { target: { value: '2' } })
+      await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+      await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+      expect('settings' in hook.state.save.mock.calls[0][0].graph).toBe(false)
+    })
+
+    it('shows what a flow has done under its name', () => {
+      extras.stats = new Map([
+        [1, { flowId: 1, queued: 12, sent: 9, pending: 1, skipped: 2, expired: 0, failed: 0, replied: 3 }],
+      ])
+      setup()
+      expect(screen.getByText('9 sent · 3 replied (33%) · 1 waiting · 2 skipped')).toBeInTheDocument()
+    })
+
+    it('lists the numbers that wrote STOP and allows one again after asking', async () => {
+      extras.optouts = [{ phone: '60122552285', reason: 'The parent wrote STOP', createdAt: '2026-10-13T05:00:00Z' }]
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Asked to stop/ }))
+      expect(screen.getByText('+60 12-255 2285')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Allow +60 12-255 2285 again' }))
+      await userEvent.click(await screen.findByRole('button', { name: 'Allow again' }))
+      await waitFor(() => expect(extras.allowAgain).toHaveBeenCalledWith('60122552285'))
+    })
   })
 
   describe('parent replies', () => {
@@ -574,6 +691,113 @@ describe('AutomationsSection', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
       await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(2))
       expect(hook.state.save.mock.calls[1][0].graph.nodes[0].contactId ?? null).toBeNull()
+    })
+  })
+
+  describe('simple view and recipes', () => {
+    it('opens a flow as a list of three steps, with the canvas one click away', async () => {
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Class reminder A regular class starts/ }))
+      expect(screen.getByRole('heading', { name: 'When this happens' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Who it is for' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Then send' })).toBeInTheDocument()
+      expect(screen.queryByTestId('canvas')).not.toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+      expect(screen.getByTestId('canvas')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Simple' }))
+      expect(screen.getByRole('heading', { name: 'Then send' })).toBeInTheDocument()
+    })
+
+    it('offers the recipes before a new flow and starts from the one picked', async () => {
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: 'New flow' }))
+      expect(screen.getByText('Start a new flow')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: /Follow up a parent who went quiet/ }))
+
+      expect(screen.getByLabelText('Flow name')).toHaveValue('Follow up quiet parents')
+      expect(screen.getByLabelText('When')).toHaveValue('parent_no_reply')
+      expect(screen.getByRole('button', { name: /^Stage is New or Contacted/ })).toBeInTheDocument()
+      // Three messages, none of them switched on yet.
+      expect(screen.getAllByText(/after a parent has not replied|after the parent has not replied/i).length).toBeGreaterThan(0)
+      await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+      await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+      const saved = hook.state.save.mock.calls[0][0]
+      expect(saved).toMatchObject({ id: null, trigger: 'parent_no_reply', enabled: false })
+      expect(saved.graph.nodes.filter((node: { type: string }) => node.type === 'message')).toHaveLength(3)
+      expect(saved.graph.settings).toMatchObject({ stopStages: ['converted', 'lost'], cooldownDays: 14 })
+    })
+
+    it('does not offer a recipe that tells the team until there is a contact to tell', async () => {
+      contactHook.state.contacts = []
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: 'New flow' }))
+      expect(screen.getByRole('button', { name: /Tell me when lessons run low/ })).toBeDisabled()
+      expect(screen.getByText(/Add yourself under Contacts first/)).toBeInTheDocument()
+    })
+
+    it('goes back from the recipe list without starting anything', async () => {
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: 'New flow' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Automations' }))
+      expect(screen.getByRole('button', { name: 'New flow' })).toBeInTheDocument()
+      expect(screen.queryByLabelText('Flow name')).not.toBeInTheDocument()
+    })
+
+    it('adds a filter and a message from the list and saves them in order', async () => {
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: 'New flow' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Start with a blank flow' }))
+      await userEvent.type(screen.getByLabelText('Flow name'), 'Ads follow up')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add a filter' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: /Age/ }))
+      await userEvent.click(screen.getByRole('button', { name: 'Add a message' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+      await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+
+      const { nodes, edges } = hook.state.save.mock.calls[0][0].graph
+      expect(nodes.map((node: { type: string }) => node.type)).toEqual(['condition', 'message', 'message'])
+      expect(edges).toContainEqual({ from: 'trigger', port: 'out', to: nodes[0].id })
+      expect(edges).toContainEqual({ from: nodes[0].id, port: 'yes', to: nodes[1].id })
+    })
+
+    it('removes a filter with its X', async () => {
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: 'New flow' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Start with a blank flow' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Add a filter' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: /Lead stage/ }))
+      expect(screen.getByRole('button', { name: 'Remove this filter' })).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Remove this filter' }))
+      expect(screen.queryByRole('button', { name: 'Remove this filter' })).not.toBeInTheDocument()
+      expect(screen.getByText(/Everyone\./)).toBeInTheDocument()
+    })
+
+    it('sends a flow with a Yes and a No branch to the advanced editor with a note', async () => {
+      const branched = flow()
+      branched.graph = {
+        trigger: { x: 0, y: 0 },
+        nodes: [
+          { id: 'c1', type: 'condition', kind: 'age', x: 0, y: 0, min: 6, max: 9 },
+          { id: 'm1', type: 'message', x: 0, y: 0, mins: 60, text: 'yes' },
+          { id: 'm2', type: 'message', x: 0, y: 0, mins: 60, text: 'no' },
+        ],
+        edges: [
+          { from: 'trigger', port: 'out', to: 'c1' },
+          { from: 'c1', port: 'yes', to: 'm1' },
+          { from: 'c1', port: 'no', to: 'm2' },
+        ],
+      }
+      hook.state.flows = [branched]
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Class reminder A regular class starts/ }))
+      expect(screen.getByTestId('canvas')).toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Simple' }))
+      expect(screen.getByText(/too detailed for the simple view/)).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Open the advanced editor' }))
+      expect(screen.getByTestId('canvas')).toBeInTheDocument()
     })
   })
 })

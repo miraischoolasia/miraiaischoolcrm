@@ -2,20 +2,24 @@ import { useState } from 'react'
 import { PaperPlaneTilt } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { leadStatusOptions } from '../../lib/constants'
-import { describeOffset, normalizeTestPhone, previewMessage, type FlowTestResult } from '../../lib/automationFlows'
+import {
+  describeOffset,
+  isTesting,
+  normalizeTestPhone,
+  previewMessage,
+  type FilterOptions,
+  type FlowTestResult,
+  type TestInputs,
+} from '../../lib/automationFlows'
 import type { Classroom } from '../../types/domain'
 
 type FlowTesterProps = {
   classrooms: Classroom[]
-  testAge: string
-  testClass: string
-  testHours: string
-  testStage: string
+  filterOptions: FilterOptions
+  test: TestInputs
   outcome: FlowTestResult
-  onTestAge: (value: string) => void
-  onTestClass: (value: string) => void
-  onTestHours: (value: string) => void
-  onTestStage: (value: string) => void
+  onTest: (change: Partial<TestInputs>) => void
+  onClear: () => void
   // Only an admin can send a test.
   canSend: boolean
   // Why the test cannot be sent right now (the flow has unsaved changes), or null.
@@ -50,20 +54,16 @@ function rememberPhone(phone: string) {
 // messages to their own phone through the approval queue, to try the whole path.
 export function FlowTester({
   classrooms,
-  testAge,
-  testClass,
-  testHours,
-  testStage,
+  filterOptions,
+  test,
   outcome,
-  onTestAge,
-  onTestClass,
-  onTestHours,
-  onTestStage,
+  onTest,
+  onClear,
   canSend,
   sendBlockedReason,
   onSend,
 }: FlowTesterProps) {
-  const testing = testAge !== '' || testClass !== '' || testHours !== '' || testStage !== ''
+  const testing = isTesting(test)
   const [phone, setPhone] = useState(readSavedPhone)
   const [isSending, setIsSending] = useState(false)
   const [sendNotice, setSendNotice] = useState<{ text: string; isError: boolean } | null>(null)
@@ -105,9 +105,9 @@ export function FlowTester({
             aria-label="Test age"
             min={0}
             max={30}
-            value={testAge}
+            value={test.age}
             placeholder="unknown"
-            onChange={(event) => onTestAge(event.target.value)}
+            onChange={(event) => onTest({ age: event.target.value })}
             className={cn(fieldClass, 'w-28')}
           />
         </span>
@@ -115,8 +115,8 @@ export function FlowTester({
           <span>Class</span>
           <select
             aria-label="Test class"
-            value={testClass}
-            onChange={(event) => onTestClass(event.target.value)}
+            value={test.classroomId}
+            onChange={(event) => onTest({ classroomId: event.target.value })}
             className={cn(fieldClass, 'max-w-[170px]')}
           >
             <option value="">Not in a class</option>
@@ -135,9 +135,9 @@ export function FlowTester({
             type="number"
             aria-label="Test lessons left"
             min={0}
-            value={testHours}
+            value={test.hours}
             placeholder="unknown"
-            onChange={(event) => onTestHours(event.target.value)}
+            onChange={(event) => onTest({ hours: event.target.value })}
             className={cn(fieldClass, 'w-24')}
           />
         </span>
@@ -145,8 +145,8 @@ export function FlowTester({
           <span>Lead stage</span>
           <select
             aria-label="Test lead stage"
-            value={testStage}
-            onChange={(event) => onTestStage(event.target.value)}
+            value={test.stage}
+            onChange={(event) => onTest({ stage: event.target.value })}
             className={cn(fieldClass, 'max-w-[150px]')}
           >
             <option value="">Not a lead</option>
@@ -157,15 +157,37 @@ export function FlowTester({
             ))}
           </select>
         </span>
+        {(
+          [
+            ['source', 'Source', 'sourceId', 'Test source', 'Any other'],
+            ['tag', 'Tag', 'tagId', 'Test tag', 'No tag'],
+            ['pic', 'PIC', 'picId', 'Test PIC', 'Nobody'],
+            ['form', 'Form', 'formId', 'Test form', 'No form'],
+          ] as const
+        ).map(([kind, label, field, aria, none]) =>
+          filterOptions[kind].length === 0 ? null : (
+            <span key={kind} className="flex items-center gap-2">
+              <span>{label}</span>
+              <select
+                aria-label={aria}
+                value={test[field]}
+                onChange={(event) => onTest({ [field]: event.target.value })}
+                className={cn(fieldClass, 'max-w-[150px]')}
+              >
+                <option value="">{none}</option>
+                {filterOptions[kind].map((choice) => (
+                  <option key={choice.id} value={choice.id}>
+                    {choice.label}
+                  </option>
+                ))}
+              </select>
+            </span>
+          ),
+        )}
         {testing && (
           <button
             type="button"
-            onClick={() => {
-              onTestAge('')
-              onTestClass('')
-              onTestHours('')
-              onTestStage('')
-            }}
+            onClick={onClear}
             className="text-xs font-semibold text-slate-600 hover:underline"
           >
             Clear

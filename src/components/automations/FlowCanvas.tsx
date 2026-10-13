@@ -23,6 +23,7 @@ import {
   TRIGGER_ID,
   connect,
   describeNode,
+  type ChoiceKind,
   disconnect,
   edgeKey,
   isMessage,
@@ -57,6 +58,10 @@ const PICKS: { kind: NewBlockKind; label: string; hint: string }[] = [
   { kind: 'classroom', label: 'Check the class', hint: 'Split by the class' },
   { kind: 'hours', label: 'Check lessons left', hint: 'Children nearly out of lessons' },
   { kind: 'stage', label: 'Check the lead stage', hint: 'New, Contacted, ...' },
+  { kind: 'source', label: 'Check the source', hint: 'Where the lead came from' },
+  { kind: 'tag', label: 'Check the tag', hint: 'Leads with a tag' },
+  { kind: 'pic', label: 'Check the PIC', hint: 'Who handles the lead' },
+  { kind: 'form', label: 'Check the form', hint: 'Which form they filled in' },
 ]
 
 // The "+" after a card, and the small menu it opens. It sits to the right of the exit it belongs to.
@@ -190,6 +195,7 @@ type FlowCanvasProps = {
   classroomName: (id: number) => string
   // The name of a saved contact, for a message that goes to one.
   contactName: (id: number) => string
+  choiceName: (kind: ChoiceKind, id: string) => string
   // What a test child would walk through; null shows everything normally.
   highlight: CanvasHighlight | null
   readOnly: boolean
@@ -208,6 +214,7 @@ export function FlowCanvas({
   selectedId,
   classroomName,
   contactName,
+  choiceName,
   highlight,
   readOnly,
   onGraphChange,
@@ -274,11 +281,11 @@ export function FlowCanvas({
         type: isMessage(node) ? 'message' : 'condition',
         position: { x: node.x, y: node.y },
         data: isMessage(node)
-          ? { kind: 'message', title: describeNode(node, classroomName, contactName), body: node.text, ...common(node.id, ['out']) }
+          ? { kind: 'message', title: describeNode(node, classroomName, contactName, choiceName), body: node.text, ...common(node.id, ['out']) }
           : {
               kind: 'condition',
               title: 'If',
-              body: describeNode(node, classroomName),
+              body: describeNode(node, classroomName, undefined, choiceName),
               ...common(node.id, ['yes', 'no']),
             },
         selected: selectedId === node.id && selectedEdge === null,
@@ -287,7 +294,7 @@ export function FlowCanvas({
       })
     }
     return list
-  }, [graph, triggerLabel, selectedId, selectedEdge, classroomName, contactName, highlight, readOnly, adding, onPlus, onPick])
+  }, [graph, triggerLabel, selectedId, selectedEdge, classroomName, contactName, highlight, readOnly, adding, onPlus, onPick, choiceName])
 
   const [nodes, setNodes] = useState<Node<CanvasNodeData>[]>(derived)
   useEffect(() => {

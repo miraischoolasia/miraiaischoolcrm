@@ -2,45 +2,62 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Trash } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import {
+  EMPTY_FILTER_OPTIONS,
+  EMPTY_TEST,
   TRIGGER_ID,
   addNodeAfter,
   draftOf,
+  isTesting,
   newFlowDraft,
   removeNode,
   sendAfterOnly,
   simulateFlow,
+  testChildOf,
   triggerInfo,
   unreachableMessages,
   updateNode,
+  updateSettings,
   type AutomationFlow,
   type FlowDraft,
+  type ChoiceKind,
+  type FilterOptions,
   type FlowGraph,
   type FlowPort,
+  type FlowSettings,
+  type FlowTestChild,
   type FlowTrigger,
   type NewBlockKind,
+  type TestInputs,
 } from '../../lib/automationFlows'
 import type { AutomationContact } from '../../lib/automationContacts'
-import type { Classroom, LeadStatus } from '../../types/domain'
+import type { Classroom } from '../../types/domain'
+import { analyzeFlow, reorderMessages } from '../../lib/flowSteps'
 import { FlowCanvas } from './FlowCanvas'
+import { FlowSettingsCard } from './FlowSettingsCard'
 import { FlowSwitch } from './FlowSwitch'
 import { FlowTester } from './FlowTester'
+import { SimpleBuilder } from './SimpleBuilder'
 import { FlowWorkbench } from './FlowWorkbench'
 
 type FlowEditorProps = {
   // null starts a new flow.
   flow: AutomationFlow | null
+  // A flow that is already written to start from (only for a new flow).
+  startFrom?: FlowDraft | null
   classrooms: Classroom[]
   // The saved contacts a message can be sent to instead of the family.
   contacts: AutomationContact[]
   // Only an admin can change a flow.
   canEdit: boolean
+  // What the source, tag, PIC and form blocks can tick.
+  filterOptions?: FilterOptions
   onSave: (draft: FlowDraft) => Promise<{ error: string | null; flow: AutomationFlow | null }>
   onDelete: (id: number) => Promise<string | null>
   // Queues this flow's messages for a pretend child to the given number, for approval in WhatsApp.
   onSendTest: (
     flowId: number,
     phone: string,
-    child: { age: number | null; classroomId: number | null },
+    child: FlowTestChild,
   ) => Promise<{ queued: number; error: string | null }>
   onSaved: (flow: AutomationFlow) => void
   onDeleted: () => void
@@ -52,9 +69,11 @@ type FlowEditorProps = {
 // panel on the left. Every card has a "+" for adding the next step after it.
 export function FlowEditor({
   flow,
+  startFrom = null,
   classrooms,
   contacts,
   canEdit,
+  filterOptions = EMPTY_FILTER_OPTIONS,
   onSave,
   onDelete,
   onSendTest,
@@ -63,13 +82,17 @@ export function FlowEditor({
   onBack,
   onDirtyChange,
 }: FlowEditorProps) {
-  const [draft, setDraft] = useState<FlowDraft>(() => (flow ? draftOf(flow) : newFlowDraft()))
-  const [baseline, setBaseline] = useState(() => JSON.stringify(draft))
+  const [draft, setDraft] = useState<FlowDraft>(() => (flow ? draftOf(flow) : (startFrom ?? newFlowDraft())))
+  // The simple list is the way in; a flow with Yes/No branches is only drawn by the canvas.
+  const [view, setView] = useState<'simple' | 'advanced'>(() => {
+    const first = flow ? draftOf(flow) : (startFrom ?? newFlowDraft())
+    return analyzeFlow(first.graph).simple ? 'simple' : 'advanced'
+  })
+  // A recipe is a flow that is not saved yet, so it starts as changed.
+  const [baseline, setBaseline] = useState(() => (flow ? JSON.stringify(draft) : JSON.stringify(newFlowDraft())))
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [testAge, setTestAge] = useState('')
-  const [testClass, setTestClass] = useState('')
-  const [testHours, setTestHours] = useState('')
-  const [testStage, setTestStage] = useState('')
+  const [test, setTest] = useState<TestInputs>(EMPTY_TEST)
+  const [tryOpen, setTryOpen] = useState(false)
   const [notice, setNotice] = useState<{ text: string; isError: boolean } | null>(null)
   const [isWorking, setIsWorking] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -97,29 +120,38 @@ export function FlowEditor({
     return (id: number) => names.get(id) ?? 'a removed contact'
   }, [contacts])
 
+  // The name of a ticked source, tag, PIC or form, for the cards on the canvas.
+  const choiceName = useMemo(() => {
+    return (kind: ChoiceKind, id: string) =>
+      filterOptions[kind].find((choice) => choice.id.toLowerCase() === id.toLowerCase())?.label ?? 'a removed choice'
+  }, [filterOptions])
+
   const readOnly = !canEdit || isWorking
   const selectedNode = draft.graph.nodes.find((node) => node.id === selectedId) ?? null
   // The panel on the left is there only while a card is selected.
   const panelOpen = selectedId === TRIGGER_ID || selectedNode !== null
 
-  const testing = testAge !== '' || testClass !== '' || testHours !== '' || testStage !== ''
-  const outcome = useMemo(
-    () =>
-      simulateFlow(draft.graph, {
-        age: testAge === '' ? null : Number(testAge),
-        classroomId: testClass === '' ? null : Number(testClass),
-        hours: testHours === '' ? null : Number(testHours),
-        stage: testStage === '' ? null : (testStage as LeadStatus),
-      }),
-    [draft.graph, testAge, testClass, testHours, testStage],
-  )
+  const testing = isTesting(test)
+  const outcome = useMemo(() => simulateFlow(draft.graph, testChildOf(test)), [draft.graph, test])
   const highlight = useMemo(() => (testing ? { nodes: outcome.nodes, edges: outcome.edges } : null), [testing, outcome])
   const loose = useMemo(() => unreachableMessages(draft.graph), [draft.graph])
+  const analysis = useMemo(() => analyzeFlow(draft.graph), [draft.graph])
 
   const setGraph = useCallback((graph: FlowGraph) => {
     setDraft((current) => ({ ...current, graph }))
     setNotice(null)
   }, [])
+
+  function changeTrigger(trigger: FlowTrigger) {
+    // A lead that was just added can only be messaged after it, so every message goes after.
+    const afterOnly = triggerInfo(trigger).afterOnly
+    setDraft((current) => ({
+      ...current,
+      trigger,
+      graph: afterOnly ? sendAfterOnly(current.graph) : current.graph,
+    }))
+    setNotice(null)
+  }
 
   // The "+" after a card: the new block opens in the panel so it can be filled in straight away.
   function addAfter(from: string, port: FlowPort, kind: NewBlockKind) {
@@ -192,6 +224,22 @@ export function FlowEditor({
           }}
           className="min-w-[180px] flex-1 rounded-lg border border-transparent px-2 py-1.5 text-base font-semibold text-slate-900 outline-none hover:border-slate-200 focus:border-[#fc0c97] disabled:bg-transparent md:max-w-[360px]"
         />
+        <span role="group" aria-label="Editor" className="flex rounded-lg border border-slate-200 p-0.5 text-xs font-semibold">
+          {(['simple', 'advanced'] as const).map((choice) => (
+            <button
+              key={choice}
+              type="button"
+              aria-pressed={view === choice}
+              onClick={() => setView(choice)}
+              className={cn(
+                'rounded-md px-2.5 py-1',
+                view === choice ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50',
+              )}
+            >
+              {choice === 'simple' ? 'Simple' : 'Advanced'}
+            </button>
+          ))}
+        </span>
         <span className="flex items-center">
           <FlowSwitch
             checked={draft.enabled}
@@ -262,7 +310,7 @@ export function FlowEditor({
         </span>
       </header>
 
-      {(!canEdit || flow?.lastError || loose.length > 0 || notice) && (
+      {(!canEdit || flow?.lastError || (view === 'advanced' && loose.length > 0) || notice) && (
         <div className="space-y-2 border-b border-slate-200 px-4 py-2">
           {!canEdit && (
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
@@ -274,7 +322,7 @@ export function FlowEditor({
               This flow could not run the last time: {flow.lastError}
             </p>
           )}
-          {loose.length > 0 && (
+          {view === 'advanced' && loose.length > 0 && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
               {loose.length === 1
                 ? '1 message is not connected to the trigger, so it will never be sent.'
@@ -296,6 +344,80 @@ export function FlowEditor({
         </div>
       )}
 
+      {view === 'simple' ? (
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-4 py-5">
+          <div className="mx-auto max-w-2xl space-y-6">
+            {analysis.simple ? (
+              <>
+                <SimpleBuilder
+                  draft={draft}
+                  parts={analysis}
+                  classrooms={classrooms}
+                  contacts={contacts}
+                  filterOptions={filterOptions}
+                  classroomName={classroomName}
+                  contactName={contactName}
+                  choiceName={choiceName}
+                  readOnly={readOnly}
+                  onTriggerChange={changeTrigger}
+                  onGraphChange={setGraph}
+                  onNodeChange={(id, change) => {
+                    const changed = updateNode(draft.graph, id, change)
+                    setGraph('mins' in change || 'after' in change ? reorderMessages(changed) : changed)
+                  }}
+                />
+                <FlowSettingsCard
+                  settings={draft.graph.settings}
+                  readOnly={readOnly}
+                  onChange={(change: FlowSettings) => setGraph(updateSettings(draft.graph, change))}
+                />
+                <section className="rounded-xl border border-slate-200 bg-white">
+                  <button
+                    type="button"
+                    aria-expanded={tryOpen}
+                    onClick={() => setTryOpen((value) => !value)}
+                    className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-slate-900"
+                  >
+                    Try it with a pretend child
+                    <span className="text-xs font-normal text-slate-500">{tryOpen ? 'Close' : 'See what would be sent'}</span>
+                  </button>
+                  {tryOpen && (
+                    <FlowTester
+                      classrooms={classrooms}
+                      filterOptions={filterOptions}
+                      test={test}
+                      outcome={outcome}
+                      onTest={(change) => setTest((current) => ({ ...current, ...change }))}
+                      onClear={() => setTest(EMPTY_TEST)}
+                      canSend={canEdit}
+                      sendBlockedReason={
+                        draft.id === null || dirty ? 'Save the flow first: the test sends the saved version.' : null
+                      }
+                      onSend={(phone) =>
+                        draft.id === null
+                          ? Promise.resolve({ queued: 0, error: 'Save the flow first.' })
+                          : onSendTest(draft.id, phone, testChildOf(test))
+                      }
+                    />
+                  )}
+                </section>
+              </>
+            ) : (
+              <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <p className="font-semibold">This flow is too detailed for the simple view.</p>
+                <p>{analysis.reason} It can still be changed in the advanced editor.</p>
+                <button
+                  type="button"
+                  onClick={() => setView('advanced')}
+                  className="rounded-lg bg-slate-900 px-3 py-2 font-semibold text-white"
+                >
+                  Open the advanced editor
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
       <div className="flex flex-col md:min-h-0 md:flex-1 md:flex-row">
         {panelOpen && selectedId !== null && (
           <aside
@@ -308,15 +430,10 @@ export function FlowEditor({
               selectedNode={selectedNode}
               classrooms={classrooms}
               contacts={contacts}
+              filterOptions={filterOptions}
               readOnly={readOnly}
-              onTriggerChange={(trigger: FlowTrigger) => {
-                setDraft({
-                  ...draft,
-                  trigger,
-                  graph: triggerInfo(trigger).afterOnly ? sendAfterOnly(draft.graph) : draft.graph,
-                })
-                setNotice(null)
-              }}
+              onSettingsChange={(change: FlowSettings) => setGraph(updateSettings(draft.graph, change))}
+              onTriggerChange={changeTrigger}
               onClose={() => setSelectedId(null)}
               onNodeChange={(id, change) => setGraph(updateNode(draft.graph, id, change))}
               onNodeDelete={(id) => {
@@ -329,15 +446,11 @@ export function FlowEditor({
         <div className="order-1 flex min-w-0 flex-col md:order-2 md:flex-1">
           <FlowTester
             classrooms={classrooms}
-            testAge={testAge}
-            testClass={testClass}
-            testHours={testHours}
-            testStage={testStage}
+            filterOptions={filterOptions}
+            test={test}
             outcome={outcome}
-            onTestAge={setTestAge}
-            onTestClass={setTestClass}
-            onTestHours={setTestHours}
-            onTestStage={setTestStage}
+            onTest={(change) => setTest((current) => ({ ...current, ...change }))}
+            onClear={() => setTest(EMPTY_TEST)}
             canSend={canEdit}
             sendBlockedReason={
               draft.id === null || dirty ? 'Save the flow first: the test sends the saved version.' : null
@@ -345,10 +458,7 @@ export function FlowEditor({
             onSend={(phone) =>
               draft.id === null
                 ? Promise.resolve({ queued: 0, error: 'Save the flow first.' })
-                : onSendTest(draft.id, phone, {
-                    age: testAge === '' ? null : Number(testAge),
-                    classroomId: testClass === '' ? null : Number(testClass),
-                  })
+                : onSendTest(draft.id, phone, testChildOf(test))
             }
           />
           <div className="h-[420px] md:h-auto md:min-h-0 md:flex-1">
@@ -358,6 +468,7 @@ export function FlowEditor({
               selectedId={selectedId}
               classroomName={classroomName}
               contactName={contactName}
+              choiceName={choiceName}
               highlight={highlight}
               readOnly={!canEdit}
               onGraphChange={setGraph}
@@ -367,6 +478,7 @@ export function FlowEditor({
           </div>
         </div>
       </div>
+      )}
     </div>
   )
 }

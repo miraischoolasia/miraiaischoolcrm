@@ -608,6 +608,24 @@ export type Database = {
         }
         Relationships: []
       }
+      automation_optouts: {
+        Row: {
+          phone: string
+          reason: string | null
+          created_at: string
+        }
+        Insert: {
+          phone: string
+          reason?: string | null
+          created_at?: string
+        }
+        Update: {
+          phone?: string
+          reason?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       automation_contacts: {
         Row: {
           id: number
@@ -631,7 +649,7 @@ export type Database = {
         Row: {
           id: number
           name: string
-          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting'
+          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'package_start' | 'lead_idle' | 'task_due'
           enabled: boolean
           graph: Json
           last_run_at: string | null
@@ -642,13 +660,13 @@ export type Database = {
         }
         Insert: {
           name: string
-          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting'
+          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'package_start' | 'lead_idle' | 'task_due'
           enabled?: boolean
           graph?: Json
         }
         Update: {
           name?: string
-          trigger_type?: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting'
+          trigger_type?: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'package_start' | 'lead_idle' | 'task_due'
           enabled?: boolean
           graph?: Json
         }
@@ -1463,8 +1481,27 @@ export type Database = {
           p_phone: string
           p_age?: number | null
           p_classroom_id?: number | null
+          p_hours?: number | null
+          p_stage?: string | null
+          p_source?: number | null
+          p_pic?: number | null
+          p_tag?: number | null
+          p_form?: string | null
         }
         Returns: number
+      }
+      automation_flow_stats: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          flow_id: number
+          queued: number
+          sent: number
+          pending: number
+          skipped: number
+          expired: number
+          failed: number
+          replied: number
+        }[]
       }
       reorder_ai_knowledge_notes: {
         Args: {

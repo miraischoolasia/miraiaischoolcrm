@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseChatwootEvent } from '../../supabase/functions/chat-activity/logic'
+import { isStopRequest, parseChatwootEvent } from '../../supabase/functions/chat-activity/logic'
 import { chatWebhookAddress, chatWebhookErrorMessage, describeAgo, isWebhookRecent } from './chatActivity'
 
 const incoming = {
@@ -30,6 +30,7 @@ describe('reading what the WhatsApp inbox sends for a message', () => {
         at: new Date('2026-10-13T05:30:00.000Z'),
         name: 'Stella',
         phone: '60122552285',
+        optOut: false,
       },
     })
   })
@@ -145,5 +146,28 @@ describe('the address given to the WhatsApp inbox', () => {
     )
     expect(chatWebhookErrorMessage(new Error('Only an admin can see this.'))).toBe('Only an admin can see this.')
     expect(chatWebhookErrorMessage(new Error('boom'))).toBe("Couldn't load the address.")
+  })
+})
+
+describe('a parent asking not to be messaged again', () => {
+  it('recognises a message that is only a request to stop', () => {
+    for (const text of ['STOP', 'stop', ' Stop. ', 'Unsubscribe', 'jangan hantar', '不要再发', '不要再发了！', '取消订阅', '别再发了']) {
+      expect(isStopRequest(text), text).toBe(true)
+    }
+  })
+
+  it('does not take a sentence that merely contains the word', () => {
+    for (const text of ['Please do not stop the class', 'stop by tomorrow?', 'ok thanks', '', '我们不要停止上课吧', 'When does the bus stop']) {
+      expect(isStopRequest(text), text).toBe(false)
+    }
+    expect(isStopRequest(null)).toBe(false)
+    expect(isStopRequest(42)).toBe(false)
+  })
+
+  it('marks a parent message but never one of ours', () => {
+    expect(parseChatwootEvent({ ...incoming, content: 'STOP' })).toMatchObject({ ok: true, message: { optOut: true } })
+    expect(
+      parseChatwootEvent({ ...incoming, content: 'STOP', message_type: 'outgoing', sender: { id: 5, type: 'user' } }),
+    ).toMatchObject({ ok: true, message: { optOut: false } })
   })
 })

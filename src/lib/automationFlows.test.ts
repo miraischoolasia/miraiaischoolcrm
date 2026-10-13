@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  EMPTY_TEST,
   TRIGGER_ID,
   addNode,
   addNodeAfter,
@@ -7,7 +8,10 @@ import {
   describeNode,
   describeOffset,
   disconnect,
+  isTesting,
+  testChildOf,
   triggerInfo,
+  updateSettings,
   edgeKey,
   newFlowDraft,
   normalizeTestPhone,
@@ -397,6 +401,123 @@ describe('after-the-event messages and the new triggers', () => {
     expect('after' in graph.nodes[1]).toBe(false)
     expect(graph.nodes[2]).toMatchObject({ kind: 'hours', max: 3 })
     expect(graph.nodes[3]).toMatchObject({ kind: 'stage', stages: ['new'] })
+  })
+})
+
+describe('source, tag, PIC and form blocks', () => {
+  const choiceGraph = (kind: 'source' | 'tag' | 'pic' | 'form', ids: string[]): FlowGraph => ({
+    trigger: { x: 0, y: 0 },
+    nodes: [
+      { id: 'c1', type: 'condition', kind, x: 0, y: 0, ids },
+      { id: 'm1', type: 'message', x: 0, y: 0, mins: 5, text: 'Yes', after: true },
+    ],
+    edges: [
+      { from: TRIGGER_ID, port: 'out', to: 'c1' },
+      { from: 'c1', port: 'yes', to: 'm1' },
+    ],
+  })
+  const none = { age: null, classroomId: null }
+
+  it('sends a lead down Yes when its source, PIC, tag or form is ticked', () => {
+    expect(simulateFlow(choiceGraph('source', ['3', '5']), { ...none, sourceId: 5 }).messages).toHaveLength(1)
+    expect(simulateFlow(choiceGraph('source', ['3']), { ...none, sourceId: 4 }).messages).toHaveLength(0)
+    expect(simulateFlow(choiceGraph('source', ['3']), none).messages).toHaveLength(0)
+    expect(simulateFlow(choiceGraph('pic', ['9']), { ...none, picId: 9 }).messages).toHaveLength(1)
+    expect(simulateFlow(choiceGraph('tag', ['7']), { ...none, tagId: 7 }).messages).toHaveLength(1)
+    expect(simulateFlow(choiceGraph('tag', ['7']), { ...none, tagId: 8 }).messages).toHaveLength(0)
+    const form = 'AAAAAAAA-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+    expect(simulateFlow(choiceGraph('form', [form]), { ...none, formId: form.toLowerCase() }).messages).toHaveLength(1)
+  })
+
+  it('reads them back, keeping only text ids', () => {
+    const graph = parseGraph({
+      trigger: { x: 0, y: 0 },
+      nodes: [
+        { id: 'a', type: 'condition', kind: 'source', ids: ['3', 4, null] },
+        { id: 'b', type: 'condition', kind: 'form', ids: ['aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'] },
+      ],
+      edges: [],
+    })
+    expect(graph.nodes[0]).toMatchObject({ kind: 'source', ids: ['3'] })
+    expect(graph.nodes[1]).toMatchObject({ kind: 'form', ids: ['aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'] })
+  })
+
+  it('needs at least one choice before saving', () => {
+    expect(validateDraft(draft({ graph: choiceGraph('source', []) }))).toBe('A source block needs at least one source ticked.')
+    expect(validateDraft(draft({ graph: choiceGraph('pic', []) }))).toBe('A PIC block needs at least one PIC ticked.')
+    expect(validateDraft(draft({ graph: choiceGraph('tag', ['7']) }))).toBeNull()
+  })
+
+  it('reads as a question on the canvas', () => {
+    const names = (kind: string, id: string) => (kind === 'source' ? `Source ${id}` : `Other ${id}`)
+    const node = choiceGraph('source', ['3']).nodes[0]
+    expect(describeNode(node, undefined, undefined, names)).toBe('Source is Source 3?')
+    expect(describeNode({ ...node, ids: [] } as FlowGraph['nodes'][number])).toBe('Any source?')
+    expect(describeNode({ ...node, ids: ['1', '2', '3'] } as FlowGraph['nodes'][number])).toBe('Source is one of 3?')
+  })
+
+  it('is added by the "+" with nothing ticked', () => {
+    const empty: FlowGraph = { trigger: { x: 0, y: 0 }, nodes: [], edges: [] }
+    for (const kind of ['source', 'tag', 'pic', 'form'] as const) {
+      expect(addNode(empty, kind).graph.nodes[0]).toMatchObject({ type: 'condition', kind, ids: [] })
+    }
+  })
+})
+
+describe('settings of the whole flow', () => {
+  const base: FlowGraph = { trigger: { x: 0, y: 0 }, nodes: [], edges: [] }
+
+  it('are added and taken away again', () => {
+    const stopped = updateSettings(base, { stopStages: ['converted', 'lost'] })
+    expect(stopped.settings).toEqual({ stopStages: ['converted', 'lost'] })
+    const waiting = updateSettings(stopped, { cooldownDays: 14 })
+    expect(waiting.settings).toEqual({ stopStages: ['converted', 'lost'], cooldownDays: 14 })
+    const cleared = updateSettings(updateSettings(waiting, { stopStages: [] }), { cooldownDays: 0 })
+    expect('settings' in cleared).toBe(false)
+    expect(base.settings).toBeUndefined()
+  })
+
+  it('are read back and checked', () => {
+    const graph = parseGraph({
+      trigger: { x: 0, y: 0 },
+      nodes: [],
+      edges: [],
+      settings: { stopStages: ['lost', 'bogus', 3], cooldownDays: 30 },
+    })
+    expect(graph.settings).toEqual({ stopStages: ['lost'], cooldownDays: 30 })
+    expect('settings' in parseGraph({ trigger: {}, nodes: [], edges: [], settings: { cooldownDays: -2 } })).toBe(false)
+    expect('settings' in parseGraph({ trigger: {}, nodes: [], edges: [], settings: 'x' })).toBe(false)
+  })
+
+  it('reject more than a year', () => {
+    const withDays = (cooldownDays: number) =>
+      draft({ graph: { ...newFlowDraft().graph, settings: { cooldownDays } } })
+    expect(validateDraft(withDays(30))).toBeNull()
+    expect(validateDraft(withDays(400))).toBe('The days before messaging the same person again must be 0 to 365.')
+  })
+})
+
+describe('the tester inputs', () => {
+  it('turn text into a pretend child, and nothing typed is no test', () => {
+    expect(isTesting(EMPTY_TEST)).toBe(false)
+    expect(isTesting({ ...EMPTY_TEST, tagId: '7' })).toBe(true)
+    expect(testChildOf({ ...EMPTY_TEST, age: '9', stage: 'new', sourceId: '3', formId: 'abc' })).toEqual({
+      age: 9,
+      classroomId: null,
+      hours: null,
+      stage: 'new',
+      sourceId: 3,
+      picId: null,
+      tagId: null,
+      formId: 'abc',
+    })
+  })
+
+  it('know the four new triggers', () => {
+    expect(triggerInfo('trial_booked').afterOnly).toBe(true)
+    expect(triggerInfo('package_start').afterOnly).toBe(true)
+    expect(triggerInfo('lead_idle').afterOnly).toBe(true)
+    expect(triggerInfo('task_due').afterOnly).toBeFalsy()
   })
 })
 
