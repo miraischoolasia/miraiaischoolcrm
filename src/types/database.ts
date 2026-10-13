@@ -664,6 +664,7 @@ export type Database = {
           draft: string | null
           skipped: boolean
           staff_note: string | null
+          missing_info: string | null
           model: string | null
           latency_ms: number | null
           accepted_at: string | null

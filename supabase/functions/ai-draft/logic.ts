@@ -30,7 +30,14 @@ export const DRAFT_CATEGORIES = [
 ] as const
 export type DraftCategory = (typeof DRAFT_CATEGORIES)[number]
 
-export type DraftResult = { reply: string; skip: boolean; staffNote: string; category: DraftCategory }
+export type DraftResult = {
+  reply: string
+  skip: boolean
+  staffNote: string
+  // The fact the parent needed that the school knowledge does not have (a short label), or ''.
+  missing: string
+  category: DraftCategory
+}
 
 export function normalizeCategory(value: unknown): DraftCategory {
   const text = typeof value === 'string' ? value.trim().toLowerCase() : ''
@@ -134,7 +141,7 @@ export function buildSystemPrompt(knowledge: string): string {
    - 家长已经回答过的问题，不能再问一次，也不能换个说法再问。家长答「有」「Yes」「没有」「还好」「not well」，就算已经回答，直接进入流程的下一步，不要追问细节。
    - 家长有两个或以上孩子时，称呼和说明都要照顾到每个孩子（例如「两个孩子」），时间和人数按每个孩子的年龄组来讲，不要只当成第一个孩子。
    - 家长的消息带「引用回复」时，那条回答是针对被引用的那个问题。家长一次回答了几个问题，就按引用或顺序对应，全部算已回答。
-2. 只能使用下面【知识库】里的资料。资料里没有的（例如付款方式、报名表格、退款、投诉、calendar 里没有的时间），不要编、不要承诺；草稿里避开这些，并在 staff_note 用一句话告诉同事缺什么、要自己补。
+2. 只能使用下面【知识库】里的资料。资料里没有的（例如付款方式、报名表格、退款、投诉、calendar 里没有的时间），不要编、不要承诺；草稿里避开这些，并在 missing 写下缺的资料（见第 8 点）。
 3. 语言：跟家长最后一条消息的语言走（中文、英文或马来文）。写中文时用知识库「说话方式」里的马来西亚华人 WhatsApp 口语。
 4. 家长只是说谢谢、OK、👍 之类、不需要回复时，skip 设为 true，reply 留空。
 5. 聊天里最后一条是同事发的、家长还没回复时，skip 设为 true，reply 留空。
@@ -149,7 +156,12 @@ export function buildSystemPrompt(knowledge: string): string {
    - refund：退款、取消、换课
    - health：孩子的健康、特殊需要、安全
    - other：不属于以上任何一种
-8. 只输出一个 JSON 对象，格式：{"reply": "草稿文字", "skip": false, "category": "info", "staff_note": "给同事的一句提醒，没有就留空"}。不要输出其他东西。
+8. missing：只有当家长需要的某个事实「知识库里没有」，所以草稿没法写出来时才填，写一个 20 字以内的短标签（不是句子）。
+   - 能用标准标签就用：付款方式、报名表格、退款政策、投诉处理、课程时间（calendar）、上课地址、证书、老师资料。
+   - 都不是就自己写一个短标签；资料够用就留空字符串。
+   - 不要把普通提醒写在 missing（例如「家长是学生本人」「进入第 2 步」）。
+9. staff_note：给同事的一句普通提醒（可以留空）。缺资料写在 missing，不要写在这里。
+10. 只输出一个 JSON 对象，格式：{"reply": "草稿文字", "skip": false, "category": "info", "missing": "", "staff_note": ""}。不要输出其他东西。
 
 【知识库】
 ${knowledge.trim() === '' ? EMPTY_KNOWLEDGE : knowledge}`
@@ -201,10 +213,12 @@ export function parseModelReply(raw: string): DraftResult | null {
         const reply = typeof parsed.reply === 'string' ? parsed.reply.trim() : ''
         const skip = parsed.skip === true || reply === ''
         const note = typeof parsed.staff_note === 'string' ? parsed.staff_note.trim() : ''
+        const missing = typeof parsed.missing === 'string' ? parsed.missing.trim() : ''
         return {
           reply: skip ? '' : reply.slice(0, 4000),
           skip,
           staffNote: note.slice(0, 300),
+          missing: missing.slice(0, 120),
           category: normalizeCategory(parsed.category),
         }
       }

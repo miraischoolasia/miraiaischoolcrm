@@ -47,7 +47,7 @@ export function useAiLearning({ enabled }: { enabled: boolean }) {
       await resolveGap(note)
       setRows((current) =>
         current.map((row) =>
-          row.staffNote?.trim() === note && !row.gapResolvedAt
+          row.missingInfo?.trim() === note && !row.gapResolvedAt
             ? { ...row, gapResolvedAt: new Date().toISOString() }
             : row,
         ),

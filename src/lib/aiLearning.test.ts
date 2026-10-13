@@ -19,6 +19,7 @@ const row = (change: Partial<DraftRow> = {}): DraftRow => ({
   draft: '妈咪，孩子几岁呢？',
   skipped: false,
   staffNote: null,
+  missingInfo: null,
   category: 'info',
   parentText: '你们有什么课？',
   sentText: null,
@@ -82,18 +83,20 @@ describe('the report', () => {
   })
 })
 
-describe('reminders about missing information', () => {
-  it('groups the same sentence, most often first, and skips the ones already dealt with', () => {
+describe('what the notes lack', () => {
+  it('groups the same label, most often first, and skips the ones already dealt with', () => {
     const gaps = openGaps([
-      row({ staffNote: '缺少付款方式', parentText: '怎么付款？', createdAt: '2026-10-13T01:00:00Z' }),
-      row({ staffNote: '缺少付款方式', parentText: '可以转账吗', createdAt: '2026-10-13T03:00:00Z' }),
-      row({ staffNote: '缺少退款政策', parentText: '可以退款吗' }),
-      row({ staffNote: '缺少地址', gapResolvedAt: '2026-10-13T04:00:00Z' }),
-      row({ staffNote: '   ' }),
+      row({ missingInfo: '付款方式', parentText: '怎么付款？', createdAt: '2026-10-13T01:00:00Z' }),
+      row({ missingInfo: '付款方式', parentText: '可以转账吗', createdAt: '2026-10-13T03:00:00Z' }),
+      row({ missingInfo: '退款政策', parentText: '可以退款吗' }),
+      row({ missingInfo: '上课地址', gapResolvedAt: '2026-10-13T04:00:00Z' }),
+      row({ missingInfo: '   ' }),
+      // An ordinary reminder to the team is not a gap.
+      row({ staffNote: '家长是学生本人，进入第 2 步' }),
     ])
     expect(gaps.map((gap) => [gap.note, gap.count, gap.example])).toEqual([
-      ['缺少付款方式', 2, '怎么付款？'],
-      ['缺少退款政策', 1, '可以退款吗'],
+      ['付款方式', 2, '怎么付款？'],
+      ['退款政策', 1, '可以退款吗'],
     ])
     expect(gaps[0].lastAt).toBe('2026-10-13T03:00:00Z')
   })

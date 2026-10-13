@@ -29,6 +29,8 @@ export type DraftRow = {
   draft: string | null
   skipped: boolean
   staffNote: string | null
+  // The fact the AI needed and the notes did not have (a short label).
+  missingInfo: string | null
   category: DraftCategory | null
   parentText: string | null
   sentText: string | null
@@ -45,6 +47,7 @@ type RawRow = {
   draft: string | null
   skipped: boolean
   staff_note: string | null
+  missing_info: string | null
   category: string | null
   parent_text: string | null
   sent_text: string | null
@@ -55,7 +58,7 @@ type RawRow = {
 }
 
 const COLUMNS =
-  'id, created_at, chat_id, draft, skipped, staff_note, category, parent_text, sent_text, sent_at, accepted_at, gap_resolved_at, reviewed_at'
+  'id, created_at, chat_id, draft, skipped, staff_note, missing_info, category, parent_text, sent_text, sent_at, accepted_at, gap_resolved_at, reviewed_at'
 
 const CATEGORIES = Object.keys(CATEGORY_LABELS)
 // The most recent drafts the page looks at.
@@ -69,6 +72,7 @@ function rowOf(row: RawRow): DraftRow {
     draft: row.draft,
     skipped: row.skipped,
     staffNote: row.staff_note,
+    missingInfo: row.missing_info,
     category: row.category && CATEGORIES.includes(row.category) ? (row.category as DraftCategory) : null,
     parentText: row.parent_text,
     sentText: row.sent_text,
@@ -265,7 +269,7 @@ export type Gap = {
 export function openGaps(rows: DraftRow[]): Gap[] {
   const gaps = new Map<string, Gap>()
   for (const row of rows) {
-    const note = row.staffNote?.trim()
+    const note = row.missingInfo?.trim()
     if (!note || row.gapResolvedAt) {
       continue
     }

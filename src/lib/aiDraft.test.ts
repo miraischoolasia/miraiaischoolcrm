@@ -330,6 +330,7 @@ describe('the function side', () => {
       reply: 'Hi 妈咪😊',
       skip: false,
       staffNote: '需确认付款方式',
+      missing: '',
       category: 'enrol',
     })
     expect(parseModelReply('```json\n{"reply":"OK","skip":false}\n```')).toMatchObject({ reply: 'OK', skip: false })
@@ -337,6 +338,7 @@ describe('the function side', () => {
       reply: '',
       skip: true,
       staffNote: '',
+      missing: '',
       category: 'other',
     })
     expect(parseModelReply('{"reply":"   ","skip":false}')).toMatchObject({ skip: true })
@@ -364,6 +366,13 @@ describe('the function side', () => {
       ]),
     ).toBeNull()
     expect(lastParentText([])).toBeNull()
+  })
+
+  it('reads which fact the knowledge lacked, apart from the reminder to the team', () => {
+    expect(
+      parseModelReply('{"reply":"妈咪～","skip":false,"missing":" 付款方式 ","staff_note":"家长是学生本人"}'),
+    ).toMatchObject({ missing: '付款方式', staffNote: '家长是学生本人' })
+    expect(parseModelReply('{"reply":"Hi","skip":false}')).toMatchObject({ missing: '' })
   })
 
   it('asks the model for the kind of question', () => {
