@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { autoLeadFor, AUTO_LEADS_FROM } from '../lib/autoLead'
+import { autoLeadFor, AUTO_LEADS_FROM, HIDDEN_NUMBER_AUTO_LEAD_DAYS } from '../lib/autoLead'
 import type { ChatwootClient } from '../lib/chatwootClient'
 import { canonicalPhone } from '../lib/chatLink'
 import type { SourceRule } from '../lib/sourceRules'
-import { getLinkedLeadId, getRealPhone, type ChatwootConversation, type ChatwootMessage } from '../lib/whatsappInbox'
+import {
+  getHiddenNumberName,
+  getLinkedLeadId,
+  getRealPhone,
+  type ChatwootConversation,
+  type ChatwootMessage,
+} from '../lib/whatsappInbox'
 import type { LeadFormValues, WhatsAppCrm } from '../components/whatsapp/crm'
 
 type Args = {
@@ -17,6 +23,8 @@ type Args = {
   hasLead: (conversation: ChatwootConversation) => boolean
   hasStudents: (conversation: ChatwootConversation) => boolean
   linkLead: (conversationId: number, leadId: number) => Promise<boolean>
+  // Seconds since epoch; replaced in tests.
+  now?: () => number
 }
 
 const PAGE = 20
@@ -39,7 +47,19 @@ async function readWholeChat(client: Args['client'], conversationId: number): Pr
 
 // Turns a new chat into a lead as soon as its first message matches a source rule, so nobody has to
 // press "Save lead". It runs for whoever has the inbox open, one chat at a time, and each chat once.
-export function useAutoLeads({ enabled, client, conversations, crm, rules, ready, hasLead, hasStudents, linkLead }: Args) {
+export function useAutoLeads({
+  enabled,
+  client,
+  conversations,
+  crm,
+  rules,
+  ready,
+  hasLead,
+  hasStudents,
+  linkLead,
+  now = () => Math.floor(Date.now() / 1000),
+}: Args) {
+  const hiddenFrom = () => now() - HIDDEN_NUMBER_AUTO_LEAD_DAYS * 24 * 60 * 60
   const seen = useRef(new Set<number>())
   const busy = useRef(false)
   const [round, setRound] = useState(0)
@@ -56,8 +76,15 @@ export function useAutoLeads({ enabled, client, conversations, crm, rules, ready
       if (seen.current.has(conversation.id) || conversation.status === 'resolved') {
         return false
       }
-      if (conversation.last_activity_at < AUTO_LEADS_FROM || !getRealPhone(conversation.meta.sender.phone_number)) {
+      if (conversation.last_activity_at < AUTO_LEADS_FROM) {
         return false
+      }
+      // A chat needs a number, or (when WhatsApp hides it) a username to call the parent by.
+      const sender = conversation.meta.sender
+      if (!getRealPhone(sender.phone_number)) {
+        if (getHiddenNumberName(sender) === '' || conversation.last_activity_at < hiddenFrom()) {
+          return false
+        }
       }
       return getLinkedLeadId(conversation) === null && !hasLead(conversation) && !hasStudents(conversation)
     })
@@ -69,9 +96,19 @@ export function useAutoLeads({ enabled, client, conversations, crm, rules, ready
     void (async () => {
       try {
         const messages = await readWholeChat(client, next.id)
-        const found = messages ? autoLeadFor(messages, latest.current.crm.leadOptions, latest.current.rules) : null
+        const hidden = !getRealPhone(next.meta.sender.phone_number)
+        const found = messages
+          ? autoLeadFor(
+              messages,
+              latest.current.crm.leadOptions,
+              latest.current.rules,
+              hidden ? hiddenFrom() : AUTO_LEADS_FROM,
+            )
+          : null
         const phone = canonicalPhone(next.meta.sender.phone_number)
-        if (!found || !phone) {
+        // WhatsApp hides the number: the lead has no phone yet, and the username is the parent's name.
+        const usernameOnly = getRealPhone(next.meta.sender.phone_number) ? '' : getHiddenNumberName(next.meta.sender)
+        if (!found || (!phone && usernameOnly === '')) {
           return
         }
         // Another computer may have done it a moment ago.
@@ -81,15 +118,15 @@ export function useAutoLeads({ enabled, client, conversations, crm, rules, ready
         }
         const other = latest.current.crm.leadOptions.find((option) => option.kind === 'source' && option.legacyKey === 'other')
         const values: LeadFormValues = {
-          fullName: '',
-          phone: `+${phone}`,
+          fullName: phone ? '' : usernameOnly,
+          phone: phone ? `+${phone}` : '',
           state: '',
           sourceId: (found.guess.source ?? other)?.id ?? null,
           picId: null,
           tagIds: found.guess.tags.map((tag) => tag.id),
           status: 'new',
           children: [],
-          notes: `Added by itself from the first WhatsApp message (source keyword: "${found.rule}").`,
+          notes: `Added by itself from the first WhatsApp message (${phone ? '' : 'WhatsApp hides the number; '}source keyword: "${found.rule}").`,
         }
         const created = await latest.current.crm.onCreateLead(values)
         // A lead for this number was made a moment ago (a form): tie the chat to that one.

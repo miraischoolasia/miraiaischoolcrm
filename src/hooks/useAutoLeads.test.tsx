@@ -15,7 +15,12 @@ const options: LeadOption[] = [
 ]
 const rules: SourceRule[] = [{ id: 1, phrase: 'free trial coding', sourceId: 1, tagIds: [2], isActive: true }]
 
-const chat = (id: number, phone: string, attributes: ChatwootConversation['custom_attributes'] = null): ChatwootConversation => ({
+const chat = (
+  id: number,
+  phone: string | null,
+  attributes: ChatwootConversation['custom_attributes'] = null,
+  name: string | null = null,
+): ChatwootConversation => ({
   id,
   status: 'open',
   unread_count: 1,
@@ -23,7 +28,7 @@ const chat = (id: number, phone: string, attributes: ChatwootConversation['custo
   timestamp: NOW,
   last_activity_at: NOW,
   custom_attributes: attributes,
-  meta: { sender: { id, name: null, phone_number: phone, identifier: null } },
+  meta: { sender: { id, name, phone_number: phone, identifier: null } },
 })
 
 const said = (text: string): ChatwootMessage => ({
@@ -61,6 +66,7 @@ function setup(
       hasLead: () => overrides.hasLead ?? false,
       hasStudents: () => false,
       linkLead,
+      now: () => NOW,
     }),
   )
   return { client, onCreateLead, linkLead, view }
@@ -94,6 +100,44 @@ describe('useAutoLeads', () => {
 
   it('leaves a chat that already has a lead, or whose number WhatsApp hides', async () => {
     const { client, onCreateLead } = setup({ hasLead: true, conversations: [chat(5, '+60123456789'), chat(6, '+198765432109876')] })
+
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(client.listMessages).not.toHaveBeenCalled()
+    expect(onCreateLead).not.toHaveBeenCalled()
+  })
+
+  it('makes a lead of a chat whose number WhatsApp hides, using the username as the parent name', async () => {
+    const { onCreateLead, linkLead } = setup({ conversations: [chat(6, null, null, 'jasmineooi')] })
+
+    await waitFor(() => expect(linkLead).toHaveBeenCalledWith(6, 77))
+    expect(onCreateLead).toHaveBeenCalledWith(
+      expect.objectContaining({ fullName: 'jasmineooi', phone: '', sourceId: 1, tagIds: [2], children: [] }),
+    )
+  })
+
+  it('leaves a chat with no number and no name, or a name that is only a number', async () => {
+    const { client, onCreateLead } = setup({
+      conversations: [chat(6, null, null, null), chat(7, null, null, '+60 12 345 6789')],
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(client.listMessages).not.toHaveBeenCalled()
+    expect(onCreateLead).not.toHaveBeenCalled()
+  })
+
+  it('does not make a lead for a username chat that no rule matches', async () => {
+    const { client, onCreateLead } = setup({
+      text: 'How much are the classes?',
+      conversations: [chat(6, null, null, 'jasmineooi')],
+    })
+
+    await waitFor(() => expect(client.listMessages).toHaveBeenCalled())
+    expect(onCreateLead).not.toHaveBeenCalled()
+  })
+
+  it('leaves an old username chat alone: it is a family the school already knows', async () => {
+    const old = { ...chat(6, null, null, 'jasmineooi'), last_activity_at: NOW - 30 * 24 * 60 * 60 }
+    const { client, onCreateLead } = setup({ conversations: [old] })
 
     await new Promise((resolve) => setTimeout(resolve, 30))
     expect(client.listMessages).not.toHaveBeenCalled()

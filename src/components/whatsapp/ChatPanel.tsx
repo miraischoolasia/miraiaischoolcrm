@@ -148,7 +148,7 @@ export function ChatPanel({
     enabled: aiContext !== null,
     conversationId: conversation.id,
     messages,
-    context: aiContext ?? { childName: null, childAge: null, teamName: null },
+    context: aiContext ?? { children: [], teamName: null },
     hasDraft: draft != null,
   })
   const owner = handledBy ?? getOwner(conversation)

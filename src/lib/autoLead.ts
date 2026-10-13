@@ -8,6 +8,10 @@ import type { ChatwootMessage } from './whatsappInbox'
 // there are looked at too, as long as they are open, not a lead, not a student and have a real number.
 export const AUTO_LEADS_FROM = 0
 
+// A chat whose number WhatsApp hides is only made a lead by itself while it is this young (days). Older
+// ones are the families the school already knows, and nobody could tell them apart by a number.
+export const HIDDEN_NUMBER_AUTO_LEAD_DAYS = 7
+
 // What to make a lead from, or null when this chat should not become one by itself: the first thing in the
 // chat must be a message from the parent (not one the school started), written after the cut-off, and
 // must match one of the source rules.

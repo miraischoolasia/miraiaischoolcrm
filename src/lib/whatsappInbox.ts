@@ -109,6 +109,17 @@ export function getPhoneReadTarget(sender: { phone_number: string | null }, mess
   return phone && ids.length > 0 ? { phone, ids: ids.slice(-50) } : null
 }
 
+// The name to call the parent of a chat whose number WhatsApp hides (all there is is the username they
+// show). Empty when the number is known, or when the name is only digits and symbols (a number).
+export function getHiddenNumberName(sender: { name?: string | null; phone_number: string | null }) {
+  if (getRealPhone(sender.phone_number)) {
+    return ''
+  }
+  // The helper that adds numbers to names writes "Name +60123456789".
+  const name = (sender.name ?? '').replace(/\s*\+\d{10,12}$/, '').trim()
+  return /[^\d\s+()-]/.test(name) ? name : ''
+}
+
 export function formatPhone(digits: string) {
   if (digits.startsWith('60') && digits.length >= 10) {
     const national = digits.slice(2)

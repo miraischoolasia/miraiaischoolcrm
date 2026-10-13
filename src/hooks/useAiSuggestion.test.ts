@@ -21,7 +21,7 @@ const message = (change: Partial<ChatwootMessage> = {}): ChatwootMessage => ({
   ...change,
 })
 
-const context = { childName: 'Ethan', childAge: 9, teamName: 'Lex' }
+const context = { children: [{ name: 'Ethan', age: 9 }], teamName: 'Lex' }
 const draft: AiDraftOutcome = { kind: 'draft', suggestion: { id: 5, text: 'Hi 妈咪😊', note: '' } }
 
 function setup(

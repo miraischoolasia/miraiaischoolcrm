@@ -10,6 +10,7 @@ import { describeStudent, getStudentKind, makeStudentResolver } from '../../lib/
 import type { SourceRule } from '../../lib/sourceRules'
 import {
   formatListTime,
+  getHiddenNumberName,
   getLinkedLeadId,
   getLinkedStudentIds,
   getRealPhone,
@@ -236,8 +237,7 @@ export function DetailsPanel({
   }
 
   // WhatsApp hid the number, so the name the chat shows (the username) is all there is to call the parent.
-  const chatName = (sender.name ?? '').replace(/\s*\+\d{10,12}$/, '').trim()
-  const nameWithoutNumber = !phone && role !== 'student' && chatName !== '' && /[^\d\s+()-]/.test(chatName) ? chatName : ''
+  const nameWithoutNumber = role !== 'student' ? getHiddenNumberName(sender) : ''
 
   const first = useMemo(() => getFirstMessage(messages), [messages])
   const guess = useMemo(() => guessSourceAndTags(first?.text ?? '', crm.leadOptions, sourceRules), [first, crm.leadOptions, sourceRules])

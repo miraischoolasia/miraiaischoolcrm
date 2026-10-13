@@ -407,8 +407,12 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
     conversations: inbox.conversations,
     crm,
     rules: sourceRules.rules,
-    ready: !sourceRules.isLoading && !inbox.isLoading && crm.leads.length > 0 && crm.students.length > 0,
-    hasLead: (conversation) => leadIdOf(conversation) !== null,
+    // The family table is read too: a chat without a number is tied to its lead there, not only on the chat.
+    ready:
+      !sourceRules.isLoading && !inbox.isLoading && crm.leads.length > 0 && crm.students.length > 0 && people.length > 0,
+    hasLead: (conversation) =>
+      leadIdOf(conversation) !== null ||
+      people.some((person) => person.contactId === conversation.meta.sender.id && person.leadId !== null),
     hasStudents: (conversation) => studentsOf(conversation).length > 0,
     linkLead: setLeadLinkAndFamily,
   })
@@ -555,7 +559,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
       return "WhatsApp didn't accept the message. Check the chat before trying again."
     }
   }
-  // What the AI reply suggestion may know: the child's first name and age and who is writing. Phone
+  // What the AI reply suggestion may know: every child's first name and age and who is writing. Phone
   // numbers and the parent's name are never given to it. Null (feature off) for people who cannot edit leads.
   const aiContext = useMemo(() => {
     if (!inbox.selected || !crm.canEditLeads) {
@@ -563,10 +567,11 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
     }
     const sender = inbox.selected.meta.sender
     const { lead } = resolveChatLead(getLinkedLeadId(inbox.selected), getRealPhone(sender.phone_number), crm.leads)
-    const child = lead?.children[0]
     return {
-      childName: child?.name?.trim() ? child.name.trim().split(/\s+/)[0] : null,
-      childAge: typeof child?.age === 'number' && child.age > 0 ? child.age : null,
+      children: (lead?.children ?? []).map((child) => ({
+        name: child.name?.trim() ? child.name.trim().split(/\s+/)[0] : null,
+        age: typeof child.age === 'number' && child.age > 0 ? child.age : null,
+      })),
       teamName: currentUser.name || null,
     }
   }, [inbox.selected, crm.canEditLeads, crm.leads, currentUser.name])

@@ -8,7 +8,8 @@ export type DraftInput = {
   chatId: number
   lastMessageId: number
   messages: DraftMessage[]
-  child: { name: string | null; age: number | null } | null
+  // Every child of the family the team has written down (first names and ages), up to MAX_CHILDREN.
+  children: { name: string | null; age: number | null }[]
   teamName: string | null
   // Ask again even when this chat already has a draft for its last message.
   regenerate: boolean
@@ -18,6 +19,7 @@ export type DraftResult = { reply: string; skip: boolean; staffNote: string }
 
 export const MAX_MESSAGES = 30
 export const MAX_TEXT = 1500
+export const MAX_CHILDREN = 5
 
 // A phone number or an email address someone typed in the chat never goes to the AI.
 export function scrub(text: string): string {
@@ -54,20 +56,25 @@ export function validateInput(body: unknown): { ok: true; value: DraftInput } | 
   if (messages.length === 0) {
     return { ok: false, error: 'There are no messages to answer.' }
   }
-  let child: DraftInput['child'] = null
-  if (source.child && typeof source.child === 'object') {
-    const raw = source.child as Record<string, unknown>
+  // `children` is the list; an older browser sends the first child alone as `child`.
+  const rawChildren: unknown[] = Array.isArray(source.children) ? source.children : source.child ? [source.child] : []
+  const children: DraftInput['children'] = []
+  for (const entry of rawChildren.slice(0, MAX_CHILDREN)) {
+    if (!entry || typeof entry !== 'object') {
+      continue
+    }
+    const raw = entry as Record<string, unknown>
     const name = typeof raw.name === 'string' && raw.name.trim() ? scrub(raw.name.trim()).slice(0, 60) : null
     const age = typeof raw.age === 'number' && Number.isFinite(raw.age) && raw.age > 0 && raw.age < 40 ? raw.age : null
     if (name || age !== null) {
-      child = { name, age }
+      children.push({ name, age })
     }
   }
   const teamName =
     typeof source.teamName === 'string' && source.teamName.trim() ? source.teamName.trim().slice(0, 60) : null
   return {
     ok: true,
-    value: { chatId, lastMessageId, messages, child, teamName, regenerate: source.regenerate === true },
+    value: { chatId, lastMessageId, messages, children, teamName, regenerate: source.regenerate === true },
   }
 }
 
@@ -99,6 +106,7 @@ export function buildSystemPrompt(knowledge: string): string {
 规则：
 1. 只写同事「下一条」要发的消息（可以分成几行短句）。一次只往流程前进一步：看聊天记录判断现在在哪一步。
    - 家长已经回答过的问题，不能再问一次，也不能换个说法再问。家长答「有」「Yes」「没有」「还好」「not well」，就算已经回答，直接进入流程的下一步，不要追问细节。
+   - 家长有两个或以上孩子时，称呼和说明都要照顾到每个孩子（例如「两个孩子」），时间和人数按每个孩子的年龄组来讲，不要只当成第一个孩子。
    - 家长的消息带「引用回复」时，那条回答是针对被引用的那个问题。家长一次回答了几个问题，就按引用或顺序对应，全部算已回答。
 2. 只能使用下面【知识库】里的资料。资料里没有的（例如付款方式、报名表格、退款、投诉、calendar 里没有的时间），不要编、不要承诺；草稿里避开这些，并在 staff_note 用一句话告诉同事缺什么、要自己补。
 3. 语言：跟家长最后一条消息的语言走（中文、英文或马来文）。写中文时用知识库「说话方式」里的马来西亚华人 WhatsApp 口语。
@@ -114,11 +122,17 @@ ${knowledge.trim() === '' ? EMPTY_KNOWLEDGE : knowledge}`
 export function buildUserPrompt(input: DraftInput): string {
   const lines: string[] = []
   lines.push(`同事名字：${input.teamName ?? '（不知道）'}`)
-  if (input.child) {
-    const parts = [input.child.name ?? '（名字不知道）', input.child.age !== null ? `${input.child.age} 岁` : '']
-    lines.push(`孩子：${parts.filter(Boolean).join('，')}`)
-  } else {
+  const describeChild = (child: DraftInput['children'][number]) =>
+    [child.name ?? '（名字不知道）', child.age !== null ? `${child.age} 岁` : ''].filter(Boolean).join('，')
+  if (input.children.length === 0) {
     lines.push('孩子：（还没有资料）')
+  } else if (input.children.length === 1) {
+    lines.push(`孩子：${describeChild(input.children[0])}`)
+  } else {
+    lines.push(`孩子（一共 ${input.children.length} 个）：`)
+    for (const child of input.children) {
+      lines.push(`- ${describeChild(child)}`)
+    }
   }
   lines.push('', '聊天记录（旧 → 新）：')
   for (const message of input.messages) {

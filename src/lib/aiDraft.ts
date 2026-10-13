@@ -6,9 +6,11 @@ import { waIdOf } from './waActions'
 // reply the team would write next. It comes back as a suggestion shown in grey in the message box;
 // nothing is ever sent without a person.
 
+export type AiDraftChild = { name: string | null; age: number | null }
+
 export type AiDraftContext = {
-  childName: string | null
-  childAge: number | null
+  // Every child written on the lead (first names only), up to MAX_CHILDREN.
+  children: AiDraftChild[]
   // Who is writing, so the reply can introduce them.
   teamName: string | null
 }
@@ -26,7 +28,9 @@ export type AiDraftBody = {
   chatId: number
   lastMessageId: number
   messages: RequestMessage[]
-  child: { name: string | null; age: number | null } | null
+  // The first child alone, for a function version that does not read `children` yet.
+  child: AiDraftChild | null
+  children: AiDraftChild[]
   teamName: string | null
   regenerate: boolean
 }
@@ -39,6 +43,7 @@ export function scrubText(text: string): string {
 }
 
 const MAX_MESSAGES = 20
+const MAX_CHILDREN = 5
 
 function textOf(message: ChatwootMessage): string {
   const written = (message.content ?? '').trim()
@@ -105,12 +110,13 @@ export function buildDraftBody(
       })
     }
   }
-  const hasChild = Boolean(context.childName) || context.childAge !== null
+  const children = context.children.filter((child) => Boolean(child.name) || child.age !== null).slice(0, MAX_CHILDREN)
   return {
     chatId: conversationId,
     lastMessageId: target.id,
     messages: history.slice(-MAX_MESSAGES),
-    child: hasChild ? { name: context.childName, age: context.childAge } : null,
+    child: children[0] ?? null,
+    children,
     teamName: context.teamName,
     regenerate,
   }

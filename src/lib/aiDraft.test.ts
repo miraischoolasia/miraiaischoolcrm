@@ -81,11 +81,12 @@ describe('what is asked', () => {
       message({ private: true, content: 'private note' }),
       message({ content: 'How much is HOA?' }),
     ]
-    const body = buildDraftBody(55, list, { childName: 'Ethan', childAge: 9, teamName: 'Lex' }, false)
+    const body = buildDraftBody(55, list, { children: [{ name: 'Ethan', age: 9 }], teamName: 'Lex' }, false)
     expect(body).toMatchObject({
       chatId: 55,
       lastMessageId: list[3].id,
       child: { name: 'Ethan', age: 9 },
+      children: [{ name: 'Ethan', age: 9 }],
       teamName: 'Lex',
       regenerate: false,
     })
@@ -105,7 +106,7 @@ describe('what is asked', () => {
       message({ content: 'Yes', content_attributes: { in_reply_to: question.id } }),
       message({ content: 'Yes not well', content_attributes: { in_reply_to_external_id: 'DEF' } }),
     ]
-    const body = buildDraftBody(7, list, { childName: null, childAge: null, teamName: null }, false)
+    const body = buildDraftBody(7, list, { children: [], teamName: null }, false)
     expect(body?.messages).toEqual([
       { from: 'team', text: '孩子有玩过电脑游戏吗？' },
       { from: 'team', text: '有用 ChatGPT 吗？' },
@@ -114,9 +115,51 @@ describe('what is asked', () => {
     ])
   })
 
+  it('sends every child of the lead, and the first one alone for an older function', () => {
+    const list = [message({ content: 'How much?' })]
+    const body = buildDraftBody(
+      3,
+      list,
+      {
+        children: [
+          { name: 'Mia', age: 5 },
+          { name: null, age: 12 },
+          { name: null, age: null },
+        ],
+        teamName: null,
+      },
+      false,
+    )
+    expect(body?.children).toEqual([
+      { name: 'Mia', age: 5 },
+      { name: null, age: 12 },
+    ])
+    expect(body?.child).toEqual({ name: 'Mia', age: 5 })
+  })
+
+  it('lists several children in the question', () => {
+    const checked = validateInput({
+      chatId: 1,
+      lastMessageId: 2,
+      messages: [{ from: 'parent', text: 'hi' }],
+      children: [
+        { name: 'Mia', age: 5 },
+        { name: null, age: 12 },
+      ],
+    })
+    if (!checked.ok) {
+      throw new Error('should be valid')
+    }
+    expect(checked.value.children).toHaveLength(2)
+    const prompt = buildUserPrompt(checked.value)
+    expect(prompt).toContain('孩子（一共 2 个）：')
+    expect(prompt).toContain('- Mia，5 岁')
+    expect(prompt).toContain('- （名字不知道），12 岁')
+  })
+
   it('keeps the last 20 messages and has no child when nothing is known', () => {
     const list = Array.from({ length: 30 }, (_, i) => message({ content: `m${i}` }))
-    const body = buildDraftBody(1, list, { childName: null, childAge: null, teamName: null }, true)
+    const body = buildDraftBody(1, list, { children: [], teamName: null }, true)
     expect(body?.messages).toHaveLength(20)
     expect(body?.messages[19].text).toBe('m29')
     expect(body?.child).toBeNull()
@@ -124,9 +167,7 @@ describe('what is asked', () => {
   })
 
   it('asks for nothing when there is nothing to answer', () => {
-    expect(
-      buildDraftBody(1, [message({ message_type: 1 })], { childName: null, childAge: null, teamName: null }, false),
-    ).toBeNull()
+    expect(buildDraftBody(1, [message({ message_type: 1 })], { children: [], teamName: null }, false)).toBeNull()
   })
 })
 
@@ -136,6 +177,7 @@ describe('what comes back', () => {
     lastMessageId: 2,
     messages: [{ from: 'parent' as const, text: 'hi' }],
     child: null,
+    children: [],
     teamName: null,
     regenerate: false,
   }
@@ -212,7 +254,7 @@ describe('the function side', () => {
       ok: true,
       value: {
         messages: [{ from: 'parent', text: 'my number [number]' }],
-        child: { name: 'Ethan', age: 9 },
+        children: [{ name: 'Ethan', age: 9 }],
         regenerate: false,
       },
     })
