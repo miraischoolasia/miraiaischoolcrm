@@ -19,13 +19,18 @@ export const LIVE_TABLES = [
   'lesson_log_student_reviews',
 ] as const
 
-const POLL_MS = 15_000
+// Every read is 13 requests that download all the data, so it must not run when nothing changed.
+const POLL_MS = 30_000
+// While Realtime is connected it reports every change itself; this slow check only guards against a
+// change it silently missed.
+const SAFETY_EVERY_TICKS = 10
 const DEBOUNCE_MS = 400
 
 // Keeps the data of the page current without a refresh:
 //  - the database tells the page the moment a row changes (Supabase Realtime), and
-//  - every 15 seconds, and whenever the tab is looked at again, the page checks anyway,
-//    so it still catches up where Realtime is off or the connection dropped.
+//  - whenever the tab is looked at again the page checks anyway, and every 30 seconds it checks while
+//    Realtime is not connected (off, or the connection dropped), so it still catches up. While Realtime is
+//    connected the check is only every 5 minutes.
 // `sync` reads everything again and swaps in what changed; it never runs twice at once.
 export function useLiveSync(enabled: boolean, sync: () => Promise<void>) {
   const syncRef = useRef(sync)
@@ -41,6 +46,10 @@ export function useLiveSync(enabled: boolean, sync: () => Promise<void>) {
     let running = false
     let again = false
     let debounce: number | undefined
+    // True while the Realtime channel is connected; a read is also made when it comes back after a gap.
+    let live = false
+    let wasDown = false
+    let ticks = 0
 
     const run = async () => {
       if (stopped || document.hidden) {
@@ -67,13 +76,19 @@ export function useLiveSync(enabled: boolean, sync: () => Promise<void>) {
       window.clearTimeout(debounce)
       debounce = window.setTimeout(() => void run(), DEBOUNCE_MS)
     }
+    // Looking at the tab fires both "visible" and "focus": one debounced read covers both.
     const onVisible = () => {
       if (!document.hidden) {
-        void run()
+        soon()
       }
     }
 
-    const timer = window.setInterval(() => void run(), POLL_MS)
+    const timer = window.setInterval(() => {
+      ticks += 1
+      if (!live || ticks % SAFETY_EVERY_TICKS === 0) {
+        void run()
+      }
+    }, POLL_MS)
     document.addEventListener('visibilitychange', onVisible)
     window.addEventListener('focus', onVisible)
 
@@ -84,9 +99,20 @@ export function useLiveSync(enabled: boolean, sync: () => Promise<void>) {
         for (const table of LIVE_TABLES) {
           next = next.on('postgres_changes', { event: '*', schema: 'public', table }, soon)
         }
-        channel = next.subscribe()
+        channel = next.subscribe((status: string) => {
+          if (status === 'SUBSCRIBED') {
+            live = true
+            if (wasDown) {
+              wasDown = false
+              soon()
+            }
+          } else {
+            live = false
+            wasDown = true
+          }
+        })
       } catch {
-        // Realtime unavailable: the 15-second check still keeps the page current.
+        // Realtime unavailable: the 30-second check still keeps the page current.
       }
     }
 

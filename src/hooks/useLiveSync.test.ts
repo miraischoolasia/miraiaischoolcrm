@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const realtime = vi.hoisted(() => ({
   handlers: [] as (() => void)[],
+  status: null as null | ((status: string) => void),
   removed: vi.fn(),
 }))
 
@@ -12,7 +13,10 @@ vi.mock('../lib/supabase', () => {
       realtime.handlers.push(handler)
       return channel
     },
-    subscribe: () => channel,
+    subscribe: (onStatus?: (status: string) => void) => {
+      realtime.status = onStatus ?? null
+      return channel
+    },
   }
   return { supabase: { channel: () => channel, removeChannel: realtime.removed } }
 })
@@ -23,22 +27,60 @@ describe('useLiveSync', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     realtime.handlers.length = 0
+    realtime.status = null
     realtime.removed.mockClear()
   })
   afterEach(() => {
     vi.useRealTimers()
   })
 
-  it('checks every 15 seconds', async () => {
+  it('checks every 30 seconds while Realtime is not connected', async () => {
     const sync = vi.fn(async () => undefined)
     renderHook(() => useLiveSync(true, sync))
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(15_000)
+      await vi.advanceTimersByTimeAsync(30_000)
     })
     expect(sync).toHaveBeenCalledTimes(1)
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(15_000)
+      await vi.advanceTimersByTimeAsync(30_000)
+    })
+    expect(sync).toHaveBeenCalledTimes(2)
+  })
+
+  it('only makes a slow safety check every 5 minutes while Realtime is connected', async () => {
+    const sync = vi.fn(async () => undefined)
+    renderHook(() => useLiveSync(true, sync))
+    act(() => realtime.status?.('SUBSCRIBED'))
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4 * 60_000)
+    })
+    expect(sync).not.toHaveBeenCalled()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000)
+    })
+    expect(sync).toHaveBeenCalledTimes(1)
+  })
+
+  it('catches up and goes back to quiet when Realtime reconnects after a gap', async () => {
+    const sync = vi.fn(async () => undefined)
+    renderHook(() => useLiveSync(true, sync))
+    act(() => realtime.status?.('SUBSCRIBED'))
+    act(() => realtime.status?.('CHANNEL_ERROR'))
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000)
+    })
+    expect(sync).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      realtime.status?.('SUBSCRIBED')
+      await vi.advanceTimersByTimeAsync(500)
+    })
+    expect(sync).toHaveBeenCalledTimes(2)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2 * 60_000)
     })
     expect(sync).toHaveBeenCalledTimes(2)
   })
@@ -85,11 +127,11 @@ describe('useLiveSync', () => {
     renderHook(() => useLiveSync(true, sync))
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(15_000)
+      await vi.advanceTimersByTimeAsync(30_000)
     })
     expect(sync).toHaveBeenCalledTimes(1)
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(15_000)
+      await vi.advanceTimersByTimeAsync(30_000)
     })
     // The first read is still going: the second check waits.
     expect(sync).toHaveBeenCalledTimes(1)
