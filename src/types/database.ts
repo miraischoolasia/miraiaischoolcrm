@@ -397,12 +397,6 @@ export type Database = {
         }
         Relationships: []
       }
-      lead_source_rules: {
-        Row: {
-          id: number
-          phrase: string
-          source_id: number | null
-          tag_ids: number[]
       whatsapp_numbers: {
         Row: {
           id: number
@@ -448,6 +442,12 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_source_rules: {
+        Row: {
+          id: number
+          phrase: string
+          source_id: number | null
+          tag_ids: number[]
           is_active: boolean
           created_at: string
         }
@@ -1548,16 +1548,16 @@ export type Database = {
     }
     Views: Record<string, never>
     Functions: {
+      my_whatsapp_inbox_ids: {
+        Args: Record<PropertyKey, never>
+        Returns: number[] | null
+      }
       run_automation_rules: {
         Args: Record<string, never>
         Returns: number
       }
       chat_webhook_info: {
         Args: Record<PropertyKey, never>
-      my_whatsapp_inbox_ids: {
-        Args: Record<PropertyKey, never>
-        Returns: number[] | null
-      }
         Returns: {
           webhook_key: string
           last_received_at: string | null
