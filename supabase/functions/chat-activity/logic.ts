@@ -136,6 +136,11 @@ export function parseChatwootEvent(payload: unknown): ParsedEvent {
     asId(contactInbox?.contact_id) ??
     (direction === 'incoming' && sender?.type !== 'user' ? asId(sender?.id) : null)
   const contactSource = metaSender ?? (direction === 'incoming' ? sender : null)
+  // A WhatsApp group is many people, not one parent: nobody "has not replied" in it.
+  const address = asText(contactSource?.identifier) ?? asText(contactInbox?.source_id) ?? ''
+  if (address.endsWith('@g.us') || /\(group\)\s*$/i.test(asText(contactSource?.name) ?? '')) {
+    return { ok: false, reason: 'whatsapp group' }
+  }
 
   const at = asTime(body.created_at) ?? asTime(conversation?.timestamp) ?? new Date()
 

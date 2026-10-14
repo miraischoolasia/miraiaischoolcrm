@@ -16,6 +16,7 @@ import {
   getOwner,
   getRealPhone,
   getTab,
+  isGroupChat,
   isRecentlyOverdue,
   type InboxTab,
 } from '../../lib/whatsappInbox'
@@ -576,7 +577,8 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
   // What the AI reply suggestion may know: every child's first name and age and who is writing. Phone
   // numbers and the parent's name are never given to it. Null (feature off) for people who cannot edit leads.
   const aiContext = useMemo(() => {
-    if (!inbox.selected || !crm.canEditLeads) {
+    // No reply suggestion in a group: it is not one parent, and every message would cost an AI call.
+    if (!inbox.selected || !crm.canEditLeads || isGroupChat(inbox.selected.meta.sender)) {
       return null
     }
     const sender = inbox.selected.meta.sender

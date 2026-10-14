@@ -11,6 +11,7 @@ import type { SourceRule } from '../../lib/sourceRules'
 import {
   formatListTime,
   getHiddenNumberName,
+  isGroupChat,
   getLinkedLeadId,
   getLinkedStudentIds,
   getRealPhone,
@@ -262,6 +263,31 @@ export function DetailsPanel({
       forStudent={role === 'student'}
     />
   )
+
+  // A group is many people: no lead, family or student card applies to it.
+  if (isGroupChat(sender)) {
+    return (
+      <aside className={className}>
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900 xl:hidden"
+          >
+            <CaretLeft size={16} aria-hidden="true" />
+            Back to the chat
+          </button>
+        )}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+          <p className="font-semibold text-slate-900">WhatsApp group</p>
+          <p className="mt-1">
+            Everyone in the group reads what the team writes here. A group is not a lead or a student, so there is no
+            lead form, family card or AI suggestion for it.
+          </p>
+        </div>
+      </aside>
+    )
+  }
 
   return (
     <aside className={className}>

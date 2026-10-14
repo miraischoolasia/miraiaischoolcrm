@@ -96,6 +96,16 @@ describe('useAutoLeads', () => {
     expect(onCreateLead).not.toHaveBeenCalled()
   })
 
+  it('never makes a lead of a WhatsApp group', async () => {
+    const group = chat(8, null, null, 'Mirai Parents (GROUP)')
+    group.meta.sender.identifier = '120363000000000000@g.us'
+    const { client, onCreateLead } = setup({ conversations: [group] })
+
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(client.listMessages).not.toHaveBeenCalled()
+    expect(onCreateLead).not.toHaveBeenCalled()
+  })
+
   it('waits until the leads, students and rules are loaded', async () => {
     const { client, onCreateLead } = setup({ ready: false })
 

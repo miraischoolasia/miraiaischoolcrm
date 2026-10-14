@@ -10,6 +10,7 @@ import {
   formatDayLabel,
   formatListTime,
   getChatIdentity,
+  isGroupChat,
   onePerParent,
   getChatRole,
   getInitials,
@@ -50,6 +51,31 @@ describe('getRealPhone', () => {
     expect(getRealPhone('+1215643541729')).toBeNull()
     expect(getRealPhone('77910941663233')).toBeNull()
     expect(getRealPhone(null)).toBeNull()
+  })
+})
+
+describe('WhatsApp groups', () => {
+  it('knows a group by its address or by the (GROUP) its name ends with', () => {
+    expect(isGroupChat({ identifier: '120363025246125486@g.us', name: 'Class A' })).toBe(true)
+    expect(isGroupChat({ identifier: null, name: 'Mirai AI X Kai Yang (GROUP)' })).toBe(true)
+    expect(isGroupChat({ identifier: '60123456789@s.whatsapp.net', name: 'Lex +60123456789' })).toBe(false)
+    expect(isGroupChat({ identifier: null, name: null })).toBe(false)
+  })
+
+  it('shows a group by its subject, marked as a group, with no phone warning', () => {
+    const identity = getChatIdentity({
+      id: 1,
+      name: 'Mirai AI X Kai Yang (GROUP)',
+      phone_number: null,
+      identifier: '120363025246125486@g.us',
+    })
+    expect(identity).toMatchObject({
+      title: 'Mirai AI X Kai Yang (group)',
+      subtitle: 'WhatsApp group',
+      hasRealPhone: true,
+      isGroup: true,
+      initials: 'MA',
+    })
   })
 })
 

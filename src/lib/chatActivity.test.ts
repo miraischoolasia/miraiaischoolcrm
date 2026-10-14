@@ -101,6 +101,18 @@ describe('reading what the WhatsApp inbox sends for a message', () => {
     expect(parseChatwootEvent('text')).toMatchObject({ ok: false })
   })
 
+  it('ignores a message in a WhatsApp group', () => {
+    const group = {
+      ...incoming,
+      conversation: {
+        ...incoming.conversation,
+        meta: { sender: { id: 90, name: 'Mirai Parents (GROUP)', phone_number: null, identifier: '120363025246125486@g.us' } },
+        contact_inbox: { contact_id: 90, source_id: '120363025246125486@g.us' },
+      },
+    }
+    expect(parseChatwootEvent(group)).toEqual({ ok: false, reason: 'whatsapp group' })
+  })
+
   it('does not trust ids that are not whole numbers', () => {
     expect(parseChatwootEvent({ ...incoming, conversation: { id: -3 } })).toMatchObject({ ok: false })
     expect(parseChatwootEvent({ ...incoming, conversation: { id: '12abc' } })).toMatchObject({ ok: false })

@@ -5,6 +5,7 @@ import { canonicalPhone } from '../lib/chatLink'
 import type { SourceRule } from '../lib/sourceRules'
 import {
   getHiddenNumberName,
+  isGroupChat,
   getLinkedLeadId,
   getRealPhone,
   type ChatwootConversation,
@@ -81,6 +82,10 @@ export function useAutoLeads({
       }
       // A chat needs a number, or (when WhatsApp hides it) a username to call the parent by.
       const sender = conversation.meta.sender
+      // A group is many people and never one parent's lead.
+      if (isGroupChat(sender)) {
+        return false
+      }
       if (!getRealPhone(sender.phone_number)) {
         if (getHiddenNumberName(sender) === '' || conversation.last_activity_at < hiddenFrom()) {
           return false

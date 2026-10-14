@@ -131,6 +131,12 @@ export function formatPhone(digits: string) {
 // What a chat is called when WhatsApp gives neither a name nor a number.
 export const UNNAMED_CHAT = 'WhatsApp user'
 
+// A WhatsApp group chat. The WhatsApp helper gives the contact of a group the group's own address
+// (...@g.us) and writes "Subject (GROUP)" as its name. A group has no parent's number and many writers.
+export function isGroupChat(sender: { name?: string | null; identifier?: string | null }) {
+  return (sender.identifier ?? '').endsWith('@g.us') || /\(group\)\s*$/i.test(sender.name ?? '')
+}
+
 export type ChatIdentity = {
   // The name the person gave WhatsApp, or null when there is none. For matching only, never shown.
   name: string | null
@@ -139,12 +145,25 @@ export type ChatIdentity = {
   subtitle: string
   hasRealPhone: boolean
   initials: string
+  // A WhatsApp group: everybody in it reads what the team writes.
+  isGroup: boolean
 }
 
 // A chat is called by the parent name on its lead (what the team writes, such as the parent's
 // @username), else by the phone number, else "WhatsApp user". The name the person gave
 // WhatsApp is never shown; `name` keeps it only so a chat can be matched to a lead.
 export function getChatIdentity(sender: ChatwootSender, leadName?: string | null): ChatIdentity {
+  if (isGroupChat(sender)) {
+    const subject = (sender.name ?? '').replace(/\s*\(group\)\s*$/i, '').trim()
+    return {
+      name: subject || null,
+      title: `${subject || 'WhatsApp group'} (group)`,
+      subtitle: 'WhatsApp group',
+      hasRealPhone: true,
+      initials: subject ? getInitials(subject) : '?',
+      isGroup: true,
+    }
+  }
   const phone = getRealPhone(sender.phone_number)
   // The helper that adds numbers to names writes "Name +60123456789".
   const cleanName = (sender.name ?? '').replace(/\s*\+\d{10,12}$/, '').trim()
@@ -157,7 +176,7 @@ export function getChatIdentity(sender: ChatwootSender, leadName?: string | null
   // The picture is the initials of the WhatsApp name, never the number.
   const initials = hasName ? getInitials(cleanName) : '?'
 
-  return { name: hasName ? cleanName : null, title, subtitle, hasRealPhone: phone !== null, initials }
+  return { name: hasName ? cleanName : null, title, subtitle, hasRealPhone: phone !== null, initials, isGroup: false }
 }
 
 export function getTab(conversation: Pick<ChatwootConversation, 'status'>): 'chats' | 'done' {
