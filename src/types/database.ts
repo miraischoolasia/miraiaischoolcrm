@@ -403,6 +403,51 @@ export type Database = {
           phrase: string
           source_id: number | null
           tag_ids: number[]
+      whatsapp_numbers: {
+        Row: {
+          id: number
+          label: string
+          phone: string | null
+          chatwoot_inbox_id: number
+          evolution_instance: string | null
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          label: string
+          phone?: string | null
+          chatwoot_inbox_id: number
+          evolution_instance?: string | null
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          label?: string
+          phone?: string | null
+          chatwoot_inbox_id?: number
+          evolution_instance?: string | null
+          is_active?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
+      whatsapp_number_staff: {
+        Row: {
+          number_id: number
+          teacher_id: number
+        }
+        Insert: {
+          number_id: number
+          teacher_id: number
+        }
+        Update: {
+          number_id?: number
+          teacher_id?: number
+        }
+        Relationships: []
+      }
           is_active: boolean
           created_at: string
         }
@@ -1509,6 +1554,10 @@ export type Database = {
       }
       chat_webhook_info: {
         Args: Record<PropertyKey, never>
+      my_whatsapp_inbox_ids: {
+        Args: Record<PropertyKey, never>
+        Returns: number[] | null
+      }
         Returns: {
           webhook_key: string
           last_received_at: string | null

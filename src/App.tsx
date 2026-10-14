@@ -36,6 +36,7 @@ import {
 import type { Icon } from '@phosphor-icons/react'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { useLiveSync } from './hooks/useLiveSync'
+import { useWhatsAppNumbers } from './hooks/useWhatsAppNumbers'
 import { formatDate, getTodayString, parseLocalDate } from './domain/studentStatus'
 import type { Database } from './types/database'
 import type {
@@ -678,7 +679,13 @@ function App() {
     () => (whatsAppApiUrl && canUseWhatsApp ? createChatwootClient(whatsAppApiUrl) : null),
     [canUseWhatsApp],
   )
-  const { unread: unreadWhatsApp, waiting: waitingWhatsApp } = useWhatsAppUnread(whatsAppClient)
+  // The school's WhatsApp numbers: which the signed-in person may see (an admin sees all).
+  const whatsAppNumbers = useWhatsAppNumbers(Boolean(whatsAppApiUrl) && canUseWhatsApp)
+  const { unread: unreadWhatsApp, waiting: waitingWhatsApp } = useWhatsAppUnread(
+    // Nothing is counted until it is known which numbers this person may see.
+    whatsAppNumbers.allowedInboxIds === undefined ? null : whatsAppClient,
+    whatsAppNumbers.allowedInboxIds ?? null,
+  )
   // The admin's / staff's Today (a teacher has their own).
   const showAdminHome = visibleSection === 'home' && !isTeacherAccount
   const { summary: automationSummary, unavailable: automationUnavailable } = useAutomationSummary(
@@ -6206,6 +6213,18 @@ function App() {
         <LeadModal
           editingLead={editingLead}
           formState={leadFormState}
+                  numbersView={{
+                    numbers: whatsAppNumbers.numbers,
+                    assignments: whatsAppNumbers.assignments,
+                    allowedInboxIds: whatsAppNumbers.allowedInboxIds,
+                    isAdmin,
+                    // Admins see every number anyway, so only the other accounts can be given one.
+                    staff: teachers
+                      .filter((teacher) => teacher.isActive && teacher.role !== 'admin')
+                      .map((teacher) => ({ id: teacher.id, name: teacher.fullName })),
+                    onSave: whatsAppNumbers.save,
+                    onRemove: whatsAppNumbers.remove,
+                  }}
           saveError={leadSaveError}
           isSaving={isSavingLead}
           onClose={closeLeadModal}

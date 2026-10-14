@@ -5,6 +5,7 @@ import { CONFIRM_POLL_MS, CONFIRM_TIMEOUT_MS, fileKind, splitSequence } from '..
 import {
   getOwner,
   getPhoneReadTarget,
+  isOnAllowedNumber,
   onePerParent,
   type ChatAttributes,
   type ChatRole,
@@ -57,7 +58,13 @@ const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve
 
 // active is false while the WhatsApp page is hidden behind another page: the page stays as it
 // was, but nothing is marked as read while no one is looking.
-export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, active = true) {
+// allowedInboxIds: the WhatsApp numbers (Chatwoot inboxes) this person may see; null means all of them.
+export function useWhatsAppInbox(
+  client: ChatwootClient,
+  currentUser: Sender,
+  active = true,
+  allowedInboxIds: number[] | null = null,
+) {
   const activeRef = useRef(active)
   useEffect(() => {
     activeRef.current = active
@@ -99,7 +106,10 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
     })
   }, [])
 
-  const conversations = useMemo(() => onePerParent([...conversationMap.values()]), [conversationMap])
+  const conversations = useMemo(
+    () => onePerParent([...conversationMap.values()].filter((entry) => isOnAllowedNumber(entry, allowedInboxIds))),
+    [conversationMap, allowedInboxIds],
+  )
   const hasOlder = ownHasOlder || olderChatCount > 0
   const selected = selectedId === null ? null : (conversationMap.get(selectedId) ?? null)
 
@@ -635,7 +645,7 @@ export function useWhatsAppInbox(client: ChatwootClient, currentUser: Sender, ac
 
   // Opens the chat with a number, creating it first if the number is new.
   const startNewChat = useCallback(
-    async (input: { phone: string; name: string }) => {
+    async (input: { phone: string; name: string; inboxId?: number | null }) => {
       const result = await startChat(client, input)
       if (result.error === null) {
         await Promise.all([refreshStatus('open'), refreshStatus('resolved')])

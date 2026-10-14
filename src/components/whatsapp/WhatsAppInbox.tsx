@@ -48,6 +48,8 @@ import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
 import { AutomationQueueDialog } from './AutomationQueueDialog'
 import { NewChatDialog } from './NewChatDialog'
+import { NumbersDialog, type AssignableStaff } from './NumbersDialog'
+import type { WhatsAppNumber, WhatsAppNumberDraft } from '../../lib/whatsappNumbers'
 import { QuickReplyManager } from './QuickReplyManager'
 import { SourceRuleManager } from './SourceRuleManager'
 
@@ -60,17 +62,44 @@ type WhatsAppInboxProps = {
   active?: boolean
   // A number somewhere else in the app asked for its chat. Each request has its own id.
   openRequest?: { id: number; phone: string; name: string | null; leadId: number | null } | null
+  // The school's WhatsApp numbers and who may see which. Without it the page is one inbox for everybody.
+  numbersView?: WhatsAppNumbersView
 }
 
-export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, openRequest = null }: WhatsAppInboxProps) {
+// What the inbox needs to know about the school's WhatsApp numbers.
+export type WhatsAppNumbersView = {
+  numbers: WhatsAppNumber[]
+  assignments: Map<number, number[]>
+  // undefined while loading; null when nothing is restricted; otherwise the Chatwoot inboxes this person sees.
+  allowedInboxIds: number[] | null | undefined
+  isAdmin: boolean
+  staff: AssignableStaff[]
+  onSave: (existing: WhatsAppNumber | null, draft: WhatsAppNumberDraft, teacherIds: number[]) => Promise<string | null>
+  onRemove: (number: WhatsAppNumber) => Promise<string | null>
+}
+
+export function WhatsAppInbox({
+  apiUrl,
+  currentUser,
+  staff,
+  crm,
+  active = true,
+  openRequest = null,
+  numbersView,
+}: WhatsAppInboxProps) {
   const client = useMemo(() => createChatwootClient(apiUrl), [apiUrl])
   const waActions = useMemo(() => createWaActions(apiUrl), [apiUrl])
-  const inbox = useWhatsAppInbox(client, currentUser, active)
+  // While the numbers load nothing is listed, so a restricted person never sees a chat flash by.
+  const allowedInboxIds = numbersView ? (numbersView.allowedInboxIds === undefined ? [] : numbersView.allowedInboxIds) : null
+  const inbox = useWhatsAppInbox(client, currentUser, active, allowedInboxIds)
   const [tab, setTab] = useState<InboxTab>('chats')
   const [tagId, setTagId] = useState<number | null>(null)
   const [sourceId, setSourceId] = useState<number | null>(null)
   const [kind, setKind] = useState<StudentKind | 'none' | null>(null)
   const [ownerId, setOwnerId] = useState<number | 'none' | null>(null)
+  const [inboxFilter, setInboxFilter] = useState<number | null>(null)
+  const [managingNumbers, setManagingNumbers] = useState(false)
+  const [inboxList, setInboxList] = useState<{ id: number; name: string }[]>([])
   const [search, setSearch] = useState('')
   // Text the enrol steps write for the message box; each new id is added once.
   const [draftRequest, setDraftRequest] = useState<{ id: number; text: string } | null>(null)
@@ -357,7 +386,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
         draftsFirst(
         filterConversations(
           inbox.conversations,
-          { tab, search, tagId, sourceId, matchedIds, kind, ownerId },
+          { tab, search, tagId, sourceId, matchedIds, kind, ownerId, inboxId: inboxFilter },
           (conversation) =>
             resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number)),
           studentKindsOf,
@@ -367,7 +396,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
         ),
         (id) => pinnedIds.has(id),
       ),
-    [inbox.conversations, inbox.selectedId, pinnedIds, drafts, tab, search, tagId, sourceId, matchedIds, kind, ownerId, resolveLead, studentKindsOf, searchNamesOf],
+    [inbox.conversations, inbox.selectedId, pinnedIds, drafts, tab, search, tagId, sourceId, matchedIds, kind, ownerId, inboxFilter, resolveLead, studentKindsOf, searchNamesOf],
   )
   const hasChat = inbox.selected !== null
   // Reactions, edits and deletes of the open chat, and the team's own.
@@ -457,6 +486,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
 
   // Another page asked for the chat of a number: open the one this page has, else look
   // for it on the server, and only when there is none offer to start one.
+  const handledRequest = useRef<number | null>(null)
   // The Unread tab shows every unread chat: the older pages are fetched by themselves, so there is no
   // "Load older chats" to press before everything unread is on screen.
   const { loadMore: loadMoreChats } = inbox
@@ -480,7 +510,6 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
       setUnreadRound(0)
     }
   }, [tab])
-  const handledRequest = useRef<number | null>(null)
   const { conversations: loadedChats, isLoading: isLoadingChats, setSelectedId, startNewChat } = inbox
   useEffect(() => {
     if (!openRequest || !active || isLoadingChats || handledRequest.current === openRequest.id) {
@@ -535,6 +564,32 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
     messagesChat: inbox.messagesChat,
     setChatRole: inbox.setChatRole,
   })
+
+  // The WhatsApp numbers this person can pick from: the active ones they are given (an admin: all).
+  const numberChoices = useMemo(() => {
+    if (!numbersView) {
+      return []
+    }
+    const allowed = numbersView.allowedInboxIds
+    return numbersView.numbers
+      .filter((entry) => entry.isActive && (allowed === null || allowed === undefined || allowed.includes(entry.inboxId)))
+      .map((entry) => ({ inboxId: entry.inboxId, label: entry.label }))
+  }, [numbersView])
+  // The name of the number a chat is on; shown only when there is more than one to tell apart.
+  const numberLabelOf = useCallback(
+    (conversation: ChatwootConversation) =>
+      numberChoices.length > 1
+        ? (numberChoices.find((choice) => choice.inboxId === conversation.inbox_id)?.label ?? null)
+        : null,
+    [numberChoices],
+  )
+  const openNumbers = useCallback(() => {
+    setManagingNumbers(true)
+    client
+      .listInboxes()
+      .then((list) => setInboxList(list.map((entry) => ({ id: entry.id, name: entry.name }))))
+      .catch(() => setInboxList([]))
+  }, [client])
 
   const forwardTargets = useMemo(
     () =>
@@ -719,6 +774,11 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
         onNewChat={() => setStartingChat(true)}
         automationCount={automationWaiting}
         onOpenAutomations={() => setAutomationOpen(true)}
+        numberOf={numberLabelOf}
+        inboxId={inboxFilter}
+        numberChoices={numberChoices}
+        onInbox={setInboxFilter}
+        onManageNumbers={numbersView?.isAdmin ? openNumbers : undefined}
       />
 
       {inbox.selected ? (
@@ -841,12 +901,14 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
       {startingChat && (
         <NewChatDialog
           leads={crm.leads}
+          numbers={numberChoices.map((choice, index) => ({ id: index, label: choice.label, inboxId: choice.inboxId }))}
+          defaultInboxId={inboxFilter ?? numberChoices[0]?.inboxId ?? null}
           initial={chatPrefill ?? undefined}
           onClose={() => {
             setStartingChat(false)
             setChatPrefill(null)
           }}
-          onStart={async ({ phone, name, leadId }) => {
+          onStart={async ({ phone, name, leadId, inboxId }) => {
             // The school may already have this parent's chat under a hidden ID; open that one
             // instead of making a second, empty chat for the number.
             const existing = findChatForNumber({
@@ -862,7 +924,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
               inbox.setSelectedId(existing.id)
               return null
             }
-            const result = await inbox.startNewChat({ phone, name })
+            const result = await inbox.startNewChat({ phone, name, inboxId })
             if (result.error !== null) {
               return result.error
             }
@@ -873,6 +935,17 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
             }
             return null
           }}
+        />
+      )}
+      {managingNumbers && numbersView && (
+        <NumbersDialog
+          numbers={numbersView.numbers}
+          assignments={numbersView.assignments}
+          staff={numbersView.staff}
+          inboxes={inboxList}
+          onSave={numbersView.onSave}
+          onRemove={numbersView.onRemove}
+          onClose={() => setManagingNumbers(false)}
         />
       )}
       {automationOpen && (

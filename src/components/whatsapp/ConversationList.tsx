@@ -86,6 +86,13 @@ type ConversationListProps = {
   ownerId?: number | 'none' | null
   owners?: { id: number; label: string }[]
   onOwner?: (ownerId: number | 'none' | null) => void
+  // WhatsApp numbers: shown on each chat, and a filter when the person sees more than one.
+  numberOf?: (conversation: ChatwootConversation) => string | null
+  inboxId?: number | null
+  numberChoices?: { inboxId: number; label: string }[]
+  onInbox?: (inboxId: number | null) => void
+  // Admin: opens the window where numbers are added and given to staff.
+  onManageNumbers?: () => void
   onSearch: (value: string) => void
   onSelect: (id: number) => void
   onLoadMore: () => void
@@ -152,6 +159,11 @@ export function ConversationList({
   ownerId = null,
   owners = [],
   onOwner,
+  numberOf,
+  inboxId = null,
+  numberChoices = [],
+  onInbox,
+  onManageNumbers,
   selectedId,
   nowSeconds,
   overdueCount,
@@ -191,6 +203,16 @@ export function ConversationList({
                     {automationCount > 99 ? '99+' : automationCount}
                   </span>
                 )}
+              </button>
+            )}
+            {onManageNumbers && (
+              <button
+                type="button"
+                onClick={onManageNumbers}
+                title="WhatsApp numbers and who answers them"
+                className="inline-flex h-[30px] items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Numbers
               </button>
             )}
             <button
@@ -258,6 +280,27 @@ export function ConversationList({
           </p>
         )}
         <div className={cn('mt-2 grid gap-2 text-sm', onKind ? 'grid-cols-3' : 'grid-cols-2')}>
+          {onInbox && numberChoices.length > 1 && (
+            <label className="relative col-span-full min-w-0">
+              <span className="sr-only">Filter by WhatsApp number</span>
+              <select
+                value={inboxId ?? ''}
+                onChange={(event) => onInbox(event.target.value ? Number(event.target.value) : null)}
+                className={cn(
+                  'w-full appearance-none rounded-lg border bg-white py-1.5 pl-2.5 pr-7 text-xs outline-none focus:border-[#fc0c97]',
+                  inboxId === null ? 'border-slate-200 text-slate-700' : 'border-[#fc0c97] text-slate-900',
+                )}
+              >
+                <option value="">All numbers</option>
+                {numberChoices.map((choice) => (
+                  <option key={choice.inboxId} value={choice.inboxId}>
+                    {choice.label}
+                  </option>
+                ))}
+              </select>
+              <CaretDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" />
+            </label>
+          )}
           {onOwner && (
             <label className="relative col-span-full min-w-0">
               <span className="sr-only">Filter by staff</span>
@@ -365,7 +408,7 @@ export function ConversationList({
         {loadError && <p className="p-4 text-sm text-red-600">{loadError}</p>}
         {!isLoading && !loadError && conversations.length === 0 && (
           <p className="p-4 text-sm text-slate-500">
-            {search || tagId !== null || sourceId !== null || kind || ownerId !== null ? 'No chats match.' : 'Nothing here. New messages from parents will show up here.'}
+            {search || tagId !== null || sourceId !== null || kind || ownerId !== null || inboxId !== null ? 'No chats match.' : 'Nothing here. New messages from parents will show up here.'}
           </p>
         )}
         {conversations.map((conversation) => {
@@ -407,6 +450,11 @@ export function ConversationList({
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className="truncate text-sm font-semibold text-slate-900">{identity.title}</span>
+                    {numberOf?.(conversation) && (
+                      <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                        {numberOf(conversation)}
+                      </span>
+                    )}
                     {conversation.custom_attributes?.crm_pinned && (
                       <PushPin size={12} weight="fill" className="shrink-0 text-slate-400" aria-label="Pinned" />
                     )}

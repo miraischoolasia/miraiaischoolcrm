@@ -172,6 +172,12 @@ export function createChatwootClient(
       return request<ChatwootConversation>(`/conversations/${conversationId}`)
     },
 
+    // Every inbox (= WhatsApp number) Chatwoot has.
+    async listInboxes(): Promise<{ id: number; name: string; channelType: string }[]> {
+      const data = await request<{ payload: { id: number; name: string; channel_type: string }[] }>('/inboxes')
+      return data.payload.map((entry) => ({ id: entry.id, name: entry.name, channelType: entry.channel_type }))
+    },
+
     // The WhatsApp inbox: where new chats are created.
     async getInboxId(): Promise<number> {
       const data = await request<{ payload: { id: number; channel_type: string }[] }>('/inboxes')

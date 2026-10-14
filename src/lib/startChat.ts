@@ -45,7 +45,8 @@ type StartChatClient = Pick<
 // finished one (reopened) otherwise, and a new one when the number is new.
 export async function startChat(
   client: StartChatClient,
-  input: { phone: string; name: string },
+  // inboxId: the WhatsApp number to write from; the school's first inbox when not given.
+  input: { phone: string; name: string; inboxId?: number | null },
 ): Promise<StartChatResult> {
   const digits = normalizePhoneInput(input.phone)
   if (!digits) {
@@ -53,7 +54,7 @@ export async function startChat(
   }
 
   try {
-    const inboxId = await client.getInboxId()
+    const inboxId = input.inboxId ?? (await client.getInboxId())
     const contact =
       (await client.findContactByPhone(digits)) ?? (await client.createContact(inboxId, digits, input.name.trim()))
 

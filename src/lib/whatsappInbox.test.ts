@@ -11,6 +11,7 @@ import {
   formatListTime,
   getChatIdentity,
   isGroupChat,
+  isOnAllowedNumber,
   onePerParent,
   getChatRole,
   getInitials,
@@ -231,6 +232,25 @@ describe('filterConversations', () => {
     expect(ids('none')).toEqual([1])
     expect(ids(99)).toEqual([])
     expect(ids(null)).toEqual([2, 3, 1])
+  })
+
+  it('shows only the chats of the WhatsApp numbers a person is given', () => {
+    const numbered = [
+      conversation({ id: 11, last_activity_at: 30, name: 'On main', inbox_id: 1 }),
+      conversation({ id: 12, last_activity_at: 20, name: 'On sales', inbox_id: 2 }),
+    ]
+    expect(isOnAllowedNumber(numbered[0], null)).toBe(true)
+    expect(isOnAllowedNumber(numbered[0], [2])).toBe(false)
+    expect(isOnAllowedNumber(numbered[1], [1, 2])).toBe(true)
+    // Numbers exist but this person has none: nothing, not everything.
+    expect(isOnAllowedNumber(numbered[0], [])).toBe(false)
+    // A chat that says nothing about its number is hidden from a restricted person.
+    expect(isOnAllowedNumber({}, [1])).toBe(false)
+
+    const ids = (inboxId: number | null) =>
+      filterConversations(numbered, { ...base, inboxId }).map((c) => c.id)
+    expect(ids(null)).toEqual([11, 12])
+    expect(ids(2)).toEqual([12])
   })
 
   it('filters by what the students of the parent are', () => {

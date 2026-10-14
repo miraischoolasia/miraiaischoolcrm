@@ -10,15 +10,26 @@ type NewChatDialogProps = {
   // Filled in when the dialog is opened from a number that has no chat yet.
   initial?: { phone: string; name: string; leadId: number | null }
   onClose: () => void
+  // The WhatsApp numbers to write from, when there is more than one to pick; `defaultNumberId` is the first pick.
+  numbers?: { id: number; label: string; inboxId: number }[]
+  defaultInboxId?: number | null
   // Opens the chat; resolves to an error message, or null when it opened.
-  onStart: (input: { phone: string; name: string; leadId: number | null }) => Promise<string | null>
+  onStart: (input: { phone: string; name: string; leadId: number | null; inboxId: number | null }) => Promise<string | null>
 }
 
 const fieldClass =
   'w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#fc0c97]'
 
 // Start a chat with a parent who has not written first, by number or from a lead.
-export function NewChatDialog({ leads, initial, onClose, onStart }: NewChatDialogProps) {
+export function NewChatDialog({
+  leads,
+  initial,
+  onClose,
+  onStart,
+  numbers = [],
+  defaultInboxId = null,
+}: NewChatDialogProps) {
+  const [inboxId, setInboxId] = useState<number | null>(defaultInboxId ?? numbers[0]?.inboxId ?? null)
   const [phone, setPhone] = useState(initial?.phone ?? '')
   const [name, setName] = useState(initial?.name ?? '')
   const [leadId, setLeadId] = useState<number | null>(initial?.leadId ?? null)
@@ -35,7 +46,7 @@ export function NewChatDialog({ leads, initial, onClose, onStart }: NewChatDialo
     }
     setIsStarting(true)
     setError(null)
-    const problem = await onStart({ phone, name, leadId })
+    const problem = await onStart({ phone, name, leadId, inboxId })
     setIsStarting(false)
     if (problem) {
       setError(problem)
@@ -97,6 +108,22 @@ export function NewChatDialog({ leads, initial, onClose, onStart }: NewChatDialo
           )}
         </div>
 
+        {numbers.length > 1 && (
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700">Write from</span>
+            <select
+              value={inboxId ?? ''}
+              onChange={(event) => setInboxId(event.target.value ? Number(event.target.value) : null)}
+              className={fieldClass}
+            >
+              {numbers.map((number) => (
+                <option key={number.id} value={number.inboxId}>
+                  {number.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="block">
           <span className="text-sm font-medium text-slate-700">Phone number</span>
           <input

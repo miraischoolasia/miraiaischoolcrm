@@ -75,6 +75,8 @@ export type ChatRole = 'parent' | 'student'
 
 export type ChatwootConversation = {
   id: number
+  // The Chatwoot inbox (= the WhatsApp number) the chat is on.
+  inbox_id?: number
   status: string
   unread_count: number
   // Seconds since epoch of the parent's unanswered message, 0 when answered.
@@ -177,6 +179,12 @@ export function getChatIdentity(sender: ChatwootSender, leadName?: string | null
   const initials = hasName ? getInitials(cleanName) : '?'
 
   return { name: hasName ? cleanName : null, title, subtitle, hasRealPhone: phone !== null, initials, isGroup: false }
+}
+
+// False for a chat on a WhatsApp number this person is not given. `allowed` is null when nothing is
+// restricted (see useWhatsAppNumbers).
+export function isOnAllowedNumber(conversation: Pick<ChatwootConversation, 'inbox_id'>, allowed: number[] | null) {
+  return allowed === null || (conversation.inbox_id !== undefined && allowed.includes(conversation.inbox_id))
 }
 
 export function getTab(conversation: Pick<ChatwootConversation, 'status'>): 'chats' | 'done' {
@@ -312,6 +320,8 @@ export type InboxFilters = {
   kind?: StudentKind | 'none' | null
   // Only chats this staff member took (their CRM user id), or 'none' for chats nobody has taken.
   ownerId?: number | 'none' | null
+  // Only chats on this WhatsApp number (Chatwoot inbox id).
+  inboxId?: number | null
 }
 
 // The lead a chat belongs to, for the tag and source filters.
@@ -349,6 +359,7 @@ export function filterConversations(
         (filters.sourceId === null || lead.sourceId === filters.sourceId)
       )
     })
+    .filter((conversation) => filters.inboxId === null || filters.inboxId === undefined || conversation.inbox_id === filters.inboxId)
     .filter((conversation) => {
       if (filters.ownerId === null || filters.ownerId === undefined) {
         return true

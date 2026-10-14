@@ -6,6 +6,7 @@ import {
   getChatIdentity,
   getPreview,
   isOverdue,
+  isOnAllowedNumber,
   isRecentlyOverdue,
   onePerParent,
 } from '../lib/whatsappInbox'
@@ -15,7 +16,7 @@ const REFRESH_MS = 10_000
 // Counts chats nobody has looked at for the sidebar badge, and tells the team
 // when a new message arrives (sound and a desktop pop-up), wherever they are in
 // the app.
-export function useWhatsAppUnread(client: ChatwootClient | null) {
+export function useWhatsAppUnread(client: ChatwootClient | null, allowedInboxIds: number[] | null = null) {
   const [unread, setUnread] = useState(0)
   // Parents who have waited over 30 minutes (but under a day) for an answer.
   const [waiting, setWaiting] = useState(0)
@@ -31,7 +32,7 @@ export function useWhatsAppUnread(client: ChatwootClient | null) {
     async function refresh() {
       try {
         const { conversations: everyChat } = await client!.listConversations('open', 1)
-        const conversations = onePerParent(everyChat)
+        const conversations = onePerParent(everyChat.filter((entry) => isOnAllowedNumber(entry, allowedInboxIds)))
         if (cancelled) {
           return
         }
@@ -83,7 +84,8 @@ export function useWhatsAppUnread(client: ChatwootClient | null) {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [client])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, JSON.stringify(allowedInboxIds)])
 
   return { unread, waiting }
 }

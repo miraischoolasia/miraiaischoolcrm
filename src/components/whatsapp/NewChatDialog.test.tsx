@@ -25,7 +25,7 @@ describe('NewChatDialog', () => {
     await userEvent.type(screen.getByLabelText('Phone number'), '012 345 6789')
     await userEvent.click(screen.getByRole('button', { name: 'Start chat' }))
 
-    await waitFor(() => expect(onStart).toHaveBeenCalledWith({ phone: '012 345 6789', name: '', leadId: null }))
+    await waitFor(() => expect(onStart).toHaveBeenCalledWith({ phone: '012 345 6789', name: '', leadId: null, inboxId: null }))
     expect(onClose).toHaveBeenCalled()
   })
 
@@ -37,7 +37,7 @@ describe('NewChatDialog', () => {
     expect(screen.getByLabelText('Phone number')).toHaveValue('012-345 6789')
     await userEvent.click(screen.getByRole('button', { name: 'Start chat' }))
 
-    await waitFor(() => expect(onStart).toHaveBeenCalledWith({ phone: '012-345 6789', name: 'Mei Ling', leadId: 11 }))
+    await waitFor(() => expect(onStart).toHaveBeenCalledWith({ phone: '012-345 6789', name: 'Mei Ling', leadId: 11, inboxId: null }))
   })
 
   it('does not offer a lead that has no phone number', async () => {
@@ -83,6 +83,6 @@ describe('NewChatDialog', () => {
     expect(screen.getByLabelText('Name (optional)')).toHaveValue('Mei Ling')
     await userEvent.click(screen.getByRole('button', { name: 'Start chat' }))
 
-    await waitFor(() => expect(onStart).toHaveBeenCalledWith({ phone: '012-345 6789', name: 'Mei Ling', leadId: 11 }))
+    await waitFor(() => expect(onStart).toHaveBeenCalledWith({ phone: '012-345 6789', name: 'Mei Ling', leadId: 11, inboxId: null }))
   })
 })

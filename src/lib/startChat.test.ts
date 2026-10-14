@@ -28,6 +28,15 @@ describe('normalizePhoneInput', () => {
 })
 
 describe('startChat', () => {
+  it('writes from the chosen WhatsApp number without looking up the default inbox', async () => {
+    const client = fakeClient()
+    const result = await startChat(client, { phone: '60123456789', name: '', inboxId: 4 })
+    expect(client.getInboxId).not.toHaveBeenCalled()
+    expect(client.createContact).toHaveBeenCalledWith(4, '60123456789', '')
+    expect(client.createConversation).toHaveBeenCalledWith(50, 4)
+    expect(result).toMatchObject({ conversationId: 900, created: true })
+  })
+
   it('makes the contact and the chat for a number nobody has written from yet', async () => {
     const client = fakeClient()
 
