@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PaperPlaneTilt } from '@phosphor-icons/react'
+import { PaperPlaneTilt, X } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { leadStatusOptions } from '../../lib/constants'
 import {
@@ -26,6 +26,9 @@ type FlowTesterProps = {
   sendBlockedReason: string | null
   // Resolves to how many messages were added to the approval queue, or an error.
   onSend: (phone: string) => Promise<{ queued: number; error: string | null }>
+  // 'strip' is the row of fields in the simple view; 'panel' stacks them for the panel on the right.
+  layout?: 'strip' | 'panel'
+  onClose?: () => void
 }
 
 const PHONE_KEY = 'mirai.flowTestPhone'
@@ -62,7 +65,13 @@ export function FlowTester({
   canSend,
   sendBlockedReason,
   onSend,
+  layout = 'strip',
+  onClose,
 }: FlowTesterProps) {
+  const panel = layout === 'panel'
+  const row = panel ? 'flex flex-col items-stretch gap-1' : 'flex items-center gap-2'
+  // In the panel every field is as wide as the panel.
+  const fieldCx = (width: string) => cn(fieldClass, panel ? 'w-full' : width)
   const testing = isTesting(test)
   const [phone, setPhone] = useState(readSavedPhone)
   const [isSending, setIsSending] = useState(false)
@@ -95,10 +104,36 @@ export function FlowTester({
   }
 
   return (
-    <div className="border-b border-slate-200 bg-white px-3 py-2">
-      <div className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
-        <span className="font-semibold text-slate-900">Try it with a child</span>
-        <span className="flex items-center gap-2">
+    <div className={panel ? 'space-y-3' : 'border-b border-slate-200 bg-white px-3 py-2'}>
+      {panel && (
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">Try it with a child</h3>
+            <p className="text-xs text-slate-500">
+              Fill in what the child is like: the steps it would walk through light up.
+            </p>
+          </div>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-slate-900"
+            >
+              <X size={14} aria-hidden="true" />
+              Close
+            </button>
+          )}
+        </div>
+      )}
+      <div
+        className={
+          panel
+            ? 'flex flex-col gap-3 text-sm text-slate-700'
+            : 'flex flex-wrap items-center gap-2 text-sm text-slate-700'
+        }
+      >
+        {!panel && <span className="font-semibold text-slate-900">Try it with a child</span>}
+        <span className={row}>
           <span>Age</span>
           <input
             type="number"
@@ -108,16 +143,16 @@ export function FlowTester({
             value={test.age}
             placeholder="unknown"
             onChange={(event) => onTest({ age: event.target.value })}
-            className={cn(fieldClass, 'w-28')}
+            className={fieldCx('w-28')}
           />
         </span>
-        <span className="flex items-center gap-2">
+        <span className={row}>
           <span>Class</span>
           <select
             aria-label="Test class"
             value={test.classroomId}
             onChange={(event) => onTest({ classroomId: event.target.value })}
-            className={cn(fieldClass, 'max-w-[170px]')}
+            className={fieldCx('max-w-[170px]')}
           >
             <option value="">Not in a class</option>
             {classrooms
@@ -129,7 +164,7 @@ export function FlowTester({
               ))}
           </select>
         </span>
-        <span className="flex items-center gap-2">
+        <span className={row}>
           <span>Lessons left</span>
           <input
             type="number"
@@ -138,16 +173,16 @@ export function FlowTester({
             value={test.hours}
             placeholder="unknown"
             onChange={(event) => onTest({ hours: event.target.value })}
-            className={cn(fieldClass, 'w-24')}
+            className={fieldCx('w-24')}
           />
         </span>
-        <span className="flex items-center gap-2">
+        <span className={row}>
           <span>Lead stage</span>
           <select
             aria-label="Test lead stage"
             value={test.stage}
             onChange={(event) => onTest({ stage: event.target.value })}
-            className={cn(fieldClass, 'max-w-[150px]')}
+            className={fieldCx('max-w-[150px]')}
           >
             <option value="">Not a lead</option>
             {leadStatusOptions.map((option) => (
@@ -167,13 +202,13 @@ export function FlowTester({
           ] as const
         ).map(([kind, label, field, aria, none]) =>
           filterOptions[kind].length === 0 ? null : (
-            <span key={kind} className="flex items-center gap-2">
+            <span key={kind} className={row}>
               <span>{label}</span>
               <select
                 aria-label={aria}
                 value={test[field]}
                 onChange={(event) => onTest({ [field]: event.target.value })}
-                className={cn(fieldClass, 'max-w-[150px]')}
+                className={fieldCx('max-w-[150px]')}
               >
                 <option value="">{none}</option>
                 {filterOptions[kind].map((choice) => (
@@ -185,13 +220,13 @@ export function FlowTester({
             </span>
           ),
         )}
-        <span className="flex items-center gap-2">
+        <span className={row}>
           <span>Parent</span>
           <select
             aria-label="Test parent reply"
             value={test.reply}
             onChange={(event) => onTest({ reply: event.target.value })}
-            className={cn(fieldClass, 'max-w-[170px]')}
+            className={fieldCx('max-w-[170px]')}
           >
             <option value="">Has not answered yet</option>
             <option value="replied">Replies with…</option>
@@ -204,7 +239,7 @@ export function FlowTester({
               value={test.replyText}
               placeholder="what they write"
               onChange={(event) => onTest({ replyText: event.target.value })}
-              className={cn(fieldClass, 'w-40')}
+              className={fieldCx('w-40')}
             />
           )}
         </span>
@@ -222,7 +257,7 @@ export function FlowTester({
         (outcome.messages.length === 0 ? (
           <p className="mt-2 text-sm text-slate-500">This child would get no message.</p>
         ) : (
-          <ul className="mt-2 max-h-36 space-y-1.5 overflow-y-auto text-sm">
+          <ul className={cn('mt-2 space-y-1.5 overflow-y-auto text-sm', panel ? 'max-h-64' : 'max-h-36')}>
             {[...outcome.messages]
               .sort((a, b) => b.mins - a.mins)
               .map((message) => (
@@ -237,7 +272,12 @@ export function FlowTester({
           </ul>
         ))}
       {canSend && (
-        <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2 text-sm text-slate-700">
+        <div
+          className={cn(
+            'mt-2 gap-2 border-t border-slate-100 pt-2 text-sm text-slate-700',
+            panel ? 'flex flex-col items-stretch' : 'flex flex-wrap items-center',
+          )}
+        >
           <span className="font-semibold text-slate-900">Send a test to my phone</span>
           <input
             type="tel"
@@ -246,7 +286,7 @@ export function FlowTester({
             placeholder="012-345 6789"
             value={phone}
             onChange={(event) => setPhone(event.target.value)}
-            className={cn(fieldClass, 'w-40')}
+            className={fieldCx('w-40')}
           />
           <button
             type="button"

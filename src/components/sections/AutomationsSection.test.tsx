@@ -6,22 +6,18 @@ import type { Classroom, LeadOption } from '../../types/domain'
 import { AutomationsSection } from './AutomationsSection'
 
 // The canvas needs a real browser layout; here it is replaced by a few buttons that do what a click
-// on the canvas does.
+// on the canvas does. The "+" opens the real panel on the right, where a step is picked.
 vi.mock('../automations/FlowCanvas', () => ({
   FlowCanvas: ({
     graph,
     triggerLabel,
     onSelect,
-    onAddAfter,
+    onAdding,
   }: {
     graph: { nodes: { id: string }[] }
     triggerLabel: string
     onSelect: (id: string | null) => void
-    onAddAfter: (
-      from: string,
-      port: 'out' | 'yes' | 'no',
-      kind: 'message' | 'age' | 'classroom' | 'hours' | 'stage' | 'source' | 'tag' | 'pic' | 'form',
-    ) => void
+    onAdding: (target: { from: string; port: 'out' | 'yes' | 'no' } | null) => void
   }) => (
     <div data-testid="canvas">
       {triggerLabel} · {graph.nodes.length} blocks
@@ -31,23 +27,11 @@ vi.mock('../automations/FlowCanvas', () => ({
       <button type="button" onClick={() => onSelect(null)}>
         canvas empty space
       </button>
-      <button type="button" onClick={() => onAddAfter('trigger', 'out', 'age')}>
-        canvas add age after trigger
+      <button type="button" onClick={() => onAdding({ from: 'trigger', port: 'out' })}>
+        canvas plus after trigger
       </button>
-      <button type="button" onClick={() => onAddAfter('trigger', 'out', 'hours')}>
-        canvas add hours after trigger
-      </button>
-      <button type="button" onClick={() => onAddAfter('trigger', 'out', 'stage')}>
-        canvas add stage after trigger
-      </button>
-      <button type="button" onClick={() => onAddAfter('trigger', 'out', 'source')}>
-        canvas add source after trigger
-      </button>
-      <button type="button" onClick={() => onAddAfter('trigger', 'out', 'form')}>
-        canvas add form after trigger
-      </button>
-      <button type="button" onClick={() => onAddAfter('m1', 'out', 'message')}>
-        canvas add message after m1
+      <button type="button" onClick={() => onAdding({ from: 'm1', port: 'out' })}>
+        canvas plus after m1
       </button>
       {graph.nodes.map((node) => (
         <button key={node.id} type="button" onClick={() => onSelect(node.id)}>
@@ -321,6 +305,7 @@ describe('AutomationsSection', () => {
   it('sends a test of the saved flow to the number typed, with the age and class tried above', async () => {
     setup()
     await openFirst()
+    await userEvent.click(screen.getByRole('button', { name: 'Try it with a child' }))
     await userEvent.type(screen.getByLabelText('Test age'), '9')
     await userEvent.selectOptions(screen.getByLabelText('Test class'), '1')
     await userEvent.type(screen.getByLabelText('My phone number'), '012-345 6789')
@@ -339,6 +324,7 @@ describe('AutomationsSection', () => {
   it('asks for a number it can use before sending a test', async () => {
     setup()
     await openFirst()
+    await userEvent.click(screen.getByRole('button', { name: 'Try it with a child' }))
     await userEvent.type(screen.getByLabelText('My phone number'), '123')
     await userEvent.click(screen.getByRole('button', { name: /Send test/ }))
     expect(await screen.findByText(/Type your own WhatsApp number/)).toBeInTheDocument()
@@ -349,6 +335,7 @@ describe('AutomationsSection', () => {
     hook.state.sendTest.mockResolvedValue({ queued: 0, error: 'There are already 20 test messages waiting.' })
     setup()
     await openFirst()
+    await userEvent.click(screen.getByRole('button', { name: 'Try it with a child' }))
     await userEvent.type(screen.getByLabelText('My phone number'), '0123456789')
     await userEvent.click(screen.getByRole('button', { name: /Send test/ }))
     expect(await screen.findByText('There are already 20 test messages waiting.')).toBeInTheDocument()
@@ -358,6 +345,7 @@ describe('AutomationsSection', () => {
     hook.state.sendTest.mockResolvedValue({ queued: 0, error: null })
     setup()
     await openFirst()
+    await userEvent.click(screen.getByRole('button', { name: 'Try it with a child' }))
     await userEvent.type(screen.getByLabelText('My phone number'), '0123456789')
     await userEvent.click(screen.getByRole('button', { name: /Send test/ }))
     expect(await screen.findByText(/would get no message, so nothing was added/)).toBeInTheDocument()
@@ -366,6 +354,7 @@ describe('AutomationsSection', () => {
   it('does not send a test while the flow has changes that are not saved', async () => {
     setup()
     await openFirst()
+    await userEvent.click(screen.getByRole('button', { name: 'Try it with a child' }))
     await userEvent.type(screen.getByLabelText('Flow name'), ' edited')
     expect(screen.getByRole('button', { name: /Send test/ })).toBeDisabled()
     expect(screen.getByText(/Save the flow first/)).toBeInTheDocument()
@@ -420,11 +409,13 @@ describe('AutomationsSection', () => {
   it('adds the next step with the "+" after a card and opens it in the panel', async () => {
     setup()
     await openFirst()
-    await userEvent.click(screen.getByRole('button', { name: 'canvas add age after trigger' }))
+    await userEvent.click(screen.getByRole('button', { name: 'canvas plus after trigger' }))
+    await userEvent.click(screen.getByRole('button', { name: /Split by the child/ }))
     expect(screen.getByLabelText('Lowest age')).toBeInTheDocument()
     expect(screen.getByTestId('canvas')).toHaveTextContent('2 blocks')
 
-    await userEvent.click(screen.getByRole('button', { name: 'canvas add message after m1' }))
+    await userEvent.click(screen.getByRole('button', { name: 'canvas plus after m1' }))
+    await userEvent.click(screen.getByRole('button', { name: /A WhatsApp message to approve/ }))
     expect(screen.getByLabelText('Message')).toBeInTheDocument()
     expect(screen.getByTestId('canvas')).toHaveTextContent('3 blocks')
     await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
@@ -448,13 +439,15 @@ describe('AutomationsSection', () => {
     await userEvent.click(screen.getByRole('button', { name: 'canvas block m1' }))
     expect(screen.getByLabelText('Message')).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Delete block' })).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'canvas add message after m1' }))
+    await userEvent.click(screen.getByRole('button', { name: 'canvas plus after m1' }))
+    expect(screen.queryByRole('complementary', { name: 'Add a step' })).not.toBeInTheDocument()
     expect(screen.getByTestId('canvas')).toHaveTextContent('1 blocks')
   })
 
   it('tests a child against the flow', async () => {
     setup()
     await openFirst()
+    await userEvent.click(screen.getByRole('button', { name: 'Try it with a child' }))
     expect(screen.queryByText(/This child would get/)).not.toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Test age'), '9')
     expect(
@@ -477,7 +470,8 @@ describe('AutomationsSection', () => {
     it('adds a source block that offers the sources (not hidden ones) and keeps the ticked ones', async () => {
       setup()
       await openFirst()
-      await userEvent.click(screen.getByRole('button', { name: 'canvas add source after trigger' }))
+      await userEvent.click(screen.getByRole('button', { name: 'canvas plus after trigger' }))
+      await userEvent.click(screen.getByRole('button', { name: /Where the lead came from/ }))
       expect(screen.getByRole('checkbox', { name: 'Facebook Ads' })).not.toBeChecked()
       expect(screen.queryByRole('checkbox', { name: 'Old source' })).not.toBeInTheDocument()
       await userEvent.click(screen.getByRole('checkbox', { name: 'Facebook Ads' }))
@@ -491,7 +485,8 @@ describe('AutomationsSection', () => {
       extras.forms = [{ id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', name: 'Summer camp form' }]
       setup()
       await openFirst()
-      await userEvent.click(screen.getByRole('button', { name: 'canvas add form after trigger' }))
+      await userEvent.click(screen.getByRole('button', { name: 'canvas plus after trigger' }))
+      await userEvent.click(screen.getByRole('button', { name: /Which form they filled in/ }))
       expect(screen.getByRole('checkbox', { name: 'Summer camp form' })).toBeInTheDocument()
     })
 
@@ -607,7 +602,8 @@ describe('AutomationsSection', () => {
     it('adds a lessons-left block and changes the hours', async () => {
       setup()
       await openFirst()
-      await userEvent.click(screen.getByRole('button', { name: 'canvas add hours after trigger' }))
+      await userEvent.click(screen.getByRole('button', { name: 'canvas plus after trigger' }))
+      await userEvent.click(screen.getByRole('button', { name: /Children nearly out of lessons/ }))
       const hours = screen.getByLabelText('Hours left')
       expect(hours).toHaveValue(2)
       fireEvent.change(hours, { target: { value: '4' } })
@@ -620,7 +616,8 @@ describe('AutomationsSection', () => {
     it('adds a lead-stage block and ticks stages', async () => {
       setup()
       await openFirst()
-      await userEvent.click(screen.getByRole('button', { name: 'canvas add stage after trigger' }))
+      await userEvent.click(screen.getByRole('button', { name: 'canvas plus after trigger' }))
+      await userEvent.click(screen.getByRole('button', { name: /New, Contacted/ }))
       expect(screen.getByRole('checkbox', { name: 'New' })).toBeChecked()
       await userEvent.click(screen.getByRole('checkbox', { name: 'Contacted' }))
       await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
@@ -647,6 +644,7 @@ describe('AutomationsSection', () => {
       ]
       setup()
       await openFirst()
+      await userEvent.click(screen.getByRole('button', { name: 'Try it with a child' }))
       await userEvent.type(screen.getByLabelText('Test lessons left'), '1')
       expect(await screen.findByText('Only Ethan is low')).toBeInTheDocument()
       await userEvent.clear(screen.getByLabelText('Test lessons left'))

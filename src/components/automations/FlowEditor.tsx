@@ -6,7 +6,9 @@ import {
   EMPTY_TEST,
   TRIGGER_ID,
   addNodeAfter,
+  describeNode,
   draftOf,
+  isMessage,
   isTesting,
   newFlowDraft,
   removeNode,
@@ -32,6 +34,7 @@ import {
 import type { AutomationContact } from '../../lib/automationContacts'
 import type { Classroom } from '../../types/domain'
 import { analyzeFlow, reorderMessages } from '../../lib/flowSteps'
+import { ActionPicker } from './ActionPicker'
 import { FlowActivity } from './FlowActivity'
 import { FlowCanvas } from './FlowCanvas'
 import { FlowSettingsCard } from './FlowSettingsCard'
@@ -105,6 +108,10 @@ export function FlowEditor({
   // A recipe is a flow that is not saved yet, so it starts as changed.
   const [baseline, setBaseline] = useState(() => (flow ? JSON.stringify(draft) : JSON.stringify(newFlowDraft())))
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // The exit whose "+" was pressed: the panel on the right lists the steps that can be added there.
+  const [adding, setAdding] = useState<{ from: string; port: FlowPort } | null>(null)
+  // The "Try it with a child" panel on the right (it takes the place of the list of steps to add).
+  const [testOpen, setTestOpen] = useState(false)
   const [test, setTest] = useState<TestInputs>(EMPTY_TEST)
   const [tryOpen, setTryOpen] = useState(false)
   const [notice, setNotice] = useState<{ text: string; isError: boolean } | null>(null)
@@ -150,7 +157,11 @@ export function FlowEditor({
 
   const testing = isTesting(test)
   const outcome = useMemo(() => simulateFlow(draft.graph, testChildOf(test)), [draft.graph, test])
-  const highlight = useMemo(() => (testing ? { nodes: outcome.nodes, edges: outcome.edges } : null), [testing, outcome])
+  const showTest = testing && testOpen
+  const highlight = useMemo(
+    () => (showTest ? { nodes: outcome.nodes, edges: outcome.edges } : null),
+    [showTest, outcome],
+  )
   const loose = useMemo(() => unreachableMessages(draft.graph), [draft.graph])
   const analysis = useMemo(() => analyzeFlow(draft.graph), [draft.graph])
 
@@ -180,7 +191,40 @@ export function FlowEditor({
       return
     }
     setGraph(triggerInfo(draft.trigger).afterOnly ? sendAfterOnly(result.graph) : result.graph)
+    setAdding(null)
     setSelectedId(result.id)
+  }
+
+  // The "+" opens the list of steps on the right; the settings panel on the left makes room for it.
+  function chooseWhereToAdd(target: { from: string; port: FlowPort } | null) {
+    setAdding(target)
+    if (target !== null) {
+      setSelectedId(null)
+      setTestOpen(false)
+    }
+  }
+
+  function toggleTest() {
+    const open = !testOpen
+    setTestOpen(open)
+    if (open) {
+      setAdding(null)
+      setSelectedId(null)
+    }
+  }
+
+  // Tells where the new step goes, for the heading of the list.
+  function addingWhere(target: { from: string; port: FlowPort }) {
+    if (target.from === TRIGGER_ID) {
+      return 'It goes right after the trigger.'
+    }
+    const from = draft.graph.nodes.find((node) => node.id === target.from)
+    if (from && !isMessage(from)) {
+      const asked = from.kind === 'wait'
+      const side = target.port === 'yes' ? (asked ? 'Replied' : 'Yes') : asked ? 'No reply' : 'No'
+      return `It goes on the “${side}” side of “${describeNode(from, classroomName, undefined, choiceName)}”.`
+    }
+    return 'It goes right after this message.'
   }
 
   async function save() {
@@ -501,23 +545,26 @@ export function FlowEditor({
           </aside>
         )}
         <div className="order-1 flex min-w-0 flex-col md:order-2 md:flex-1">
-          <FlowTester
-            classrooms={classrooms}
-            filterOptions={filterOptions}
-            test={test}
-            outcome={outcome}
-            onTest={(change) => setTest((current) => ({ ...current, ...change }))}
-            onClear={() => setTest(EMPTY_TEST)}
-            canSend={canEdit}
-            sendBlockedReason={
-              draft.id === null || dirty ? 'Save the flow first: the test sends the saved version.' : null
-            }
-            onSend={(phone) =>
-              draft.id === null
-                ? Promise.resolve({ queued: 0, error: 'Save the flow first.' })
-                : onSendTest(draft.id, phone, testChildOf(test))
-            }
-          />
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 text-sm">
+            <button
+              type="button"
+              aria-expanded={testOpen}
+              onClick={toggleTest}
+              className={cn(
+                'rounded-lg border px-3 py-1.5 font-semibold',
+                testOpen
+                  ? 'border-[#fc0c97] bg-[#fff1f8] text-[#be185d]'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+              )}
+            >
+              Try it with a child
+            </button>
+            <span className="text-xs text-slate-500">
+              {testing && !testOpen
+                ? 'A test child is filled in. Open this to see what it would get.'
+                : 'See what a child would be sent and which steps light up.'}
+            </span>
+          </div>
           <div className="h-[420px] md:h-auto md:min-h-0 md:flex-1">
             <FlowCanvas
               graph={draft.graph}
@@ -530,10 +577,50 @@ export function FlowEditor({
               readOnly={!canEdit}
               onGraphChange={setGraph}
               onSelect={setSelectedId}
-              onAddAfter={addAfter}
+              adding={adding}
+              onAdding={chooseWhereToAdd}
             />
           </div>
         </div>
+        {testOpen && (
+          <aside
+            aria-label="Try it with a child"
+            className="order-3 w-full shrink-0 border-t border-slate-200 p-4 md:w-[340px] md:overflow-y-auto md:border-l md:border-t-0"
+          >
+            <FlowTester
+              layout="panel"
+              classrooms={classrooms}
+              filterOptions={filterOptions}
+              test={test}
+              outcome={outcome}
+              onTest={(change) => setTest((current) => ({ ...current, ...change }))}
+              onClear={() => setTest(EMPTY_TEST)}
+              onClose={() => setTestOpen(false)}
+              canSend={canEdit}
+              sendBlockedReason={
+                draft.id === null || dirty ? 'Save the flow first: the test sends the saved version.' : null
+              }
+              onSend={(phone) =>
+                draft.id === null
+                  ? Promise.resolve({ queued: 0, error: 'Save the flow first.' })
+                  : onSendTest(draft.id, phone, testChildOf(test))
+              }
+            />
+          </aside>
+        )}
+        {adding !== null && !readOnly && (
+          <aside
+            aria-label="Add a step"
+            className="order-3 w-full shrink-0 border-t border-slate-200 p-4 md:w-[340px] md:overflow-y-auto md:border-l md:border-t-0"
+          >
+            <ActionPicker
+              key={`${adding.from}:${adding.port}`}
+              where={addingWhere(adding)}
+              onPick={(kind) => addAfter(adding.from, adding.port, kind)}
+              onClose={() => setAdding(null)}
+            />
+          </aside>
+        )}
       </div>
       )}
     </div>

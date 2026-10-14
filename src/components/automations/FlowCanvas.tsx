@@ -31,7 +31,6 @@ import {
   removeNode,
   type FlowGraph,
   type FlowPort,
-  type NewBlockKind,
 } from '../../lib/automationFlows'
 
 type CanvasNodeData = {
@@ -41,13 +40,12 @@ type CanvasNodeData = {
   dim: boolean
   // The exits that lead nowhere yet; each shows a "+" to add the next step there.
   openPorts: FlowPort[]
-  // The exit whose "add" menu is open, if any.
+  // The exit whose "add a step" panel is open, if any.
   menuPort: FlowPort | null
   // What the Yes and No exits are called ("Replied" / "No reply" on a wait block).
   yesLabel?: string
   noLabel?: string
   onPlus: (nodeId: string, port: FlowPort) => void
-  onPick: (nodeId: string, port: FlowPort, kind: NewBlockKind) => void
   [key: string]: unknown
 }
 
@@ -55,22 +53,8 @@ const handleStyle = { width: 14, height: 14, background: '#fff', border: '2px so
 const yesHandleStyle = { ...handleStyle, top: '60%' }
 const noHandleStyle = { ...handleStyle, top: '88%' }
 
-const PICKS: { kind: NewBlockKind; label: string; hint: string }[] = [
-  { kind: 'message', label: 'Send a message', hint: 'A WhatsApp message to approve' },
-  { kind: 'age', label: 'Check the age', hint: 'Split by the child’s age' },
-  { kind: 'classroom', label: 'Check the class', hint: 'Split by the class' },
-  { kind: 'hours', label: 'Check lessons left', hint: 'Children nearly out of lessons' },
-  { kind: 'stage', label: 'Check the lead stage', hint: 'New, Contacted, ...' },
-  { kind: 'source', label: 'Check the source', hint: 'Where the lead came from' },
-  { kind: 'tag', label: 'Check the tag', hint: 'Leads with a tag' },
-  { kind: 'pic', label: 'Check the PIC', hint: 'Who handles the lead' },
-  { kind: 'form', label: 'Check the form', hint: 'Which form they filled in' },
-  { kind: 'keyword', label: 'Check the source keyword', hint: 'The phrase in their first message' },
-  { kind: 'wait', label: 'Wait for a reply', hint: 'Replied in time, or no reply' },
-  { kind: 'reply', label: 'Check what the reply says', hint: 'Words in the parent’s reply' },
-]
-
-// The "+" after a card, and the small menu it opens. It sits to the right of the exit it belongs to.
+// The "+" after a card. It sits to the right of the exit it belongs to; the steps to add are listed in
+// the panel on the right of the page.
 function AddAfter({
   nodeId,
   port,
@@ -103,29 +87,6 @@ function AddAfter({
       >
         <Plus size={14} weight="bold" aria-hidden="true" />
       </button>
-      {open && (
-        <ul
-          role="menu"
-          className="absolute right-0 top-9 z-10 w-52 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg"
-        >
-          {PICKS.map((pick) => (
-            <li key={pick.kind} role="none">
-              <button
-                type="button"
-                role="menuitem"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  data.onPick(nodeId, port, pick.kind)
-                }}
-                className="block w-full rounded-lg px-2.5 py-1.5 text-left hover:bg-slate-50"
-              >
-                <span className="block text-sm font-semibold text-slate-900">{pick.label}</span>
-                <span className="block text-xs text-slate-500">{pick.hint}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   )
 }
@@ -159,7 +120,7 @@ const ConditionNode = memo(function ConditionNode({ id, data, selected }: NodePr
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <div className="flex items-center gap-1.5 rounded-t-[10px] bg-amber-50 px-3 py-1.5 font-semibold text-amber-800">
         <GitFork size={14} weight="fill" aria-hidden="true" />
-        If
+        {data.title}
       </div>
       <p className="px-3 pb-8 pt-2 text-sm font-medium text-slate-800">{data.body}</p>
       <span className="absolute right-4 top-[52%] text-[11px] font-semibold text-emerald-700">
@@ -211,8 +172,9 @@ type FlowCanvasProps = {
   readOnly: boolean
   onGraphChange: (graph: FlowGraph) => void
   onSelect: (id: string | null) => void
-  // The "+" after a card: add a block of this kind after the given exit of the given card.
-  onAddAfter: (from: string, port: FlowPort, kind: NewBlockKind) => void
+  // The exit whose "+" was pressed (the panel on the right lists what can be added there).
+  adding: { from: string; port: FlowPort } | null
+  onAdding: (target: { from: string; port: FlowPort } | null) => void
 }
 
 // The drag-and-drop canvas. The graph is the source of truth, but while a block is being dragged the
@@ -229,18 +191,18 @@ export function FlowCanvas({
   readOnly,
   onGraphChange,
   onSelect,
-  onAddAfter,
+  adding,
+  onAdding,
 }: FlowCanvasProps) {
   // The line that was clicked; Delete (or the Remove line button) takes it away.
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null)
-  // The exit whose "+" menu is open.
-  const [adding, setAdding] = useState<{ from: string; port: FlowPort } | null>(null)
-
-  // The blocks hold these two; they stay the same function so a block is not drawn again for them.
-  const addRef = useRef(onAddAfter)
+  // The blocks hold this; it stays the same function so a block is not drawn again for it.
+  const addingRef = useRef(adding)
+  const onAddingRef = useRef(onAdding)
   useEffect(() => {
-    addRef.current = onAddAfter
-  }, [onAddAfter])
+    addingRef.current = adding
+    onAddingRef.current = onAdding
+  }, [adding, onAdding])
   // When a block is added the whole flow is brought back into view, so the new block is not off screen.
   const flowRef = useRef<ReactFlowInstance<Node<CanvasNodeData>, Edge> | null>(null)
   const blockCount = useRef(graph.nodes.length)
@@ -255,11 +217,8 @@ export function FlowCanvas({
   }, [graph.nodes.length])
 
   const onPlus = useCallback((from: string, port: FlowPort) => {
-    setAdding((current) => (current?.from === from && current.port === port ? null : { from, port }))
-  }, [])
-  const onPick = useCallback((from: string, port: FlowPort, kind: NewBlockKind) => {
-    setAdding(null)
-    addRef.current(from, port, kind)
+    const current = addingRef.current
+    onAddingRef.current(current?.from === from && current.port === port ? null : { from, port })
   }, [])
 
   const derived = useMemo<Node<CanvasNodeData>[]>(() => {
@@ -272,7 +231,6 @@ export function FlowCanvas({
       openPorts: openPorts(id, ports),
       menuPort: adding?.from === id ? adding.port : null,
       onPlus,
-      onPick,
     })
     const list: Node<CanvasNodeData>[] = [
       {
@@ -282,7 +240,6 @@ export function FlowCanvas({
         data: { kind: 'trigger', title: 'When', body: triggerLabel, ...common(TRIGGER_ID, ['out']) },
         deletable: false,
         selected: selectedId === TRIGGER_ID && selectedEdge === null,
-        zIndex: adding?.from === TRIGGER_ID ? 20 : undefined,
       },
     ]
     for (const node of graph.nodes) {
@@ -300,12 +257,10 @@ export function FlowCanvas({
               ...common(node.id, ['yes', 'no']),
             },
         selected: selectedId === node.id && selectedEdge === null,
-        // A menu that is open sits above the other blocks.
-        zIndex: adding?.from === node.id ? 20 : undefined,
       })
     }
     return list
-  }, [graph, triggerLabel, selectedId, selectedEdge, classroomName, contactName, highlight, readOnly, adding, onPlus, onPick, choiceName])
+  }, [graph, triggerLabel, selectedId, selectedEdge, classroomName, contactName, highlight, readOnly, adding, onPlus, choiceName])
 
   const [nodes, setNodes] = useState<Node<CanvasNodeData>[]>(derived)
   useEffect(() => {
@@ -421,17 +376,17 @@ export function FlowCanvas({
         onConnect={onConnect}
         onNodeClick={(_, node) => {
           setSelectedEdge(null)
-          setAdding(null)
+          onAdding(null)
           onSelect(node.id)
         }}
         onEdgeClick={(_, edge) => {
           setSelectedEdge(edge.id)
-          setAdding(null)
+          onAdding(null)
           onSelect(null)
         }}
         onPaneClick={() => {
           setSelectedEdge(null)
-          setAdding(null)
+          onAdding(null)
           onSelect(null)
         }}
         nodesDraggable={!readOnly}
