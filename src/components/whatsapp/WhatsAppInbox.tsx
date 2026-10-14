@@ -17,6 +17,7 @@ import {
   getRealPhone,
   getTab,
   isGroupChat,
+  isMessengerChannel,
   isRecentlyOverdue,
   type InboxTab,
 } from '../../lib/whatsappInbox'
@@ -687,7 +688,13 @@ export function WhatsAppInbox({
   // numbers and the parent's name are never given to it. Null (feature off) for people who cannot edit leads.
   const aiContext = useMemo(() => {
     // No reply suggestion in a group: it is not one parent, and every message would cost an AI call.
-    if (!inbox.selected || !crm.canEditLeads || isGroupChat(inbox.selected.meta.sender)) {
+    // Nor in a Messenger chat: its text is not sent to the AI service (Meta's data-handling answers say so).
+    if (
+      !inbox.selected ||
+      !crm.canEditLeads ||
+      isGroupChat(inbox.selected.meta.sender) ||
+      isMessengerChannel(inbox.selected.meta.channel)
+    ) {
       return null
     }
     const sender = inbox.selected.meta.sender
