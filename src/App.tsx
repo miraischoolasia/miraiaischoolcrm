@@ -6085,6 +6085,18 @@ function App() {
                   crm={whatsAppCrm}
                   active={visibleSection === 'whatsapp'}
                   openRequest={whatsAppRequest}
+                  numbersView={{
+                    numbers: whatsAppNumbers.numbers,
+                    assignments: whatsAppNumbers.assignments,
+                    allowedInboxIds: whatsAppNumbers.allowedInboxIds,
+                    isAdmin,
+                    // Admins see every number anyway, so only the other accounts can be given one.
+                    staff: teachers
+                      .filter((teacher) => teacher.isActive && teacher.role !== 'admin')
+                      .map((teacher) => ({ id: teacher.id, name: teacher.fullName })),
+                    onSave: whatsAppNumbers.save,
+                    onRemove: whatsAppNumbers.remove,
+                  }}
                 />
               </div>
             )}
@@ -6213,18 +6225,6 @@ function App() {
         <LeadModal
           editingLead={editingLead}
           formState={leadFormState}
-                  numbersView={{
-                    numbers: whatsAppNumbers.numbers,
-                    assignments: whatsAppNumbers.assignments,
-                    allowedInboxIds: whatsAppNumbers.allowedInboxIds,
-                    isAdmin,
-                    // Admins see every number anyway, so only the other accounts can be given one.
-                    staff: teachers
-                      .filter((teacher) => teacher.isActive && teacher.role !== 'admin')
-                      .map((teacher) => ({ id: teacher.id, name: teacher.fullName })),
-                    onSave: whatsAppNumbers.save,
-                    onRemove: whatsAppNumbers.remove,
-                  }}
           saveError={leadSaveError}
           isSaving={isSavingLead}
           onClose={closeLeadModal}
