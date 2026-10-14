@@ -131,6 +131,16 @@ const rulesHook = vi.hoisted(() => ({
 }))
 vi.mock('../../hooks/useSourceRules', () => ({ useSourceRules: () => ({ rules: rulesHook.rules, isLoading: false, error: null }) }))
 
+const activityHook = vi.hoisted(() => ({
+  state: {
+    activity: null as unknown,
+    isLoading: false,
+    error: null as string | null,
+    reload: vi.fn(),
+  },
+}))
+vi.mock('../../hooks/useFlowActivity', () => ({ useFlowActivity: () => activityHook.state }))
+
 const flow = (change: Partial<AutomationFlow> = {}): AutomationFlow => {
   const base = newFlowDraft()
   return {
@@ -714,6 +724,89 @@ describe('AutomationsSection', () => {
     })
   })
 
+  describe('history tabs', () => {
+    beforeEach(() => {
+      activityHook.state.activity = null
+      activityHook.state.error = null
+    })
+
+    it('shows who was left alone and why in the execution logs', async () => {
+      activityHook.state.activity = {
+        queue: [],
+        log: [
+          {
+            id: 1,
+            eventKey: 'lead:9',
+            nodeId: 'c1',
+            kind: 'condition_no',
+            detail: 'The lead did not come in with a source keyword',
+            phone: '60111111111',
+            parentName: 'Mrs Tan',
+            childName: 'Mia',
+            createdAt: '2026-10-14T02:40:00Z',
+          },
+        ],
+      }
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Class reminder A regular class starts/ }))
+      await userEvent.click(screen.getByRole('tab', { name: 'Execution logs' }))
+      expect(screen.getByText('Not sent: did not match a condition')).toBeInTheDocument()
+      expect(screen.getByText('The lead did not come in with a source keyword')).toBeInTheDocument()
+      expect(screen.getByText('Mia (Mrs Tan)')).toBeInTheDocument()
+    })
+
+    it('lists the people in the enrollment history with where they got to', async () => {
+      activityHook.state.activity = {
+        queue: [
+          {
+            id: 4,
+            eventKey: 'lead:7',
+            nodeId: 'm1',
+            phone: '60123456789',
+            parentName: 'Mrs Lim',
+            childName: 'Ethan',
+            message: 'Hi Ethan',
+            status: 'sent',
+            dueAt: '2026-10-14T02:30:00Z',
+            expiresAt: null,
+            createdAt: '2026-10-14T02:20:00Z',
+            decidedAt: '2026-10-14T02:31:00Z',
+            sentAt: '2026-10-14T02:31:00Z',
+            error: null,
+            autoBlocked: null,
+            sentByAutomation: true,
+          },
+        ],
+        log: [],
+      }
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Class reminder A regular class starts/ }))
+      await userEvent.click(screen.getByRole('tab', { name: 'Enrollment history' }))
+      expect(screen.getByText('Ethan (Mrs Lim)')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: /Ethan \(Mrs Lim\)/ }))
+      expect(screen.getByText('Sent by itself')).toBeInTheDocument()
+    })
+
+    it('says so when the log has nothing yet and when it cannot be loaded', async () => {
+      activityHook.state.activity = { queue: [], log: [] }
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Class reminder A regular class starts/ }))
+      await userEvent.click(screen.getByRole('tab', { name: 'Execution logs' }))
+      expect(screen.getByText(/Nothing yet/)).toBeInTheDocument()
+
+      activityHook.state.error = 'The logs are not set up in the database yet.'
+      await userEvent.click(screen.getByRole('tab', { name: 'Enrollment history' }))
+      expect(screen.getByRole('alert')).toHaveTextContent('The logs are not set up in the database yet.')
+    })
+
+    it('keeps the history tabs for a flow that is already saved only', async () => {
+      setup()
+      await newBlankFlow()
+      await userEvent.click(screen.getByRole('tab', { name: 'Execution logs' }))
+      expect(screen.getByText(/Save the flow first/)).toBeInTheDocument()
+    })
+  })
+
   describe('sending by itself', () => {
     const autoFlow = () =>
       flow({
@@ -731,6 +824,7 @@ describe('AutomationsSection', () => {
     it('keeps a flow going through the approval queue until its switch is ticked, and saves the switch', async () => {
       setup()
       await userEvent.click(screen.getByRole('button', { name: /Class reminder A regular class starts/ }))
+      await userEvent.click(screen.getByRole('tab', { name: 'Settings' }))
       const box = screen.getByRole('checkbox', { name: /Send by itself/ })
       expect(box).not.toBeChecked()
       expect(screen.getByText(/waits in the approval queue/)).toBeInTheDocument()
@@ -745,6 +839,7 @@ describe('AutomationsSection', () => {
     it('leaves the switch out of the saved flow when it is ticked and then cleared', async () => {
       setup()
       await userEvent.click(screen.getByRole('button', { name: /Class reminder A regular class starts/ }))
+      await userEvent.click(screen.getByRole('tab', { name: 'Settings' }))
       await userEvent.click(screen.getByRole('checkbox', { name: /Send by itself/ }))
       expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
       await userEvent.click(screen.getByRole('checkbox', { name: /Send by itself/ }))

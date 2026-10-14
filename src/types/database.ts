@@ -593,6 +593,26 @@ export type Database = {
         }
         Relationships: []
       }
+      automation_flow_log: {
+        Row: {
+          id: number
+          flow_id: number
+          event_key: string
+          node_id: string
+          kind: 'stage_stopped' | 'cooldown' | 'condition_no' | 'no_message' | 'no_phone' | 'opted_out'
+          detail: string | null
+          phone: string | null
+          parent_name: string | null
+          child_name: string | null
+          lead_id: number | null
+          student_id: number | null
+          starts_at: string | null
+          created_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       automation_settings: {
         Row: {
           id: boolean

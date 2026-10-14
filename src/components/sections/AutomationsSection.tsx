@@ -33,7 +33,7 @@ type AutomationsSectionProps = {
 }
 
 // The automation flows: when something starts, who gets which message and how long before.
-// Each flow runs by itself every 15 minutes and adds its messages to the approval queue in the
+// Each flow runs by itself every minute and adds its messages to the approval queue in the
 // WhatsApp inbox; nothing is sent until a person approves it there.
 //
 // Two views: the list of flows, and one flow open as a workbench (settings on the left, canvas on
@@ -112,7 +112,7 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
             text: enabled
               ? sendsByItself
                 ? `"${name}" is on. Its messages go out by themselves, inside the limits and hours under "Sending by itself".`
-                : `"${name}" is on. Its messages appear under the lightning button in WhatsApp within 15 minutes.`
+                : `"${name}" is on. Its messages appear under the lightning button in WhatsApp within a minute or two.`
               : `"${name}" is off.`,
             isError: false,
           },
@@ -151,6 +151,7 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
     return (
       <section>
         <FlowEditor
+          paused={autoSend.settings.paused}
           key={open === 'new' ? 'new' : openFlow?.id}
           flow={open === 'new' ? null : openFlow}
           startFrom={open === 'new' ? startFrom : null}
@@ -179,7 +180,7 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-2xl text-sm text-slate-600">
-          Each flow checks every 15 minutes. The messages it makes wait for approval under the lightning button in
+          Each flow checks every minute. The messages it makes wait for approval under the lightning button in
           WhatsApp, unless the flow is set to send by itself.
         </p>
         <div className="flex gap-2">

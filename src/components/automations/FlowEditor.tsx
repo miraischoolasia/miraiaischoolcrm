@@ -32,12 +32,23 @@ import {
 import type { AutomationContact } from '../../lib/automationContacts'
 import type { Classroom } from '../../types/domain'
 import { analyzeFlow, reorderMessages } from '../../lib/flowSteps'
+import { FlowActivity } from './FlowActivity'
 import { FlowCanvas } from './FlowCanvas'
 import { FlowSettingsCard } from './FlowSettingsCard'
 import { FlowSwitch } from './FlowSwitch'
 import { FlowTester } from './FlowTester'
 import { SimpleBuilder } from './SimpleBuilder'
+import { useFlowActivity } from '../../hooks/useFlowActivity'
 import { FlowWorkbench } from './FlowWorkbench'
+
+type EditorTab = 'builder' | 'settings' | 'enrollments' | 'logs'
+
+const TABS: Array<{ key: EditorTab; label: string }> = [
+  { key: 'builder', label: 'Builder' },
+  { key: 'settings', label: 'Settings' },
+  { key: 'enrollments', label: 'Enrollment history' },
+  { key: 'logs', label: 'Execution logs' },
+]
 
 type FlowEditorProps = {
   // null starts a new flow.
@@ -49,6 +60,8 @@ type FlowEditorProps = {
   contacts: AutomationContact[]
   // Only an admin can change a flow.
   canEdit: boolean
+  // Every automation is paused (the switch on the Automations page).
+  paused?: boolean
   // What the source, tag, PIC and form blocks can tick.
   filterOptions?: FilterOptions
   onSave: (draft: FlowDraft) => Promise<{ error: string | null; flow: AutomationFlow | null }>
@@ -73,6 +86,7 @@ export function FlowEditor({
   classrooms,
   contacts,
   canEdit,
+  paused = false,
   filterOptions = EMPTY_FILTER_OPTIONS,
   onSave,
   onDelete,
@@ -96,7 +110,10 @@ export function FlowEditor({
   const [notice, setNotice] = useState<{ text: string; isError: boolean } | null>(null)
   const [isWorking, setIsWorking] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [tab, setTab] = useState<EditorTab>('builder')
   const panelRef = useRef<HTMLElement>(null)
+  const historyOpen = tab === 'enrollments' || tab === 'logs'
+  const activity = useFlowActivity(flow?.id ?? null, historyOpen)
 
   // On a phone the panel sits under the canvas; bring it into view when a card is picked.
   useEffect(() => {
@@ -179,7 +196,7 @@ export function FlowEditor({
     setDraft(saved)
     setBaseline(JSON.stringify(saved))
     setNotice({
-      text: saved.enabled ? 'Saved. This flow runs every 15 minutes.' : 'Saved. This flow is off, so it will not run.',
+      text: saved.enabled ? 'Saved. This flow is checked every minute.' : 'Saved. This flow is off, so it will not run.',
       isError: false,
     })
     onSaved(result.flow)
@@ -224,6 +241,7 @@ export function FlowEditor({
           }}
           className="min-w-[180px] flex-1 rounded-lg border border-transparent px-2 py-1.5 text-base font-semibold text-slate-900 outline-none hover:border-slate-200 focus:border-[#fc0c97] disabled:bg-transparent md:max-w-[360px]"
         />
+        {tab === 'builder' && (
         <span role="group" aria-label="Editor" className="flex rounded-lg border border-slate-200 p-0.5 text-xs font-semibold">
           {(['simple', 'advanced'] as const).map((choice) => (
             <button
@@ -240,6 +258,7 @@ export function FlowEditor({
             </button>
           ))}
         </span>
+        )}
         <span className="flex items-center">
           <FlowSwitch
             checked={draft.enabled}
@@ -310,6 +329,26 @@ export function FlowEditor({
         </span>
       </header>
 
+      <div role="tablist" aria-label="Flow sections" className="flex gap-1 overflow-x-auto border-b border-slate-200 px-3">
+        {TABS.map((entry) => (
+          <button
+            key={entry.key}
+            type="button"
+            role="tab"
+            aria-selected={tab === entry.key}
+            onClick={() => setTab(entry.key)}
+            className={cn(
+              '-mb-px whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-semibold',
+              tab === entry.key
+                ? 'border-[#fc0c97] text-[#fc0c97]'
+                : 'border-transparent text-slate-600 hover:text-slate-900',
+            )}
+          >
+            {entry.label}
+          </button>
+        ))}
+      </div>
+
       {(!canEdit || flow?.lastError || (view === 'advanced' && loose.length > 0) || notice) && (
         <div className="space-y-2 border-b border-slate-200 px-4 py-2">
           {!canEdit && (
@@ -344,7 +383,30 @@ export function FlowEditor({
         </div>
       )}
 
-      {view === 'simple' ? (
+      {tab === 'settings' ? (
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-4 py-5">
+          <div className="mx-auto max-w-2xl space-y-4">
+            <FlowSettingsCard
+              settings={draft.graph.settings}
+              readOnly={readOnly}
+              onChange={(change: FlowSettings) => setGraph(updateSettings(draft.graph, change))}
+            />
+            <p className="text-xs text-slate-500">
+              Changes here are saved with the flow: press Save flow when you are done.
+            </p>
+          </div>
+        </div>
+      ) : historyOpen ? (
+        <FlowActivity
+          mode={tab === 'enrollments' ? 'enrollments' : 'logs'}
+          flow={flow}
+          activity={activity.activity}
+          paused={paused}
+          isLoading={activity.isLoading}
+          error={activity.error}
+          onReload={() => void activity.reload()}
+        />
+      ) : view === 'simple' ? (
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-4 py-5">
           <div className="mx-auto max-w-2xl space-y-6">
             {analysis.simple ? (
@@ -365,11 +427,6 @@ export function FlowEditor({
                     const changed = updateNode(draft.graph, id, change)
                     setGraph('mins' in change || 'after' in change ? reorderMessages(changed) : changed)
                   }}
-                />
-                <FlowSettingsCard
-                  settings={draft.graph.settings}
-                  readOnly={readOnly}
-                  onChange={(change: FlowSettings) => setGraph(updateSettings(draft.graph, change))}
                 />
                 <section className="rounded-xl border border-slate-200 bg-white">
                   <button

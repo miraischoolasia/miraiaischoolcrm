@@ -3,7 +3,7 @@ import { leadStatusOptions } from './constants'
 import type { LeadStatus } from '../types/domain'
 
 // Automation flows: the drag-and-drop canvas on the Automations page. A flow is one trigger and a
-// small graph of conditions and messages. The database runs every enabled flow every 15 minutes and
+// small graph of conditions and messages. The database runs every enabled flow every minute and
 // adds the messages it makes to the approval queue; nothing is sent until a person approves it.
 
 export type FlowTrigger =
@@ -978,7 +978,7 @@ export async function deleteFlow(id: number) {
   }
 }
 
-// Runs the flows right now instead of waiting for the next 15 minutes. Resolves to how many
+// Runs the flows right now instead of waiting for the next minute. Resolves to how many
 // messages were added to the approval queue.
 export async function runFlowsNow(): Promise<number> {
   const { data, error } = await requireSupabase().rpc('run_automation_rules')
