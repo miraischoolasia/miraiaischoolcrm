@@ -99,6 +99,8 @@ export type Student = {
   studentType: StudentType
   // The package the student is on now (regular students only).
   packageId?: number | null
+  // The child's birth date (yyyy-mm-dd); the age is worked out from it. Undefined before the migration.
+  dateOfBirth?: string | null
   // Every stay in a class, for the roster of a given day. Undefined before
   // the class history migration.
   classPeriods?: ClassroomPeriod[]
@@ -149,6 +151,8 @@ export type Classroom = {
   status: 'active' | 'archived'
   notes: string | null
   archivedAt: string | null
+  // Where the class meets on Zoom. Undefined before the migration.
+  zoomLink?: string | null
 }
 
 export type Teacher = {
@@ -380,6 +384,8 @@ export type CreateStudentFormState = {
   miraiClubExpiryDate: string
   notes: string
   studentType: StudentType
+  // yyyy-mm-dd or empty.
+  dateOfBirth: string
 }
 
 export type LeadChildFormState = {
@@ -418,6 +424,8 @@ export type StudentDetailsFormState = {
   classroomId: string
   notes: string
   studentType: StudentType
+  // yyyy-mm-dd or empty.
+  dateOfBirth: string
 }
 
 export type ScheduleFormState = {
@@ -445,6 +453,8 @@ export type ClassroomFormState = {
   // takes the class (earlier classes stay with the previous teacher).
   teacherEffectiveDate: string
   notes: string
+  // The class's Zoom address, or empty.
+  zoomLink: string
 }
 
 export type AttendanceModalState = {
@@ -481,7 +491,7 @@ export type StudentRow = Pick<
   | 'is_active'
   | 'student_type'
   | 'package_id'
->
+> & { date_of_birth?: string | null }
 
 export type ClassroomRow = Pick<
   Database['public']['Tables']['classrooms']['Row'],
@@ -494,7 +504,7 @@ export type ClassroomRow = Pick<
   | 'status'
   | 'notes'
   | 'archived_at'
->
+> & { zoom_link?: string | null }
 
 export type TeacherRow = Pick<
   Database['public']['Tables']['teachers']['Row'],

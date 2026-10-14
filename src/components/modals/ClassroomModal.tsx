@@ -191,6 +191,23 @@ export function ClassroomModal({
 
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-slate-700">
+              Zoom Link
+            </span>
+            <input
+              type="url"
+              inputMode="url"
+              value={formState.zoomLink}
+              onChange={(event) => onFieldChange('zoomLink', event.target.value)}
+              placeholder="https://zoom.us/j/..."
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+            />
+            <p className="text-xs text-slate-500">
+              Optional. Where this class meets on Zoom; shown on the teacher's details.
+            </p>
+          </label>
+
+          <label className="space-y-2 sm:col-span-2">
+            <span className="text-sm font-semibold text-slate-700">
               Notes
             </span>
             <textarea

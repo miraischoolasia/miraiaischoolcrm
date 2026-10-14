@@ -146,7 +146,9 @@ import { AdminHomeSection } from './components/sections/AdminHomeSection'
 import { buildStudentRows } from './lib/studentRows'
 import { useAutomationSummary } from './hooks/useAutomationSummary'
 import { useStaffReplyStats } from './hooks/useStaffReplyStats'
-import { buildTeacherAgenda, formatClockTime } from './lib/teacherAgenda'
+import { buildTeacherAgenda, formatClockTime, getAgendaItems, getWeekRange } from './lib/teacherAgenda'
+import { buildTeacherClasses } from './lib/teacherDetails'
+import { TeacherDetailsSection } from './components/sections/TeacherDetailsSection'
 import {
   getClassFilterValues,
   getLegendKeys,
@@ -366,6 +368,8 @@ function App() {
   const [studentFilter, setStudentFilter] = useState<FilterKey>('all')
   const [studentFollowUpOnly, setStudentFollowUpOnly] = useState(false)
   const [activeSection, setActiveSection] = useState<AppSection>('calendar')
+  // The teacher whose details (classes and students) are open on My Team.
+  const [teacherDetailsId, setTeacherDetailsId] = useState<number | null>(null)
   const [isMarketingOpen, setIsMarketingOpen] = useState(false)
   // The menu can shrink to icons so the page beside it (the WhatsApp inbox) gets the room.
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readSidebarCollapsed)
@@ -450,6 +454,7 @@ function App() {
       miraiClubExpiryDate: todayString,
       notes: '',
       studentType: 'regular',
+      dateOfBirth: '',
     })
   const [studentDetailsFormState, setStudentDetailsFormState] =
     useState<StudentDetailsFormState>({
@@ -458,6 +463,7 @@ function App() {
       classroomId: '',
       notes: '',
       studentType: 'regular',
+      dateOfBirth: '',
     })
   const [isSavingClassroom, setIsSavingClassroom] = useState(false)
   const [classroomSaveError, setClassroomSaveError] = useState<string | null>(null)
@@ -469,6 +475,7 @@ function App() {
     teacherId: '',
     teacherEffectiveDate: todayString,
     notes: '',
+    zoomLink: '',
   })
   const [createTeacherFormState, setCreateTeacherFormState] =
     useState<CreateTeacherFormState>({
@@ -688,6 +695,7 @@ function App() {
   )
   // The admin's / staff's Today (a teacher has their own).
   const showAdminHome = visibleSection === 'home' && !isTeacherAccount
+  const showTeacherDetails = visibleSection === 'teachers' && teacherDetailsId !== null
   const { summary: automationSummary, unavailable: automationUnavailable } = useAutomationSummary(
     showAdminHome && can('leads'),
   )
@@ -882,7 +890,7 @@ function App() {
   )
   const adminStudentRows = useMemo(
     () =>
-      showAdminHome && can('students')
+      (showAdminHome && can('students')) || showTeacherDetails
         ? buildStudentRows({
             students: listedStudents,
             packages,
@@ -897,6 +905,7 @@ function App() {
         : null,
     [
       showAdminHome,
+      showTeacherDetails,
       can,
       listedStudents,
       packages,
@@ -908,6 +917,57 @@ function App() {
       attendedStudentIds,
       todayString,
     ],
+  )
+  // The details of one teacher on My Team: the week, and every class with its students. Only worked
+  // out while that page is open.
+  const teacherDetailsAgenda = useMemo(() => {
+    if (!showTeacherDetails || teacherDetailsId === null) {
+      return null
+    }
+    const sources = {
+      teacherId: teacherDetailsId,
+      schedules,
+      exceptions: scheduleExceptions,
+      classroomMap,
+      lessonLogs,
+      makeupEntries,
+      getRosterIds: getScheduleRosterStudentIds,
+    }
+    const week = getWeekRange(todayString)
+    return {
+      weekStart: week.start,
+      items: getAgendaItems(sources, todayString, week.start, week.end),
+      summary: buildTeacherAgenda(sources, todayString),
+    }
+    // Same dependencies as teacherAgenda above.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    showTeacherDetails,
+    teacherDetailsId,
+    schedules,
+    scheduleExceptions,
+    classroomMap,
+    lessonLogs,
+    makeupEntries,
+    students,
+    trialBookingMap,
+    makeupMap,
+    scheduleParticipantMap,
+    todayString,
+  ])
+  const teacherDetailsClasses = useMemo(
+    () =>
+      showTeacherDetails && teacherDetailsId !== null && adminStudentRows
+        ? buildTeacherClasses({
+            teacherId: teacherDetailsId,
+            classrooms,
+            schedules,
+            studentRows: adminStudentRows,
+            trialBookings,
+            todayString,
+          })
+        : [],
+    [showTeacherDetails, teacherDetailsId, adminStudentRows, classrooms, schedules, trialBookings, todayString],
   )
   const editingStudent =
     students.find((student) => student.id === editingStudentId) ?? null
@@ -1209,6 +1269,7 @@ function App() {
       teacherId: editingClassroom?.teacherId ? String(editingClassroom.teacherId) : '',
       teacherEffectiveDate: todayString,
       notes: editingClassroom?.notes ?? '',
+      zoomLink: editingClassroom?.zoomLink ?? '',
     })
   }, [editingClassroom, isCreatingClassroom, selectedAgeGroup, todayString])
 
@@ -1689,12 +1750,33 @@ function App() {
       classroomId: student.classroomId ? String(student.classroomId) : '',
       notes: student.notes ?? '',
       studentType: student.studentType,
+      dateOfBirth: student.dateOfBirth ?? '',
     })
   }
 
   function closeEditStudent() {
     setEditingStudentId(null)
     setStudentDetailsSaveError(null)
+  }
+
+  // The birth date is written on its own, so the long create and update functions stay as they are.
+  // `current` is what the student has now: undefined means the database has no such column yet.
+  async function saveBirthDate(studentId: number, next: string, current: string | null | undefined) {
+    const value = next.trim() || null
+    if (value === (current ?? null) || (value === null && current === undefined)) {
+      return
+    }
+    if (value && value > todayString) {
+      throw new Error('The date of birth cannot be in the future.')
+    }
+    const { error } = await supabase!.from('students').update({ date_of_birth: value }).eq('id', studentId)
+    if (error) {
+      throw new Error(
+        error.code === '42703' || error.code === 'PGRST204'
+          ? "The date of birth can't be saved until the database update for it is applied."
+          : error.message,
+      )
+    }
   }
 
   const offeredPackages = useMemo(() => getOfferedPackages(packages), [packages])
@@ -1871,6 +1953,7 @@ function App() {
       miraiClubExpiryDate: todayString,
       notes: '',
       studentType: 'regular',
+      dateOfBirth: '',
     })
   }
 
@@ -2289,6 +2372,7 @@ function App() {
       teacherId: '',
       teacherEffectiveDate: todayString,
       notes: '',
+      zoomLink: '',
     })
   }
 
@@ -2817,6 +2901,10 @@ function App() {
         throw error
       }
 
+      if (!isPreviewStudent) {
+        await saveBirthDate(editingStudent.id, studentDetailsFormState.dateOfBirth, editingStudent.dateOfBirth)
+      }
+
       await Promise.all([
         refreshStudentsAndLogs(),
         refreshClassrooms(),
@@ -2913,6 +3001,9 @@ function App() {
       }
 
       const createdStudentId = (created as { student_id: number }[] | null)?.[0]?.student_id
+      if (!isPreviewStudent && createdStudentId && createStudentFormState.dateOfBirth) {
+        await saveBirthDate(createdStudentId, createStudentFormState.dateOfBirth, null)
+      }
       if (signUpPackage && createdStudentId) {
         const { error: enrollError } = await supabase.rpc('enroll_student_package', {
           p_student_id: createdStudentId,
@@ -3387,6 +3478,7 @@ function App() {
       miraiClubExpiryDate: todayString,
       notes: lead.notes ?? '',
       studentType: 'regular',
+      dateOfBirth: '',
     })
   }
 
@@ -3917,6 +4009,12 @@ function App() {
       return
     }
 
+    const zoomLink = classroomFormState.zoomLink.trim()
+    if (zoomLink && !/^https?:\/\/\S+$/i.test(zoomLink)) {
+      setClassroomSaveError('The Zoom link must start with https://')
+      return
+    }
+
     const payload: Database['public']['Tables']['classrooms']['Update'] = {
       name,
       category: classroomFormState.category,
@@ -3925,6 +4023,10 @@ function App() {
       teacher_id: teacherId,
       notes: classroomFormState.notes.trim() || null,
       status: 'active',
+    }
+    // Only sent once the database has the column (or a link is being added, which then reports it).
+    if (zoomLink || editingClassroom?.zoomLink !== undefined) {
+      payload.zoom_link = zoomLink || null
     }
 
     try {
@@ -6036,8 +6138,34 @@ function App() {
               />
             )}
 
-            {visibleSection === 'teachers' && (
+            {visibleSection === 'teachers' && teacherDetailsId !== null && teacherDetailsAgenda && (
+              (() => {
+                const detailsTeacher = teachers.find((teacher) => teacher.id === teacherDetailsId)
+                return detailsTeacher ? (
+                  <TeacherDetailsSection
+                    teacher={detailsTeacher}
+                    classes={teacherDetailsClasses}
+                    weekItems={teacherDetailsAgenda.items}
+                    weekStart={teacherDetailsAgenda.weekStart}
+                    weekHours={teacherDetailsAgenda.summary.week.hours}
+                    missingAttendance={teacherDetailsAgenda.summary.todo.length}
+                    todayString={todayString}
+                    canEditClassroom={can('classrooms', 'edit')}
+                    onBack={() => setTeacherDetailsId(null)}
+                    onEditTeacher={() => openEditTeacherModal(detailsTeacher.id)}
+                    onOpenStudent={openStudentDetail}
+                    onEditClassroom={openEditClassroom}
+                    onOpenAttendance={(item) =>
+                      void openAttendanceForEvent(item.scheduleId, item.date, item.title)
+                    }
+                  />
+                ) : null
+              })()
+            )}
+
+            {visibleSection === 'teachers' && (teacherDetailsId === null || !teacherDetailsAgenda) && (
               <TeacherManagementSection
+                onOpenTeacher={setTeacherDetailsId}
                 deletingTeacherId={deletingTeacherId}
                 isLoading={isLoading}
                 teachers={activeTeachers}

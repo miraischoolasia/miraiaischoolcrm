@@ -19,6 +19,7 @@ import {
   mapTrialBookingRow,
 } from './mappers'
 import type {
+  ClassroomRow,
   FormField,
   FormSettings,
   FormTracking,
@@ -42,6 +43,7 @@ export async function fetchStudentsFromSupabase() {
 
   const columns =
     'id, teacher_id, classroom_id, full_name, phone, age, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date, notes, is_active, student_type'
+  const birth = 'date_of_birth'
   const select = async (selected: string) => {
     const result = await supabase!.from('students').select(selected).order('full_name')
     return result as unknown as {
@@ -55,15 +57,24 @@ export async function fetchStudentsFromSupabase() {
     }
   }
   const history = 'student_classroom_periods(classroom_id, start_date, end_date)'
-  let { data, error } = await select(`${columns}, package_id, ${history}`)
+  const load = async (base: string) => {
+    let result = await select(`${base}, package_id, ${history}`)
 
-  // Before the class history migration there is no history to embed.
-  if (error && (error.code === 'PGRST200' || isMissingTableError(error))) {
-    ;({ data, error } = await select(`${columns}, package_id`))
+    // Before the class history migration there is no history to embed.
+    if (result.error && (result.error.code === 'PGRST200' || isMissingTableError(result.error))) {
+      result = await select(`${base}, package_id`)
+    }
+    // Before the packages migration package_id does not exist yet.
+    if (result.error?.code === '42703') {
+      result = await select(base)
+    }
+    return result
   }
-  // Before the packages migration package_id does not exist yet.
+
+  let { data, error } = await load(`${columns}, ${birth}`)
+  // Before the birth date migration date_of_birth does not exist yet.
   if (error?.code === '42703') {
-    ;({ data, error } = await select(columns))
+    ;({ data, error } = await load(columns))
   }
 
   if (error) {
@@ -161,18 +172,26 @@ export async function fetchClassroomsFromSupabase() {
     return []
   }
 
-  const { data, error } = await supabase
-    .from('classrooms')
-    .select('id, name, category, age_group, program_level, teacher_id, status, notes, archived_at')
-    .order('age_group')
-    .order('program_level')
-    .order('name')
+  const base = 'id, name, category, age_group, program_level, teacher_id, status, notes, archived_at'
+  const select = async (columns: string) =>
+    (await supabase!
+      .from('classrooms')
+      .select(columns)
+      .order('age_group')
+      .order('program_level')
+      .order('name')) as unknown as { data: ClassroomRow[] | null; error: { code?: string } | null }
+
+  let { data, error } = await select(`${base}, zoom_link`)
+  // Before the Zoom link migration the column does not exist yet.
+  if (error?.code === '42703') {
+    ;({ data, error } = await select(base))
+  }
 
   if (error) {
     throw error
   }
 
-  return data.map(mapClassroomRow)
+  return (data ?? []).map(mapClassroomRow)
 }
 
 // Includes archived (inactive) teachers so history still shows their names

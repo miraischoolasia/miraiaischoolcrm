@@ -52,6 +52,8 @@ export function mapStudentRow(row: StudentRow): Student {
     isActive: row.is_active,
     studentType: row.student_type,
     packageId: row.package_id,
+    // Stays undefined until the migration adds the column, so a save can tell whether it exists.
+    dateOfBirth: row.date_of_birth,
   }
 }
 
@@ -92,6 +94,7 @@ export function mapClassroomRow(row: ClassroomRow): Classroom {
     status: row.status,
     notes: row.notes,
     archivedAt: row.archived_at,
+    zoomLink: row.zoom_link,
   }
 }
 

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { cn } from '../../lib/cn'
+import { formatStudentAge, getStudentAge } from '../../lib/age'
 import { formatDate, getWorstFee, type StudentIssue } from '../../domain/studentStatus'
 import { studentFilterOptions } from '../../lib/constants'
 import {
@@ -353,7 +354,7 @@ export function StudentDashboardSection({
                   )}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <StudentIdentity row={row} onOpen={onOpenStudentDetail} />
+                    <StudentIdentity row={row} todayString={todayString} onOpen={onOpenStudentDetail} />
                     <StatusCell row={row} todayString={todayString} />
                   </div>
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-slate-50 p-3">
@@ -420,7 +421,7 @@ export function StudentDashboardSection({
                       )}
                     >
                       <td className="px-3 py-3">
-                        <StudentIdentity row={row} onOpen={onOpenStudentDetail} />
+                        <StudentIdentity row={row} todayString={todayString} onOpen={onOpenStudentDetail} />
                       </td>
                       <td className="px-3 py-3">
                         <ClassCell row={row} todayString={todayString} />
@@ -476,12 +477,15 @@ function initials(name: string) {
 
 function StudentIdentity({
   row,
+  todayString,
   onOpen,
 }: {
   row: StudentRow
+  todayString: string
   onOpen: (studentId: number) => void
 }) {
   const { student, parent } = row
+  const age = formatStudentAge(getStudentAge(student, todayString))
   return (
     <div className="flex items-center gap-3">
       <span
@@ -507,6 +511,7 @@ function StudentIdentity({
         </div>
         <div className={secondary}>
           #{student.id.toString().padStart(3, '0')}
+          {age ? ` · ${age}` : ''}
           {parent?.name ? ` · ${parent.name}` : ''}
         </div>
       </div>

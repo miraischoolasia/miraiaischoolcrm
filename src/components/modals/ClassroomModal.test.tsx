@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ClassroomModal } from './ClassroomModal'
 import type { Classroom, ClassroomFormState, Teacher } from '../../types/domain'
@@ -36,6 +37,7 @@ function renderWithTeacher(teacherId: string) {
     teacherId,
     teacherEffectiveDate: '2026-09-28',
     notes: '',
+    zoomLink: '',
   }
 
   render(
@@ -63,5 +65,38 @@ describe('ClassroomModal teacher change', () => {
     renderWithTeacher('3')
     expect(screen.getByText('New teacher starts from')).toBeInTheDocument()
     expect(screen.getByDisplayValue('2026-09-28')).toBeInTheDocument()
+  })
+})
+
+describe('ClassroomModal zoom link', () => {
+  it('shows the Zoom link of the class and reports a change', async () => {
+    const onFieldChange = vi.fn()
+    render(
+      <ClassroomModal
+        isCreating={false}
+        editingClassroom={classroom}
+        assignableTeachers={teachers}
+        formState={{
+          category: 'regular',
+          name: 'Mon Class',
+          ageGroup: '9-11 Years Old',
+          programLevel: 'Coder Pro',
+          teacherId: '2',
+          teacherEffectiveDate: '2026-09-28',
+          notes: '',
+          zoomLink: 'https://zoom.us/j/1',
+        }}
+        saveError={null}
+        isSaving={false}
+        onClose={vi.fn()}
+        onSubmit={vi.fn()}
+        onFieldChange={onFieldChange}
+      />,
+    )
+
+    const input = screen.getByLabelText(/Zoom Link/)
+    expect(input).toHaveValue('https://zoom.us/j/1')
+    await userEvent.type(input, '2')
+    expect(onFieldChange).toHaveBeenCalledWith('zoomLink', 'https://zoom.us/j/12')
   })
 })

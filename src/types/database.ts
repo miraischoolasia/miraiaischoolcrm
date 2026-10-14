@@ -30,6 +30,7 @@ export type Database = {
           status: 'active' | 'archived'
           notes: string | null
           archived_at: string | null
+          zoom_link: string | null
           created_at: string
           updated_at: string
         }
@@ -53,6 +54,7 @@ export type Database = {
           status?: 'active' | 'archived'
           notes?: string | null
           archived_at?: string | null
+          zoom_link?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -76,6 +78,7 @@ export type Database = {
           status?: 'active' | 'archived'
           notes?: string | null
           archived_at?: string | null
+          zoom_link?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -183,6 +186,7 @@ export type Database = {
           full_name: string
           phone: string | null
           age: number | null
+          date_of_birth: string | null
           remaining_hours: number
           lesson_expiry_date: string
           account_fee_expiry_date: string
@@ -201,6 +205,7 @@ export type Database = {
           full_name: string
           phone?: string | null
           age?: number | null
+          date_of_birth?: string | null
           remaining_hours?: number
           lesson_expiry_date: string
           account_fee_expiry_date: string
@@ -219,6 +224,7 @@ export type Database = {
           full_name?: string
           phone?: string | null
           age?: number | null
+          date_of_birth?: string | null
           remaining_hours?: number
           lesson_expiry_date?: string
           account_fee_expiry_date?: string

@@ -19,6 +19,8 @@ type TeacherManagementSectionProps = {
   onDeleteTeacher: (teacherId: number) => void
   onEditTeacher: (teacherId: number) => void
   onOpenCreateTeacher: () => void
+  // Opens the teacher's details: their classes and the students in them.
+  onOpenTeacher?: (teacherId: number) => void
   protectedTeacherIds: Set<number>
 }
 
@@ -29,6 +31,7 @@ export function TeacherManagementSection({
   onDeleteTeacher,
   onEditTeacher,
   onOpenCreateTeacher,
+  onOpenTeacher,
   protectedTeacherIds,
 }: TeacherManagementSectionProps) {
   const [searchTerm, setSearchTerm] = useState('')
@@ -143,9 +146,7 @@ export function TeacherManagementSection({
                 <li key={teacher.id} className="space-y-3 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="font-semibold text-slate-900">
-                        {teacher.fullName}
-                      </div>
+                      <TeacherName teacher={teacher} onOpenTeacher={onOpenTeacher} />
                       <div className="mt-1 text-xs text-slate-500">
                         {roleLabel[teacher.role]} ID #{String(teacher.id).padStart(3, '0')} ·{' '}
                         {teacher.username}
@@ -234,9 +235,7 @@ export function TeacherManagementSection({
                   {filteredTeachers.map((teacher) => (
                     <tr key={teacher.id} className="align-top">
                       <td className="px-6 py-5">
-                        <div className="font-semibold text-slate-900">
-                          {teacher.fullName}
-                        </div>
+                        <TeacherName teacher={teacher} onOpenTeacher={onOpenTeacher} />
                         <div className="mt-1 text-sm text-slate-500">
                           {roleLabel[teacher.role]} ID #{String(teacher.id).padStart(3, '0')}
                         </div>
@@ -312,6 +311,28 @@ export function TeacherManagementSection({
         )}
       </section>
     </div>
+  )
+}
+
+// The name opens the teacher's details when that page is offered.
+function TeacherName({
+  teacher,
+  onOpenTeacher,
+}: {
+  teacher: Teacher
+  onOpenTeacher?: (teacherId: number) => void
+}) {
+  if (!onOpenTeacher) {
+    return <div className="font-semibold text-slate-900">{teacher.fullName}</div>
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onOpenTeacher(teacher.id)}
+      className="text-left font-semibold text-slate-900 underline-offset-4 transition hover:text-[#be185d] hover:underline"
+    >
+      {teacher.fullName}
+    </button>
   )
 }
 

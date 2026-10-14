@@ -1,5 +1,6 @@
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
+import { getTodayString } from '../../domain/studentStatus'
 import type { Classroom, StudentDetailsFormState, Teacher } from '../../types/domain'
 
 type EditStudentModalProps = {
@@ -133,6 +134,23 @@ export function EditStudentModal({
               Teacher is set automatically from the selected classroom above.
             </p>
           </div>
+          )}
+
+          {!isPreviewStudent && (
+          <label className="space-y-2 sm:col-span-2">
+            <span className="text-sm font-semibold text-slate-700">Date of Birth</span>
+            <input
+              type="date"
+              value={formState.dateOfBirth}
+              min="1990-01-01"
+              max={getTodayString()}
+              onChange={(event) => onFieldChange('dateOfBirth', event.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+            />
+            <p className="text-xs text-slate-500">
+              Optional. The age shown for this child is worked out from it, so it moves on by itself every year.
+            </p>
+          </label>
           )}
 
           {!isPreviewStudent && (
