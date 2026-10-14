@@ -165,6 +165,35 @@ describe('what is asked', () => {
     expect(prompt).toContain('- （名字不知道），12 岁')
   })
 
+  it('gives the AI only the HOA classes of the calendar to offer', () => {
+    const body = buildDraftBody(
+      1,
+      [message({ content: 'Which day is the class?' })],
+      { children: [], teamName: null, openClasses: ['Sat 18 Oct, 2pm to 4pm, HOA 9-11 Years Old'] },
+      false,
+    )
+    expect(body?.openClasses).toEqual(['Sat 18 Oct, 2pm to 4pm, HOA 9-11 Years Old'])
+    const checked = validateInput({ ...body, openClasses: [...(body?.openClasses ?? []), '', 5] })
+    if (!checked.ok) {
+      throw new Error('should be valid')
+    }
+    expect(checked.value.openClasses).toEqual(['Sat 18 Oct, 2pm to 4pm, HOA 9-11 Years Old'])
+    const prompt = buildUserPrompt(checked.value)
+    expect(prompt).toContain('【Calendar 现在有位的 HOA 班】')
+    expect(prompt).toContain('- Sat 18 Oct, 2pm to 4pm, HOA 9-11 Years Old')
+    expect(buildSystemPrompt('')).toContain('知识库里写的星期几和钟点只是旧例子')
+  })
+
+  it('says there are no open classes when the calendar has none, and says nothing for an older page', () => {
+    const none = validateInput({ chatId: 1, lastMessageId: 2, messages: [{ from: 'parent', text: 'hi' }], openClasses: [] })
+    const older = validateInput({ chatId: 1, lastMessageId: 2, messages: [{ from: 'parent', text: 'hi' }] })
+    if (!none.ok || !older.ok) {
+      throw new Error('should be valid')
+    }
+    expect(buildUserPrompt(none.value)).toContain('（现在没有开放的班）')
+    expect(buildUserPrompt(older.value)).not.toContain('Calendar 现在有位')
+  })
+
   it('keeps the last 20 messages and has no child when nothing is known', () => {
     const list = Array.from({ length: 30 }, (_, i) => message({ content: `m${i}` }))
     const body = buildDraftBody(1, list, { children: [], teamName: null }, true)

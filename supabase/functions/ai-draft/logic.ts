@@ -11,6 +11,10 @@ export type DraftInput = {
   // Every child of the family the team has written down (first names and ages), up to MAX_CHILDREN.
   children: { name: string | null; age: number | null }[]
   teamName: string | null
+  // The HOA classes on the CRM calendar that still have room, soonest first, one line each
+  // ("Sat 18 Oct, 2pm to 4pm, HOA 9-11 Years Old"). The only class times the AI may offer.
+  // null: the browser did not send the calendar (an older page), so no list is given.
+  openClasses: string[] | null
   // Ask again even when this chat already has a draft for its last message.
   regenerate: boolean
 }
@@ -53,6 +57,7 @@ export function lastParentText(messages: DraftMessage[]): string | null {
 export const MAX_MESSAGES = 30
 export const MAX_TEXT = 1500
 export const MAX_CHILDREN = 5
+export const MAX_OPEN_CLASSES = 15
 
 // A phone number or an email address someone typed in the chat never goes to the AI.
 export function scrub(text: string): string {
@@ -105,9 +110,23 @@ export function validateInput(body: unknown): { ok: true; value: DraftInput } | 
   }
   const teamName =
     typeof source.teamName === 'string' && source.teamName.trim() ? source.teamName.trim().slice(0, 60) : null
+  const openClasses = Array.isArray(source.openClasses)
+    ? source.openClasses
+        .filter((line): line is string => typeof line === 'string' && line.trim() !== '')
+        .slice(0, MAX_OPEN_CLASSES)
+        .map((line) => line.trim().slice(0, 120))
+    : null
   return {
     ok: true,
-    value: { chatId, lastMessageId, messages, children, teamName, regenerate: source.regenerate === true },
+    value: {
+      chatId,
+      lastMessageId,
+      messages,
+      children,
+      teamName,
+      openClasses,
+      regenerate: source.regenerate === true,
+    },
   }
 }
 
@@ -142,6 +161,8 @@ export function buildSystemPrompt(knowledge: string): string {
    - 家长有两个或以上孩子时，称呼和说明都要照顾到每个孩子（例如「两个孩子」），时间和人数按每个孩子的年龄组来讲，不要只当成第一个孩子。
    - 家长的消息带「引用回复」时，那条回答是针对被引用的那个问题。家长一次回答了几个问题，就按引用或顺序对应，全部算已回答。
 2. 只能使用下面【知识库】里的资料。资料里没有的（例如付款方式、报名表格、退款、投诉、calendar 里没有的时间），不要编、不要承诺；草稿里避开这些，并在 missing 写下缺的资料（见第 8 点）。
+   - 上课时间只用聊天最后附上的【Calendar 现在有位的 HOA 班】。知识库里写的星期几和钟点只是旧例子，可能已经不对，不要照抄。列表里的班按孩子的年龄组选；提议时给 2 个时间让家长选，用列表上的日期和钟点，不要自己换算或改时间。
+   - 没有【Calendar 现在有位的 HOA 班】这一段，或者里面是空的：不要报任何具体的上课时间，missing 写「课程时间（calendar）」。
 3. 语言：跟家长最后一条消息的语言走（中文、英文或马来文）。写中文时用知识库「说话方式」里的马来西亚华人 WhatsApp 口语。
 4. 家长只是说谢谢、OK、👍 之类、不需要回复时，skip 设为 true，reply 留空。
 5. 聊天里最后一条是同事发的、家长还没回复时，skip 设为 true，reply 留空。
@@ -187,6 +208,15 @@ export function buildUserPrompt(input: DraftInput): string {
     const who = message.from === 'parent' ? '家长' : '我们'
     const quote = message.replyTo ? `（引用回复「${message.replyTo}」）` : ''
     lines.push(`${who}${quote}：${message.text}`)
+  }
+  if (input.openClasses !== null) {
+    lines.push('', '【Calendar 现在有位的 HOA 班】（只有这些时间可以提议）：')
+    if (input.openClasses.length === 0) {
+      lines.push('（现在没有开放的班）')
+    }
+    for (const line of input.openClasses) {
+      lines.push(`- ${line}`)
+    }
   }
   lines.push('', '请写同事下一条要发给家长的回复。')
   return lines.join('\n')

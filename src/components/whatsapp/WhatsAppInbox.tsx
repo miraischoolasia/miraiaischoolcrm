@@ -20,6 +20,7 @@ import {
   isRecentlyOverdue,
   type InboxTab,
 } from '../../lib/whatsappInbox'
+import { hoaSlotLinesForAi } from '../../lib/hoaSlots'
 import { ChatPanel } from './ChatPanel'
 import { ConversationList } from './ConversationList'
 import { useQuickReplies } from '../../hooks/useQuickReplies'
@@ -627,8 +628,14 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
         age: typeof child.age === 'number' && child.age > 0 ? child.age : null,
       })),
       teamName: currentUser.name || null,
+      // Only the classes that really are on the calendar now; the notes' own times may be out of date.
+      openClasses: hoaSlotLinesForAi(
+        crm.listHoaSlots(),
+        (lead?.children ?? []).map((child) => (typeof child.age === 'number' && child.age > 0 ? child.age : null)),
+      ),
     }
-  }, [inbox.selected, crm.canEditLeads, crm.leads, currentUser.name])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inbox.selected, crm.canEditLeads, crm.leads, crm.trialBookings, currentUser.name])
   // What {parent name}, {child name} and the like become in the open chat.
   const quickReplyFill = useMemo(() => {
     if (!inbox.selected) {

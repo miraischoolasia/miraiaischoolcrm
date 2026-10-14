@@ -13,6 +13,9 @@ export type AiDraftContext = {
   children: AiDraftChild[]
   // Who is writing, so the reply can introduce them.
   teamName: string | null
+  // The HOA classes on the calendar that still have room, one line each. Without it the AI would only
+  // know the times written in its notes, which go out of date.
+  openClasses?: string[]
 }
 
 export type AiDraftSuggestion = { id: number | null; text: string; note: string }
@@ -32,6 +35,7 @@ export type AiDraftBody = {
   child: AiDraftChild | null
   children: AiDraftChild[]
   teamName: string | null
+  openClasses?: string[]
   regenerate: boolean
 }
 
@@ -44,6 +48,7 @@ export function scrubText(text: string): string {
 
 const MAX_MESSAGES = 20
 const MAX_CHILDREN = 5
+const MAX_OPEN_CLASSES = 15
 
 function textOf(message: ChatwootMessage): string {
   const written = (message.content ?? '').trim()
@@ -118,6 +123,7 @@ export function buildDraftBody(
     child: children[0] ?? null,
     children,
     teamName: context.teamName,
+    ...(context.openClasses ? { openClasses: context.openClasses.slice(0, MAX_OPEN_CLASSES) } : {}),
     regenerate,
   }
 }

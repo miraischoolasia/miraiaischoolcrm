@@ -96,3 +96,32 @@ export function hoaSlotFitsAge(slot: Pick<HoaSlot, 'title'>, age: number | null)
 export function cleanHoaTitle(title: string) {
   return title.replace(/[【】]/g, '').replace(/\s+/g, ' ').trim()
 }
+
+// "14:00" -> "2pm", "16:30" -> "4.30pm": how the school writes a time to a parent.
+export function formatClockForParent(time: string) {
+  const [hourText, minuteText = '00'] = time.split(':')
+  const hour = Number(hourText)
+  const minute = Number(minuteText)
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) {
+    return time
+  }
+  const suffix = hour >= 12 ? 'pm' : 'am'
+  const twelve = hour % 12 === 0 ? 12 : hour % 12
+  return minute === 0 ? `${twelve}${suffix}` : `${twelve}.${String(minute).padStart(2, '0')}${suffix}`
+}
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+// The classes the AI reply suggestion may offer a parent: the calendar's open HOA classes that fit the
+// age of a child on the chat (every class when no age is known), soonest first, one readable line each.
+export function hoaSlotLinesForAi(slots: HoaSlot[], childAges: (number | null)[], limit = 12): string[] {
+  const ages = childAges.filter((age): age is number => age !== null)
+  const fitting = ages.length === 0 ? slots : slots.filter((slot) => ages.some((age) => hoaSlotFitsAge(slot, age)))
+  return fitting.slice(0, limit).map((slot) => {
+    const date = parseLocalDate(slot.date)
+    const day = `${WEEKDAYS[date.getDay()]} ${date.getDate()} ${MONTHS[date.getMonth()]}`
+    const time = `${formatClockForParent(slot.startTime)} to ${formatClockForParent(slot.endTime)}`
+    return `${day}, ${time}, ${cleanHoaTitle(slot.title)}`
+  })
+}

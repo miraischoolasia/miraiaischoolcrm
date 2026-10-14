@@ -70,6 +70,9 @@ export function useAiSuggestion({
   const targetId = useMemo(() => messageNeedingReply(messages)?.id ?? null, [messages])
   const key = targetId === null ? null : `${conversationId}:${targetId}`
   const { teamName } = context
+  const openClassesKey = JSON.stringify(context.openClasses ?? null)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const openClasses = useMemo(() => context.openClasses, [openClassesKey])
   // The list is a new array on every render of the page; only a change in what it says matters.
   const childrenKey = JSON.stringify(context.children)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -80,7 +83,7 @@ export function useAiSuggestion({
       if (key === null) {
         return
       }
-      const body = buildDraftBody(conversationId, messages, { children, teamName }, regenerate)
+      const body = buildDraftBody(conversationId, messages, { children, teamName, openClasses }, regenerate)
       if (!body) {
         return
       }
@@ -93,7 +96,7 @@ export function useAiSuggestion({
       remember(key, entryOf(outcome))
       refresh()
     },
-    [key, conversationId, messages, children, teamName, request],
+    [key, conversationId, messages, children, teamName, openClasses, request],
   )
 
   useEffect(() => {
