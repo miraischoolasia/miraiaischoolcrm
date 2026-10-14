@@ -1,9 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import { brand } from './lib/brand'
 
 // /?form=<link name or id> is the public, logged-out page of a Marketing
 // form. Adding &preview=1 shows the builder's unsaved draft of it instead.
+// The tab title is the brand's name (index.html holds Mirai's as the fallback).
+document.title = brand.name
+
 const params = new URLSearchParams(window.location.search)
 const publicFormKey = params.get('form')
 const isPreview = params.get('preview') === '1'

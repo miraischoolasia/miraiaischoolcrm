@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { ArrowLeft, ArrowRight, CheckCircle, Eye, Plus, X } from '@phosphor-icons/react'
 import { FormFieldInput } from './forms/FormFieldInput'
-import miraiLogo from '../assets/mirai-logo.png'
+import { BrandLogo } from './BrandLogo'
+import { brand } from '../lib/brand'
 import miraiSeal from '../assets/mirai-seal-logo.png'
 import mascotEggy from '../assets/mascot-eggy.png'
 import {
@@ -115,18 +116,20 @@ function PageShell({
   return (
     <main className="min-h-screen bg-gradient-to-b from-[#ffd9ee] via-[#fff3fa] to-white text-slate-900">
       <header className="border-b-4 border-[#fc0c97] bg-[#0a0a0a] px-4 pb-14 pt-5">
-        <img src={miraiLogo} alt="Mirai AI School" className="mx-auto h-24 w-auto sm:h-28" />
+        <div className="flex justify-center">
+          <BrandLogo className="h-24 w-auto sm:h-28" textClassName="text-3xl font-bold text-white" />
+        </div>
       </header>
       <div ref={rootRef} className="mx-auto -mt-9 max-w-xl px-4 pb-10">
         <div className="rounded-3xl border border-pink-100 bg-white p-5 shadow-[0_24px_60px_rgba(252,12,151,0.14)] sm:p-8">
           {children}
         </div>
         <footer className="mt-10 flex flex-col items-center gap-3 text-center text-sm italic text-slate-700">
-          <img src={miraiSeal} alt="" aria-hidden="true" className="h-20 w-auto" />
+          {brand.usesMiraiArt && <img src={miraiSeal} alt="" aria-hidden="true" className="h-20 w-auto" />}
           <p>
-            © {new Date().getFullYear()} Mirai AI School. All rights reserved.
+            © {new Date().getFullYear()} {brand.name}. All rights reserved.
             <br />
-            Mirai AI School is operated by EGENIUS SDN. BHD.
+            {brand.name} is operated by {brand.company}.
           </p>
         </footer>
       </div>
@@ -232,7 +235,7 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
     const pictures = state.form.fields
       .filter((field) => field.type === 'image' && isSafeRedirectUrl(field.imageUrl))
       .map((field) => field.imageUrl)
-    void preloadImages([...(embedded ? [] : [miraiLogo, miraiSeal]), ...pictures]).then(() => {
+    void preloadImages([...(embedded ? [] : [brand.logo, brand.usesMiraiArt ? miraiSeal : null].filter((src): src is string => Boolean(src))), ...pictures]).then(() => {
       if (!cancelled) {
         setAssetsReady(true)
       }

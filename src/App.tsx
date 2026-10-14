@@ -12,7 +12,7 @@ import interactionPlugin, { type DateClickArg } from '@fullcalendar/interaction'
 import listPlugin from '@fullcalendar/list'
 import rrulePlugin from '@fullcalendar/rrule'
 import timeGridPlugin from '@fullcalendar/timegrid'
-import miraiLogo from './assets/mirai-logo.png'
+import { BrandLogo } from './components/BrandLogo'
 import mascotEggy from './assets/mascot-eggy.png'
 import { malaysiaHolidayEvents } from './lib/holidays'
 import {
@@ -5479,7 +5479,7 @@ function App() {
           </div>
           {!isSidebarCollapsed && (
             <div className="flex flex-col items-center gap-1 border-b border-white/10 px-4 pb-4">
-              <img src={miraiLogo} alt="Mirai AI School" className="h-24 w-auto" />
+              <BrandLogo className="h-24 w-auto" textClassName="text-center text-xl font-bold text-white" />
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/60">
                 Teaching System
               </div>

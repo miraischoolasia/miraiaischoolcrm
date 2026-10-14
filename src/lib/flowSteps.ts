@@ -1,3 +1,4 @@
+import { brand } from './brand'
 import {
   TRIGGER_ID,
   addNode,
@@ -506,7 +507,7 @@ export const FLOW_RECIPES: FlowRecipe[] = [
         'Welcome leads from a source keyword',
         'lead_created',
         [{ id: 'c1', type: 'condition', kind: 'keyword', x: 0, y: 0, ids: [] }],
-        [message('m1', 5, 'Hi {parent}, thank you for your interest in Mirai AI School! How can we help you today?', { after: true })],
+        [message('m1', 5, `Hi {parent}, thank you for your interest in ${brand.name}! How can we help you today?`, { after: true })],
         { stopStages: ['converted', 'lost'] },
       ),
   },
@@ -519,7 +520,7 @@ export const FLOW_RECIPES: FlowRecipe[] = [
         'Welcome leads from a source',
         'lead_created',
         [{ id: 'c1', type: 'condition', kind: 'source', x: 0, y: 0, ids: [] }],
-        [message('m1', 5, 'Hi {parent}, thank you for your interest in Mirai AI School! How can we help you today?', { after: true })],
+        [message('m1', 5, `Hi {parent}, thank you for your interest in ${brand.name}! How can we help you today?`, { after: true })],
         { stopStages: ['converted', 'lost'] },
       ),
   },
@@ -553,7 +554,7 @@ export const FLOW_RECIPES: FlowRecipe[] = [
         'Welcome new leads',
         'lead_created',
         [],
-        [message('m1', 5, 'Hi {parent}, thank you for your interest in Mirai AI School! How can we help you today?', { after: true })],
+        [message('m1', 5, `Hi {parent}, thank you for your interest in ${brand.name}! How can we help you today?`, { after: true })],
         { stopStages: ['converted', 'lost'] },
       ),
   },

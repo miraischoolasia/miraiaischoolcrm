@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import miraiLogo from '../assets/mirai-logo.png'
+import { BrandLogo } from './BrandLogo'
 import { usernameToInternalEmail } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 
@@ -46,7 +46,7 @@ export function AuthScreen({ blockedMessage }: AuthScreenProps) {
     <div className="flex min-h-screen items-center justify-center bg-[#f8fafc] px-4">
       <div className="w-full max-w-sm rounded-[24px] border border-slate-200 bg-white p-8 shadow-sm">
         <div className="flex flex-col items-center text-center">
-          <img src={miraiLogo} alt="Mirai AI School" className="h-12 w-auto" />
+          <BrandLogo className="h-12 w-auto" textClassName="text-xl font-bold text-slate-900" />
           <h1 className="mt-4 text-lg font-semibold text-slate-900">Teaching System</h1>
           <p className="mt-1 text-sm text-slate-500">Sign in to continue.</p>
         </div>
