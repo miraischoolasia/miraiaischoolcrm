@@ -959,6 +959,7 @@ export function WhatsAppInbox({
         <AutomationQueueDialog
           items={automation.items}
           autoRuleKeys={automation.autoRuleKeys}
+          sendHours={automation.sendHours}
           settings={automation.settings}
           sentToday={automation.sentToday}
           canEdit={crm.canEditLeads}

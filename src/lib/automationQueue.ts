@@ -76,6 +76,28 @@ export function needsApproval(item: QueueItem, autoRuleKeys: ReadonlySet<string>
   return canSend(item, now) && !willSendByItself(item, autoRuleKeys, now)
 }
 
+// The hours (Kuala Lumpur time) the sender program works: it sends from `from`:00 until `until`:00.
+export type SendHours = { from: number; until: number }
+export const DEFAULT_SEND_HOURS: SendHours = { from: 9, until: 21 }
+
+const KL_OFFSET_MS = 8 * 60 * 60 * 1000
+const DAY_MS = 24 * 60 * 60 * 1000
+
+// When the sender program will pick a waiting message up: its time, or the next time the sender works if
+// that is outside its hours (a message due at 21:17 goes out at 09:00 the next morning).
+export function autoSendTime(item: QueueItem, hours: SendHours, now: number): number {
+  const at = Math.max(Date.parse(item.dueAt), now)
+  const klStart = Math.floor((at + KL_OFFSET_MS) / DAY_MS) * DAY_MS - KL_OFFSET_MS
+  const hour = (at - klStart) / 3_600_000
+  if (hour < hours.from) {
+    return klStart + hours.from * 3_600_000
+  }
+  if (hour >= hours.until) {
+    return klStart + DAY_MS + hours.from * 3_600_000
+  }
+  return at
+}
+
 export function roomLeft(settings: AutomationSettings, sentToday: number) {
   return Math.max(0, settings.dailyCap - sentToday)
 }
@@ -150,6 +172,17 @@ export async function fetchAutoSendRuleKeys(): Promise<Set<string>> {
     }
   }
   return keys
+}
+
+export async function fetchSendHours(): Promise<SendHours> {
+  const { data, error } = await requireSupabase()
+    .from('automation_settings')
+    .select('send_from_hour, send_until_hour')
+    .maybeSingle()
+  if (error) {
+    throw error
+  }
+  return data ? { from: data.send_from_hour, until: data.send_until_hour } : DEFAULT_SEND_HOURS
 }
 
 // How many automation messages went out since midnight, for the daily limit.

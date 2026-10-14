@@ -31,7 +31,14 @@ const item = (change: Partial<QueueItem>): QueueItem => ({
 const second = item({ id: 2, parentName: 'Mr Wong', childName: 'Chloe', phone: '60111111111', message: 'Hi Mr Wong' })
 
 function setup(
-  change: { items?: QueueItem[]; canEdit?: boolean; sentToday?: number; paused?: boolean; autoRuleKeys?: string[] } = {},
+  change: {
+    items?: QueueItem[]
+    canEdit?: boolean
+    sentToday?: number
+    paused?: boolean
+    autoRuleKeys?: string[]
+    nowMs?: number
+  } = {},
 ) {
   const onApprove = vi.fn().mockResolvedValue({ sent: 1, failure: null, taken: 0, heldBack: 0 })
   const onSkip = vi.fn().mockResolvedValue(null)
@@ -46,7 +53,7 @@ function setup(
       isLoading={false}
       loadError={null}
       progress={null}
-      nowMs={NOW}
+      nowMs={change.nowMs ?? NOW}
       onClose={vi.fn()}
       onSaveMessage={onSaveMessage}
       onSkip={onSkip}
@@ -83,6 +90,17 @@ describe('AutomationQueueDialog', () => {
     expect(needs).not.toHaveTextContent('Mrs Lim')
     // "Select all" counts only what needs a person.
     expect(screen.getByRole('button', { name: 'Select all (1)' })).toBeInTheDocument()
+  })
+
+  it('says when a message due after the sending hours will really go out', () => {
+    setup({
+      items: [item({ id: 1, ruleKey: 'flow_1', dueAt: '2026-10-14T21:17:00+08:00' })],
+      autoRuleKeys: ['flow_1'],
+      nowMs: Date.parse('2026-10-14T21:30:00+08:00'),
+    })
+
+    const auto = screen.getByRole('region', { name: 'Will send by itself' })
+    expect(auto).toHaveTextContent(/outside the sending hours \(9:00 to 21:00\)/)
   })
 
   it('keeps a message the sender handed back in the list that needs a person', () => {

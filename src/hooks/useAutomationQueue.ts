@@ -4,8 +4,10 @@ import {
   canSend,
   claimQueueItem,
   currentUserId,
+  DEFAULT_SEND_HOURS,
   DEFAULT_SETTINGS,
   fetchAutoSendRuleKeys,
+  fetchSendHours,
   fetchQueue,
   fetchSentToday,
   fetchSettings,
@@ -15,6 +17,7 @@ import {
   skipQueueItems,
   type AutomationSettings,
   type QueueItem,
+  type SendHours,
 } from '../lib/automationQueue'
 
 const REFRESH_MS = 60_000
@@ -51,6 +54,7 @@ export function useAutomationQueue({ enabled, sleep = defaultSleep }: Args) {
   const [sentToday, setSentToday] = useState(0)
   // The flows that send by themselves, so the window can tell which messages need nobody.
   const [autoRuleKeys, setAutoRuleKeys] = useState<ReadonlySet<string>>(new Set())
+  const [sendHours, setSendHours] = useState<SendHours>(DEFAULT_SEND_HOURS)
   const [isLoading, setIsLoading] = useState(enabled)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<SendProgress | null>(null)
@@ -61,15 +65,17 @@ export function useAutomationQueue({ enabled, sleep = defaultSleep }: Args) {
       return null
     }
     try {
-      const [queue, config, today, autoKeys] = await Promise.all([
+      const [queue, config, today, autoKeys, hours] = await Promise.all([
         fetchQueue(),
         fetchSettings(),
         fetchSentToday(),
         // Without it every message just looks like it needs approval, which is the safe way round.
         fetchAutoSendRuleKeys().catch(() => new Set<string>()),
+        fetchSendHours().catch(() => DEFAULT_SEND_HOURS),
       ])
       setItems(queue)
       setAutoRuleKeys(autoKeys)
+      setSendHours(hours)
       setSettings(config)
       setSentToday(today)
       setError(null)
@@ -197,6 +203,7 @@ export function useAutomationQueue({ enabled, sleep = defaultSleep }: Args) {
     settings,
     sentToday,
     autoRuleKeys,
+    sendHours,
     isLoading,
     error,
     progress,

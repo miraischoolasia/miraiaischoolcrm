@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  autoSendTime,
   canSend,
   isBeingSent,
   isExpired,
@@ -87,5 +88,29 @@ describe('what a person has to approve', () => {
     expect(needsApproval(item({ ruleKey: 'flow_test_1' }), auto, NOW)).toBe(true)
     expect(needsApproval(item({ ruleKey: 'flow_1', autoBlocked: 'Never wrote first.' }), auto, NOW)).toBe(true)
     expect(needsApproval(item({ ruleKey: 'flow_1', status: 'failed', error: 'x' }), auto, NOW)).toBe(true)
+  })
+})
+
+describe('when the sender picks a message up', () => {
+  const hours = { from: 9, until: 21 }
+  const at = (iso: string) => new Date(autoSendTime(item({ dueAt: iso }), hours, Date.parse('2026-10-14T10:00:00+08:00'))).toISOString()
+
+  it('keeps the time of a message due while the sender works', () => {
+    expect(at('2026-10-14T19:30:00+08:00')).toBe(new Date('2026-10-14T19:30:00+08:00').toISOString())
+  })
+
+  it('moves a message due after hours to 9 in the morning', () => {
+    expect(at('2026-10-14T21:17:00+08:00')).toBe(new Date('2026-10-15T09:00:00+08:00').toISOString())
+    expect(at('2026-10-14T23:59:00+08:00')).toBe(new Date('2026-10-15T09:00:00+08:00').toISOString())
+  })
+
+  it('moves a message that is due before the sender starts to 9 the same morning', () => {
+    const early = new Date(autoSendTime(item({ dueAt: '2026-10-15T03:00:00+08:00' }), hours, Date.parse('2026-10-15T02:00:00+08:00')))
+    expect(early.toISOString()).toBe(new Date('2026-10-15T09:00:00+08:00').toISOString())
+  })
+
+  it('uses now for a message that is already overdue', () => {
+    const now = Date.parse('2026-10-14T15:00:00+08:00')
+    expect(autoSendTime(item({ dueAt: '2026-10-14T09:00:00+08:00' }), hours, now)).toBe(now)
   })
 })

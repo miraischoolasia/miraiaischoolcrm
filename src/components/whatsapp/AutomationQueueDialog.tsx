@@ -7,10 +7,13 @@ import {
   isBeingSent,
   isExpired,
   isStuck,
+  DEFAULT_SEND_HOURS,
+  autoSendTime,
   roomLeft,
   willSendByItself,
   type AutomationSettings,
   type QueueItem,
+  type SendHours,
 } from '../../lib/automationQueue'
 import type { ApproveResult, SendProgress } from '../../hooks/useAutomationQueue'
 
@@ -20,6 +23,8 @@ type AutomationQueueDialogProps = {
   items: QueueItem[]
   // The flows ("flow_<id>") that send by themselves: their waiting messages need nobody.
   autoRuleKeys?: ReadonlySet<string>
+  // The hours the sender program works (Kuala Lumpur time); a message waits for them when it is due outside.
+  sendHours?: SendHours
   settings: AutomationSettings
   sentToday: number
   // Whoever can edit Leads may send; others can only read the queue.
@@ -69,6 +74,7 @@ function describeResult(result: ApproveResult) {
 export function AutomationQueueDialog({
   items,
   autoRuleKeys = NO_AUTO_FLOWS,
+  sendHours = DEFAULT_SEND_HOURS,
   settings,
   sentToday,
   canEdit,
@@ -197,7 +203,12 @@ export function AutomationQueueDialog({
                           </p>
                           {auto && (
                             <p className="mt-1 text-xs font-medium text-emerald-800">
-                              Will send by itself at {formatDue(item.dueAt)}. No need to approve it.
+                              {settings.paused
+                                ? 'Waiting: automations are paused. It goes out by itself when they are switched on.'
+                                : `Will send by itself at ${formatDue(new Date(autoSendTime(item, sendHours, now)).toISOString())}. No need to approve it.`}
+                              {!settings.paused && autoSendTime(item, sendHours, now) > Math.max(Date.parse(item.dueAt), now)
+                                ? ` It is outside the sending hours (${sendHours.from}:00 to ${sendHours.until}:00), so it waits for them.`
+                                : ''}
                             </p>
                           )}
                           {item.mediaUrl && (
