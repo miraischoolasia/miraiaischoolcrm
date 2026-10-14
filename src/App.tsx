@@ -35,6 +35,7 @@ import {
 } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
+import { useLiveSync } from './hooks/useLiveSync'
 import { formatDate, getTodayString, parseLocalDate } from './domain/studentStatus'
 import type { Database } from './types/database'
 import type {
@@ -259,6 +260,11 @@ function UnreadBadge({
       {count > 99 ? '99+' : count}
     </span>
   )
+}
+
+// True when a fresh read of the data is the same as what the page already shows.
+function sameData(current: unknown, next: unknown) {
+  return current === next || JSON.stringify(current) === JSON.stringify(next)
 }
 
 function App() {
@@ -1312,6 +1318,54 @@ function App() {
       cancelled = true
     }
   }, [authUserId, loadAttempt])
+
+  // Reads the core data again without the loading screen and swaps in only what changed, so another
+  // staff member's change (or a teacher's) shows up by itself.
+  async function syncCoreQuietly() {
+    const [
+      nextClassrooms,
+      nextTeachers,
+      nextStudents,
+      nextSchedules,
+      nextParticipants,
+      nextScheduleExceptions,
+      nextTrialBookings,
+      nextLessonLogs,
+      nextLessonReviews,
+      nextLeads,
+      nextMakeupPlans,
+      nextLeadOptions,
+      nextPackages,
+    ] = await Promise.all([
+      fetchClassroomsFromSupabase(),
+      fetchTeachersFromSupabase(),
+      fetchStudentsFromSupabase(),
+      fetchSchedulesFromSupabase(),
+      fetchScheduleParticipantsFromSupabase(),
+      fetchScheduleExceptionsFromSupabase(),
+      fetchTrialBookingsFromSupabase(),
+      fetchLessonLogSummariesFromSupabase(),
+      fetchLessonLogStudentReviewsFromSupabase(),
+      fetchLeadsFromSupabase(),
+      fetchMakeupPlansFromSupabase(),
+      fetchLeadOptionsFromSupabase(),
+      fetchPackagesFromSupabase(),
+    ])
+    setClassrooms((current) => (sameData(current, nextClassrooms) ? current : nextClassrooms))
+    setTeachers((current) => (sameData(current, nextTeachers) ? current : nextTeachers))
+    setStudents((current) => (sameData(current, nextStudents) ? current : nextStudents))
+    setSchedules((current) => (sameData(current, nextSchedules) ? current : nextSchedules))
+    setScheduleParticipants((current) => (sameData(current, nextParticipants) ? current : nextParticipants))
+    setScheduleExceptions((current) => (sameData(current, nextScheduleExceptions) ? current : nextScheduleExceptions))
+    setTrialBookings((current) => (sameData(current, nextTrialBookings) ? current : nextTrialBookings))
+    setLessonLogs((current) => (sameData(current, nextLessonLogs) ? current : nextLessonLogs))
+    setLessonReviews((current) => (sameData(current, nextLessonReviews) ? current : nextLessonReviews))
+    setLeads((current) => (sameData(current, nextLeads) ? current : nextLeads))
+    setMakeupPlans((current) => (sameData(current, nextMakeupPlans) ? current : nextMakeupPlans))
+    setLeadOptions((current) => (sameData(current, nextLeadOptions) ? current : nextLeadOptions))
+    setPackages((current) => (sameData(current, nextPackages) ? current : nextPackages))
+  }
+  useLiveSync(Boolean(authUserId) && loadedUserId === authUserId && !isLoading && !loadError, syncCoreQuietly)
 
   useEffect(() => {
     if (!authUserId) {

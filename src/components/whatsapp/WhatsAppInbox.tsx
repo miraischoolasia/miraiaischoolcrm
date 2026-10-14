@@ -69,6 +69,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
   const [tagId, setTagId] = useState<number | null>(null)
   const [sourceId, setSourceId] = useState<number | null>(null)
   const [kind, setKind] = useState<StudentKind | 'none' | null>(null)
+  const [ownerId, setOwnerId] = useState<number | 'none' | null>(null)
   const [search, setSearch] = useState('')
   // Text the enrol steps write for the message box; each new id is added once.
   const [draftRequest, setDraftRequest] = useState<{ id: number; text: string } | null>(null)
@@ -305,6 +306,19 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
       .map((option) => ({ id: option.id, label: `${option.label} (${counts.get(option.id) ?? 0})` }))
   const tagOptions = choicesFor('tag', optionCounts.tags)
   const sourceOptions = choicesFor('source', optionCounts.sources)
+  // The staff who have taken a chat, with how many, for the staff filter.
+  const ownerOptions = useMemo(() => {
+    const owners = new Map<number, { label: string; count: number }>()
+    for (const conversation of inbox.conversations) {
+      const owner = getOwner(conversation)
+      if (owner && conversation.status !== 'resolved') {
+        owners.set(owner.id, { label: owner.name, count: (owners.get(owner.id)?.count ?? 0) + 1 })
+      }
+    }
+    return [...owners.entries()]
+      .map(([id, { label, count }]) => ({ id, label: `${label} (${count})` }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [inbox.conversations])
   // What is left unsent in each chat's message box. It lives here, not in the box, so it survives
   // going to another chat or another page.
   const [drafts, setDrafts] = useState<Map<number, Draft>>(new Map())
@@ -342,7 +356,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
         draftsFirst(
         filterConversations(
           inbox.conversations,
-          { tab, search, tagId, sourceId, matchedIds, kind },
+          { tab, search, tagId, sourceId, matchedIds, kind, ownerId },
           (conversation) =>
             resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number)),
           studentKindsOf,
@@ -352,7 +366,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
         ),
         (id) => pinnedIds.has(id),
       ),
-    [inbox.conversations, inbox.selectedId, pinnedIds, drafts, tab, search, tagId, sourceId, matchedIds, kind, resolveLead, studentKindsOf, searchNamesOf],
+    [inbox.conversations, inbox.selectedId, pinnedIds, drafts, tab, search, tagId, sourceId, matchedIds, kind, ownerId, resolveLead, studentKindsOf, searchNamesOf],
   )
   const hasChat = inbox.selected !== null
   // Reactions, edits and deletes of the open chat, and the team's own.
@@ -442,6 +456,29 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
 
   // Another page asked for the chat of a number: open the one this page has, else look
   // for it on the server, and only when there is none offer to start one.
+  // The Unread tab shows every unread chat: the older pages are fetched by themselves, so there is no
+  // "Load older chats" to press before everything unread is on screen.
+  const { loadMore: loadMoreChats } = inbox
+  const hasMoreOpenChats = inbox.canLoadMore.open
+  const fillingUnread = useRef(false)
+  const [unreadRound, setUnreadRound] = useState(0)
+  useEffect(() => {
+    if (tab !== 'unread' || !hasMoreOpenChats || inbox.isLoading || fillingUnread.current || unreadRound >= 60) {
+      return
+    }
+    fillingUnread.current = true
+    void loadMoreChats('open')
+      .catch(() => undefined)
+      .finally(() => {
+        fillingUnread.current = false
+        setUnreadRound((round) => round + 1)
+      })
+  }, [tab, hasMoreOpenChats, inbox.isLoading, unreadRound, loadMoreChats])
+  useEffect(() => {
+    if (tab !== 'unread') {
+      setUnreadRound(0)
+    }
+  }, [tab])
   const handledRequest = useRef<number | null>(null)
   const { conversations: loadedChats, isLoading: isLoadingChats, setSelectedId, startNewChat } = inbox
   useEffect(() => {
@@ -454,6 +491,7 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
       setTagId(null)
       setSourceId(null)
       setKind(null)
+      setOwnerId(null)
       setDetailsOpen(false)
       if (conversation) {
         setTab(getTab(conversation))
@@ -638,6 +676,9 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
         picOf={picOf}
         kind={kind}
         onKind={setKind}
+        ownerId={ownerId}
+        owners={ownerOptions}
+        onOwner={setOwnerId}
         selectedId={inbox.selectedId}
         nowSeconds={nowSeconds}
         overdueCount={overdueCount}

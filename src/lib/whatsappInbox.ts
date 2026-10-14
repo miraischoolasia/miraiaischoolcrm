@@ -310,6 +310,8 @@ export type InboxFilters = {
   matchedIds?: ReadonlySet<number>
   // Only chats whose parent has a student of this kind, or none yet.
   kind?: StudentKind | 'none' | null
+  // Only chats this staff member took (their CRM user id), or 'none' for chats nobody has taken.
+  ownerId?: number | 'none' | null
 }
 
 // The lead a chat belongs to, for the tag and source filters.
@@ -346,6 +348,13 @@ export function filterConversations(
         (filters.tagId === null || lead.tagIds.includes(filters.tagId)) &&
         (filters.sourceId === null || lead.sourceId === filters.sourceId)
       )
+    })
+    .filter((conversation) => {
+      if (filters.ownerId === null || filters.ownerId === undefined) {
+        return true
+      }
+      const owner = getOwner(conversation)
+      return filters.ownerId === 'none' ? owner === null : owner?.id === filters.ownerId
     })
     .filter((conversation) => {
       if (!filters.kind) {

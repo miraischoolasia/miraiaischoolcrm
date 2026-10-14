@@ -224,6 +224,15 @@ describe('filterConversations', () => {
     expect(ids('-')).toEqual([])
   })
 
+  it('filters by the staff member who took the chat, or by chats nobody took', () => {
+    const ids = (ownerId: number | 'none' | null) =>
+      filterConversations(list, { ...base, ownerId }).map((c) => c.id)
+    expect(ids(7)).toEqual([2, 3])
+    expect(ids('none')).toEqual([1])
+    expect(ids(99)).toEqual([])
+    expect(ids(null)).toEqual([2, 3, 1])
+  })
+
   it('filters by what the students of the parent are', () => {
     const kindsOf = (c: ChatwootConversation) => (c.id === 1 ? (['regular'] as const).slice() : c.id === 2 ? ['hoa' as const] : [])
     const ids = (kind: 'regular' | 'hoa' | 'none' | null) =>

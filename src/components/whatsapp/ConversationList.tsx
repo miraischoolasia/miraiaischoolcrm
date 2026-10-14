@@ -82,6 +82,10 @@ type ConversationListProps = {
   onTag: (tagId: number | null) => void
   onSource: (sourceId: number | null) => void
   onKind?: (kind: StudentKind | 'none' | null) => void
+  // Staff filter: the chats a staff member took. Shown when there is at least one staff to pick.
+  ownerId?: number | 'none' | null
+  owners?: { id: number; label: string }[]
+  onOwner?: (ownerId: number | 'none' | null) => void
   onSearch: (value: string) => void
   onSelect: (id: number) => void
   onLoadMore: () => void
@@ -145,6 +149,9 @@ export function ConversationList({
   isEmptyDuplicate,
   isStudentSelf,
   kind = null,
+  ownerId = null,
+  owners = [],
+  onOwner,
   selectedId,
   nowSeconds,
   overdueCount,
@@ -251,6 +258,31 @@ export function ConversationList({
           </p>
         )}
         <div className={cn('mt-2 grid gap-2 text-sm', onKind ? 'grid-cols-3' : 'grid-cols-2')}>
+          {onOwner && (
+            <label className="relative col-span-full min-w-0">
+              <span className="sr-only">Filter by staff</span>
+              <select
+                value={ownerId === null ? '' : String(ownerId)}
+                onChange={(event) => {
+                  const value = event.target.value
+                  onOwner(value === '' ? null : value === 'none' ? 'none' : Number(value))
+                }}
+                className={cn(
+                  'w-full appearance-none rounded-lg border bg-white py-1.5 pl-2.5 pr-7 text-xs outline-none focus:border-[#fc0c97]',
+                  ownerId === null ? 'border-slate-200 text-slate-700' : 'border-[#fc0c97] text-slate-900',
+                )}
+              >
+                <option value="">All staff</option>
+                <option value="none">Nobody has taken it</option>
+                {owners.map((owner) => (
+                  <option key={owner.id} value={owner.id}>
+                    {owner.label}
+                  </option>
+                ))}
+              </select>
+              <CaretDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" />
+            </label>
+          )}
           <label className="relative min-w-0">
             <span className="sr-only">Filter by tag</span>
             <select
@@ -333,7 +365,7 @@ export function ConversationList({
         {loadError && <p className="p-4 text-sm text-red-600">{loadError}</p>}
         {!isLoading && !loadError && conversations.length === 0 && (
           <p className="p-4 text-sm text-slate-500">
-            {search || tagId !== null || sourceId !== null || kind ? 'No chats match.' : 'Nothing here. New messages from parents will show up here.'}
+            {search || tagId !== null || sourceId !== null || kind || ownerId !== null ? 'No chats match.' : 'Nothing here. New messages from parents will show up here.'}
           </p>
         )}
         {conversations.map((conversation) => {

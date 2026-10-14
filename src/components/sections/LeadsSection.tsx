@@ -924,15 +924,17 @@ export function LeadsSection({
               </table>
             </div>
 
-            {pageCount > 1 && (
+            {filteredLeads.length > 0 && (
               <nav
                 aria-label="Leads pages"
                 className="flex flex-col items-center justify-between gap-3 border-t border-slate-200 px-5 py-4 text-sm text-slate-500 sm:flex-row sm:px-6"
               >
+                {/* The total is always shown, so a filter says at once how many leads match. */}
                 <span>
                   Showing {pageStart + 1}-{pageStart + pagedLeads.length} of {filteredLeads.length}
+                  {filteredLeads.length !== leads.length ? ` (${leads.length} leads in all)` : ''}
                 </span>
-                <div className="flex items-center gap-1">
+                <div hidden={pageCount <= 1} className={cn('flex items-center gap-1', pageCount <= 1 && 'hidden')}>
                   <button
                     type="button"
                     aria-label="Previous page"

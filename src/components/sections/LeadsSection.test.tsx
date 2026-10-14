@@ -91,6 +91,16 @@ describe('LeadsSection', () => {
     expect(within(tableRows()[0]).getByText('0100000002')).toBeInTheDocument()
   })
 
+  it('always says how many leads match, and how many there are in all when a filter is on', async () => {
+    renderSection([makeLead(1, 10), makeLead(2, null), makeLead(3, null)])
+    expect(screen.getByText('Showing 1-3 of 3')).toBeInTheDocument()
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Filter by PIC' }), 'Not assigned')
+    expect(screen.getByText('Showing 1-2 of 2 (3 leads in all)')).toBeInTheDocument()
+    // One page only: no page buttons, but the total is still there.
+    expect(screen.queryByRole('button', { name: 'Next page' })).not.toBeInTheDocument()
+  })
+
   it('shows 15 leads per board column with a pager, and filters the board by date', async () => {
     const leads = Array.from({ length: 18 }, (_, index) => makeLead(index + 1, null))
     leads[0] = { ...leads[0], addedDate: '2020-01-01' }
