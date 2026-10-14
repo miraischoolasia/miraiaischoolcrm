@@ -11,6 +11,7 @@ import {
   formatListTime,
   getChatIdentity,
   isGroupChat,
+  isMessengerChannel,
   isOnAllowedNumber,
   onePerParent,
   getChatRole,
@@ -52,6 +53,31 @@ describe('getRealPhone', () => {
     expect(getRealPhone('+1215643541729')).toBeNull()
     expect(getRealPhone('77910941663233')).toBeNull()
     expect(getRealPhone(null)).toBeNull()
+  })
+})
+
+describe('Facebook Messenger chats', () => {
+  const sender = { id: 5, name: 'Mei Lin', phone_number: null, identifier: null }
+
+  it('shows the name and Messenger, with no phone warning', () => {
+    const identity = getChatIdentity(sender, null, 'Channel::FacebookPage')
+    expect(identity).toMatchObject({
+      title: 'Mei Lin',
+      subtitle: 'Facebook Messenger',
+      hasRealPhone: true,
+      isGroup: false,
+      initials: 'ML',
+    })
+    // The name a staff member gave the lead wins, like for WhatsApp.
+    expect(getChatIdentity(sender, 'Mrs Tan', 'Channel::FacebookPage').title).toBe('Mrs Tan')
+    expect(getChatIdentity({ ...sender, name: null }, null, 'Channel::FacebookPage').title).toBe('Messenger user')
+  })
+
+  it('leaves a WhatsApp chat as it was', () => {
+    expect(getChatIdentity(sender, null, 'Channel::Api').subtitle).toBe('Number hidden by WhatsApp')
+    expect(isMessengerChannel('Channel::FacebookPage')).toBe(true)
+    expect(isMessengerChannel('Channel::Api')).toBe(false)
+    expect(isMessengerChannel(undefined)).toBe(false)
   })
 })
 

@@ -594,7 +594,7 @@ export function WhatsAppInbox({
   const forwardTargets = useMemo(
     () =>
       inbox.conversations.map((conversation) => {
-        const identity = getChatIdentity(conversation.meta.sender, chatLabelOf(conversation))
+        const identity = getChatIdentity(conversation.meta.sender, chatLabelOf(conversation), conversation.meta.channel)
         return { id: conversation.id, title: identity.title, subtitle: identity.subtitle }
       }),
     [inbox.conversations, chatLabelOf],
@@ -884,7 +884,7 @@ export function WhatsAppInbox({
             }}
             otherChats={familyChatsOf(inbox.selected).map((other) => ({
               id: other.id,
-              title: getChatIdentity(other.meta.sender, chatLabelOf(other)).title,
+              title: getChatIdentity(other.meta.sender, chatLabelOf(other), other.meta.channel).title,
               role: getChatRole(other),
               lastActivity: other.last_activity_at,
               isDone: other.status === 'resolved',

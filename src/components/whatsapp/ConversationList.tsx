@@ -20,6 +20,7 @@ import {
   OVERDUE_SECONDS,
   STALE_SECONDS,
   getChatIdentity,
+  isMessengerChannel,
   getPreview,
   type ChatwootConversation,
   type InboxTab,
@@ -412,7 +413,7 @@ export function ConversationList({
           </p>
         )}
         {conversations.map((conversation) => {
-          const identity = getChatIdentity(conversation.meta.sender, leadNameOf?.(conversation))
+          const identity = getChatIdentity(conversation.meta.sender, leadNameOf?.(conversation), conversation.meta.channel)
           const pic = picOf?.(conversation) ?? null
           const lastMessage = conversation.last_non_activity_message
           const preview = getPreview(conversation)
@@ -450,6 +451,11 @@ export function ConversationList({
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className="truncate text-sm font-semibold text-slate-900">{identity.title}</span>
+                    {isMessengerChannel(conversation.meta.channel) && (
+                      <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+                        Messenger
+                      </span>
+                    )}
                     {numberOf?.(conversation) && (
                       <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
                         {numberOf(conversation)}

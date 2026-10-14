@@ -85,7 +85,8 @@ export type ChatwootConversation = {
   last_activity_at: number
   custom_attributes?: ChatAttributes | null
   labels?: string[]
-  meta: { sender: ChatwootSender }
+  // channel: Chatwoot's name of the kind of inbox ("Channel::FacebookPage" for Messenger).
+  meta: { sender: ChatwootSender; channel?: string }
   last_non_activity_message?: ChatwootMessage | null
 }
 
@@ -139,6 +140,11 @@ export function isGroupChat(sender: { name?: string | null; identifier?: string 
   return (sender.identifier ?? '').endsWith('@g.us') || /\(group\)\s*$/i.test(sender.name ?? '')
 }
 
+// A Facebook Messenger chat: there is no phone number, and WhatsApp did not hide one.
+export function isMessengerChannel(channel: string | null | undefined) {
+  return channel === 'Channel::FacebookPage'
+}
+
 export type ChatIdentity = {
   // The name the person gave WhatsApp, or null when there is none. For matching only, never shown.
   name: string | null
@@ -154,7 +160,23 @@ export type ChatIdentity = {
 // A chat is called by the parent name on its lead (what the team writes, such as the parent's
 // @username), else by the phone number, else "WhatsApp user". The name the person gave
 // WhatsApp is never shown; `name` keeps it only so a chat can be matched to a lead.
-export function getChatIdentity(sender: ChatwootSender, leadName?: string | null): ChatIdentity {
+export function getChatIdentity(
+  sender: ChatwootSender,
+  leadName?: string | null,
+  // The kind of inbox the chat is in; only a Messenger chat is treated differently.
+  channel?: string | null,
+): ChatIdentity {
+  if (isMessengerChannel(channel)) {
+    const name = (sender.name ?? '').trim()
+    return {
+      name: name || null,
+      title: leadName?.trim() || name || 'Messenger user',
+      subtitle: 'Facebook Messenger',
+      hasRealPhone: true,
+      initials: name ? getInitials(name) : '?',
+      isGroup: false,
+    }
+  }
   if (isGroupChat(sender)) {
     const subject = (sender.name ?? '').replace(/\s*\(group\)\s*$/i, '').trim()
     return {

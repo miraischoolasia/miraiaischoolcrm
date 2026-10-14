@@ -96,6 +96,16 @@ describe('useAutoLeads', () => {
     expect(onCreateLead).not.toHaveBeenCalled()
   })
 
+  it('never makes a lead of a Messenger chat', async () => {
+    const messenger = chat(9, null, null, 'Mei Lin')
+    messenger.meta.channel = 'Channel::FacebookPage'
+    const { client, onCreateLead } = setup({ conversations: [messenger] })
+
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(client.listMessages).not.toHaveBeenCalled()
+    expect(onCreateLead).not.toHaveBeenCalled()
+  })
+
   it('never makes a lead of a WhatsApp group', async () => {
     const group = chat(8, null, null, 'Mirai Parents (GROUP)')
     group.meta.sender.identifier = '120363000000000000@g.us'

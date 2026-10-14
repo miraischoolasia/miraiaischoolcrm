@@ -6,6 +6,7 @@ import type { SourceRule } from '../lib/sourceRules'
 import {
   getHiddenNumberName,
   isGroupChat,
+  isMessengerChannel,
   getLinkedLeadId,
   getRealPhone,
   type ChatwootConversation,
@@ -82,8 +83,8 @@ export function useAutoLeads({
       }
       // A chat needs a number, or (when WhatsApp hides it) a username to call the parent by.
       const sender = conversation.meta.sender
-      // A group is many people and never one parent's lead.
-      if (isGroupChat(sender)) {
+      // A group is many people and never one parent's lead; a Messenger chat has no number to make one by.
+      if (isGroupChat(sender) || isMessengerChannel(conversation.meta.channel)) {
         return false
       }
       if (!getRealPhone(sender.phone_number)) {

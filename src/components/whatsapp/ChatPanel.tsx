@@ -142,7 +142,7 @@ export function ChatPanel({
   onForward,
   aiContext = null,
 }: ChatPanelProps) {
-  const identity = getChatIdentity(conversation.meta.sender, leadName)
+  const identity = getChatIdentity(conversation.meta.sender, leadName, conversation.meta.channel)
   // The grey reply suggestion; asked for only when the box is empty and the parent wrote last.
   const ai = useAiSuggestion({
     enabled: aiContext !== null,

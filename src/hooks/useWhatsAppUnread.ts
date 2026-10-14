@@ -55,7 +55,7 @@ export function useWhatsAppUnread(client: ChatwootClient | null, allowedInboxIds
             playAlertSound()
           }
           showDesktopAlert(
-            `Waiting over 30 minutes: ${getChatIdentity(newlyLate[0].meta.sender).title}`,
+            `Waiting over 30 minutes: ${getChatIdentity(newlyLate[0].meta.sender, null, newlyLate[0].meta.channel).title}`,
             newlyLate.length > 1 ? `And ${newlyLate.length - 1} more chats have not been answered.` : 'This parent has not been answered yet.',
           )
         }
@@ -69,7 +69,7 @@ export function useWhatsAppUnread(client: ChatwootClient | null, allowedInboxIds
           }
           const newest = fresh[0]
           showDesktopAlert(
-            `New WhatsApp message: ${getChatIdentity(newest.meta.sender).title}`,
+            `New message: ${getChatIdentity(newest.meta.sender, null, newest.meta.channel).title}`,
             getPreview(newest) || 'New message',
           )
         }
