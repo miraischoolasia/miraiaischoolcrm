@@ -303,9 +303,15 @@ export function filterConversations(
   filters: InboxFilters,
   leadOf: LeadOfChat = () => null,
   kindsOf: (conversation: ChatwootConversation) => StudentKind[] = () => [],
+  // Every name the team knows this chat by: the label in the list, the parent, the children and the
+  // students. Searched together with the WhatsApp name, so "poh" finds "Poh Yu Ni (child)".
+  namesOf: (conversation: ChatwootConversation) => string[] = () => [],
 ) {
   const query = filters.search.trim().toLowerCase()
   const digitsQuery = query.replace(/\D/g, '')
+  // Spaces and punctuation do not matter: "yu ni" finds "Yu-Ni" and "YuNi".
+  const squash = (text: string) => text.toLowerCase().replace(/[\s\p{P}]/gu, '')
+  const squashedQuery = squash(query)
 
   return conversations
     .filter((conversation) => isInTab(conversation, filters.tab))
@@ -342,6 +348,11 @@ export function filterConversations(
         filters.matchedIds?.has(conversation.id) === true ||
         name.includes(query) ||
         (leadName !== '' && leadName.includes(query)) ||
+        (squashedQuery !== '' &&
+          namesOf(conversation).some((known) => {
+            const lowered = known.toLowerCase()
+            return lowered.includes(query) || squash(known).includes(squashedQuery)
+          })) ||
         preview.includes(query) ||
         (digitsQuery.length >= 3 && phone.includes(digitsQuery))
       )

@@ -185,6 +185,19 @@ describe('filterConversations', () => {
     expect(filterConversations(list, { ...base, search: 'yymdz' }).map((c) => c.id)).toEqual([])
   })
 
+  it('finds a chat by a child, student or label name, ignoring spaces and punctuation', () => {
+    const namesOf = (c: ChatwootConversation) => (c.id === 3 ? ['Poh Yu Ni (child)', 'Poh Yu-Ni'] : [])
+    const ids = (search: string) =>
+      filterConversations(list, { ...base, search }, () => null, () => [], namesOf).map((c) => c.id)
+    expect(ids('poh')).toEqual([3])
+    expect(ids('yuni')).toEqual([3])
+    expect(ids('YU NI')).toEqual([3])
+    expect(ids('(child')).toEqual([3])
+    expect(ids('nobody')).toEqual([])
+    // A search with only punctuation does not match every chat.
+    expect(ids('-')).toEqual([])
+  })
+
   it('filters by what the students of the parent are', () => {
     const kindsOf = (c: ChatwootConversation) => (c.id === 1 ? (['regular'] as const).slice() : c.id === 2 ? ['hoa' as const] : [])
     const ids = (kind: 'regular' | 'hoa' | 'none' | null) =>

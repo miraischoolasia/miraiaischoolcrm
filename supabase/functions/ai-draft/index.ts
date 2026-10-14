@@ -36,6 +36,21 @@ function jsonResponse(body: unknown, status: number) {
 
 const DEFAULT_MODEL = 'gemini-3.5-flash-lite'
 
+// A short, key-free reason from Google's error answer, shown to the team so a failure can be understood
+// without opening the function logs: "Gemini 429: Resource has been exhausted ...".
+function whyGeminiFailed(status: number, body: string, key: string) {
+  let message = ''
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: unknown; status?: unknown } }
+    const text = typeof parsed?.error?.message === 'string' ? parsed.error.message : ''
+    const code = typeof parsed?.error?.status === 'string' ? parsed.error.status : ''
+    message = [code, text].filter(Boolean).join(' - ')
+  } catch {
+    message = body
+  }
+  return `Gemini ${status}: ${message}`.replace(/\s+/g, ' ').split(key).join('***').slice(0, 220)
+}
+
 // Every note that is switched on, in the order the admin put them. With no notes at all (the table is
 // missing or empty) the text bundled with the function is used, so the AI never loses its knowledge.
 async function loadKnowledge(admin: ReturnType<typeof createClient>): Promise<string> {
@@ -151,36 +166,61 @@ Deno.serve(async (req) => {
   const knowledge = await loadKnowledge(admin)
   const model = Deno.env.get('GEMINI_MODEL') || DEFAULT_MODEL
   const startedAt = Date.now()
-  let answer: string
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: buildSystemPrompt(knowledge) }] },
-          contents: [{ role: 'user', parts: [{ text: buildUserPrompt(input) }] }],
-          generationConfig: { temperature: 0.4, maxOutputTokens: 1024, responseMimeType: 'application/json' },
-        }),
-        signal: AbortSignal.timeout(25000),
-      },
-    )
-    if (!response.ok) {
-      console.error('Gemini error', response.status, (await response.text()).slice(0, 300))
-      return jsonResponse({ ok: false, error: 'The AI service did not answer. Try again in a moment.' }, 502)
+  // Google sometimes hangs or answers "busy" for a moment, so the request is tried twice (20 s, then 25 s).
+  // A wrong key or a bad request is not tried again.
+  const timeouts = [20000, 25000]
+  const retryable = [429, 500, 502, 503, 504]
+  let answer = ''
+  for (let attempt = 0; attempt < timeouts.length; attempt += 1) {
+    const last = attempt === timeouts.length - 1
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: buildSystemPrompt(knowledge) }] },
+            contents: [{ role: 'user', parts: [{ text: buildUserPrompt(input) }] }],
+            generationConfig: { temperature: 0.4, maxOutputTokens: 1024, responseMimeType: 'application/json' },
+          }),
+          signal: AbortSignal.timeout(timeouts[attempt]),
+        },
+      )
+      if (!response.ok) {
+        const body = (await response.text()).slice(0, 600)
+        console.error('Gemini error', response.status, body.slice(0, 300))
+        if (!last && retryable.includes(response.status)) {
+          continue
+        }
+        return jsonResponse(
+          {
+            ok: false,
+            error: `The AI service did not answer (${whyGeminiFailed(response.status, body, geminiKey)}). Try again in a moment.`,
+          },
+          502,
+        )
+      }
+      const data = await response.json()
+      const parts = data?.candidates?.[0]?.content?.parts
+      answer = Array.isArray(parts)
+        ? parts
+            .filter((part: { thought?: boolean; text?: unknown }) => part && part.thought !== true)
+            .map((part: { text?: unknown }) => (typeof part.text === 'string' ? part.text : ''))
+            .join('')
+        : ''
+      break
+    } catch (problem) {
+      console.error('Gemini request failed', problem instanceof Error ? problem.message : problem)
+      if (!last) {
+        continue
+      }
+      const reason =
+        problem instanceof Error
+          ? `${problem.name}: ${problem.message}`.slice(0, 160).split(geminiKey).join('***')
+          : 'unknown'
+      return jsonResponse({ ok: false, error: `The AI service did not answer (${reason}). Try again in a moment.` }, 502)
     }
-    const data = await response.json()
-    const parts = data?.candidates?.[0]?.content?.parts
-    answer = Array.isArray(parts)
-      ? parts
-          .filter((part: { thought?: boolean; text?: unknown }) => part && part.thought !== true)
-          .map((part: { text?: unknown }) => (typeof part.text === 'string' ? part.text : ''))
-          .join('')
-      : ''
-  } catch (problem) {
-    console.error('Gemini request failed', problem instanceof Error ? problem.message : problem)
-    return jsonResponse({ ok: false, error: 'The AI service did not answer. Try again in a moment.' }, 502)
   }
 
   const result = parseModelReply(answer)

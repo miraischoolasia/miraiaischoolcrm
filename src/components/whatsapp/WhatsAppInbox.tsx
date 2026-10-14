@@ -134,6 +134,19 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
     },
     [leadNameOf, studentsOf, resolveLead],
   )
+  // Every name a chat can be found by in the search box.
+  const searchNamesOf = useCallback(
+    (conversation: ChatwootConversation) => {
+      const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
+      return [
+        chatLabelOf(conversation) ?? '',
+        lead?.fullName ?? '',
+        ...(lead?.children ?? []).map((child) => child.name ?? ''),
+        ...studentsOf(conversation).map((student) => student.name ?? ''),
+      ].filter((name) => name.trim() !== '')
+    },
+    [chatLabelOf, resolveLead, studentsOf],
+  )
   const studentLabelsOf = useCallback(
     (conversation: ChatwootConversation) => [
       ...new Set(studentsOf(conversation).map((student) => describeStudent(student, crm.packages))),
@@ -332,12 +345,13 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
           (conversation) =>
             resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number)),
           studentKindsOf,
+          searchNamesOf,
         ),
         (id) => id !== inbox.selectedId && drafts.has(id),
         ),
         (id) => pinnedIds.has(id),
       ),
-    [inbox.conversations, inbox.selectedId, pinnedIds, drafts, tab, search, tagId, sourceId, matchedIds, kind, resolveLead, studentKindsOf],
+    [inbox.conversations, inbox.selectedId, pinnedIds, drafts, tab, search, tagId, sourceId, matchedIds, kind, resolveLead, studentKindsOf, searchNamesOf],
   )
   const hasChat = inbox.selected !== null
   // Reactions, edits and deletes of the open chat, and the team's own.
