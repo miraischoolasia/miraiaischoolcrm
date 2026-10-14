@@ -104,6 +104,7 @@ export function FlowWorkbench({
         classrooms={classrooms}
         contacts={contacts}
         filterOptions={filterOptions}
+        graph={draft.graph}
         readOnly={readOnly}
         onChange={(change) => onNodeChange(selectedNode.id, change)}
         onDelete={() => onNodeDelete(selectedNode.id)}

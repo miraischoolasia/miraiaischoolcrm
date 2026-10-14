@@ -185,6 +185,29 @@ export function FlowTester({
             </span>
           ),
         )}
+        <span className="flex items-center gap-2">
+          <span>Parent</span>
+          <select
+            aria-label="Test parent reply"
+            value={test.reply}
+            onChange={(event) => onTest({ reply: event.target.value })}
+            className={cn(fieldClass, 'max-w-[170px]')}
+          >
+            <option value="">Has not answered yet</option>
+            <option value="replied">Replies with…</option>
+            <option value="silent">Does not reply</option>
+          </select>
+          {test.reply === 'replied' && (
+            <input
+              type="text"
+              aria-label="Test reply text"
+              value={test.replyText}
+              placeholder="what they write"
+              onChange={(event) => onTest({ replyText: event.target.value })}
+              className={cn(fieldClass, 'w-40')}
+            />
+          )}
+        </span>
         {testing && (
           <button
             type="button"
@@ -206,6 +229,7 @@ export function FlowTester({
                 <li key={message.id} className="rounded-lg bg-emerald-50 px-3 py-1.5 text-emerald-900">
                   <span className="block text-xs text-emerald-800">
                     {describeOffset(message.mins)} {message.after === true ? 'after' : 'before'}
+                    {message.imageUrl ? ' · with a picture' : ''}
                   </span>
                   {previewMessage(message.text)}
                 </li>

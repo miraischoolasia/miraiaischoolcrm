@@ -581,6 +581,7 @@ export type Database = {
           created_at: string
           sent_by_automation: boolean
           auto_blocked: string | null
+          media_url: string | null
         }
         Insert: never
         Update: {
@@ -599,7 +600,16 @@ export type Database = {
           flow_id: number
           event_key: string
           node_id: string
-          kind: 'stage_stopped' | 'cooldown' | 'condition_no' | 'no_message' | 'no_phone' | 'opted_out'
+          kind:
+            | 'stage_stopped'
+            | 'cooldown'
+            | 'condition_no'
+            | 'no_message'
+            | 'no_phone'
+            | 'opted_out'
+            | 'replied'
+            | 'no_reply'
+            | 'reply_branch'
           detail: string | null
           phone: string | null
           parent_name: string | null

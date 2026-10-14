@@ -135,12 +135,15 @@ type Placed = { id: string; x: number; y: number }
 // contactId: a saved contact (see automationContacts) the message goes to instead of the family; left out or
 // null means the parent of the child the event is about.
 // after: sent that long AFTER the event (left out or false: before it).
+// imageUrl: a picture (an https address in the public storage) sent with the text as its caption.
+// After a wait or a reply block, "mins" counts from the reply (or from the moment the waiting ran out).
 export type MessageNode = Placed & {
   type: 'message'
   mins: number
   text: string
   contactId?: number | null
   after?: boolean
+  imageUrl?: string
 }
 export type AgeCondition = Placed & { type: 'condition'; kind: 'age'; min: number | null; max: number | null }
 export type ClassroomCondition = Placed & { type: 'condition'; kind: 'classroom'; ids: number[] }
@@ -154,7 +157,23 @@ export type StageCondition = Placed & { type: 'condition'; kind: 'stage'; stages
 export type ChoiceKind = 'source' | 'tag' | 'pic' | 'form' | 'keyword'
 export const CHOICE_KINDS: ChoiceKind[] = ['source', 'tag', 'pic', 'form', 'keyword']
 export type ChoiceCondition = Placed & { type: 'condition'; kind: ChoiceKind; ids: string[] }
-export type ConditionNode = AgeCondition | ClassroomCondition | HoursCondition | StageCondition | ChoiceCondition
+// Waits for the parent to write back. Yes = a reply came within this many minutes; No = the time ran out.
+// It starts when the message before it was sent.
+export type WaitCondition = Placed & { type: 'condition'; kind: 'wait'; mins: number }
+// Yes when the reply that ended the wait has one of these words in it (any capital letters).
+export type ReplyCondition = Placed & { type: 'condition'; kind: 'reply'; words: string[] }
+export type ConditionNode =
+  | AgeCondition
+  | ClassroomCondition
+  | HoursCondition
+  | StageCondition
+  | ChoiceCondition
+  | WaitCondition
+  | ReplyCondition
+
+export const MIN_WAIT_MINUTES = 1
+export const MAX_WAIT_MINUTES = 14 * 24 * 60
+export const MAX_REPLY_WORDS = 20
 
 // What a person can tick in a choice block, by kind.
 export type FilterChoice = { id: string; label: string }
@@ -305,6 +324,15 @@ export function describeNode(
     }
     return names.length <= 2 ? `${label} is ${names.join(' or ')}?` : `${label} is one of ${names.length}?`
   }
+  if (node.kind === 'wait') {
+    return `Reply within ${describeOffset(node.mins)}?`
+  }
+  if (node.kind === 'reply') {
+    const words = node.words.map((word) => `“${word}”`)
+    return words.length === 0
+      ? 'Reply has a word?'
+      : `Reply has ${words.slice(0, 3).join(' or ')}${words.length > 3 ? '…' : ''}?`
+  }
   const names = node.ids.map(classroomName)
   return names.length <= 2 ? `In ${names.join(' or ')}?` : `In ${names.length} classes?`
 }
@@ -361,7 +389,7 @@ export function nextNodeId(graph: FlowGraph, prefix: 'm' | 'c') {
   return `${prefix}${n}`
 }
 
-export type NewBlockKind = 'message' | 'age' | 'classroom' | 'hours' | 'stage' | ChoiceKind
+export type NewBlockKind = 'message' | 'age' | 'classroom' | 'hours' | 'stage' | 'wait' | 'reply' | ChoiceKind
 
 export function addNode(
   graph: FlowGraph,
@@ -391,7 +419,11 @@ export function addNode(
         ? { id, type: 'condition', kind: 'hours', x, y, max: 2 }
         : kind === 'stage'
           ? { id, type: 'condition', kind: 'stage', x, y, stages: ['new'] }
-          : kind === 'source' || kind === 'tag' || kind === 'pic' || kind === 'form' || kind === 'keyword'
+          : kind === 'wait'
+            ? { id, type: 'condition', kind: 'wait', x, y, mins: 1440 }
+            : kind === 'reply'
+              ? { id, type: 'condition', kind: 'reply', x, y, words: [] }
+              : kind === 'source' || kind === 'tag' || kind === 'pic' || kind === 'form' || kind === 'keyword'
             ? { id, type: 'condition', kind, x, y, ids: [] }
             : { id, type: 'condition', kind: 'classroom', x, y, ids: [] }
   return { graph: { ...graph, nodes: [...graph.nodes, node] }, id }
@@ -516,6 +548,9 @@ export type FlowTestChild = {
   tagId?: number | null
   formId?: string | null
   keywordId?: number | null
+  // How a pretend parent answers a "wait for a reply" block: wrote back (with this text) or stayed silent.
+  reply?: 'replied' | 'silent' | null
+  replyText?: string
 }
 
 // What is typed in the tester, as text.
@@ -529,6 +564,9 @@ export type TestInputs = {
   tagId: string
   formId: string
   keywordId: string
+  // '' (not said), 'replied' or 'silent'
+  reply: string
+  replyText: string
 }
 export const EMPTY_TEST: TestInputs = {
   age: '',
@@ -540,6 +578,8 @@ export const EMPTY_TEST: TestInputs = {
   tagId: '',
   formId: '',
   keywordId: '',
+  reply: '',
+  replyText: '',
 }
 
 export function isTesting(test: TestInputs) {
@@ -558,6 +598,8 @@ export function testChildOf(test: TestInputs): FlowTestChild {
     tagId: number(test.tagId),
     formId: test.formId === '' ? null : test.formId,
     keywordId: number(test.keywordId),
+    reply: test.reply === 'replied' || test.reply === 'silent' ? test.reply : null,
+    replyText: test.replyText,
   }
 }
 
@@ -590,6 +632,12 @@ export function simulateFlow(graph: FlowGraph, child: FlowTestChild): FlowTestRe
       if (isMessage(node)) {
         // The message is queued; whatever follows it is walked too.
         messages.push(node)
+      } else if (node.kind === 'wait') {
+        // Not said how the parent answers: the walk stops here, like the real flow that is still waiting.
+        port = child.reply === 'replied' ? 'yes' : child.reply === 'silent' ? 'no' : 'out'
+      } else if (node.kind === 'reply') {
+        const text = (child.reply === 'replied' ? (child.replyText ?? '') : '').toLowerCase()
+        port = node.words.some((word) => word.trim() !== '' && text.includes(word.trim().toLowerCase())) ? 'yes' : 'no'
       } else if (node.kind === 'age') {
         const { age } = child
         const matches = age !== null && (node.min === null || age >= node.min) && (node.max === null || age <= node.max)
@@ -623,6 +671,36 @@ export function simulateFlow(graph: FlowGraph, child: FlowTestChild): FlowTestRe
   return { nodes, edges, messages }
 }
 
+// What a message's time is counted from: null = the event itself, 'reply' = the parent's reply (it sits on
+// the Yes side of a wait), 'timeout' = the moment the waiting ran out (the No side).
+export type MessageAnchor = 'reply' | 'timeout' | null
+
+export function messageAnchors(graph: FlowGraph): Map<string, MessageAnchor> {
+  const result = new Map<string, MessageAnchor>()
+  const queue: { id: string; anchor: MessageAnchor }[] = [{ id: TRIGGER_ID, anchor: null }]
+  const seen = new Set<string>()
+  while (queue.length > 0) {
+    const { id, anchor } = queue.shift() as { id: string; anchor: MessageAnchor }
+    if (seen.has(id)) {
+      continue
+    }
+    seen.add(id)
+    result.set(id, anchor)
+    const node = graph.nodes.find((entry) => entry.id === id)
+    for (const edge of graph.edges) {
+      if (edge.from !== id) {
+        continue
+      }
+      let next = anchor
+      if (node && node.type === 'condition' && node.kind === 'wait') {
+        next = edge.port === 'yes' ? 'reply' : 'timeout'
+      }
+      queue.push({ id: edge.to, anchor: next })
+    }
+  }
+  return result
+}
+
 // An error to show before saving, or null when the flow is fine. Mirrors the checks in the database.
 export function validateDraft(draft: FlowDraft): string | null {
   if (draft.name.trim() === '') {
@@ -653,6 +731,21 @@ export function validateDraft(draft: FlowDraft): string | null {
       }
       if (node.text.length > 3000) {
         return 'A message can be up to 3000 characters.'
+      }
+      if (node.imageUrl !== undefined && !/^https:\/\/\S+$/.test(node.imageUrl)) {
+        return 'A message picture must be an https address.'
+      }
+    } else if (node.kind === 'wait') {
+      if (!Number.isInteger(node.mins) || node.mins < MIN_WAIT_MINUTES || node.mins > MAX_WAIT_MINUTES) {
+        return 'Waiting for a reply can be 1 minute to 14 days.'
+      }
+    } else if (node.kind === 'reply') {
+      const words = node.words.map((word) => word.trim())
+      if (words.length === 0 || words.some((word) => word === '')) {
+        return 'A reply block needs at least one word.'
+      }
+      if (words.length > MAX_REPLY_WORDS || words.some((word) => word.length > 40)) {
+        return `A reply block can have up to ${MAX_REPLY_WORDS} words, each up to 40 characters.`
       }
     } else if (node.kind === 'age') {
       if (node.min === null && node.max === null) {
@@ -766,7 +859,15 @@ export function parseGraph(raw: unknown): FlowGraph {
         text: typeof node.text === 'string' ? node.text : '',
         ...(typeof node.contactId === 'number' ? { contactId: node.contactId } : {}),
         ...(node.after === true ? { after: true } : {}),
+        ...(typeof node.imageUrl === 'string' && node.imageUrl !== '' ? { imageUrl: node.imageUrl } : {}),
       })
+    } else if (node.type === 'condition' && node.kind === 'wait') {
+      nodes.push({ ...base, type: 'condition', kind: 'wait', mins: numberOr(node.mins, 1440) })
+    } else if (node.type === 'condition' && node.kind === 'reply') {
+      const words = Array.isArray(node.words)
+        ? node.words.filter((word): word is string => typeof word === 'string')
+        : []
+      nodes.push({ ...base, type: 'condition', kind: 'reply', words })
     } else if (node.type === 'condition' && node.kind === 'age') {
       nodes.push({ ...base, type: 'condition', kind: 'age', min: ageOrNull(node.min), max: ageOrNull(node.max) })
     } else if (node.type === 'condition' && node.kind === 'hours') {

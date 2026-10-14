@@ -724,6 +724,65 @@ describe('AutomationsSection', () => {
     })
   })
 
+  describe('waiting for a reply', () => {
+    it('adds a wait step with a word check and saves the new blocks', async () => {
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Class reminder A regular class starts/ }))
+      await userEvent.click(screen.getByRole('button', { name: 'Wait for a reply' }))
+      expect(screen.getByText('Then wait for the parent to reply')).toBeInTheDocument()
+      // It starts with one word check to fill in; a second one can be added.
+      expect(screen.getAllByLabelText('Words in the reply')).toHaveLength(1)
+      await userEvent.click(screen.getByRole('button', { name: 'Add a word check' }))
+      const boxes = screen.getAllByLabelText('Words in the reply')
+      expect(boxes).toHaveLength(2)
+      fireEvent.change(boxes[0], { target: { value: '7, seven' } })
+      fireEvent.change(boxes[1], { target: { value: 'Form 1' } })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Save flow' }))
+      await waitFor(() => expect(hook.state.save).toHaveBeenCalledTimes(1))
+      const graph = hook.state.save.mock.calls[0][0].graph as {
+        nodes: { id: string; type: string; kind?: string; words?: string[]; mins?: number }[]
+        edges: { from: string; port: string; to: string }[]
+      }
+      const wait = graph.nodes.find((node) => node.kind === 'wait')
+      const rules = graph.nodes.filter((node) => node.kind === 'reply')
+      const rule = rules[0]
+      expect(wait?.mins).toBe(1440)
+      expect(rules.map((node) => node.words)).toEqual([['7', 'seven'], ['Form 1']])
+      // The wait follows the message, a reply goes to the word check, and silence has its own branch.
+      expect(graph.edges.some((edge) => edge.from === 'm1' && edge.to === wait?.id)).toBe(true)
+      expect(graph.edges.some((edge) => edge.from === wait?.id && edge.port === 'yes' && edge.to === rule?.id)).toBe(true)
+      expect(graph.edges.some((edge) => edge.from === wait?.id && edge.port === 'no')).toBe(true)
+    })
+
+    it('can take the wait away again', async () => {
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Class reminder A regular class starts/ }))
+      await userEvent.click(screen.getByRole('button', { name: 'Wait for a reply' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Remove the wait for a reply' }))
+      expect(screen.queryByText('Then wait for the parent to reply')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Wait for a reply' })).toBeInTheDocument()
+    })
+
+    it('lets a message carry a picture', async () => {
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Class reminder A regular class starts/ }))
+      await userEvent.click(screen.getByRole('button', { name: /before a regular class starts/ }))
+      expect(screen.getByLabelText('Add a picture')).toBeInTheDocument()
+    })
+
+    it('can try a pretend reply in the tester', async () => {
+      setup()
+      await userEvent.click(screen.getByRole('button', { name: /Class reminder A regular class starts/ }))
+      await userEvent.click(screen.getByRole('button', { name: 'Wait for a reply' }))
+      await userEvent.click(screen.getByRole('button', { name: /Try it with a pretend child/ }))
+      expect(screen.getByLabelText('Test parent reply')).toBeInTheDocument()
+      await userEvent.selectOptions(screen.getByLabelText('Test parent reply'), 'silent')
+      // Silence leads to the "just checking in" message of the No branch.
+      expect(screen.getAllByText(/just checking in/).length).toBeGreaterThan(1)
+    })
+  })
+
   describe('history tabs', () => {
     beforeEach(() => {
       activityHook.state.activity = null

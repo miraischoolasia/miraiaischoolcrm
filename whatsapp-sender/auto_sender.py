@@ -70,6 +70,50 @@ def chatwoot(method, path, body=None):
     )
 
 
+MAX_PICTURE_BYTES = 6 * 1024 * 1024
+
+
+def fetch_picture(url):
+    """Downloads a message picture. Only from the CRM's own storage (the host of SENDER_URL)."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname != urllib.parse.urlparse(SENDER_URL).hostname:
+        raise ValueError("picture is not from the CRM storage")
+    request = urllib.request.Request(url, headers={"User-Agent": "mirai-auto-sender"})
+    with urllib.request.urlopen(request, timeout=25) as response:
+        data = response.read(MAX_PICTURE_BYTES + 1)
+        kind = response.headers.get_content_type() or "image/jpeg"
+    if len(data) > MAX_PICTURE_BYTES:
+        raise ValueError("picture is too large")
+    name = os.path.basename(parsed.path) or "picture"
+    return name, kind, data
+
+
+def post_with_picture(path, fields, picture):
+    """POST multipart/form-data to Chatwoot: the text fields and one attachment."""
+    name, kind, data = picture
+    boundary = "----mirai" + os.urandom(8).hex()
+    crlf = bytes([13, 10])
+    body = b""
+    for key, value in fields.items():
+        body += f"--{boundary}".encode() + crlf
+        body += f'Content-Disposition: form-data; name="{key}"'.encode() + crlf + crlf
+        body += str(value).encode() + crlf
+    body += f"--{boundary}".encode() + crlf
+    body += f'Content-Disposition: form-data; name="attachments[]"; filename="{name}"'.encode() + crlf
+    body += f"Content-Type: {kind}".encode() + crlf + crlf
+    body += data + crlf
+    body += f"--{boundary}--".encode() + crlf
+    request = urllib.request.Request(
+        f"{API}{path}",
+        data=body,
+        method="POST",
+        headers={"api_access_token": CHATWOOT_TOKEN, "Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    with urllib.request.urlopen(request, timeout=60) as response:
+        raw = response.read().decode()
+        return json.loads(raw) if raw else {}
+
+
 def digits_of(value):
     return "".join(ch for ch in (value or "") if ch.isdigit())
 
@@ -134,16 +178,34 @@ def send(item):
         return "blocked", "Has not written to us first."
     if conversation.get("status") == "resolved":
         chatwoot("POST", f"/conversations/{conversation['id']}/toggle_status", {"status": "open"})
-    sent = chatwoot(
-        "POST",
-        f"/conversations/{conversation['id']}/messages",
-        {
-            "content": item["message"],
-            "private": False,
-            "message_type": "outgoing",
-            "content_attributes": {"crm_sender": {"id": 0, "name": "Automation"}},
-        },
-    )
+    if item.get("media_url"):
+        # The text goes as the caption of the picture.
+        try:
+            picture = fetch_picture(item["media_url"])
+        except Exception as problem:
+            return "failed", f"The picture could not be loaded ({type(problem).__name__})."
+        sent = post_with_picture(
+            f"/conversations/{conversation['id']}/messages",
+            {
+                "content": item["message"],
+                "private": "false",
+                "message_type": "outgoing",
+                "content_attributes[crm_sender][id]": "0",
+                "content_attributes[crm_sender][name]": "Automation",
+            },
+            picture,
+        )
+    else:
+        sent = chatwoot(
+            "POST",
+            f"/conversations/{conversation['id']}/messages",
+            {
+                "content": item["message"],
+                "private": False,
+                "message_type": "outgoing",
+                "content_attributes": {"crm_sender": {"id": 0, "name": "Automation"}},
+            },
+        )
     outcome = wait_until_accepted(conversation["id"], sent["id"])
     if outcome == "sent":
         return "sent", None

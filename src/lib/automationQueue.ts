@@ -26,6 +26,8 @@ export type QueueItem = {
   createdAt: string
   // Why the sender program left this one for a person (it only writes to people who wrote to us first).
   autoBlocked: string | null
+  // A picture sent with the text as its caption (an https address), or null.
+  mediaUrl: string | null
 }
 
 export type AutomationSettings = {
@@ -87,7 +89,7 @@ export function automationErrorMessage(problem: unknown, fallback: string) {
 }
 
 const COLUMNS =
-  'id, rule_key, rule_name, phone, parent_name, child_name, lead_id, student_id, message, status, due_at, expires_at, decided_at, sent_at, error, created_at, auto_blocked'
+  'id, rule_key, rule_name, phone, parent_name, child_name, lead_id, student_id, message, status, due_at, expires_at, decided_at, sent_at, error, created_at, auto_blocked, media_url'
 
 export async function fetchQueue(): Promise<QueueItem[]> {
   const { data, error } = await requireSupabase()
@@ -117,6 +119,7 @@ export async function fetchQueue(): Promise<QueueItem[]> {
     error: row.error,
     createdAt: row.created_at,
     autoBlocked: row.auto_blocked,
+    mediaUrl: row.media_url ?? null,
   }))
 }
 

@@ -2,21 +2,25 @@ import { useRef, useState } from 'react'
 import { Trash } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import {
+  MAX_REPLY_WORDS,
   PLACEHOLDERS,
   isChoiceCondition,
   isMessage,
+  messageAnchors,
   previewMessage,
   splitOffset,
   toOffsetMinutes,
   triggerInfo,
   unknownPlaceholders,
   type FilterOptions,
+  type FlowGraph,
   type FlowNode,
   type FlowTrigger,
   type OffsetUnit,
 } from '../../lib/automationFlows'
 import { displayContactPhone, type AutomationContact } from '../../lib/automationContacts'
 import { leadStatusOptions } from '../../lib/constants'
+import { uploadFormImageToSupabase } from '../../lib/api'
 import type { Classroom } from '../../types/domain'
 
 type FlowInspectorProps = {
@@ -27,6 +31,8 @@ type FlowInspectorProps = {
   contacts: AutomationContact[]
   // What a source, tag, PIC or form block can tick.
   filterOptions: FilterOptions
+  // The whole flow, so a message knows if its time is counted from a reply.
+  graph?: FlowGraph
   readOnly: boolean
   onChange: (change: Record<string, unknown>) => void
   onDelete: () => void
@@ -38,15 +44,17 @@ const fieldClass =
 // "Send it [3] [minutes] before it starts". The number and the unit are kept as typed, so clearing the
 // box does not turn into a 0 and picking a unit never snaps back to another one; the total in minutes
 // goes to the block only while the number is a valid one.
-function OffsetField({
+export function OffsetField({
   mins,
   after,
   readOnly,
+  label,
   onChange,
 }: {
   mins: number
   after: boolean
   readOnly: boolean
+  label?: string
   onChange: (mins: number) => void
 }) {
   const initial = splitOffset(mins)
@@ -64,7 +72,7 @@ function OffsetField({
     <>
       <input
         type="number"
-        aria-label={after ? 'How long after' : 'How long before'}
+        aria-label={label ?? (after ? 'How long after' : 'How long before')}
         min={1}
         step="any"
         value={text}
@@ -102,12 +110,123 @@ function OffsetField({
 }
 
 // The settings of the block that is selected on the canvas.
+// The picture of a message: choose one, see it, take it away. It is stored in the public bucket and the
+// address is kept in the block.
+function PictureField({
+  url,
+  readOnly,
+  onChange,
+}: {
+  url: string | undefined
+  readOnly: boolean
+  onChange: (url: string | null) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+
+  async function pick(file: File | undefined) {
+    if (!file) {
+      return
+    }
+    if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type)) {
+      setProblem('Choose a PNG, JPG, WEBP or GIF picture.')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setProblem('The picture can be up to 5 MB.')
+      return
+    }
+    setBusy(true)
+    setProblem(null)
+    try {
+      onChange(await uploadFormImageToSupabase(file))
+    } catch {
+      setProblem("Couldn't upload the picture. Only an admin can add pictures.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-1.5">
+      <p className="text-xs font-semibold text-slate-600">Picture (optional)</p>
+      {url ? (
+        <div className="flex items-start gap-3">
+          <img src={url} alt="Picture sent with this message" className="max-h-28 max-w-[10rem] rounded-lg border border-slate-200" />
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => onChange(null)}
+              className="text-sm font-semibold text-slate-600 hover:text-red-700"
+            >
+              Remove picture
+            </button>
+          )}
+        </div>
+      ) : (
+        <input
+          type="file"
+          aria-label="Add a picture"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          disabled={readOnly || busy}
+          onChange={(event) => {
+            void pick(event.target.files?.[0])
+            event.target.value = ''
+          }}
+          className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border file:border-slate-200 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-semibold"
+        />
+      )}
+      {busy && <p className="text-xs text-slate-500">Uploading…</p>}
+      {problem && (
+        <p role="alert" className="text-xs text-red-700">
+          {problem}
+        </p>
+      )}
+      {url && <p className="text-xs text-slate-500">The message text is sent as the caption of the picture.</p>}
+    </div>
+  )
+}
+
+// The words a reply is checked for, typed with commas between them. The text is kept as typed so a comma
+// at the end is not lost while the next word is being written.
+export function WordsField({
+  words,
+  readOnly,
+  onChange,
+}: {
+  words: string[]
+  readOnly: boolean
+  onChange: (words: string[]) => void
+}) {
+  const [text, setText] = useState(words.join(', '))
+  return (
+    <input
+      type="text"
+      aria-label="Words in the reply"
+      value={text}
+      disabled={readOnly}
+      placeholder="for example: 7, seven, 7 years"
+      onChange={(event) => {
+        setText(event.target.value)
+        onChange(
+          event.target.value
+            .split(/[,\uff0c\u3001]/)
+            .map((word) => word.trim())
+            .filter((word) => word !== ''),
+        )
+      }}
+      className={cn(fieldClass, 'mt-3 w-full')}
+    />
+  )
+}
+
 export function FlowInspector({
   node,
   trigger,
   classrooms,
   contacts,
   filterOptions,
+  graph,
   readOnly,
   onChange,
   onDelete,
@@ -138,6 +257,7 @@ export function FlowInspector({
   let body
   if (isMessage(node)) {
     const unknown = unknownPlaceholders(node.text)
+    const anchor = graph ? (messageAnchors(graph).get(node.id) ?? null) : null
     body = (
       <>
         <h3 className="text-sm font-semibold text-slate-900">Message</h3>
@@ -146,11 +266,15 @@ export function FlowInspector({
           <OffsetField
             key={node.id}
             mins={node.mins}
-            after={info.afterOnly === true || node.after === true}
+            after={anchor !== null || info.afterOnly === true || node.after === true}
             readOnly={readOnly}
             onChange={(mins) => onChange({ mins })}
           />
-          {info.afterOnly ? (
+          {anchor === 'reply' ? (
+            <span>after the parent replies</span>
+          ) : anchor === 'timeout' ? (
+            <span>after the waiting ends (no reply)</span>
+          ) : info.afterOnly ? (
             <span>after it happens</span>
           ) : (
             <select
@@ -224,10 +348,47 @@ export function FlowInspector({
             {unknown.join(', ')} will be sent as written. Use the Insert buttons for the details that change.
           </p>
         )}
+        <PictureField
+          url={node.imageUrl}
+          readOnly={readOnly}
+          onChange={(url) => onChange({ imageUrl: url === null ? undefined : url })}
+        />
         <p className="mt-3 text-xs text-slate-500">Preview</p>
         <p className="mt-1 whitespace-pre-wrap rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
           {previewMessage(node.text) || ' '}
         </p>
+      </>
+    )
+  } else if (node.kind === 'wait') {
+    body = (
+      <>
+        <h3 className="text-sm font-semibold text-slate-900">Wait for a reply</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Starts when the message before it has been sent. If the parent writes back in time, the flow follows
+          the Yes line; if they stay quiet until the time runs out, it follows No.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
+          <span>Wait up to</span>
+          <OffsetField
+            key={node.id}
+            mins={node.mins}
+            after
+            label="How long to wait"
+            readOnly={readOnly}
+            onChange={(mins) => onChange({ mins })}
+          />
+        </div>
+      </>
+    )
+  } else if (node.kind === 'reply') {
+    body = (
+      <>
+        <h3 className="text-sm font-semibold text-slate-900">What the reply says</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Type words separated by commas (up to {MAX_REPLY_WORDS}). If the reply has any of them, in any capital
+          letters, the flow follows Yes; otherwise No.
+        </p>
+        <WordsField key={node.id} words={node.words} readOnly={readOnly} onChange={(words) => onChange({ words })} />
       </>
     )
   } else if (node.kind === 'age') {
@@ -360,7 +521,7 @@ export function FlowInspector({
         </fieldset>
       </>
     )
-  } else {
+  } else if (node.kind === 'classroom') {
     const category = info.classroomCategory
     const options = classrooms.filter(
       (room) =>

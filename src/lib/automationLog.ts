@@ -4,7 +4,16 @@ import { supabase } from './supabase'
 //   * the messages it queued come from automation_queue (queued, approved, sent, failed, skipped, expired)
 //   * the people it looked at and left alone come from automation_flow_log (written by the runner)
 
-export type FlowLogKind = 'stage_stopped' | 'cooldown' | 'condition_no' | 'no_message' | 'no_phone' | 'opted_out'
+export type FlowLogKind =
+  | 'stage_stopped'
+  | 'cooldown'
+  | 'condition_no'
+  | 'no_message'
+  | 'no_phone'
+  | 'opted_out'
+  | 'replied'
+  | 'no_reply'
+  | 'reply_branch'
 
 export type FlowLogRow = {
   id: number
@@ -145,6 +154,22 @@ const LOG_TITLES: Record<FlowLogKind, string> = {
   no_message: 'Not sent: nothing to send',
   no_phone: 'Not sent: no phone number',
   opted_out: 'Not sent: parent wrote STOP',
+  replied: 'Parent replied',
+  no_reply: 'No reply in time',
+  reply_branch: 'Reply checked',
+}
+
+// What a log row of each kind means for the filter chips: the three about replies are steps in between.
+const LOG_GROUPS: Record<FlowLogKind, TimelineEntry['group']> = {
+  stage_stopped: 'skipped',
+  cooldown: 'skipped',
+  condition_no: 'skipped',
+  no_message: 'skipped',
+  no_phone: 'skipped',
+  opted_out: 'skipped',
+  replied: 'other',
+  no_reply: 'other',
+  reply_branch: 'other',
 }
 
 export function personLabel(row: { childName: string | null; parentName: string | null; phone: string | null }) {
@@ -174,7 +199,7 @@ export function buildTimeline(activity: FlowActivity, now = Date.now()): Timelin
       detail: row.detail,
       person: personLabel(row),
       eventKey: row.eventKey,
-      group: 'skipped',
+      group: LOG_GROUPS[row.kind],
     })
   }
 

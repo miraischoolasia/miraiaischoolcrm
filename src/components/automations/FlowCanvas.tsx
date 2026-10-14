@@ -43,6 +43,9 @@ type CanvasNodeData = {
   openPorts: FlowPort[]
   // The exit whose "add" menu is open, if any.
   menuPort: FlowPort | null
+  // What the Yes and No exits are called ("Replied" / "No reply" on a wait block).
+  yesLabel?: string
+  noLabel?: string
   onPlus: (nodeId: string, port: FlowPort) => void
   onPick: (nodeId: string, port: FlowPort, kind: NewBlockKind) => void
   [key: string]: unknown
@@ -63,6 +66,8 @@ const PICKS: { kind: NewBlockKind; label: string; hint: string }[] = [
   { kind: 'pic', label: 'Check the PIC', hint: 'Who handles the lead' },
   { kind: 'form', label: 'Check the form', hint: 'Which form they filled in' },
   { kind: 'keyword', label: 'Check the source keyword', hint: 'The phrase in their first message' },
+  { kind: 'wait', label: 'Wait for a reply', hint: 'Replied in time, or no reply' },
+  { kind: 'reply', label: 'Check what the reply says', hint: 'Words in the parent’s reply' },
 ]
 
 // The "+" after a card, and the small menu it opens. It sits to the right of the exit it belongs to.
@@ -157,12 +162,16 @@ const ConditionNode = memo(function ConditionNode({ id, data, selected }: NodePr
         If
       </div>
       <p className="px-3 pb-8 pt-2 text-sm font-medium text-slate-800">{data.body}</p>
-      <span className="absolute right-4 top-[52%] text-[11px] font-semibold text-emerald-700">Yes</span>
-      <span className="absolute bottom-1.5 right-4 text-[11px] font-semibold text-slate-500">No</span>
+      <span className="absolute right-4 top-[52%] text-[11px] font-semibold text-emerald-700">
+        {data.yesLabel ?? 'Yes'}
+      </span>
+      <span className="absolute bottom-1.5 right-4 text-[11px] font-semibold text-slate-500">
+        {data.noLabel ?? 'No'}
+      </span>
       <Handle type="source" position={Position.Right} id="yes" style={yesHandleStyle} />
       <Handle type="source" position={Position.Right} id="no" style={noHandleStyle} />
-      <AddAfter nodeId={id} port="yes" top="60%" data={data} label="Yes" />
-      <AddAfter nodeId={id} port="no" top="88%" data={data} label="No" />
+      <AddAfter nodeId={id} port="yes" top="60%" data={data} label={data.yesLabel ?? 'Yes'} />
+      <AddAfter nodeId={id} port="no" top="88%" data={data} label={data.noLabel ?? 'No'} />
     </div>
   )
 })
@@ -285,8 +294,9 @@ export function FlowCanvas({
           ? { kind: 'message', title: describeNode(node, classroomName, contactName, choiceName), body: node.text, ...common(node.id, ['out']) }
           : {
               kind: 'condition',
-              title: 'If',
+              title: node.kind === 'wait' ? 'Wait' : 'If',
               body: describeNode(node, classroomName, undefined, choiceName),
+              ...(node.kind === 'wait' ? { yesLabel: 'Replied', noLabel: 'No reply' } : {}),
               ...common(node.id, ['yes', 'no']),
             },
         selected: selectedId === node.id && selectedEdge === null,

@@ -24,6 +24,7 @@ const item = (change: Partial<QueueItem>): QueueItem => ({
   error: null,
   createdAt: '2026-10-13T09:00:00+08:00',
   autoBlocked: null,
+  mediaUrl: null,
   ...change,
 })
 

@@ -250,6 +250,15 @@ export function AutomationQueueDialog({
                           <p className="mt-0.5 text-xs text-slate-500">
                             +{item.phone} · for {formatDue(item.dueAt)}
                           </p>
+                          {item.mediaUrl && (
+                            <a href={item.mediaUrl} target="_blank" rel="noreferrer" className="mt-2 block w-fit">
+                              <img
+                                src={item.mediaUrl}
+                                alt="Picture sent with this message"
+                                className="max-h-24 max-w-[9rem] rounded-lg border border-slate-200"
+                              />
+                            </a>
+                          )}
                           <textarea
                             value={textOf(item)}
                             disabled={!canEdit || isWorking || !sendableNow}

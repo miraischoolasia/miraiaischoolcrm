@@ -550,6 +550,8 @@ describe('the tester inputs', () => {
       tagId: null,
       formId: 'abc',
       keywordId: 12,
+      reply: null,
+      replyText: '',
     })
   })
 

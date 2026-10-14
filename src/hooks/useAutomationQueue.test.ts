@@ -36,6 +36,7 @@ const item = (id: number, change: Partial<QueueItem> = {}): QueueItem => ({
   error: null,
   createdAt: new Date(Date.now() - 3_600_000).toISOString(),
   autoBlocked: null,
+  mediaUrl: null,
   ...change,
 })
 

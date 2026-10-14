@@ -5,8 +5,8 @@
 //   https://<project>.supabase.co/functions/v1/chat-activity?key=<the key shown in the CRM>
 // The key lives in the database (chat_webhook_settings) and is checked there; an admin copies the
 // whole address from Automations > Parent replies and pastes it into Chatwoot
-// (Settings > Integrations > Webhooks, tick "Message created"). Nothing about the chat's text is
-// kept: only who wrote last, and when.
+// (Settings > Integrations > Webhooks, tick "Message created"). What the team writes is never kept. What a
+// parent writes is kept for 35 days (cut at 500 characters) so a flow can wait for a reply and read it.
 //
 // Deploy (once, and after changes):
 //   npx supabase functions deploy chat-activity --no-verify-jwt
@@ -60,6 +60,7 @@ Deno.serve(async (req) => {
     p_name: message.name,
     p_phone: message.phone,
     p_opt_out: message.optOut,
+    p_text: message.text,
   })
 
   if (error) {

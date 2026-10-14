@@ -12,6 +12,9 @@ export type ChatMessage = {
   phone: string | null
   // The parent's whole message was just a request to stop (STOP, unsubscribe, 不要再发...).
   optOut: boolean
+  // What a parent wrote (cut at 500 characters), so a flow can read their reply; null for a message of ours
+  // or one with no text (a picture).
+  text: string | null
 }
 
 export type ParsedEvent = { ok: true; message: ChatMessage } | { ok: false; reason: string }
@@ -154,6 +157,7 @@ export function parseChatwootEvent(payload: unknown): ParsedEvent {
       name: asText(contactSource?.name),
       phone: asDigits(contactSource?.phone_number) ?? asDigits(contactInbox?.source_id),
       optOut: direction === 'incoming' && isStopRequest(body.content),
+      text: direction === 'incoming' ? asText(body.content, 500) : null,
     },
   }
 }

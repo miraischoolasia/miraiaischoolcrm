@@ -18,15 +18,22 @@ import {
 } from '../../lib/automationFlows'
 import {
   TRIGGER_GROUPS,
+  addBranchMessage,
   addFilter,
   addMessageStep,
+  addReplyRule,
+  addReplyStep,
+  removeBranchMessage,
   removeFilter,
   removeMessageStep,
+  removeReplyRule,
+  removeReplyStep,
+  type BranchTarget,
   type FlowParts,
 } from '../../lib/flowSteps'
 import type { AutomationContact } from '../../lib/automationContacts'
 import type { Classroom } from '../../types/domain'
-import { FlowInspector } from './FlowInspector'
+import { FlowInspector, OffsetField, WordsField } from './FlowInspector'
 
 type SimpleBuilderProps = {
   draft: FlowDraft
@@ -145,6 +152,94 @@ export function SimpleBuilder({
     return `${describeOffset(message.mins)} ${side} ${info.phrase.replace(/ \(the task is \{class\}\)$/, '')}`
   }
 
+  // One message of the list, or of a reply branch: its time and text, opening into the editor.
+  const renderMessage = (message: MessageNode, label: string, onRemove: () => void) => {
+    const open = openId === message.id
+    return (
+      <li key={message.id} className="relative rounded-xl border border-slate-200 bg-white">
+        <span
+          className="absolute -left-[25px] top-4 size-3 rounded-full border-2 border-white bg-[#fc0c97]"
+          aria-hidden="true"
+        />
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => toggle(message.id)}
+          className="block w-full px-3 py-2.5 text-left"
+        >
+          <span className="block text-xs font-semibold text-[#be185d]">
+            {label}
+            {typeof message.contactId === 'number' ? ` · to ${contactName(message.contactId)}` : ''}
+            {message.imageUrl ? ' · with a picture' : ''}
+          </span>
+          <span className="mt-1 flex items-start gap-1.5 text-sm text-slate-800">
+            <ChatCircleText size={16} className="mt-0.5 shrink-0 text-slate-400" aria-hidden="true" />
+            <span className="line-clamp-2 whitespace-pre-wrap">
+              {message.text.trim() === '' ? 'Write the message' : previewMessage(message.text)}
+            </span>
+          </span>
+        </button>
+        {open && (
+          <div className="border-t border-slate-100 px-3 py-3">
+            <FlowInspector
+              node={message}
+              trigger={draft.trigger}
+              classrooms={classrooms}
+              contacts={contacts}
+              filterOptions={filterOptions}
+              graph={draft.graph}
+              readOnly={readOnly}
+              onChange={(change) => changeNode(message.id, change)}
+              onDelete={onRemove}
+            />
+          </div>
+        )}
+      </li>
+    )
+  }
+
+  const reply = parts.reply ?? null
+
+  function addReply() {
+    const result = addReplyStep(draft.graph)
+    onGraphChange(result.graph)
+    setOpenId(null)
+  }
+
+  // The messages under one answer of a reply, with a button to add one.
+  const branchList = (list: MessageNode[], anchor: 'reply' | 'timeout', target: BranchTarget) => {
+    const when = anchor === 'reply' ? 'after the reply' : 'after the waiting ends'
+    return (
+      <div className="space-y-2">
+        {list.length === 0 ? (
+          <p className="rounded-lg bg-white px-3 py-2 text-xs text-slate-500">Nothing is sent for this answer.</p>
+        ) : (
+          <ol className="relative space-y-3 border-l-2 border-slate-200 pl-4">
+            {list.map((message) =>
+              renderMessage(message, `${describeOffset(message.mins)} ${when}`, () =>
+                onGraphChange(removeBranchMessage(draft.graph, message.id)),
+              ),
+            )}
+          </ol>
+        )}
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={() => {
+              const result = addBranchMessage(draft.graph, target)
+              onGraphChange(result.graph)
+              setOpenId(result.id)
+            }}
+            className="flex items-center gap-1 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <Plus size={14} weight="bold" aria-hidden="true" />
+            Add a message
+          </button>
+        )}
+      </div>
+    )
+  }
+
   const filterCard = (filter: ConditionNode) => {
     const open = openId === filter.id
     return (
@@ -177,6 +272,7 @@ export function SimpleBuilder({
               classrooms={classrooms}
               contacts={contacts}
               filterOptions={filterOptions}
+              graph={draft.graph}
               readOnly={readOnly}
               onChange={(change) => changeNode(filter.id, change)}
               onDelete={() => onGraphChange(removeFilter(draft.graph, filter.id))}
@@ -295,48 +391,11 @@ export function SimpleBuilder({
                 No message yet. Add the first one.
               </li>
             )}
-            {parts.messages.map((message) => {
-              const open = openId === message.id
-              return (
-                <li key={message.id} className="relative rounded-xl border border-slate-200 bg-white">
-                  <span
-                    className="absolute -left-[25px] top-4 size-3 rounded-full border-2 border-white bg-[#fc0c97]"
-                    aria-hidden="true"
-                  />
-                  <button
-                    type="button"
-                    aria-expanded={open}
-                    onClick={() => toggle(message.id)}
-                    className="block w-full px-3 py-2.5 text-left"
-                  >
-                    <span className="block text-xs font-semibold text-[#be185d]">
-                      {timeLabel(message)}
-                      {typeof message.contactId === 'number' ? ` · to ${contactName(message.contactId)}` : ''}
-                    </span>
-                    <span className="mt-1 flex items-start gap-1.5 text-sm text-slate-800">
-                      <ChatCircleText size={16} className="mt-0.5 shrink-0 text-slate-400" aria-hidden="true" />
-                      <span className="line-clamp-2 whitespace-pre-wrap">
-                        {message.text.trim() === '' ? 'Write the message' : previewMessage(message.text)}
-                      </span>
-                    </span>
-                  </button>
-                  {open && (
-                    <div className="border-t border-slate-100 px-3 py-3">
-                      <FlowInspector
-                        node={message}
-                        trigger={draft.trigger}
-                        classrooms={classrooms}
-                        contacts={contacts}
-                        filterOptions={filterOptions}
-                        readOnly={readOnly}
-                        onChange={(change) => changeNode(message.id, change)}
-                        onDelete={() => onGraphChange(removeMessageStep(draft.graph, message.id))}
-                      />
-                    </div>
-                  )}
-                </li>
-              )
-            })}
+            {parts.messages.map((message) =>
+              renderMessage(message, timeLabel(message), () =>
+                onGraphChange(removeMessageStep(draft.graph, message.id)),
+              ),
+            )}
           </ol>
           {!readOnly && (
             <button
@@ -347,6 +406,125 @@ export function SimpleBuilder({
               <Plus size={14} weight="bold" aria-hidden="true" />
               Add a message
             </button>
+          )}
+
+          {reply ? (
+            <div className="mt-5 space-y-4 rounded-xl border border-sky-200 bg-sky-50/50 p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Then wait for the parent to reply</h3>
+                  <p className="text-xs text-slate-500">Starts when the last message above has been sent.</p>
+                </div>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    aria-label="Remove the wait for a reply"
+                    onClick={() => onGraphChange(removeReplyStep(draft.graph))}
+                    className="rounded p-1.5 text-slate-500 hover:bg-white hover:text-red-700"
+                  >
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+                <span>Wait up to</span>
+                <OffsetField
+                  key={reply.wait.id}
+                  mins={reply.wait.mins}
+                  after
+                  label="How long to wait"
+                  readOnly={readOnly}
+                  onChange={(mins) => changeNode(reply.wait.id, { mins })}
+                />
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-xs font-bold uppercase tracking-wide text-emerald-800">If the parent replies</h4>
+                {reply.rules.map((rule) => (
+                  <section key={rule.cond.id} className="space-y-2 border-l-4 border-emerald-300 pl-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-slate-900">
+                        If any message they write has the word
+                      </p>
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          aria-label="Remove this word check"
+                          onClick={() => onGraphChange(removeReplyRule(draft.graph, rule.cond.id))}
+                          className="rounded p-1.5 text-slate-500 hover:bg-white hover:text-red-700"
+                        >
+                          <X size={14} aria-hidden="true" />
+                        </button>
+                      )}
+                    </div>
+                    <WordsField
+                      key={rule.cond.id}
+                      words={rule.cond.words}
+                      readOnly={readOnly}
+                      onChange={(words) => changeNode(rule.cond.id, { words })}
+                    />
+                    {branchList(rule.messages, 'reply', { kind: 'rule', condId: rule.cond.id })}
+                  </section>
+                ))}
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const result = addReplyRule(draft.graph)
+                      onGraphChange(result.graph)
+                      setOpenId(null)
+                    }}
+                    className="flex items-center gap-1 rounded-lg border border-dashed border-emerald-300 bg-white px-3 py-1.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
+                  >
+                    <Plus size={14} weight="bold" aria-hidden="true" />
+                    Add a word check
+                  </button>
+                )}
+                <p className="text-xs text-slate-500">
+                  Every word check works on its own and reads all the messages they write while we wait (two or
+                  three messages count together). If none of the words appears, nothing is sent.
+                </p>
+                {reply.any.length > 0 ? (
+                  <section className="space-y-2 border-l-4 border-slate-300 pl-3">
+                    <p className="text-sm font-semibold text-slate-900">Whatever they write (any reply)</p>
+                    {branchList(reply.any, 'reply', { kind: 'any' })}
+                  </section>
+                ) : (
+                  !readOnly && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const result = addBranchMessage(draft.graph, { kind: 'any' })
+                        onGraphChange(result.graph)
+                        setOpenId(result.id)
+                      }}
+                      className="text-sm font-semibold text-slate-600 hover:underline"
+                    >
+                      Also send something when they write anything
+                    </button>
+                  )
+                )}
+              </div>
+
+              <section className="space-y-2 border-l-4 border-amber-300 pl-3">
+                <h4 className="text-xs font-bold uppercase tracking-wide text-amber-800">
+                  If there is no reply within {describeOffset(reply.wait.mins)}
+                </h4>
+                {branchList(reply.none, 'timeout', { kind: 'none' })}
+              </section>
+            </div>
+          ) : (
+            !readOnly &&
+            parts.messages.length > 0 && (
+              <button
+                type="button"
+                onClick={addReply}
+                className="mt-3 flex items-center gap-1 rounded-lg border border-dashed border-sky-300 bg-sky-50/50 px-3 py-2 text-sm font-semibold text-sky-800 hover:bg-sky-50"
+              >
+                <Plus size={14} weight="bold" aria-hidden="true" />
+                Wait for a reply
+              </button>
+            )
           )}
         </div>
       </section>

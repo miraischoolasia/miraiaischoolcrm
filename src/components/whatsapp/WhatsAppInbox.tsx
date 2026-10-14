@@ -600,11 +600,26 @@ export function WhatsAppInbox({ apiUrl, currentUser, staff, crm, active = true, 
       }
       conversationId = started.conversationId
     }
+    // The picture of the message (if it has one) goes with the text as its caption.
+    const files: File[] = []
+    if (entry.mediaUrl) {
+      try {
+        const response = await fetch(entry.mediaUrl)
+        if (!response.ok) {
+          throw new Error('picture')
+        }
+        const blob = await response.blob()
+        const name = decodeURIComponent(entry.mediaUrl.split('/').pop() ?? 'picture').split('?')[0] || 'picture'
+        files.push(new File([blob], name, { type: blob.type || 'image/jpeg' }))
+      } catch {
+        return "Couldn't load the picture of this message. Check your connection and try again."
+      }
+    }
     try {
       const sent = await client.sendMessage(conversationId, {
         content: message,
         isPrivate: false,
-        files: [],
+        files,
         sender: currentUser,
       })
       await inbox.waitUntilSent(conversationId, sent.id)

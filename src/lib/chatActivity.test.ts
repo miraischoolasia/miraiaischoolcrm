@@ -31,8 +31,21 @@ describe('reading what the WhatsApp inbox sends for a message', () => {
         name: 'Stella',
         phone: '60122552285',
         optOut: false,
+        text: 'Hello, is there a class on Saturday?',
       },
     })
+  })
+
+  it('keeps the parent text (cut at 500 characters) and never the text of the team', () => {
+    const long = 'a'.repeat(900)
+    expect(parseChatwootEvent({ ...incoming, content: long })).toMatchObject({
+      ok: true,
+      message: { text: 'a'.repeat(500) },
+    })
+    expect(
+      parseChatwootEvent({ ...incoming, message_type: 'outgoing', sender: { id: 5, name: 'Lex', type: 'user' } }),
+    ).toMatchObject({ ok: true, message: { text: null } })
+    expect(parseChatwootEvent({ ...incoming, content: null })).toMatchObject({ ok: true, message: { text: null } })
   })
 
   it('takes a message from the team, with the chat contact (not the team member) as the contact', () => {
