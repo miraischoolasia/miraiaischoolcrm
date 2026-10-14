@@ -17,15 +17,17 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { ChatCircleText, Flag, GitFork, Plus } from '@phosphor-icons/react'
+import { ChatCircleText, Flag, GitFork, Lightning, Plus } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import {
   TRIGGER_ID,
   connect,
+  describeAction,
   describeNode,
   type ChoiceKind,
   disconnect,
   edgeKey,
+  isAction,
   isMessage,
   moveNode,
   removeNode,
@@ -34,7 +36,7 @@ import {
 } from '../../lib/automationFlows'
 
 type CanvasNodeData = {
-  kind: 'trigger' | 'message' | 'condition'
+  kind: 'trigger' | 'message' | 'action' | 'condition'
   title: string
   body: string
   dim: boolean
@@ -152,7 +154,23 @@ const MessageNode = memo(function MessageNode({ id, data, selected }: NodeProps<
   )
 })
 
-const nodeTypes = { trigger: TriggerNode, condition: ConditionNode, message: MessageNode }
+// A step that changes the lead (add a tag, assign a PIC, change the stage): nothing is sent.
+const ActionNode = memo(function ActionNode({ id, data, selected }: NodeProps<Node<CanvasNodeData>>) {
+  return (
+    <div className={shell(selected, data.dim)}>
+      <Handle type="target" position={Position.Left} style={handleStyle} />
+      <div className="flex items-center gap-1.5 rounded-t-[10px] bg-violet-50 px-3 py-1.5 font-semibold text-violet-800">
+        <Lightning size={14} weight="fill" aria-hidden="true" />
+        Do · {data.title}
+      </div>
+      <p className="line-clamp-3 px-3 py-2 text-slate-700">{data.body}</p>
+      <Handle type="source" position={Position.Right} id="out" style={handleStyle} />
+      <AddAfter nodeId={id} port="out" top="50%" data={data} label="this step" />
+    </div>
+  )
+})
+
+const nodeTypes = { trigger: TriggerNode, condition: ConditionNode, message: MessageNode, action: ActionNode }
 const fitViewOptions = { padding: 0.2, maxZoom: 1 }
 const deleteKeys = ['Backspace', 'Delete']
 
@@ -245,10 +263,17 @@ export function FlowCanvas({
     for (const node of graph.nodes) {
       list.push({
         id: node.id,
-        type: isMessage(node) ? 'message' : 'condition',
+        type: isMessage(node) ? 'message' : isAction(node) ? 'action' : 'condition',
         position: { x: node.x, y: node.y },
         data: isMessage(node)
           ? { kind: 'message', title: describeNode(node, classroomName, contactName, choiceName), body: node.text, ...common(node.id, ['out']) }
+          : isAction(node)
+            ? {
+                kind: 'action',
+                title: describeNode(node),
+                body: describeAction(node, choiceName),
+                ...common(node.id, ['out']),
+              }
           : {
               kind: 'condition',
               title: node.kind === 'wait' ? 'Wait' : 'If',

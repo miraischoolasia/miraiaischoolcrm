@@ -63,6 +63,19 @@ export function isBeingSent(item: QueueItem, now: number) {
   return item.status === 'sending' && !isStuck(item, now)
 }
 
+// A waiting message of a flow that has "Send by itself" ticked: the sender program sends it when it is
+// due, so nobody has to approve it. One it handed back (autoBlocked) or one that failed needs a person.
+export function willSendByItself(item: QueueItem, autoRuleKeys: ReadonlySet<string>, now: number) {
+  return (
+    autoRuleKeys.has(item.ruleKey) && item.status === 'pending' && item.autoBlocked === null && !isExpired(item, now)
+  )
+}
+
+// A message that waits for a person: it can be sent and the sender program will not do it.
+export function needsApproval(item: QueueItem, autoRuleKeys: ReadonlySet<string>, now: number) {
+  return canSend(item, now) && !willSendByItself(item, autoRuleKeys, now)
+}
+
 export function roomLeft(settings: AutomationSettings, sentToday: number) {
   return Math.max(0, settings.dailyCap - sentToday)
 }
@@ -121,6 +134,22 @@ export async function fetchQueue(): Promise<QueueItem[]> {
     autoBlocked: row.auto_blocked,
     mediaUrl: row.media_url ?? null,
   }))
+}
+
+// The rule keys ("flow_<id>") of the enabled flows that send by themselves.
+export async function fetchAutoSendRuleKeys(): Promise<Set<string>> {
+  const { data, error } = await requireSupabase().from('automation_flows').select('id, enabled, graph')
+  if (error) {
+    throw error
+  }
+  const keys = new Set<string>()
+  for (const row of data ?? []) {
+    const graph = row.graph as { settings?: { autoSend?: unknown } } | null
+    if (row.enabled && graph?.settings?.autoSend === true) {
+      keys.add(`flow_${row.id}`)
+    }
+  }
+  return keys
 }
 
 // How many automation messages went out since midnight, for the daily limit.

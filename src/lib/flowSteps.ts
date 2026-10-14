@@ -1,6 +1,8 @@
 import {
   TRIGGER_ID,
   addNode,
+  isAction,
+  isCondition,
   isMessage,
   nextNodeId,
   triggerInfo,
@@ -56,6 +58,11 @@ export type FlowParts = {
 export type FlowAnalysis = ({ simple: true } & FlowParts) | { simple: false; reason: string }
 
 export function analyzeFlow(graph: FlowGraph): FlowAnalysis {
+  // A step that changes the lead (a tag, a PIC, a stage) sits anywhere in the graph; the list has no place
+  // for it, so such a flow is read in the advanced editor.
+  if (graph.nodes.some(isAction)) {
+    return { simple: false, reason: 'It has a step that changes the lead (a tag, a PIC or a stage).' }
+  }
   const byId = new Map(graph.nodes.map((node) => [node.id, node]))
   const outs = (id: string, port: FlowEdge['port']) =>
     graph.edges.filter((edge) => edge.from === id && edge.port === port).map((edge) => edge.to)
@@ -69,7 +76,7 @@ export function analyzeFlow(graph: FlowGraph): FlowAnalysis {
   // Leading conditions with nothing on their "No" side are filters.
   while (targets.length === 1) {
     const node = byId.get(targets[0])
-    if (!node || isMessage(node) || node.kind === 'wait') {
+    if (!node || !isCondition(node) || node.kind === 'wait') {
       break
     }
     if (node.kind === 'reply') {
@@ -102,7 +109,7 @@ export function analyzeFlow(graph: FlowGraph): FlowAnalysis {
     }
     seen.add(id)
     if (!isMessage(node)) {
-      if (node.kind === 'wait' && wait === null) {
+      if (isCondition(node) && node.kind === 'wait' && wait === null) {
         wait = node
         continue
       }
@@ -135,7 +142,7 @@ export function analyzeFlow(graph: FlowGraph): FlowAnalysis {
     const anyStarts: string[] = []
     for (const target of outs(wait.id, 'yes')) {
       const node = byId.get(target)
-      if (node && !isMessage(node) && node.kind === 'reply') {
+      if (node && isCondition(node) && node.kind === 'reply') {
         if (seen.has(node.id)) {
           return { simple: false, reason: 'Two lines lead to the same block.' }
         }

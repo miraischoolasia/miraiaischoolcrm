@@ -302,7 +302,7 @@ describe('checking a flow before it is saved', () => {
 
   it('asks for a name, a message and sensible times and ages', () => {
     expect(validateDraft(draft({ name: ' ' }))).toBe('Give the flow a name.')
-    expect(validateDraft(draft({ graph: { ...split, nodes: [] } }))).toBe('Add at least one message block.')
+    expect(validateDraft(draft({ graph: { ...split, nodes: [] } }))).toBe('Add at least one message or one step that changes the lead.')
     expect(
       validateDraft(
         draft({ graph: { ...split, nodes: [{ id: 'm1', type: 'message', x: 0, y: 0, mins: 2, text: 'x' }] } }),

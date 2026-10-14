@@ -10,6 +10,14 @@ export const PICK_GROUPS: PickGroup[] = [
     picks: [{ kind: 'message', label: 'Send a message', hint: 'A WhatsApp message to approve' }],
   },
   {
+    title: 'Change the lead',
+    picks: [
+      { kind: 'add_tag', label: 'Add a tag', hint: 'Put a tag on the lead' },
+      { kind: 'assign_pic', label: 'Assign a PIC', hint: 'Who handles the lead from now on' },
+      { kind: 'set_stage', label: 'Change the lead stage', hint: 'Move the lead to another stage' },
+    ],
+  },
+  {
     title: 'Wait for the parent',
     picks: [
       { kind: 'wait', label: 'Wait for a reply', hint: 'Replied in time, or no reply' },

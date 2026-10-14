@@ -162,6 +162,25 @@ export type ChoiceCondition = Placed & { type: 'condition'; kind: ChoiceKind; id
 export type WaitCondition = Placed & { type: 'condition'; kind: 'wait'; mins: number }
 // Yes when the reply that ended the wait has one of these words in it (any capital letters).
 export type ReplyCondition = Placed & { type: 'condition'; kind: 'reply'; words: string[] }
+// A step that changes the lead of the event instead of sending a message (nothing waits for approval):
+//   add_tag     value = the id of a tag, added to the lead
+//   assign_pic  value = the id of a person (PIC), who now handles the lead
+//   set_stage   value = a lead stage (never "converted": that needs a student, which only a person makes)
+// mins / after: when it happens, like a message ("0 minutes after" is right away). After a wait or a reply
+// block, mins counts from the reply (or from the moment the waiting ran out).
+export type ActionKind = 'add_tag' | 'assign_pic' | 'set_stage'
+export const ACTION_KINDS: ActionKind[] = ['add_tag', 'assign_pic', 'set_stage']
+export type ActionNode = Placed & {
+  type: 'action'
+  action: ActionKind
+  value: string
+  mins: number
+  after?: boolean
+}
+// The stages a step can move a lead to.
+export const SETTABLE_STAGES: LeadStatus[] = ['new', 'contacted', 'trial_scheduled', 'trial_completed', 'lost']
+export const MIN_ACTION_MINUTES = 0
+
 export type ConditionNode =
   | AgeCondition
   | ClassroomCondition
@@ -183,7 +202,7 @@ export const EMPTY_FILTER_OPTIONS: FilterOptions = { source: [], tag: [], pic: [
 export function isChoiceCondition(node: FlowNode): node is ChoiceCondition {
   return node.type === 'condition' && (CHOICE_KINDS as string[]).includes(node.kind)
 }
-export type FlowNode = MessageNode | ConditionNode
+export type FlowNode = MessageNode | ActionNode | ConditionNode
 
 export type FlowPort = 'out' | 'yes' | 'no'
 export type FlowEdge = { from: string; port: FlowPort; to: string }
@@ -289,6 +308,39 @@ export function isMessage(node: FlowNode): node is MessageNode {
   return node.type === 'message'
 }
 
+export function isAction(node: FlowNode): node is ActionNode {
+  return node.type === 'action'
+}
+
+export function isCondition(node: FlowNode): node is ConditionNode {
+  return node.type === 'condition'
+}
+
+const ACTION_LABELS: Record<ActionKind, string> = {
+  add_tag: 'Add a tag',
+  assign_pic: 'Assign a PIC',
+  set_stage: 'Change the lead stage',
+}
+
+export function actionLabel(action: ActionKind) {
+  return ACTION_LABELS[action]
+}
+
+// What a step does, in one line: "Add the tag “VIP”".
+export function describeAction(
+  node: ActionNode,
+  choiceName: (kind: ChoiceKind, id: string) => string = (_kind, id) => id,
+) {
+  if (node.action === 'add_tag') {
+    return node.value === '' ? 'Add a tag' : `Add the tag “${choiceName('tag', node.value)}”`
+  }
+  if (node.action === 'assign_pic') {
+    return node.value === '' ? 'Assign a PIC' : `Assign ${choiceName('pic', node.value)} as the PIC`
+  }
+  const label = leadStatusOptions.find((option) => option.key === node.value)?.label
+  return label ? `Move the lead to ${label}` : 'Change the lead stage'
+}
+
 // A one-line reading of a block, for the canvas and the list.
 export function describeNode(
   node: FlowNode,
@@ -299,6 +351,11 @@ export function describeNode(
   if (isMessage(node)) {
     const when = `${describeOffset(node.mins)} ${node.after === true ? 'after' : 'before'}`
     return typeof node.contactId === 'number' ? `${when} · to ${contactName(node.contactId)}` : when
+  }
+  if (isAction(node)) {
+    return node.mins === 0 && node.after === true
+      ? 'When it happens'
+      : `${describeOffset(node.mins)} ${node.after === true ? 'after' : 'before'}`
   }
   if (node.kind === 'age') {
     if (node.min !== null && node.max !== null) {
@@ -343,8 +400,10 @@ export function edgeKey(edge: FlowEdge) {
 
 export function describeFlow(flow: Pick<AutomationFlow, 'trigger' | 'graph'>) {
   const messages = flow.graph.nodes.filter(isMessage).length
+  const actions = flow.graph.nodes.filter(isAction).length
   const text = messages === 1 ? '1 message' : `${messages} messages`
-  return `${triggerInfo(flow.trigger).label} · ${text}`
+  const more = actions === 0 ? '' : actions === 1 ? ' · 1 action' : ` · ${actions} actions`
+  return `${triggerInfo(flow.trigger).label} · ${text}${more}`
 }
 
 export function emptyGraph(): FlowGraph {
@@ -380,7 +439,7 @@ export function draftOf(flow: AutomationFlow): FlowDraft {
 }
 
 // The next free block id such as m3 or c2.
-export function nextNodeId(graph: FlowGraph, prefix: 'm' | 'c') {
+export function nextNodeId(graph: FlowGraph, prefix: 'm' | 'c' | 'a') {
   const used = new Set(graph.nodes.map((node) => node.id))
   let n = 1
   while (used.has(`${prefix}${n}`)) {
@@ -389,7 +448,16 @@ export function nextNodeId(graph: FlowGraph, prefix: 'm' | 'c') {
   return `${prefix}${n}`
 }
 
-export type NewBlockKind = 'message' | 'age' | 'classroom' | 'hours' | 'stage' | 'wait' | 'reply' | ChoiceKind
+export type NewBlockKind =
+  | 'message'
+  | 'age'
+  | 'classroom'
+  | 'hours'
+  | 'stage'
+  | 'wait'
+  | 'reply'
+  | ActionKind
+  | ChoiceKind
 
 export function addNode(
   graph: FlowGraph,
@@ -408,6 +476,20 @@ export function addNode(
       y,
       mins: 60,
       text: 'Hi {child}, a reminder about class at {time}.',
+    }
+    return { graph: { ...graph, nodes: [...graph.nodes, node] }, id }
+  }
+  if (kind === 'add_tag' || kind === 'assign_pic' || kind === 'set_stage') {
+    const id = nextNodeId(graph, 'a')
+    const node: ActionNode = {
+      id,
+      type: 'action',
+      x,
+      y,
+      action: kind,
+      value: kind === 'set_stage' ? 'contacted' : '',
+      mins: 0,
+      after: true,
     }
     return { graph: { ...graph, nodes: [...graph.nodes, node] }, id }
   }
@@ -460,12 +542,13 @@ export function addNodeAfter(
 // A flow that starts when something has already happened (a lead was added, a form was sent) can only
 // send after it, so every message is set to go after.
 export function sendAfterOnly(graph: FlowGraph): FlowGraph {
-  if (graph.nodes.every((node) => node.type !== 'message' || node.after === true)) {
+  const goesBefore = (node: FlowNode) => (node.type === 'message' || node.type === 'action') && node.after !== true
+  if (!graph.nodes.some(goesBefore)) {
     return graph
   }
   return {
     ...graph,
-    nodes: graph.nodes.map((node) => (node.type === 'message' && node.after !== true ? { ...node, after: true } : node)),
+    nodes: graph.nodes.map((node) => (goesBefore(node) ? { ...node, after: true } : node)),
   }
 }
 
@@ -497,7 +580,7 @@ export function removeNode(graph: FlowGraph, id: string): FlowGraph {
 export function updateNode(
   graph: FlowGraph,
   id: string,
-  change: Partial<MessageNode> | Partial<AgeCondition> | Partial<ClassroomCondition>,
+  change: Partial<MessageNode> | Partial<ActionNode> | Partial<AgeCondition> | Partial<ClassroomCondition>,
 ): FlowGraph {
   return { ...graph, nodes: graph.nodes.map((node) => (node.id === id ? ({ ...node, ...change } as FlowNode) : node)) }
 }
@@ -520,7 +603,7 @@ export function connect(graph: FlowGraph, edge: FlowEdge): FlowGraph {
   if (edge.from !== TRIGGER_ID && !from) {
     return graph
   }
-  const isBranch = from !== undefined && !isMessage(from)
+  const isBranch = from !== undefined && isCondition(from)
   if (isBranch ? edge.port === 'out' : edge.port !== 'out') {
     return graph
   }
@@ -607,6 +690,8 @@ export type FlowTestResult = {
   nodes: Set<string>
   edges: Set<string>
   messages: MessageNode[]
+  // The steps that would change the lead.
+  actions: ActionNode[]
 }
 
 // What the database would do for one child: walk from the trigger, answering each condition. The
@@ -615,6 +700,7 @@ export function simulateFlow(graph: FlowGraph, child: FlowTestChild): FlowTestRe
   const nodes = new Set<string>()
   const edges = new Set<string>()
   const messages: MessageNode[] = []
+  const actions: ActionNode[] = []
   const stack: string[] = [TRIGGER_ID]
 
   while (stack.length > 0) {
@@ -632,6 +718,9 @@ export function simulateFlow(graph: FlowGraph, child: FlowTestChild): FlowTestRe
       if (isMessage(node)) {
         // The message is queued; whatever follows it is walked too.
         messages.push(node)
+      } else if (isAction(node)) {
+        // The step is done; whatever follows it is walked too.
+        actions.push(node)
       } else if (node.kind === 'wait') {
         // Not said how the parent answers: the walk stops here, like the real flow that is still waiting.
         port = child.reply === 'replied' ? 'yes' : child.reply === 'silent' ? 'no' : 'out'
@@ -668,7 +757,7 @@ export function simulateFlow(graph: FlowGraph, child: FlowTestChild): FlowTestRe
       }
     }
   }
-  return { nodes, edges, messages }
+  return { nodes, edges, messages, actions }
 }
 
 // What a message's time is counted from: null = the event itself, 'reply' = the parent's reply (it sits on
@@ -712,8 +801,8 @@ export function validateDraft(draft: FlowDraft): string | null {
   if (draft.graph.nodes.length > MAX_NODES) {
     return `A flow can have up to ${MAX_NODES} blocks.`
   }
-  if (!draft.graph.nodes.some(isMessage)) {
-    return 'Add at least one message block.'
+  if (!draft.graph.nodes.some((node) => isMessage(node) || isAction(node))) {
+    return 'Add at least one message or one step that changes the lead.'
   }
   for (const node of draft.graph.nodes) {
     if (isMessage(node)) {
@@ -734,6 +823,22 @@ export function validateDraft(draft: FlowDraft): string | null {
       }
       if (node.imageUrl !== undefined && !/^https:\/\/\S+$/.test(node.imageUrl)) {
         return 'A message picture must be an https address.'
+      }
+    } else if (isAction(node)) {
+      if (!Number.isInteger(node.mins) || node.mins < MIN_ACTION_MINUTES || node.mins > MAX_OFFSET_MINUTES) {
+        return 'A step that changes the lead can be set 0 minutes to 60 days before or after.'
+      }
+      if (triggerInfo(draft.trigger).afterOnly && node.after !== true) {
+        return `This starts when ${triggerInfo(draft.trigger).phrase}, so a step can only happen after it.`
+      }
+      if (node.action === 'add_tag' && !/^[0-9]{1,12}$/.test(node.value)) {
+        return 'A step that adds a tag needs a tag picked.'
+      }
+      if (node.action === 'assign_pic' && !/^[0-9]{1,12}$/.test(node.value)) {
+        return 'A step that assigns a PIC needs a person picked.'
+      }
+      if (node.action === 'set_stage' && !SETTABLE_STAGES.includes(node.value as LeadStatus)) {
+        return 'A step that changes the stage needs a stage picked (a lead is converted by a person).'
       }
     } else if (node.kind === 'wait') {
       if (!Number.isInteger(node.mins) || node.mins < MIN_WAIT_MINUTES || node.mins > MAX_WAIT_MINUTES) {
@@ -811,7 +916,7 @@ export function orderedBlocks(graph: FlowGraph): { node: FlowNode; connected: bo
 }
 
 // Blocks no line reaches from the trigger: they would never send anything.
-export function unreachableMessages(graph: FlowGraph): MessageNode[] {
+export function unreachableMessages(graph: FlowGraph): (MessageNode | ActionNode)[] {
   const seen = new Set<string>([TRIGGER_ID])
   const stack = [TRIGGER_ID]
   while (stack.length > 0) {
@@ -823,7 +928,10 @@ export function unreachableMessages(graph: FlowGraph): MessageNode[] {
       }
     }
   }
-  return graph.nodes.filter(isMessage).filter((node) => !seen.has(node.id))
+  return graph.nodes.filter((node) => isMessage(node) || isAction(node)).filter((node) => !seen.has(node.id)) as (
+    | MessageNode
+    | ActionNode
+  )[]
 }
 
 function numberOr(value: unknown, fallback: number) {
@@ -860,6 +968,19 @@ export function parseGraph(raw: unknown): FlowGraph {
         ...(typeof node.contactId === 'number' ? { contactId: node.contactId } : {}),
         ...(node.after === true ? { after: true } : {}),
         ...(typeof node.imageUrl === 'string' && node.imageUrl !== '' ? { imageUrl: node.imageUrl } : {}),
+      })
+    } else if (
+      node.type === 'action' &&
+      (ACTION_KINDS as unknown[]).includes(node.action) &&
+      typeof node.value === 'string'
+    ) {
+      nodes.push({
+        ...base,
+        type: 'action',
+        action: node.action as ActionKind,
+        value: node.value,
+        mins: numberOr(node.mins, 0),
+        ...(node.after === true ? { after: true } : {}),
       })
     } else if (node.type === 'condition' && node.kind === 'wait') {
       nodes.push({ ...base, type: 'condition', kind: 'wait', mins: numberOr(node.mins, 1440) })

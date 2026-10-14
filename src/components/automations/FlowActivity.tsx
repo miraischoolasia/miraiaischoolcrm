@@ -35,6 +35,7 @@ const TONE_DOT: Record<Tone, string> = {
 
 const STATUS_CHIP: Record<EnrollmentStatus, string> = {
   sent: 'bg-emerald-100 text-emerald-800',
+  done: 'bg-violet-100 text-violet-800',
   waiting: 'bg-sky-100 text-sky-800',
   problem: 'bg-red-100 text-red-700',
   skipped: 'bg-amber-100 text-amber-800',
@@ -146,6 +147,7 @@ function EnrollmentList({ activity }: { activity: FlowActivityData }) {
         options={[
           ['all', 'Everyone'],
           ['sent', 'Sent'],
+          ['done', 'Done'],
           ['waiting', 'Waiting'],
           ['problem', 'Needs a look'],
           ['skipped', 'Skipped'],
@@ -225,7 +227,7 @@ function LogList({ activity }: { activity: FlowActivityData }) {
         counts={counts}
         options={[
           ['all', 'Everything'],
-          ['sent', 'Sent'],
+          ['sent', 'Sent or done'],
           ['problem', 'Problems'],
           ['skipped', 'Not sent'],
           ['other', 'In between'],

@@ -8,13 +8,18 @@ import {
   isExpired,
   isStuck,
   roomLeft,
+  willSendByItself,
   type AutomationSettings,
   type QueueItem,
 } from '../../lib/automationQueue'
 import type { ApproveResult, SendProgress } from '../../hooks/useAutomationQueue'
 
+const NO_AUTO_FLOWS: ReadonlySet<string> = new Set()
+
 type AutomationQueueDialogProps = {
   items: QueueItem[]
+  // The flows ("flow_<id>") that send by themselves: their waiting messages need nobody.
+  autoRuleKeys?: ReadonlySet<string>
   settings: AutomationSettings
   sentToday: number
   // Whoever can edit Leads may send; others can only read the queue.
@@ -63,6 +68,7 @@ function describeResult(result: ApproveResult) {
 // The messages the automations want to send. Nothing leaves until a person ticks it here.
 export function AutomationQueueDialog({
   items,
+  autoRuleKeys = NO_AUTO_FLOWS,
   settings,
   sentToday,
   canEdit,
@@ -85,7 +91,17 @@ export function AutomationQueueDialog({
   const [isWorking, setIsWorking] = useState(false)
 
   const textOf = (item: QueueItem) => edits.get(item.id) ?? item.message
-  const sendable = useMemo(() => items.filter((item) => canSend(item, now)), [items, now])
+  // The messages of a flow that sends by itself are only shown here; the sender program sends them at
+  // the time written on them. Everything else waits for a person.
+  const autoItems = useMemo(
+    () => items.filter((item) => willSendByItself(item, autoRuleKeys, now)),
+    [items, autoRuleKeys, now],
+  )
+  const waitingItems = useMemo(
+    () => items.filter((item) => !willSendByItself(item, autoRuleKeys, now)),
+    [items, autoRuleKeys, now],
+  )
+  const sendable = useMemo(() => waitingItems.filter((item) => canSend(item, now)), [waitingItems, now])
   const room = roomLeft(settings, sentToday)
   const chosen = items.filter((item) => picked.has(item.id) && canSend(item, now))
   const overLimit = chosen.length > room
@@ -139,6 +155,91 @@ export function AutomationQueueDialog({
     })
   }
 
+  function renderItem(item: QueueItem, auto: boolean) {
+                  const sendableNow = canSend(item, now)
+                  const stuck = isStuck(item, now)
+                  return (
+                    <li key={item.id} className="rounded-xl border border-slate-200 p-3">
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${item.parentName ?? item.phone}`}
+                          checked={picked.has(item.id)}
+                          disabled={!canEdit || isWorking || (!sendableNow && item.status !== 'sending')}
+                          onChange={() => toggle(item.id)}
+                          className="mt-1 h-4 w-4 accent-[#fc0c97]"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold text-slate-900">{item.parentName ?? `+${item.phone}`}</span>
+                            {item.childName && <span className="text-sm text-slate-500">· {item.childName}</span>}
+                            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                              {item.ruleName}
+                            </span>
+                            {item.status === 'failed' && (
+                              <span className="rounded-md bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+                                Failed
+                              </span>
+                            )}
+                            {isExpired(item, now) && (
+                              <span className="rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                Too late to send
+                              </span>
+                            )}
+                            {isBeingSent(item, now) && (
+                              <span className="rounded-md bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-800">
+                                Being sent
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            +{item.phone} · for {formatDue(item.dueAt)}
+                          </p>
+                          {auto && (
+                            <p className="mt-1 text-xs font-medium text-emerald-800">
+                              Will send by itself at {formatDue(item.dueAt)}. No need to approve it.
+                            </p>
+                          )}
+                          {item.mediaUrl && (
+                            <a href={item.mediaUrl} target="_blank" rel="noreferrer" className="mt-2 block w-fit">
+                              <img
+                                src={item.mediaUrl}
+                                alt="Picture sent with this message"
+                                className="max-h-24 max-w-[9rem] rounded-lg border border-slate-200"
+                              />
+                            </a>
+                          )}
+                          <textarea
+                            value={textOf(item)}
+                            disabled={!canEdit || isWorking || !sendableNow}
+                            aria-label={`Message to ${item.parentName ?? item.phone}`}
+                            rows={3}
+                            onChange={(event) =>
+                              setEdits((current) => new Map(current).set(item.id, event.target.value))
+                            }
+                            onBlur={() => void saveEdit(item)}
+                            className="mt-2 w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#fc0c97] disabled:bg-slate-50"
+                          />
+                          {item.autoBlocked && item.status === 'pending' && (
+                            <p className="mt-1 text-xs text-amber-800">
+                              Not sent by itself: {item.autoBlocked} Send it from here if it is fine.
+                            </p>
+                          )}
+                          {item.error && item.status === 'failed' && (
+                            <p className="mt-1 text-xs text-red-700">Last try: {item.error}</p>
+                          )}
+                          {stuck && (
+                            <p className="mt-1 text-xs text-amber-800">
+                              This one was being sent when a window closed. Check the chat first, because it may have
+                              gone out already.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </li>
+                  )
+  }
+
   return (
     <ModalShell maxWidth="760" onClose={onClose}>
       <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
@@ -148,7 +249,8 @@ export function AutomationQueueDialog({
             Automations
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            Messages waiting for you. Nothing is sent until you approve it here.
+            Messages waiting for you. Nothing is sent until you approve it here, except the flows that send by
+            themselves.
           </p>
         </div>
         <button
@@ -209,87 +311,35 @@ export function AutomationQueueDialog({
                 <p className="mt-1 text-sm text-slate-500">Nothing is waiting for approval.</p>
               </div>
             ) : (
-              <ul className="space-y-2">
-                {items.map((item) => {
-                  const sendableNow = canSend(item, now)
-                  const stuck = isStuck(item, now)
-                  return (
-                    <li key={item.id} className="rounded-xl border border-slate-200 p-3">
-                      <div className="flex items-start gap-3">
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${item.parentName ?? item.phone}`}
-                          checked={picked.has(item.id)}
-                          disabled={!canEdit || isWorking || (!sendableNow && item.status !== 'sending')}
-                          onChange={() => toggle(item.id)}
-                          className="mt-1 h-4 w-4 accent-[#fc0c97]"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-semibold text-slate-900">{item.parentName ?? `+${item.phone}`}</span>
-                            {item.childName && <span className="text-sm text-slate-500">· {item.childName}</span>}
-                            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                              {item.ruleName}
-                            </span>
-                            {item.status === 'failed' && (
-                              <span className="rounded-md bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
-                                Failed
-                              </span>
-                            )}
-                            {isExpired(item, now) && (
-                              <span className="rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
-                                Too late to send
-                              </span>
-                            )}
-                            {isBeingSent(item, now) && (
-                              <span className="rounded-md bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-800">
-                                Being sent
-                              </span>
-                            )}
-                          </div>
-                          <p className="mt-0.5 text-xs text-slate-500">
-                            +{item.phone} · for {formatDue(item.dueAt)}
-                          </p>
-                          {item.mediaUrl && (
-                            <a href={item.mediaUrl} target="_blank" rel="noreferrer" className="mt-2 block w-fit">
-                              <img
-                                src={item.mediaUrl}
-                                alt="Picture sent with this message"
-                                className="max-h-24 max-w-[9rem] rounded-lg border border-slate-200"
-                              />
-                            </a>
-                          )}
-                          <textarea
-                            value={textOf(item)}
-                            disabled={!canEdit || isWorking || !sendableNow}
-                            aria-label={`Message to ${item.parentName ?? item.phone}`}
-                            rows={3}
-                            onChange={(event) =>
-                              setEdits((current) => new Map(current).set(item.id, event.target.value))
-                            }
-                            onBlur={() => void saveEdit(item)}
-                            className="mt-2 w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#fc0c97] disabled:bg-slate-50"
-                          />
-                          {item.autoBlocked && item.status === 'pending' && (
-                            <p className="mt-1 text-xs text-amber-800">
-                              Not sent by itself: {item.autoBlocked} Send it from here if it is fine.
-                            </p>
-                          )}
-                          {item.error && item.status === 'failed' && (
-                            <p className="mt-1 text-xs text-red-700">Last try: {item.error}</p>
-                          )}
-                          {stuck && (
-                            <p className="mt-1 text-xs text-amber-800">
-                              This one was being sent when a window closed. Check the chat first, because it may have
-                              gone out already.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
+              <>
+                {waitingItems.length === 0 ? (
+                  <div className="py-6 text-center">
+                    <p className="font-semibold text-slate-900">Nothing needs your approval</p>
+                    <p className="mt-1 text-sm text-slate-500">The messages below go out by themselves.</p>
+                  </div>
+                ) : (
+                  <section aria-label="Needs your approval" className="space-y-2">
+                    {autoItems.length > 0 && (
+                      <h3 className="rounded-md bg-[#fff1f8] px-2 py-1 text-xs font-bold uppercase tracking-wide text-[#be185d]">
+                        Needs your approval ({waitingItems.length})
+                      </h3>
+                    )}
+                    <ul className="space-y-2">{waitingItems.map((item) => renderItem(item, false))}</ul>
+                  </section>
+                )}
+                {autoItems.length > 0 && (
+                  <section aria-label="Will send by itself" className="space-y-2">
+                    <h3 className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-bold uppercase tracking-wide text-emerald-800">
+                      Will send by itself ({autoItems.length})
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      These flows have “Send by itself” ticked, so nobody needs to approve them. Each goes out at the
+                      time shown. Send one from here only if it should go now.
+                    </p>
+                    <ul className="space-y-2">{autoItems.map((item) => renderItem(item, true))}</ul>
+                  </section>
+                )}
+              </>
             )}
           </div>
         </div>

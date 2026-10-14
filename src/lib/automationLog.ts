@@ -14,6 +14,8 @@ export type FlowLogKind =
   | 'replied'
   | 'no_reply'
   | 'reply_branch'
+  | 'action_done'
+  | 'action_skipped'
 
 export type FlowLogRow = {
   id: number
@@ -157,9 +159,12 @@ const LOG_TITLES: Record<FlowLogKind, string> = {
   replied: 'Parent replied',
   no_reply: 'No reply in time',
   reply_branch: 'Reply checked',
+  action_done: 'Changed the lead',
+  action_skipped: 'Step not done',
 }
 
-// What a log row of each kind means for the filter chips: the three about replies are steps in between.
+// What a log row of each kind means for the filter chips: the three about replies are steps in between; a
+// step that changed the lead counts as done.
 const LOG_GROUPS: Record<FlowLogKind, TimelineEntry['group']> = {
   stage_stopped: 'skipped',
   cooldown: 'skipped',
@@ -170,6 +175,8 @@ const LOG_GROUPS: Record<FlowLogKind, TimelineEntry['group']> = {
   replied: 'other',
   no_reply: 'other',
   reply_branch: 'other',
+  action_done: 'sent',
+  action_skipped: 'skipped',
 }
 
 export function personLabel(row: { childName: string | null; parentName: string | null; phone: string | null }) {
@@ -194,7 +201,7 @@ export function buildTimeline(activity: FlowActivity, now = Date.now()): Timelin
     entries.push({
       key: `log-${row.id}`,
       at: row.createdAt,
-      tone: row.kind === 'no_phone' ? 'warn' : 'info',
+      tone: row.kind === 'no_phone' || row.kind === 'action_skipped' ? 'warn' : row.kind === 'action_done' ? 'ok' : 'info',
       title: LOG_TITLES[row.kind],
       detail: row.detail,
       person: personLabel(row),
@@ -282,7 +289,7 @@ export function buildTimeline(activity: FlowActivity, now = Date.now()): Timelin
   return entries.sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || b.key.localeCompare(a.key))
 }
 
-export type EnrollmentStatus = 'sent' | 'waiting' | 'problem' | 'skipped' | 'not_sent'
+export type EnrollmentStatus = 'sent' | 'done' | 'waiting' | 'problem' | 'skipped' | 'not_sent'
 
 export type Enrollment = {
   eventKey: string
@@ -299,6 +306,7 @@ export type Enrollment = {
 
 const STATUS_LABELS: Record<EnrollmentStatus, string> = {
   sent: 'Sent',
+  done: 'Done',
   waiting: 'Waiting',
   problem: 'Needs a look',
   skipped: 'Skipped',
@@ -358,6 +366,10 @@ export function buildEnrollments(activity: FlowActivity, now = Date.now()): Enro
         status = 'skipped'
         reason = 'A person skipped it.'
       }
+    } else if (log.some((row) => row.kind === 'action_done')) {
+      // Nothing was messaged, but the flow changed the lead.
+      status = 'done'
+      reason = log.find((row) => row.kind === 'action_done')?.detail ?? null
     } else {
       status = 'not_sent'
       reason = log[0]?.detail ?? LOG_TITLES[log[0]?.kind ?? 'no_message']

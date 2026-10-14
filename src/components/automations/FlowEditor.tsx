@@ -8,7 +8,7 @@ import {
   addNodeAfter,
   describeNode,
   draftOf,
-  isMessage,
+  isCondition,
   isTesting,
   newFlowDraft,
   removeNode,
@@ -219,7 +219,7 @@ export function FlowEditor({
       return 'It goes right after the trigger.'
     }
     const from = draft.graph.nodes.find((node) => node.id === target.from)
-    if (from && !isMessage(from)) {
+    if (from && isCondition(from)) {
       const asked = from.kind === 'wait'
       const side = target.port === 'yes' ? (asked ? 'Replied' : 'Yes') : asked ? 'No reply' : 'No'
       return `It goes on the “${side}” side of “${describeNode(from, classroomName, undefined, choiceName)}”.`
@@ -408,8 +408,8 @@ export function FlowEditor({
           {view === 'advanced' && loose.length > 0 && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
               {loose.length === 1
-                ? '1 message is not connected to the trigger, so it will never be sent.'
-                : `${loose.length} messages are not connected to the trigger, so they will never be sent.`}{' '}
+                ? '1 step is not connected to the trigger, so it will never happen.'
+                : `${loose.length} steps are not connected to the trigger, so they will never happen.`}{' '}
               Drag a line from a circle to it, or delete it.
             </p>
           )}

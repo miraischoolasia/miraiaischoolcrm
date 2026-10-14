@@ -4,8 +4,10 @@ import {
   isBeingSent,
   isExpired,
   isStuck,
+  needsApproval,
   roomLeft,
   startOfDay,
+  willSendByItself,
   type QueueItem,
 } from './automationQueue'
 
@@ -68,5 +70,22 @@ describe('the daily limit', () => {
     expect(start.getHours()).toBe(0)
     expect(start.getMinutes()).toBe(0)
     expect(NOW - start.getTime()).toBeLessThan(24 * 60 * 60 * 1000)
+  })
+})
+
+describe('what a person has to approve', () => {
+  const auto = new Set(['flow_1'])
+
+  it('leaves the waiting messages of a flow that sends by itself to the sender', () => {
+    const waiting = item({ ruleKey: 'flow_1' })
+    expect(willSendByItself(waiting, auto, NOW)).toBe(true)
+    expect(needsApproval(waiting, auto, NOW)).toBe(false)
+  })
+
+  it('still needs a person for a flow that does not send by itself, a test and a handed-back one', () => {
+    expect(needsApproval(item({ ruleKey: 'flow_2' }), auto, NOW)).toBe(true)
+    expect(needsApproval(item({ ruleKey: 'flow_test_1' }), auto, NOW)).toBe(true)
+    expect(needsApproval(item({ ruleKey: 'flow_1', autoBlocked: 'Never wrote first.' }), auto, NOW)).toBe(true)
+    expect(needsApproval(item({ ruleKey: 'flow_1', status: 'failed', error: 'x' }), auto, NOW)).toBe(true)
   })
 })

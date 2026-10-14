@@ -5,6 +5,7 @@ import {
   claimQueueItem,
   currentUserId,
   DEFAULT_SETTINGS,
+  fetchAutoSendRuleKeys,
   fetchQueue,
   fetchSentToday,
   fetchSettings,
@@ -48,6 +49,8 @@ export function useAutomationQueue({ enabled, sleep = defaultSleep }: Args) {
   const [items, setItems] = useState<QueueItem[]>([])
   const [settings, setSettings] = useState<AutomationSettings>(DEFAULT_SETTINGS)
   const [sentToday, setSentToday] = useState(0)
+  // The flows that send by themselves, so the window can tell which messages need nobody.
+  const [autoRuleKeys, setAutoRuleKeys] = useState<ReadonlySet<string>>(new Set())
   const [isLoading, setIsLoading] = useState(enabled)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<SendProgress | null>(null)
@@ -58,8 +61,15 @@ export function useAutomationQueue({ enabled, sleep = defaultSleep }: Args) {
       return null
     }
     try {
-      const [queue, config, today] = await Promise.all([fetchQueue(), fetchSettings(), fetchSentToday()])
+      const [queue, config, today, autoKeys] = await Promise.all([
+        fetchQueue(),
+        fetchSettings(),
+        fetchSentToday(),
+        // Without it every message just looks like it needs approval, which is the safe way round.
+        fetchAutoSendRuleKeys().catch(() => new Set<string>()),
+      ])
       setItems(queue)
+      setAutoRuleKeys(autoKeys)
       setSettings(config)
       setSentToday(today)
       setError(null)
@@ -182,5 +192,17 @@ export function useAutomationQueue({ enabled, sleep = defaultSleep }: Args) {
     [reload, settings, sentToday, sleep],
   )
 
-  return { items, settings, sentToday, isLoading, error, progress, reload, saveMessage, skip, approve }
+  return {
+    items,
+    settings,
+    sentToday,
+    autoRuleKeys,
+    isLoading,
+    error,
+    progress,
+    reload,
+    saveMessage,
+    skip,
+    approve,
+  }
 }

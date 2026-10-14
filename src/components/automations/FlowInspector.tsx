@@ -4,6 +4,9 @@ import { cn } from '../../lib/cn'
 import {
   MAX_REPLY_WORDS,
   PLACEHOLDERS,
+  SETTABLE_STAGES,
+  actionLabel,
+  isAction,
   isChoiceCondition,
   isMessage,
   messageAnchors,
@@ -49,12 +52,15 @@ export function OffsetField({
   after,
   readOnly,
   label,
+  allowZero = false,
   onChange,
 }: {
   mins: number
   after: boolean
   readOnly: boolean
   label?: string
+  // 0 is allowed (a step that happens right away).
+  allowZero?: boolean
   onChange: (mins: number) => void
 }) {
   const initial = splitOffset(mins)
@@ -63,7 +69,7 @@ export function OffsetField({
 
   function commit(value: string, nextUnit: OffsetUnit) {
     const amount = Number(value)
-    if (value.trim() !== '' && Number.isFinite(amount) && amount > 0) {
+    if (value.trim() !== '' && Number.isFinite(amount) && (amount > 0 || (allowZero && amount === 0))) {
       onChange(toOffsetMinutes(amount, nextUnit))
     }
   }
@@ -73,7 +79,7 @@ export function OffsetField({
       <input
         type="number"
         aria-label={label ?? (after ? 'How long after' : 'How long before')}
-        min={1}
+        min={allowZero ? 0 : 1}
         step="any"
         value={text}
         disabled={readOnly}
@@ -84,7 +90,7 @@ export function OffsetField({
         onBlur={() => {
           // An empty or unusable box goes back to the value the block really has.
           const amount = Number(text)
-          if (text.trim() === '' || !Number.isFinite(amount) || amount <= 0) {
+          if (text.trim() === '' || !Number.isFinite(amount) || amount < 0 || (amount === 0 && !allowZero)) {
             setText(String(Math.round((mins / toOffsetMinutes(1, unit)) * 100) / 100))
           }
         }}
@@ -357,6 +363,97 @@ export function FlowInspector({
         <p className="mt-1 whitespace-pre-wrap rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
           {previewMessage(node.text) || ' '}
         </p>
+      </>
+    )
+  } else if (isAction(node)) {
+    const anchor = graph ? (messageAnchors(graph).get(node.id) ?? null) : null
+    const tags = filterOptions.tag
+    const people = filterOptions.pic
+    const known =
+      node.action === 'add_tag'
+        ? tags.some((choice) => choice.id === node.value)
+        : node.action === 'assign_pic'
+          ? people.some((choice) => choice.id === node.value)
+          : true
+    body = (
+      <>
+        <h3 className="text-sm font-semibold text-slate-900">{actionLabel(node.action)}</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Changes the lead of this family by itself: nothing is sent and nothing waits for approval. A family with
+          no lead is left as it is, and the Execution logs say so.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
+          <span>Do it</span>
+          <OffsetField
+            key={node.id}
+            mins={node.mins}
+            after={anchor !== null || info.afterOnly === true || node.after === true}
+            allowZero
+            readOnly={readOnly}
+            onChange={(mins) => onChange({ mins })}
+          />
+          {anchor === 'reply' ? (
+            <span>after the parent replies</span>
+          ) : anchor === 'timeout' ? (
+            <span>after the waiting ends (no reply)</span>
+          ) : info.afterOnly ? (
+            <span>after it happens</span>
+          ) : (
+            <select
+              aria-label="Before or after"
+              value={node.after === true ? 'after' : 'before'}
+              disabled={readOnly}
+              onChange={(event) => onChange({ after: event.target.value === 'after' })}
+              className={fieldClass}
+            >
+              <option value="before">before it starts</option>
+              <option value="after">after it starts</option>
+            </select>
+          )}
+        </div>
+        <label className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
+          <span>
+            {node.action === 'add_tag' ? 'Tag' : node.action === 'assign_pic' ? 'PIC' : 'Move the lead to'}
+          </span>
+          <select
+            aria-label={node.action === 'add_tag' ? 'Tag to add' : node.action === 'assign_pic' ? 'PIC to assign' : 'Stage'}
+            value={node.value}
+            disabled={readOnly}
+            onChange={(event) => onChange({ value: event.target.value })}
+            className={cn(fieldClass, 'min-w-0 flex-1')}
+          >
+            <option value="">Choose…</option>
+            {node.action === 'add_tag' &&
+              tags.map((choice) => (
+                <option key={choice.id} value={choice.id}>
+                  {choice.label}
+                </option>
+              ))}
+            {node.action === 'assign_pic' &&
+              people.map((choice) => (
+                <option key={choice.id} value={choice.id}>
+                  {choice.label}
+                </option>
+              ))}
+            {node.action === 'set_stage' &&
+              leadStatusOptions
+                .filter((option) => SETTABLE_STAGES.includes(option.key))
+                .map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+            {!known && node.value !== '' && <option value={node.value}>A choice that was removed</option>}
+          </select>
+        </label>
+        {node.action === 'set_stage' && (
+          <p className="mt-1 text-xs text-slate-500">
+            “Converted” is not offered: a lead is converted by a person, because that makes the student.
+          </p>
+        )}
+        {node.action === 'add_tag' && tags.length === 0 && (
+          <p className="mt-1 text-xs text-slate-500">There are no tags yet. Add one on the Leads page first.</p>
+        )}
       </>
     )
   } else if (node.kind === 'wait') {

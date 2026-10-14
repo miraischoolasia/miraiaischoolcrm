@@ -25,7 +25,7 @@ import { ChatPanel } from './ChatPanel'
 import { ConversationList } from './ConversationList'
 import { useQuickReplies } from '../../hooks/useQuickReplies'
 import { useAutomationQueue } from '../../hooks/useAutomationQueue'
-import { canSend, type QueueItem } from '../../lib/automationQueue'
+import { needsApproval, type QueueItem } from '../../lib/automationQueue'
 import { useSourceRules } from '../../hooks/useSourceRules'
 import { useAutoLeads } from '../../hooks/useAutoLeads'
 import { makeLeadResolver, quickReplyValues, resolveChatLead } from '../../lib/chatLink'
@@ -421,8 +421,8 @@ export function WhatsAppInbox({
   const automation = useAutomationQueue({ enabled: active })
   const [automationOpen, setAutomationOpen] = useState(false)
   const automationWaiting = useMemo(
-    () => automation.items.filter((entry) => canSend(entry, Date.now())).length,
-    [automation.items],
+    () => automation.items.filter((entry) => needsApproval(entry, automation.autoRuleKeys, Date.now())).length,
+    [automation.items, automation.autoRuleKeys],
   )
   // The family table: who is whose parent. The database keeps it in step with leads and students; the
   // page adds each WhatsApp contact and what the team ties together by hand.
@@ -951,6 +951,7 @@ export function WhatsAppInbox({
       {automationOpen && (
         <AutomationQueueDialog
           items={automation.items}
+          autoRuleKeys={automation.autoRuleKeys}
           settings={automation.settings}
           sentToday={automation.sentToday}
           canEdit={crm.canEditLeads}

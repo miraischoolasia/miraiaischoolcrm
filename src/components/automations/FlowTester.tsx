@@ -3,10 +3,13 @@ import { PaperPlaneTilt, X } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { leadStatusOptions } from '../../lib/constants'
 import {
+  describeAction,
+  describeNode,
   describeOffset,
   isTesting,
   normalizeTestPhone,
   previewMessage,
+  type ChoiceKind,
   type FilterOptions,
   type FlowTestResult,
   type TestInputs,
@@ -72,6 +75,8 @@ export function FlowTester({
   const row = panel ? 'flex flex-col items-stretch gap-1' : 'flex items-center gap-2'
   // In the panel every field is as wide as the panel.
   const fieldCx = (width: string) => cn(fieldClass, panel ? 'w-full' : width)
+  const choiceName = (kind: ChoiceKind, id: string) =>
+    filterOptions[kind].find((choice) => choice.id === id)?.label ?? 'a removed choice'
   const testing = isTesting(test)
   const [phone, setPhone] = useState(readSavedPhone)
   const [isSending, setIsSending] = useState(false)
@@ -254,22 +259,36 @@ export function FlowTester({
         )}
       </div>
       {testing &&
-        (outcome.messages.length === 0 ? (
+        (outcome.messages.length === 0 && outcome.actions.length === 0 ? (
           <p className="mt-2 text-sm text-slate-500">This child would get no message.</p>
         ) : (
-          <ul className={cn('mt-2 space-y-1.5 overflow-y-auto text-sm', panel ? 'max-h-64' : 'max-h-36')}>
-            {[...outcome.messages]
-              .sort((a, b) => b.mins - a.mins)
-              .map((message) => (
-                <li key={message.id} className="rounded-lg bg-emerald-50 px-3 py-1.5 text-emerald-900">
-                  <span className="block text-xs text-emerald-800">
-                    {describeOffset(message.mins)} {message.after === true ? 'after' : 'before'}
-                    {message.imageUrl ? ' · with a picture' : ''}
-                  </span>
-                  {previewMessage(message.text)}
-                </li>
-              ))}
-          </ul>
+          <div className="mt-2 space-y-2">
+            {outcome.messages.length > 0 && (
+              <ul className={cn('space-y-1.5 overflow-y-auto text-sm', panel ? 'max-h-64' : 'max-h-36')}>
+                {[...outcome.messages]
+                  .sort((a, b) => b.mins - a.mins)
+                  .map((message) => (
+                    <li key={message.id} className="rounded-lg bg-emerald-50 px-3 py-1.5 text-emerald-900">
+                      <span className="block text-xs text-emerald-800">
+                        {describeOffset(message.mins)} {message.after === true ? 'after' : 'before'}
+                        {message.imageUrl ? ' · with a picture' : ''}
+                      </span>
+                      {previewMessage(message.text)}
+                    </li>
+                  ))}
+              </ul>
+            )}
+            {outcome.actions.length > 0 && (
+              <ul className="space-y-1.5 text-sm">
+                {outcome.actions.map((step) => (
+                  <li key={step.id} className="rounded-lg bg-violet-50 px-3 py-1.5 text-violet-900">
+                    <span className="block text-xs text-violet-800">{describeNode(step)}</span>
+                    {describeAction(step, choiceName)}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         ))}
       {canSend && (
         <div

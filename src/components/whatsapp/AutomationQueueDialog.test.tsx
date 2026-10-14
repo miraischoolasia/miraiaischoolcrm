@@ -30,13 +30,16 @@ const item = (change: Partial<QueueItem>): QueueItem => ({
 
 const second = item({ id: 2, parentName: 'Mr Wong', childName: 'Chloe', phone: '60111111111', message: 'Hi Mr Wong' })
 
-function setup(change: { items?: QueueItem[]; canEdit?: boolean; sentToday?: number; paused?: boolean } = {}) {
+function setup(
+  change: { items?: QueueItem[]; canEdit?: boolean; sentToday?: number; paused?: boolean; autoRuleKeys?: string[] } = {},
+) {
   const onApprove = vi.fn().mockResolvedValue({ sent: 1, failure: null, taken: 0, heldBack: 0 })
   const onSkip = vi.fn().mockResolvedValue(null)
   const onSaveMessage = vi.fn().mockResolvedValue(null)
   render(
     <AutomationQueueDialog
       items={change.items ?? [item({}), second]}
+      autoRuleKeys={new Set(change.autoRuleKeys ?? [])}
       settings={{ paused: change.paused ?? false, dailyCap: 40, gapSeconds: 30 }}
       sentToday={change.sentToday ?? 0}
       canEdit={change.canEdit ?? true}
@@ -61,6 +64,35 @@ describe('AutomationQueueDialog', () => {
     expect(screen.getByText('· Ethan')).toBeInTheDocument()
     expect(screen.getByText(/Sent today 0 of 40/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Approve and send \(0\)/ })).toBeDisabled()
+  })
+
+  it('shows the messages of a flow that sends by itself apart, and says they need nobody', () => {
+    setup({
+      items: [
+        item({ id: 1, ruleKey: 'flow_1', ruleName: 'Class reminder', dueAt: '2026-10-14T19:30:00+08:00' }),
+        item({ id: 2, ruleKey: 'flow_2', ruleName: 'Follow up', parentName: 'Mr Wong', phone: '60111111111', message: 'Hi Mr Wong' }),
+      ],
+      autoRuleKeys: ['flow_1'],
+    })
+
+    const auto = screen.getByRole('region', { name: 'Will send by itself' })
+    expect(auto).toHaveTextContent('Mrs Lim')
+    expect(auto).toHaveTextContent('No need to approve it')
+    const needs = screen.getByRole('region', { name: 'Needs your approval' })
+    expect(needs).toHaveTextContent('Mr Wong')
+    expect(needs).not.toHaveTextContent('Mrs Lim')
+    // "Select all" counts only what needs a person.
+    expect(screen.getByRole('button', { name: 'Select all (1)' })).toBeInTheDocument()
+  })
+
+  it('keeps a message the sender handed back in the list that needs a person', () => {
+    setup({
+      items: [item({ id: 1, ruleKey: 'flow_1', autoBlocked: 'Never wrote to us first.' })],
+      autoRuleKeys: ['flow_1'],
+    })
+
+    expect(screen.queryByRole('region', { name: 'Will send by itself' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Not sent by itself: Never wrote to us first/)).toBeInTheDocument()
   })
 
   it('sends the ticked messages with the text as edited', async () => {
