@@ -23,6 +23,7 @@ import {
   socialKindOf,
   getPreview,
   type ChatwootConversation,
+  type InboxCategory,
   type InboxTab,
 } from '../../lib/whatsappInbox'
 
@@ -87,6 +88,10 @@ type ConversationListProps = {
   ownerId?: number | 'none' | null
   owners?: { id: number; label: string }[]
   onOwner?: (ownerId: number | 'none' | null) => void
+  // The part of the inbox on show (WhatsApp, Messenger or Instagram); the switch itself sits above the box.
+  category?: InboxCategory
+  // The words of the "all channels" choice in the channel filter ("All numbers" for WhatsApp).
+  allChannelsLabel?: string
   // WhatsApp numbers: shown on each chat, and a filter when the person sees more than one.
   numberOf?: (conversation: ChatwootConversation) => string | null
   inboxId?: number | null
@@ -160,6 +165,8 @@ export function ConversationList({
   ownerId = null,
   owners = [],
   onOwner,
+  category = 'whatsapp',
+  allChannelsLabel = 'All numbers',
   numberOf,
   inboxId = null,
   numberChoices = [],
@@ -187,7 +194,7 @@ export function ConversationList({
     <div className={cn('flex min-h-0 flex-col border-slate-200 bg-white lg:border-r', className)}>
       <div className="border-b border-slate-200 p-3">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h2 className="text-base font-semibold text-slate-900">WhatsApp</h2>
+          <h2 className="text-base font-semibold text-slate-900">Inbox</h2>
           <div className="flex items-center gap-1.5">
             {onOpenAutomations && (
               <button
@@ -206,7 +213,7 @@ export function ConversationList({
                 )}
               </button>
             )}
-            {onManageNumbers && (
+            {onManageNumbers && category === 'whatsapp' && (
               <button
                 type="button"
                 onClick={onManageNumbers}
@@ -216,14 +223,16 @@ export function ConversationList({
                 Numbers
               </button>
             )}
-            <button
-              type="button"
-              onClick={onNewChat}
-              className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              <Plus size={14} aria-hidden="true" />
-              New chat
-            </button>
+            {category === 'whatsapp' && (
+              <button
+                type="button"
+                onClick={onNewChat}
+                className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                <Plus size={14} aria-hidden="true" />
+                New chat
+              </button>
+            )}
           </div>
         </div>
         <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-[4.5px] text-sm text-slate-500 focus-within:border-[#fc0c97]">
@@ -283,7 +292,7 @@ export function ConversationList({
         <div className={cn('mt-2 grid gap-2 text-sm', onKind ? 'grid-cols-3' : 'grid-cols-2')}>
           {onInbox && numberChoices.length > 1 && (
             <label className="relative col-span-full min-w-0">
-              <span className="sr-only">Filter by WhatsApp number</span>
+              <span className="sr-only">Filter by channel</span>
               <select
                 value={inboxId ?? ''}
                 onChange={(event) => onInbox(event.target.value ? Number(event.target.value) : null)}
@@ -292,7 +301,7 @@ export function ConversationList({
                   inboxId === null ? 'border-slate-200 text-slate-700' : 'border-[#fc0c97] text-slate-900',
                 )}
               >
-                <option value="">All numbers</option>
+                <option value="">{allChannelsLabel}</option>
                 {numberChoices.map((choice) => (
                   <option key={choice.inboxId} value={choice.inboxId}>
                     {choice.label}

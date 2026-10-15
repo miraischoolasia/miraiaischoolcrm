@@ -1581,7 +1581,7 @@ function App() {
     [
       { key: 'home', label: 'Today', icon: House },
       { key: 'leads', label: 'Leads', icon: Funnel, group: 'marketing' },
-      { key: 'whatsapp', label: 'WhatsApp', icon: WhatsappLogo, group: 'marketing' },
+      { key: 'whatsapp', label: 'Inbox', icon: WhatsappLogo, group: 'marketing' },
       { key: 'automations', label: 'Automations', icon: Lightning, group: 'marketing' },
       { key: 'ai-knowledge', label: 'AI Knowledge', icon: Brain, group: 'marketing' },
       { key: 'forms', label: 'Forms', icon: ClipboardText, group: 'marketing' },
@@ -5596,7 +5596,7 @@ function App() {
                         : activeSection === 'leads'
                           ? 'Leads'
                           : activeSection === 'whatsapp'
-                            ? 'WhatsApp'
+                            ? 'Inbox'
                             : activeSection === 'automations'
                               ? 'Automations'
                               : activeSection === 'ai-knowledge'

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { InstagramLogo, MessengerLogo, WhatsappLogo } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { createChatwootClient, type Sender } from '../../lib/chatwootClient'
 import { useMessageSearch } from '../../hooks/useMessageSearch'
@@ -19,6 +20,9 @@ import {
   isGroupChat,
   socialKindOf,
   isRecentlyOverdue,
+  categoryOf,
+  unreadByCategory,
+  type InboxCategory,
   type InboxTab,
 } from '../../lib/whatsappInbox'
 import { hoaSlotLinesForAi } from '../../lib/hoaSlots'
@@ -79,6 +83,12 @@ export type WhatsAppNumbersView = {
   onRemove: (number: WhatsAppNumber) => Promise<string | null>
 }
 
+const CATEGORY_BUTTONS = [
+  { key: 'whatsapp', label: 'WhatsApp', icon: WhatsappLogo, color: '#25D366' },
+  { key: 'messenger', label: 'Messenger', icon: MessengerLogo, color: '#0084FF' },
+  { key: 'instagram', label: 'Instagram', icon: InstagramLogo, color: '#E1306C' },
+] as const
+
 export function WhatsAppInbox({
   apiUrl,
   currentUser,
@@ -99,6 +109,10 @@ export function WhatsAppInbox({
   const [kind, setKind] = useState<StudentKind | 'none' | null>(null)
   const [ownerId, setOwnerId] = useState<number | 'none' | null>(null)
   const [inboxFilter, setInboxFilter] = useState<number | null>(null)
+  // WhatsApp, Messenger and Instagram chats are kept apart; WhatsApp is the one that opens first.
+  const [category, setCategory] = useState<InboxCategory>('whatsapp')
+  const [socialInboxNames, setSocialInboxNames] = useState<Map<number, string>>(new Map())
+  const askedInboxNames = useRef(false)
   const [managingNumbers, setManagingNumbers] = useState(false)
   const [inboxList, setInboxList] = useState<{ id: number; name: string }[]>([])
   const [search, setSearch] = useState('')
@@ -107,7 +121,12 @@ export function WhatsAppInbox({
   // On a small screen the side panel takes the place of the chat.
   const [detailsOpen, setDetailsOpen] = useState(false)
 
-  const counts = useMemo(() => countByTab(inbox.conversations), [inbox.conversations])
+  const categoryChats = useMemo(
+    () => inbox.conversations.filter((conversation) => categoryOf(conversation) === category),
+    [inbox.conversations, category],
+  )
+  const categoryUnread = useMemo(() => unreadByCategory(inbox.conversations), [inbox.conversations])
+  const counts = useMemo(() => countByTab(categoryChats), [categoryChats])
   // Words typed in the search are also looked for inside the messages of every chat.
   const messageHits = useMessageSearch(client, search)
   const matchedIds = useMemo(() => new Set(messageHits.keys()), [messageHits])
@@ -387,7 +406,7 @@ export function WhatsAppInbox({
         draftsFirst(
         filterConversations(
           inbox.conversations,
-          { tab, search, tagId, sourceId, matchedIds, kind, ownerId, inboxId: inboxFilter },
+          { tab, search, tagId, sourceId, matchedIds, kind, ownerId, inboxId: inboxFilter, category },
           (conversation) =>
             resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number)),
           studentKindsOf,
@@ -397,7 +416,7 @@ export function WhatsAppInbox({
         ),
         (id) => pinnedIds.has(id),
       ),
-    [inbox.conversations, inbox.selectedId, pinnedIds, drafts, tab, search, tagId, sourceId, matchedIds, kind, ownerId, inboxFilter, resolveLead, studentKindsOf, searchNamesOf],
+    [inbox.conversations, inbox.selectedId, pinnedIds, drafts, tab, search, tagId, sourceId, matchedIds, kind, ownerId, inboxFilter, category, resolveLead, studentKindsOf, searchNamesOf],
   )
   const hasChat = inbox.selected !== null
   // Reactions, edits and deletes of the open chat, and the team's own.
@@ -412,8 +431,8 @@ export function WhatsAppInbox({
     return () => window.clearInterval(timer)
   }, [])
   const overdueCount = useMemo(
-    () => inbox.conversations.filter((conversation) => isRecentlyOverdue(conversation, nowSeconds)).length,
-    [inbox.conversations, nowSeconds],
+    () => categoryChats.filter((conversation) => isRecentlyOverdue(conversation, nowSeconds)).length,
+    [categoryChats, nowSeconds],
   )
 
   const quickReplies = useQuickReplies(true)
@@ -518,6 +537,7 @@ export function WhatsAppInbox({
     }
     handledRequest.current = openRequest.id
     const show = (conversation: ChatwootConversation | null) => {
+      setCategory('whatsapp')
       setSearch('')
       setTagId(null)
       setSourceId(null)
@@ -583,6 +603,38 @@ export function WhatsAppInbox({
         ? (numberChoices.find((choice) => choice.inboxId === conversation.inbox_id)?.label ?? null)
         : null,
     [numberChoices],
+  )
+  // Messenger and Instagram have no list of numbers; the inboxes their chats are in are the choices.
+  useEffect(() => {
+    if (category === 'whatsapp' || askedInboxNames.current) {
+      return
+    }
+    askedInboxNames.current = true
+    client
+      .listInboxes()
+      .then((list) => setSocialInboxNames(new Map(list.map((entry) => [entry.id, entry.name]))))
+      .catch(() => undefined)
+  }, [category, client])
+  const channelChoices = useMemo(() => {
+    if (category === 'whatsapp') {
+      return numberChoices
+    }
+    const ids = [...new Set(categoryChats.map((conversation) => conversation.inbox_id))]
+      .filter((id): id is number => id !== undefined)
+      .sort((a, b) => a - b)
+    const word = category === 'instagram' ? 'Instagram' : 'Messenger'
+    return ids.map((id, index) => ({ inboxId: id, label: socialInboxNames.get(id) ?? `${word} ${index + 1}` }))
+  }, [category, numberChoices, categoryChats, socialInboxNames])
+  const changeCategory = useCallback(
+    (next: InboxCategory) => {
+      setCategory(next)
+      setInboxFilter(null)
+      // A chat of the other part is not left open beside a list that does not show it.
+      if (inbox.selected && categoryOf(inbox.selected) !== next) {
+        inbox.setSelectedId(null)
+      }
+    },
+    [inbox],
   )
   const openNumbers = useCallback(() => {
     setManagingNumbers(true)
@@ -729,9 +781,41 @@ export function WhatsAppInbox({
   }, [inbox.selected, crm, currentUser.name])
 
   return (
+    <div>
+    <div role="group" aria-label="Channel" className={cn('mb-3 flex flex-wrap gap-2', hasChat && 'max-lg:hidden')}>
+      {CATEGORY_BUTTONS.map(({ key, label, icon: ChannelIcon, color }) => {
+        const selected = category === key
+        const unread = categoryUnread[key]
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={() => changeCategory(key)}
+            aria-pressed={selected}
+            className={cn(
+              'inline-flex h-10 items-center gap-2 rounded-xl border px-3.5 text-sm font-semibold transition',
+              selected
+                ? 'border-slate-900 bg-slate-900 text-white'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+            )}
+          >
+            <ChannelIcon size={20} weight="fill" color={selected ? '#ffffff' : color} aria-hidden="true" />
+            {label}
+            {unread > 0 && (
+              <span
+                title="Chats nobody has opened yet"
+                className="min-w-5 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white"
+              >
+                {unread > 99 ? '99+' : unread}
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </div>
     <div
       className={cn(
-        'grid h-[calc(100dvh-210px)] min-h-[520px] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white lg:h-[calc(100dvh-130px)] lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_280px]',
+        'grid h-[calc(100dvh-262px)] min-h-[520px] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white lg:h-[calc(100dvh-182px)] lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_280px]',
         // On a phone an open chat takes the whole screen, above the page title and
         // tools, and stops just above the bottom menu.
         hasChat && 'max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-[5.7rem] max-lg:z-30 max-lg:h-auto max-lg:min-h-0 max-lg:rounded-none max-lg:border-0',
@@ -781,9 +865,11 @@ export function WhatsAppInbox({
         onNewChat={() => setStartingChat(true)}
         automationCount={automationWaiting}
         onOpenAutomations={() => setAutomationOpen(true)}
+        category={category}
+        allChannelsLabel={category === 'whatsapp' ? 'All numbers' : category === 'instagram' ? 'All Instagram accounts' : 'All Messenger pages'}
         numberOf={numberLabelOf}
         inboxId={inboxFilter}
-        numberChoices={numberChoices}
+        numberChoices={channelChoices}
         onInbox={setInboxFilter}
         onManageNumbers={numbersView?.isAdmin ? openNumbers : undefined}
       />
@@ -1005,6 +1091,7 @@ export function WhatsAppInbox({
           onReorder={quickReplies.reorder}
         />
       )}
+    </div>
     </div>
   )
 }

@@ -161,6 +161,13 @@ export function socialKindOf(channel: string | null | undefined, sender?: Chatwo
   return null
 }
 
+export type InboxCategory = 'whatsapp' | 'messenger' | 'instagram'
+
+// The part of the inbox a chat is shown under: WhatsApp unless it came in through Messenger or Instagram.
+export function categoryOf(conversation: Pick<ChatwootConversation, 'meta'>): InboxCategory {
+  return socialKindOf(conversation.meta.channel, conversation.meta.sender) ?? 'whatsapp'
+}
+
 export type ChatIdentity = {
   // The name the person gave WhatsApp, or null when there is none. For matching only, never shown.
   name: string | null
@@ -361,6 +368,8 @@ export type InboxFilters = {
   ownerId?: number | 'none' | null
   // Only chats on this WhatsApp number (Chatwoot inbox id).
   inboxId?: number | null
+  // Only WhatsApp chats, only Messenger chats or only Instagram chats.
+  category?: InboxCategory | null
 }
 
 // The lead a chat belongs to, for the tag and source filters.
@@ -398,6 +407,7 @@ export function filterConversations(
         (filters.sourceId === null || lead.sourceId === filters.sourceId)
       )
     })
+    .filter((conversation) => !filters.category || categoryOf(conversation) === filters.category)
     .filter((conversation) => filters.inboxId === null || filters.inboxId === undefined || conversation.inbox_id === filters.inboxId)
     .filter((conversation) => {
       if (filters.ownerId === null || filters.ownerId === undefined) {
@@ -444,6 +454,17 @@ export function countByTab(conversations: ChatwootConversation[]) {
     counts[getTab(conversation)] += 1
     if (isInTab(conversation, 'unread')) {
       counts.unread += 1
+    }
+  }
+  return counts
+}
+
+// How many chats nobody has looked at yet there are in each part of the inbox.
+export function unreadByCategory(conversations: ChatwootConversation[]) {
+  const counts: Record<InboxCategory, number> = { whatsapp: 0, messenger: 0, instagram: 0 }
+  for (const conversation of conversations) {
+    if (isInTab(conversation, 'unread')) {
+      counts[categoryOf(conversation)] += 1
     }
   }
   return counts

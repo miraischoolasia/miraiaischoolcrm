@@ -11,6 +11,8 @@ import {
   formatListTime,
   getChatIdentity,
   socialKindOf,
+  categoryOf,
+  unreadByCategory,
   confirmsBySource,
   isGroupChat,
   isMessengerChannel,
@@ -519,5 +521,39 @@ describe('replies in a GoHighLevel chat', () => {
   it('still waits for the WhatsApp id in a WhatsApp chat', () => {
     expect(getSendState(reply(), 1005)).toBe('sending')
     expect(getSendState(reply({ source_id: 'WAID:3EB0' }), 1005)).toBe('sent')
+  })
+})
+
+describe('the parts of the inbox', () => {
+  const social = (id: number, kind: 'FB' | 'IG', unread = 0) =>
+    conversation({
+      id,
+      inbox_id: 4,
+      unread_count: unread,
+      meta: {
+        channel: 'Channel::Api',
+        sender: { id: id + 100, name: 'Mei Ling', phone_number: null, identifier: `ghl:${id}`, additional_attributes: { ghl_channel: kind } },
+      },
+    } as never)
+  const whatsapp = (id: number, unread = 0) => conversation({ id, inbox_id: 1, unread_count: unread, phone: '60123456789' })
+
+  it('puts a chat under WhatsApp, Messenger or Instagram', () => {
+    expect(categoryOf(whatsapp(1))).toBe('whatsapp')
+    expect(categoryOf(social(2, 'FB'))).toBe('messenger')
+    expect(categoryOf(social(3, 'IG'))).toBe('instagram')
+  })
+
+  it('lists one part at a time, and everything when none is picked', () => {
+    const all = [whatsapp(1), social(2, 'FB'), social(3, 'IG')]
+    const base = { tab: 'chats' as const, search: '', tagId: null, sourceId: null }
+    expect(filterConversations(all, { ...base, category: 'whatsapp' }).map((c) => c.id)).toEqual([1])
+    expect(filterConversations(all, { ...base, category: 'messenger' }).map((c) => c.id)).toEqual([2])
+    expect(filterConversations(all, { ...base, category: 'instagram' }).map((c) => c.id)).toEqual([3])
+    expect(filterConversations(all, base).map((c) => c.id)).toEqual([1, 2, 3])
+  })
+
+  it('counts the unread chats of each part', () => {
+    const all = [whatsapp(1, 2), whatsapp(2, 1), social(3, 'FB', 1), social(4, 'IG')]
+    expect(unreadByCategory(all)).toEqual({ whatsapp: 2, messenger: 1, instagram: 0 })
   })
 })
