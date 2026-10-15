@@ -82,6 +82,8 @@ export function useWhatsAppInbox(
   // parent are still to be read after it.
   const [ownHasOlder, setOwnHasOlder] = useState(false)
   const [olderChatCount, setOlderChatCount] = useState(0)
+  // Every chat the selected parent has, on any number: which numbers they reached the school on.
+  const [contactChats, setContactChats] = useState<{ id: number; inbox_id: number; created_at?: number }[]>([])
   const ownCursor = useRef<number | null>(null)
   const olderChats = useRef<number[]>([])
   const [actionError, setActionError] = useState<string | null>(null)
@@ -225,6 +227,7 @@ export function useWhatsAppInbox(
     setMessagesChat(null)
     setOwnHasOlder(false)
     setOlderChatCount(0)
+    setContactChats([])
     ownCursor.current = null
     olderChats.current = []
     setActionError(null)
@@ -254,6 +257,8 @@ export function useWhatsAppInbox(
 
     // Other chats of the same parent (an old one under a hidden ID) are read after this one.
     const senderId = mapRef.current.get(selectedId)?.meta.sender.id
+    // Only chats on the same number: the chat the parent has on another number is a chat of its own.
+    const inboxId = mapRef.current.get(selectedId)?.inbox_id
     if (senderId !== undefined) {
       client
         .listContactConversations(senderId)
@@ -261,7 +266,11 @@ export function useWhatsAppInbox(
           if (cancelled) {
             return
           }
-          olderChats.current = chats.map((chat) => chat.id).filter((id) => id !== selectedId).sort((a, b) => b - a)
+          setContactChats(chats.map((chat) => ({ id: chat.id, inbox_id: chat.inbox_id, created_at: chat.created_at })))
+          olderChats.current = chats
+            .filter((chat) => chat.id !== selectedId && (inboxId === undefined || chat.inbox_id === inboxId))
+            .map((chat) => chat.id)
+            .sort((a, b) => b - a)
           setOlderChatCount(olderChats.current.length)
         })
         .catch(() => undefined)
@@ -674,6 +683,7 @@ export function useWhatsAppInbox(
     messagesChat,
     waitingMessages,
     hasOlder,
+    contactChats,
     loadOlder,
     isLoading,
     loadError,

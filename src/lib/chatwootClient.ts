@@ -217,8 +217,10 @@ export function createChatwootClient(
       return { id }
     },
 
-    async listContactConversations(contactId: number): Promise<{ id: number; status: string; inbox_id: number }[]> {
-      const data = await request<{ payload: { id: number; status: string; inbox_id: number }[] }>(
+    async listContactConversations(
+      contactId: number,
+    ): Promise<{ id: number; status: string; inbox_id: number; created_at?: number }[]> {
+      const data = await request<{ payload: { id: number; status: string; inbox_id: number; created_at?: number }[] }>(
         `/contacts/${contactId}/conversations`,
       )
       return data.payload

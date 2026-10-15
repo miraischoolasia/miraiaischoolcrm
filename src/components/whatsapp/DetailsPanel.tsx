@@ -51,6 +51,8 @@ type DetailsPanelProps = {
   userName?: string | null
   // Puts text in the message box, for the team to read and send.
   onWriteMessage?: (text: string) => void
+  // The WhatsApp numbers this parent has written to, in the order of their first chat on each.
+  numbersContacted?: { inboxId: number; label: string; since: number }[]
   // Other chats of the same parent (an old one under a hidden ID, say), to jump to.
   otherChats?: { id: number; title: string; lastActivity: number; isDone: boolean; role?: ChatRole | null }[]
   onOpenChat?: (id: number) => void
@@ -108,6 +110,7 @@ export function DetailsPanel({
   onSetRole,
   userName = null,
   onWriteMessage,
+  numbersContacted = [],
   otherChats = [],
   onOpenChat,
   whatsappLabels = [],
@@ -366,6 +369,31 @@ export function DetailsPanel({
               ))}
             </ul>
           </section>
+        )}
+        {numbersContacted.length > 0 && (
+          <PanelSection title="Numbers they wrote to" aside={<span className="text-slate-500">in order</span>}>
+            <ol className="space-y-1.5">
+              {numbersContacted.map((entry, index) => (
+                <li key={entry.inboxId} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5">
+                  <span className="min-w-0 truncate text-slate-800">
+                    <span className="font-semibold text-[#be185d]">
+                      {index === 0 ? '1st' : index === 1 ? '2nd' : index === 2 ? '3rd' : `${index + 1}th`}
+                    </span>{' '}
+                    {entry.label}
+                  </span>
+                  {entry.since > 0 && (
+                    <span className="shrink-0 text-[11px] text-slate-500">
+                      {new Date(entry.since * 1000).toLocaleDateString('en-GB', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </PanelSection>
         )}
         {numberSaved && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">{numberSaved}</p>}
         {!showLeadPart ? (

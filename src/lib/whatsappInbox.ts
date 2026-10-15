@@ -163,6 +163,28 @@ export function socialKindOf(channel: string | null | undefined, sender?: Chatwo
 
 export type InboxCategory = 'whatsapp' | 'messenger' | 'instagram'
 
+// A WhatsApp number a parent has a chat on, and when that chat began.
+export type ContactedNumber = { inboxId: number; label: string; since: number }
+
+// The numbers a parent has written to, in the order the chats on them began: the first number they
+// reached the school on, then the second, and so on.
+export function numbersContacted(
+  chats: { id: number; inbox_id: number; created_at?: number }[],
+  labelOf: (inboxId: number) => string | null,
+): ContactedNumber[] {
+  const first = new Map<number, { id: number; at: number }>()
+  for (const chat of chats) {
+    const at = chat.created_at ?? 0
+    const known = first.get(chat.inbox_id)
+    if (!known || at < known.at || (at === known.at && chat.id < known.id)) {
+      first.set(chat.inbox_id, { id: chat.id, at })
+    }
+  }
+  return [...first.entries()]
+    .sort(([, a], [, b]) => a.at - b.at || a.id - b.id)
+    .map(([inboxId, { at }]) => ({ inboxId, label: labelOf(inboxId) ?? `Number ${inboxId}`, since: at }))
+}
+
 // The part of the inbox a chat is shown under: WhatsApp unless it came in through Messenger or Instagram.
 export function categoryOf(conversation: Pick<ChatwootConversation, 'meta'>): InboxCategory {
   return socialKindOf(conversation.meta.channel, conversation.meta.sender) ?? 'whatsapp'
@@ -473,15 +495,19 @@ export function unreadByCategory(conversations: ChatwootConversation[]) {
 // One chat per parent. WhatsApp can leave an old chat under a hidden ID beside the one with
 // the phone number. Once Chatwoot has merged the two contacts they share a sender id, and the
 // chat with the newest message stands for the parent; the older ones are read through it.
+// Only chats on the same WhatsApp number are one chat: a parent who writes to number A and to number B
+// has a chat on each, and each number keeps its own.
 export function onePerParent(conversations: ChatwootConversation[]) {
-  const newest = new Map<number, ChatwootConversation>()
+  const keyOf = (conversation: ChatwootConversation) => `${conversation.meta.sender.id}:${conversation.inbox_id ?? 0}`
+  const newest = new Map<string, ChatwootConversation>()
   for (const conversation of conversations) {
-    const current = newest.get(conversation.meta.sender.id)
+    const key = keyOf(conversation)
+    const current = newest.get(key)
     if (!current || conversation.last_activity_at > current.last_activity_at) {
-      newest.set(conversation.meta.sender.id, conversation)
+      newest.set(key, conversation)
     }
   }
-  return conversations.filter((conversation) => newest.get(conversation.meta.sender.id) === conversation)
+  return conversations.filter((conversation) => newest.get(keyOf(conversation)) === conversation)
 }
 
 // Open chats with something nobody has looked at yet.

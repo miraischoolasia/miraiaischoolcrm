@@ -21,6 +21,7 @@ import {
   socialKindOf,
   isRecentlyOverdue,
   categoryOf,
+  numbersContacted,
   unreadByCategory,
   type InboxCategory,
   type InboxTab,
@@ -290,7 +291,12 @@ export function WhatsAppInbox({
   const otherChatsOf = useCallback(
     (conversation: ChatwootConversation) => {
       const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
-      return lead ? (chatsByLead.get(lead.id) ?? []).filter((other) => other.id !== conversation.id) : []
+      // The same parent's chat on another number is not a duplicate of this one.
+      return lead
+        ? (chatsByLead.get(lead.id) ?? []).filter(
+            (other) => other.id !== conversation.id && other.inbox_id === conversation.inbox_id,
+          )
+        : []
     },
     [chatsByLead, resolveLead],
   )
@@ -975,6 +981,14 @@ export function WhatsAppInbox({
               }
               return ok
             }}
+            numbersContacted={
+              (numbersView?.numbers.length ?? 0) > 1
+                ? numbersContacted(
+                    inbox.contactChats,
+                    (inboxId) => numbersView?.numbers.find((entry) => entry.inboxId === inboxId)?.label ?? null,
+                  )
+                : []
+            }
             otherChats={familyChatsOf(inbox.selected).map((other) => ({
               id: other.id,
               title: getChatIdentity(other.meta.sender, chatLabelOf(other), other.meta.channel).title,

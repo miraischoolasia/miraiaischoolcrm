@@ -12,6 +12,7 @@ import {
   getChatIdentity,
   socialKindOf,
   categoryOf,
+  numbersContacted,
   unreadByCategory,
   confirmsBySource,
   isGroupChat,
@@ -177,6 +178,16 @@ describe('onePerParent', () => {
   it('leaves chats of different parents alone', () => {
     const chats = [withSender(1, 50, 100), withSender(2, 51, 300)]
     expect(onePerParent(chats)).toHaveLength(2)
+  })
+
+  it('keeps the chat a parent has on each WhatsApp number', () => {
+    const onNumber = (chat: ReturnType<typeof withSender>, inboxId: number) => ({ ...chat, inbox_id: inboxId })
+    const chats = [
+      onNumber(withSender(1, 50, 100), 1),
+      onNumber(withSender(2, 50, 300), 2),
+      onNumber(withSender(3, 50, 200), 1),
+    ]
+    expect(onePerParent(chats).map((chat) => chat.id)).toEqual([2, 3])
   })
 })
 
@@ -555,5 +566,29 @@ describe('the parts of the inbox', () => {
   it('counts the unread chats of each part', () => {
     const all = [whatsapp(1, 2), whatsapp(2, 1), social(3, 'FB', 1), social(4, 'IG')]
     expect(unreadByCategory(all)).toEqual({ whatsapp: 2, messenger: 1, instagram: 0 })
+  })
+})
+
+describe('numbersContacted', () => {
+  const label = (id: number) => (id === 1 ? 'Number A' : id === 2 ? 'Number B' : null)
+
+  it('lists the numbers in the order the parent first wrote to them', () => {
+    const chats = [
+      { id: 30, inbox_id: 2, created_at: 2000 },
+      { id: 10, inbox_id: 1, created_at: 1000 },
+      { id: 40, inbox_id: 1, created_at: 3000 },
+    ]
+    expect(numbersContacted(chats, label)).toEqual([
+      { inboxId: 1, label: 'Number A', since: 1000 },
+      { inboxId: 2, label: 'Number B', since: 2000 },
+    ])
+  })
+
+  it('names a number the school has not given a label', () => {
+    expect(numbersContacted([{ id: 1, inbox_id: 9, created_at: 5 }], label)[0].label).toBe('Number 9')
+  })
+
+  it('has nothing for a parent with no chats', () => {
+    expect(numbersContacted([], label)).toEqual([])
   })
 })
