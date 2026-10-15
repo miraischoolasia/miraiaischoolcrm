@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
+import { LinkWhatsAppPanel } from './LinkWhatsAppPanel'
 import type { WhatsAppNumber, WhatsAppNumberDraft } from '../../lib/whatsappNumbers'
 
 export type AssignableStaff = { id: number; name: string }
@@ -15,6 +16,8 @@ type NumbersDialogProps = {
   onSave: (existing: WhatsAppNumber | null, draft: WhatsAppNumberDraft, teacherIds: number[]) => Promise<string | null>
   onRemove: (number: WhatsAppNumber) => Promise<string | null>
   onClose: () => void
+  // The gateway address; with it the admin can link the school phone by a QR code from here.
+  apiUrl?: string
 }
 
 const fieldClass = 'w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#fc0c97]'
@@ -22,7 +25,16 @@ const fieldClass = 'w-full rounded-xl border border-slate-200 px-3 py-2 text-sm 
 const emptyDraft: WhatsAppNumberDraft = { label: '', phone: '', inboxId: null, instance: '', isActive: true }
 
 // Admin: the school's WhatsApp numbers, and which staff work on which. An admin sees every number.
-export function NumbersDialog({ numbers, assignments, staff, inboxes, onSave, onRemove, onClose }: NumbersDialogProps) {
+export function NumbersDialog({
+  numbers,
+  assignments,
+  staff,
+  inboxes,
+  onSave,
+  onRemove,
+  onClose,
+  apiUrl,
+}: NumbersDialogProps) {
   // null: not editing; 'new': a new number; otherwise the number being changed.
   const [editing, setEditing] = useState<WhatsAppNumber | 'new' | null>(null)
   const [draft, setDraft] = useState<WhatsAppNumberDraft>(emptyDraft)
@@ -84,6 +96,7 @@ export function NumbersDialog({ numbers, assignments, staff, inboxes, onSave, on
       <div className="space-y-4 px-6 py-5">
         {editing === null && (
           <>
+            {apiUrl && <LinkWhatsAppPanel apiUrl={apiUrl} />}
             {numbers.length === 0 ? (
               <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 No number is set up yet. Add the number the school uses now first, then the next ones.

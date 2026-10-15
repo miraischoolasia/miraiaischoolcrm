@@ -953,6 +953,7 @@ export function WhatsAppInbox({
           onSave={numbersView.onSave}
           onRemove={numbersView.onRemove}
           onClose={() => setManagingNumbers(false)}
+          apiUrl={apiUrl}
         />
       )}
       {automationOpen && (
