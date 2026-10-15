@@ -120,6 +120,7 @@ describe('ConversationList filters and search', () => {
       onSource,
     })
 
+    await userEvent.click(screen.getByRole('button', { name: 'Filters' }))
     await userEvent.selectOptions(screen.getByLabelText('Filter by tag'), '10')
     await userEvent.selectOptions(screen.getByLabelText('Filter by source'), '5')
 
@@ -249,5 +250,21 @@ describe('ConversationList student writing themself', () => {
     renderList([chat(1, 'Ethan', 60), chat(2, 'Aisha', 120)], 0, { isStudentSelf: (conversation) => conversation.id === 1 })
 
     expect(screen.getAllByText('Student themself')).toHaveLength(1)
+  })
+})
+
+describe('ConversationList filter button', () => {
+  it('keeps the filters out of the way until the button is pressed', async () => {
+    renderList([chat(1, 'Aisha', 60)], 0)
+
+    expect(screen.queryByLabelText('Filter by tag')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Filters' }))
+    expect(screen.getByLabelText('Filter by tag')).toBeInTheDocument()
+  })
+
+  it('opens by itself while a filter is on', () => {
+    renderList([chat(1, 'Aisha', 60)], 0, { tagId: 10, tags: [] })
+
+    expect(screen.getByLabelText('Filter by tag')).toBeInTheDocument()
   })
 })

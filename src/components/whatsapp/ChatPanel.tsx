@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from 'react'
 import type { VariableValues } from '../../lib/quickReplies'
-import { ArrowCounterClockwise, CaretDown, CaretLeft, CheckCircle, EnvelopeSimple, Info, PushPin, UserCircle } from '@phosphor-icons/react'
+import { ArrowBendUpRight, ArrowCounterClockwise, CaretDown, CaretLeft, CheckCircle, EnvelopeSimple, Info, PushPin, UserCircle } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import type { Sender } from '../../lib/chatwootClient'
 import type { SendInput } from '../../hooks/useWhatsAppInbox'
@@ -73,7 +73,8 @@ type ChatPanelProps = {
   // Starred messages of this chat (by Chatwoot id); the team shares them.
   starredIds?: number[]
   onToggleStar?: (message: ChatwootMessage) => void
-  onForward?: (message: ChatwootMessage) => void
+  // Forwards one or several messages, oldest first.
+  onForward?: (messages: ChatwootMessage[]) => void
   // Turns on the grey AI reply suggestion for this chat, with what the AI may know about the child.
   // Left out where the feature is not wanted (people who cannot edit leads).
   aiContext?: AiDraftContext | null
@@ -174,6 +175,15 @@ export function ChatPanel({
   const done = conversation.status === 'resolved'
   // The message the next one will answer (quote).
   const [replyTo, setReplyTo] = useState<{ conversationId: number; message: ChatwootMessage } | null>(null)
+  // Messages ticked to forward together; kept with the chat they were ticked in.
+  const [picked, setPicked] = useState<{ conversationId: number; ids: number[] } | null>(null)
+  const pickedIds = picked && picked.conversationId === conversation.id ? picked.ids : null
+  const togglePicked = (id: number) =>
+    setPicked((current) => {
+      const ids = current && current.conversationId === conversation.id ? current.ids : []
+      const next = ids.includes(id) ? ids.filter((entry) => entry !== id) : [...ids, id]
+      return next.length > 0 ? { conversationId: conversation.id, ids: next } : null
+    })
   const replying = replyTo?.conversationId === conversation.id ? replyTo.message : null
   const scroller = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
@@ -417,6 +427,8 @@ export function ChatPanel({
           if (avatar) {
             lastRun = run
           }
+          const canPick = Boolean(onForward) && !message.local && !message.private
+          const isPicked = pickedIds?.includes(message.id) ?? false
           return (
             <div key={message.id}>
               {showDay && (
@@ -424,6 +436,26 @@ export function ChatPanel({
                   <span className="rounded-full bg-slate-200/70 px-3 py-0.5 text-[11px] font-medium text-slate-600">{day}</span>
                 </div>
               )}
+              <div
+                className={cn(pickedIds && canPick && 'flex cursor-pointer items-start gap-2 rounded-lg', isPicked && 'bg-pink-50')}
+                onClickCapture={(event) => {
+                  if (pickedIds && canPick) {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    togglePicked(message.id)
+                  }
+                }}
+              >
+              {pickedIds && canPick && (
+                <input
+                  type="checkbox"
+                  checked={isPicked}
+                  readOnly
+                  aria-label="Include this message"
+                  className="mt-3 h-4 w-4 shrink-0 accent-[#fc0c97]"
+                />
+              )}
+              <div className={cn(pickedIds && canPick && 'pointer-events-none min-w-0 flex-1')}>
               <MessageBubble
                 message={shown}
                 avatar={avatar}
@@ -438,13 +470,46 @@ export function ChatPanel({
                   onEdit: onEditMessage ? (text) => onEditMessage(message, text) : undefined,
                   onDelete: onDeleteMessage ? () => onDeleteMessage(message) : undefined,
                   onStar: onToggleStar && !message.local ? () => onToggleStar(message) : undefined,
-                  onForward: onForward && !message.local && !message.private ? () => onForward(message) : undefined,
+                  onForward: canPick ? () => onForward?.([message]) : undefined,
+                  onSelect: canPick ? () => togglePicked(message.id) : undefined,
                 }}
               />
+              </div>
+              </div>
             </div>
           )
         })}
       </div>
+
+      {pickedIds && onForward && (
+        <div className="flex items-center justify-between gap-2 border-t border-pink-100 bg-pink-50 px-4 py-2 text-sm">
+          <span className="font-medium text-slate-800">{pickedIds.length} selected</span>
+          <span className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPicked(null)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                // In the order they were written, whatever order they were ticked in.
+                const chosen = [...messages, ...waitingMessages]
+                  .filter((message) => pickedIds.includes(message.id))
+                  .sort((a, b) => a.created_at - b.created_at || a.id - b.id)
+                setPicked(null)
+                onForward(chosen)
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#fc0c97] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#de0a84]"
+            >
+              <ArrowBendUpRight size={14} aria-hidden="true" />
+              Forward
+            </button>
+          </span>
+        </div>
+      )}
 
       {actionError && (
         <p role="alert" className="border-t border-red-100 bg-red-50 px-4 py-2 text-xs text-red-700">

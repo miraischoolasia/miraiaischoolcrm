@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowBendUpLeft, ArrowBendUpRight, Check, Checks, CircleNotch, FileText, MapPin, PencilSimple, Phone, Prohibit, Smiley, Star, Trash, WarningCircle } from '@phosphor-icons/react'
+import { ArrowBendUpLeft, ArrowBendUpRight, Check, CheckSquare, Checks, CircleNotch, FileText, MapPin, PencilSimple, Phone, Prohibit, Smiley, Star, Trash, WarningCircle } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import {
   formatMessageTime,
@@ -134,6 +134,8 @@ export type BubbleActions = {
   onDelete?: () => Promise<boolean>
   onStar?: () => void
   onForward?: () => void
+  // Starts picking several messages, this one ticked first.
+  onSelect?: () => void
 }
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '🙏', '👏']
@@ -263,6 +265,11 @@ export function MessageBubble({
             {actions.onForward && (
               <button type="button" onClick={actions.onForward} aria-label="Forward this message" title="Forward" className="rounded-full p-1 text-slate-600 hover:bg-slate-100">
                 <ArrowBendUpRight size={14} />
+              </button>
+            )}
+            {actions.onSelect && (
+              <button type="button" onClick={actions.onSelect} aria-label="Select messages" title="Select several" className="rounded-full p-1 text-slate-600 hover:bg-slate-100">
+                <CheckSquare size={14} />
               </button>
             )}
             {extras.canEdit && actions.onEdit && (

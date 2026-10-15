@@ -45,3 +45,19 @@ describe('ForwardDialog', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 })
+
+describe('ForwardDialog order', () => {
+  it('lists the chat written to most recently first', () => {
+    const recent = [
+      { id: 1, title: 'Old chat', subtitle: 'a', lastActivity: 1000 },
+      { id: 2, title: 'Newest chat', subtitle: 'b', lastActivity: 3000 },
+      { id: 3, title: 'Middle chat', subtitle: 'c', lastActivity: 2000 },
+    ]
+    render(<ForwardDialog targets={recent} preview="x" onClose={vi.fn()} onForward={vi.fn()} />)
+
+    const names = screen.getAllByRole('checkbox').map((box) => box.closest('label')?.textContent ?? '')
+    expect(names[0]).toContain('Newest chat')
+    expect(names[1]).toContain('Middle chat')
+    expect(names[2]).toContain('Old chat')
+  })
+})

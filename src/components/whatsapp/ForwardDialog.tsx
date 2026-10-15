@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { MagnifyingGlass, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
+import { formatListTime } from '../../lib/whatsappInbox'
 
-export type ForwardTarget = { id: number; title: string; subtitle: string }
+// lastActivity: seconds since epoch of the last message; the newest chats come first, as in WhatsApp.
+export type ForwardTarget = { id: number; title: string; subtitle: string; lastActivity?: number }
 
 const MAX_TARGETS = 10
 
@@ -25,7 +27,10 @@ export function ForwardDialog({
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const text = query.trim().toLowerCase()
-  const shown = targets.filter((target) => !text || `${target.title} ${target.subtitle}`.toLowerCase().includes(text)).slice(0, 60)
+  const shown = [...targets]
+    .sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0))
+    .filter((target) => !text || `${target.title} ${target.subtitle}`.toLowerCase().includes(text))
+    .slice(0, 60)
 
   function toggle(id: number) {
     setChosen((current) => (current.includes(id) ? current.filter((entry) => entry !== id) : current.length < MAX_TARGETS ? [...current, id] : current))
@@ -65,15 +70,19 @@ export function ForwardDialog({
             className="w-full text-sm outline-none"
           />
         </label>
+        {!text && <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recent chats</p>}
         <ul className="divide-y divide-slate-100">
           {shown.map((target) => (
             <li key={target.id}>
               <label className="flex cursor-pointer items-center gap-3 px-1 py-2 hover:bg-slate-50">
                 <input type="checkbox" checked={chosen.includes(target.id)} onChange={() => toggle(target.id)} />
-                <span className="min-w-0">
+                <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-slate-900">{target.title}</span>
                   <span className="block truncate text-xs text-slate-500">{target.subtitle}</span>
                 </span>
+                {target.lastActivity ? (
+                  <span className="shrink-0 text-[11px] text-slate-400">{formatListTime(target.lastActivity)}</span>
+                ) : null}
               </label>
             </li>
           ))}

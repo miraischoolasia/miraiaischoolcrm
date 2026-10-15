@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, BellSlash, CaretDown, ChatCircleDots, CheckCircle, EnvelopeSimple, Lightning, MagnifyingGlass, Plus, SpeakerHigh, SpeakerSlash, PushPin } from '@phosphor-icons/react'
+import { Bell, BellSlash, CaretDown, ChatCircleDots, CheckCircle, EnvelopeSimple, FunnelSimple, Lightning, MagnifyingGlass, Phone, Plus, SpeakerHigh, SpeakerSlash, PushPin } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { LeadTagChip } from '../LeadTagChip'
@@ -190,98 +190,129 @@ export function ConversationList({
   automationCount = 0,
   onOpenAutomations,
 }: ConversationListProps) {
-  return (
-    <div className={cn('flex min-h-0 flex-col border-slate-200 bg-white lg:border-r', className)}>
-      <div className="border-b border-slate-200 p-3">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <h2 className="text-base font-semibold text-slate-900">Inbox</h2>
-          <div className="flex items-center gap-1.5">
-            {onOpenAutomations && (
-              <button
-                type="button"
-                onClick={onOpenAutomations}
-                aria-label={`Automations, ${automationCount} waiting`}
-                title="Automations: messages waiting for your approval"
-                className="relative inline-flex h-[30px] items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                <Lightning size={14} aria-hidden="true" />
-                <span className="lg:hidden">Automations</span>
-                {automationCount > 0 && (
-                  <span className="min-w-5 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white">
-                    {automationCount > 99 ? '99+' : automationCount}
-                  </span>
-                )}
-              </button>
-            )}
-            {onManageNumbers && category === 'whatsapp' && (
-              <button
-                type="button"
-                onClick={onManageNumbers}
-                title="WhatsApp numbers and who answers them"
-                className="inline-flex h-[30px] items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Numbers
-              </button>
-            )}
-            {category === 'whatsapp' && (
-              <button
-                type="button"
-                onClick={onNewChat}
-                className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                <Plus size={14} aria-hidden="true" />
-                New chat
-              </button>
-            )}
-          </div>
-        </div>
-        <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-[4.5px] text-sm text-slate-500 focus-within:border-[#fc0c97]">
-          <MagnifyingGlass size={16} aria-hidden="true" />
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => onSearch(event.target.value)}
-            placeholder="Search name or number"
-            aria-label="Search chats"
-            // The app's default input is tall; this one is kept slim.
-            style={{ minHeight: 0, height: 30, padding: 0 }}
-            className="min-w-0 flex-1 bg-transparent text-slate-900 outline-none placeholder:text-slate-400"
-          />
-        </label>
+  // The filters sit behind one button; they open by themselves while one of them is on.
+  const activeFilters = [
+    tagId !== null,
+    sourceId !== null,
+    ownerId !== null,
+    Boolean(kind),
+    inboxId !== null && inboxId !== undefined,
+  ].filter(Boolean).length
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const showFilters = filtersOpen || activeFilters > 0
 
-        <div className="mt-2 grid grid-cols-3 gap-2">
-          {tabs.map(({ key, label, icon: TabIcon }) => {
-            const active = tab === key
-            const count = counts[key]
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => onTab(key)}
-                aria-label={`${label}, ${count}`}
-                aria-pressed={active}
-                title={label}
-                className={cn(
-                  'relative flex h-10 items-center justify-center rounded-lg border transition',
-                  active
-                    ? 'border-slate-900 bg-slate-900 text-white'
-                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
-                )}
-              >
-                <TabIcon size={20} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
-                <span className="ml-1.5 text-sm font-medium">{label}</span>
-                {key === 'unread' && count > 0 && (
-                  <span
-                    title="Chats nobody has opened yet"
-                    className="absolute -right-1.5 -top-1.5 min-w-5 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white"
-                  >
-                    {count > 99 ? '99+' : count}
-                    {hasMoreOpen ? '+' : ''}
-                  </span>
-                )}
-              </button>
-            )
-          })}
+  const railButton =
+    'relative flex h-12 w-11 flex-col items-center justify-center gap-0.5 rounded-xl border text-[10px] font-medium leading-none transition'
+  const railBadge =
+    'absolute -right-1 -top-1 min-w-4 rounded-full bg-[#fc0c97] px-1 py-0.5 text-center text-[10px] font-bold leading-none text-white'
+
+  return (
+    <div className={cn('flex min-h-0 border-slate-200 bg-white lg:border-r', className)}>
+      <nav
+        aria-label="Inbox menu"
+        className="flex w-[58px] shrink-0 flex-col items-center gap-1.5 border-r border-slate-200 bg-slate-50 py-3"
+      >
+        {tabs.map(({ key, label, icon: TabIcon }) => {
+          const active = tab === key
+          const count = counts[key]
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onTab(key)}
+              aria-label={`${label}, ${count}`}
+              aria-pressed={active}
+              title={label}
+              className={cn(
+                railButton,
+                active
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white',
+              )}
+            >
+              <TabIcon size={20} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
+              {label}
+              {key === 'unread' && count > 0 && (
+                <span title="Chats nobody has opened yet" className={railBadge}>
+                  {count > 99 ? '99+' : count}
+                  {hasMoreOpen ? '+' : ''}
+                </span>
+              )}
+            </button>
+          )
+        })}
+        <span aria-hidden="true" className="my-1 h-px w-8 bg-slate-200" />
+        {category === 'whatsapp' && (
+          <button
+            type="button"
+            onClick={onNewChat}
+            aria-label="New chat"
+            title="Start a new chat"
+            className={cn(railButton, 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white')}
+          >
+            <Plus size={20} aria-hidden="true" />
+            New
+          </button>
+        )}
+        {onOpenAutomations && (
+          <button
+            type="button"
+            onClick={onOpenAutomations}
+            aria-label={`Automations, ${automationCount} waiting`}
+            title="Automations: messages waiting for your approval"
+            className={cn(railButton, 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white')}
+          >
+            <Lightning size={20} aria-hidden="true" />
+            Auto
+            {automationCount > 0 && <span className={railBadge}>{automationCount > 99 ? '99+' : automationCount}</span>}
+          </button>
+        )}
+        {onManageNumbers && category === 'whatsapp' && (
+          <button
+            type="button"
+            onClick={onManageNumbers}
+            aria-label="Numbers"
+            title="WhatsApp numbers and who answers them"
+            className={cn(railButton, 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white')}
+          >
+            <Phone size={20} aria-hidden="true" />
+            Numbers
+          </button>
+        )}
+      </nav>
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="border-b border-slate-200 p-3">
+        <div className="flex items-center gap-2">
+          <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-[4.5px] text-sm text-slate-500 focus-within:border-[#fc0c97]">
+            <MagnifyingGlass size={16} aria-hidden="true" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => onSearch(event.target.value)}
+              placeholder="Search name or number"
+              aria-label="Search chats"
+              // The app's default input is tall; this one is kept slim.
+              style={{ minHeight: 0, height: 30, padding: 0 }}
+              className="min-w-0 flex-1 bg-transparent text-slate-900 outline-none placeholder:text-slate-400"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => setFiltersOpen((open) => !open)}
+            aria-expanded={showFilters}
+            aria-label="Filters"
+            title="Filter by staff, tag, source or type"
+            className={cn(
+              'relative inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg border transition',
+              activeFilters > 0 || showFilters
+                ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]'
+                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+            )}
+          >
+            <FunnelSimple size={18} aria-hidden="true" />
+            {activeFilters > 0 && <span className={railBadge}>{activeFilters}</span>}
+          </button>
         </div>
 
         {showWaiting && overdueCount > 0 && (
@@ -289,6 +320,7 @@ export function ConversationList({
             {overdueCount} {overdueCount === 1 ? 'chat has' : 'chats have'} waited over 30 minutes for a reply.
           </p>
         )}
+        {showFilters && (
         <div className={cn('mt-2 grid gap-2 text-sm', onKind ? 'grid-cols-3' : 'grid-cols-2')}>
           {onInbox && numberChoices.length > 1 && (
             <label className="relative col-span-full min-w-0">
@@ -396,6 +428,7 @@ export function ConversationList({
             </label>
           )}
         </div>
+        )}
         {(tagId !== null || sourceId !== null) && (
           <p className="mt-1 text-[11px] text-slate-500">
             Only chats tied to a lead are shown.{' '}
@@ -570,6 +603,7 @@ export function ConversationList({
       </div>
 
       <AlertSettings />
+      </div>
     </div>
   )
 }

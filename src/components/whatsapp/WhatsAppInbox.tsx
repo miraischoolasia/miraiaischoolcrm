@@ -508,7 +508,7 @@ export function WhatsAppInbox({
   // The number and lead a "New chat" window starts with, when it was opened from one.
   const [chatPrefill, setChatPrefill] = useState<{ phone: string; name: string; leadId: number | null } | null>(null)
   // The message being forwarded, while the person picks the chats.
-  const [forwarding, setForwarding] = useState<ChatwootMessage | null>(null)
+  const [forwarding, setForwarding] = useState<ChatwootMessage[] | null>(null)
 
   // Another page asked for the chat of a number: open the one this page has, else look
   // for it on the server, and only when there is none offer to start one.
@@ -654,30 +654,34 @@ export function WhatsAppInbox({
     () =>
       inbox.conversations.map((conversation) => {
         const identity = getChatIdentity(conversation.meta.sender, chatLabelOf(conversation), conversation.meta.channel)
-        return { id: conversation.id, title: identity.title, subtitle: identity.subtitle }
+        return { id: conversation.id, title: identity.title, subtitle: identity.subtitle, lastActivity: conversation.last_activity_at }
       }),
     [inbox.conversations, chatLabelOf],
   )
 
-  // Sends a copy of the message (its text, then each file) to every chat chosen. Null when all went out.
-  async function forwardMessage(message: ChatwootMessage, targetIds: number[]) {
+  // Sends a copy of the messages (each one's text, then its files, oldest first) to every chat chosen.
+  // Null when all went out.
+  async function forwardMessages(messages: ChatwootMessage[], targetIds: number[]) {
     try {
-      const files = await Promise.all(
-        (message.attachments ?? []).map(async (attachment) => {
-          const response = await fetch(attachment.data_url)
-          if (!response.ok) {
-            throw new Error('file')
-          }
-          const blob = await response.blob()
-          const name = decodeURIComponent(attachment.data_url.split('?')[0].split('/').pop() ?? 'file')
-          return new File([blob], name, { type: blob.type })
-        }),
-      )
-      const tooBig = files.map((file) => fileProblem(file)).find((problem) => problem !== null)
-      if (tooBig) {
-        return tooBig
+      const parts: ReturnType<typeof splitSequence> = []
+      for (const message of messages) {
+        const files = await Promise.all(
+          (message.attachments ?? []).map(async (attachment) => {
+            const response = await fetch(attachment.data_url)
+            if (!response.ok) {
+              throw new Error('file')
+            }
+            const blob = await response.blob()
+            const name = decodeURIComponent(attachment.data_url.split('?')[0].split('/').pop() ?? 'file')
+            return new File([blob], name, { type: blob.type })
+          }),
+        )
+        const tooBig = files.map((file) => fileProblem(file)).find((problem) => problem !== null)
+        if (tooBig) {
+          return tooBig
+        }
+        parts.push(...splitSequence([(message.content ?? '').trim(), ...files]))
       }
-      const parts = splitSequence([(message.content ?? '').trim(), ...files])
       // One part at a time: the next only goes once WhatsApp has accepted the one before, so a file
       // is never overtaken by the text that follows it.
       await forwardInOrder(
@@ -821,7 +825,7 @@ export function WhatsAppInbox({
     </div>
     <div
       className={cn(
-        'grid h-[calc(100dvh-262px)] min-h-[520px] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white lg:h-[calc(100dvh-182px)] lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_280px]',
+        'grid h-[calc(100dvh-262px)] min-h-[520px] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white lg:h-[calc(100dvh-182px)] lg:grid-cols-[380px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)_280px]',
         // On a phone an open chat takes the whole screen, above the page title and
         // tools, and stops just above the bottom menu.
         hasChat && 'max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-[5.7rem] max-lg:z-30 max-lg:h-auto max-lg:min-h-0 max-lg:rounded-none max-lg:border-0',
@@ -1089,9 +1093,13 @@ export function WhatsAppInbox({
       {forwarding && (
         <ForwardDialog
           targets={forwardTargets.filter((target) => target.id !== inbox.selectedId)}
-          preview={summarizeMessage(forwarding.content) || 'A photo, video or file'}
+          preview={
+            forwarding.length > 1
+              ? `${forwarding.length} messages`
+              : summarizeMessage(forwarding[0]?.content) || 'A photo, video or file'
+          }
           onClose={() => setForwarding(null)}
-          onForward={(ids) => forwardMessage(forwarding, ids)}
+          onForward={(ids) => forwardMessages(forwarding, ids)}
         />
       )}
       {managingReplies && (
