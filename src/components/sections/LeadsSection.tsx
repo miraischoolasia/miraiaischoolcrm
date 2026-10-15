@@ -11,6 +11,7 @@ import { LeadTagChip } from '../LeadTagChip'
 import { downloadCsv } from '../../lib/downloadFile'
 import { buildLeadsExportCsv } from '../../lib/leadExport'
 import { WhatsAppLink } from '../WhatsAppLink'
+import { buildChildRows, CHILD_AGE_GROUPS } from '../../lib/leadChildren'
 import mascotGordo from '../../assets/mascot-gordo.png'
 import {
   CaretLeft,
@@ -19,6 +20,7 @@ import {
   GearSix,
   Kanban,
   ListChecks,
+  UsersThree,
   MagnifyingGlass,
   PencilSimple,
   Trash,
@@ -136,7 +138,10 @@ export function LeadsSection({
   teacherNames,
   onBulkAction,
 }: LeadsSectionProps) {
-  const [view, setView] = useState<'pipeline' | 'board' | 'dashboard'>('pipeline')
+  const [view, setView] = useState<'pipeline' | 'board' | 'children' | 'dashboard'>('pipeline')
+  // The Children view: one row per child. '' = every age.
+  const [childAge, setChildAge] = useState('')
+  const [childPage, setChildPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
   const [stageFilter, setStageFilter] = useState<LeadStatus | 'all'>('all')
   const todayString = getTodayString()
@@ -222,6 +227,18 @@ export function LeadsSection({
       }),
     )
 
+  // The Children view: the same stage, PIC, tag and date filters, then the search and age on each child.
+  const leadsForChildren = leads
+    .filter(matchesPic)
+    .filter(matchesTag)
+    .filter((lead) => (!dateFrom || lead.addedDate >= dateFrom) && (!dateTo || lead.addedDate <= dateTo))
+    .filter((lead) => (stageFilter === 'all' ? true : lead.status === stageFilter))
+  const childRows = view === 'children' ? buildChildRows(leadsForChildren, { search: searchTerm, ageGroup: childAge }) : []
+  const childPageCount = Math.max(1, Math.ceil(childRows.length / LEADS_PAGE_SIZE))
+  const childCurrentPage = Math.min(childPage, childPageCount)
+  const pagedChildRows = childRows.slice((childCurrentPage - 1) * LEADS_PAGE_SIZE, childCurrentPage * LEADS_PAGE_SIZE)
+  const leadById = new Map(leads.map((lead) => [lead.id, lead]))
+
   const pageCount = Math.max(1, Math.ceil(filteredLeads.length / LEADS_PAGE_SIZE))
   const currentPage = Math.min(page, pageCount)
   const pageStart = (currentPage - 1) * LEADS_PAGE_SIZE
@@ -280,6 +297,7 @@ export function LeadsSection({
     return (value: T) => {
       setter(value)
       setPage(1)
+      setChildPage(1)
     }
   }
 
@@ -379,6 +397,19 @@ export function LeadsSection({
                 </button>
                 <button
                   type="button"
+                  onClick={() => setView('children')}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition',
+                    view === 'children'
+                      ? 'bg-white text-[#be185d] shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700',
+                  )}
+                >
+                  <UsersThree size={16} aria-hidden="true" />
+                  Children
+                </button>
+                <button
+                  type="button"
                   onClick={() => setView('dashboard')}
                   className={cn(
                     'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition',
@@ -422,7 +453,7 @@ export function LeadsSection({
             </div>
           </div>
 
-          {(view === 'pipeline' || view === 'board') && (
+          {(view === 'pipeline' || view === 'board' || view === 'children') && (
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="relative">
                 <MagnifyingGlass
@@ -471,7 +502,26 @@ export function LeadsSection({
                 </select>
               )}
 
-              {view === 'pipeline' && (
+              {view === 'children' && (
+                <select
+                  value={childAge}
+                  onChange={(event) => {
+                    setChildAge(event.target.value)
+                    setChildPage(1)
+                  }}
+                  aria-label="Child age"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] sm:w-44"
+                >
+                  <option value="">All ages</option>
+                  {CHILD_AGE_GROUPS.map((group) => (
+                    <option key={group.key} value={group.key}>
+                      {group.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {(view === 'pipeline' || view === 'children') && (
               <>
               <select
                 value={stageFilter}
@@ -594,6 +644,115 @@ export function LeadsSection({
                 <LeadTrendChart data={picChartData} />
               </div>
             </div>
+          </div>
+        )}
+
+        {view === 'children' && !isLoading && (
+          <div className="overflow-x-auto">
+            {childRows.length === 0 ? (
+              <p className="px-6 py-12 text-center text-sm text-slate-500">
+                No children match this search or filter. Children are the ones written on a lead.
+              </p>
+            ) : (
+              <table data-compact-table className="min-w-full divide-y divide-slate-200 text-left">
+                <thead className="bg-white text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  <tr>
+                    <th className="px-6 py-4">Child</th>
+                    <th className="px-6 py-4">Age</th>
+                    <th className="px-6 py-4">Parent</th>
+                    <th className="px-6 py-4">Stage</th>
+                    <th className="px-6 py-4">Source</th>
+                    <th className="px-6 py-4">PIC</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {pagedChildRows.map((row) => {
+                    const lead = leadById.get(row.leadId)
+                    if (!lead) {
+                      return null
+                    }
+                    return (
+                      <tr
+                        key={row.key}
+                        tabIndex={0}
+                        aria-label={`Open the lead of ${row.childName || 'this child'}`}
+                        onClick={(event) => {
+                          if (!(event.target as HTMLElement).closest('a, button, input, select, textarea, label')) {
+                            onEditLead(lead.id)
+                          }
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+                            event.preventDefault()
+                            onEditLead(lead.id)
+                          }
+                        }}
+                        className="cursor-pointer align-top transition hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none"
+                      >
+                        <td className="px-6 py-4 text-sm">
+                          <div className="font-semibold text-slate-900">{row.childName || 'No name given'}</div>
+                          {row.childPhone && <div className="text-xs text-slate-500">{row.childPhone}</div>}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-700">{row.age} yrs</td>
+                        <td className="px-6 py-4 text-sm text-slate-600">
+                          {row.parentName && <div className="font-medium text-slate-900">{row.parentName}</div>}
+                          <span className="inline-flex items-center gap-1">
+                            {row.parentPhone || '-'}
+                            <WhatsAppLink phone={row.parentPhone} name={row.parentName} leadId={lead.id} />
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={cn(
+                              'rounded-full px-2.5 py-0.5 text-xs font-semibold',
+                              stageToneClass[lead.status],
+                            )}
+                          >
+                            {leadStatusOptions.find((option) => option.key === lead.status)?.label ?? lead.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-600">{sourceLabel(lead)}</td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-600">{picLabel(lead)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+            {childRows.length > 0 && (
+              <nav
+                aria-label="Children pages"
+                className="flex flex-col items-center justify-between gap-3 border-t border-slate-200 px-5 py-4 text-sm text-slate-500 sm:flex-row sm:px-6"
+              >
+                <span>
+                  Showing {(childCurrentPage - 1) * LEADS_PAGE_SIZE + 1}-
+                  {(childCurrentPage - 1) * LEADS_PAGE_SIZE + pagedChildRows.length} of {childRows.length} children
+                </span>
+                <div className={cn('flex items-center gap-1', childPageCount <= 1 && 'hidden')}>
+                  <button
+                    type="button"
+                    aria-label="Previous page"
+                    disabled={childCurrentPage === 1}
+                    onClick={() => setChildPage(childCurrentPage - 1)}
+                    className="rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50 disabled:opacity-40"
+                  >
+                    <CaretLeft size={14} aria-hidden="true" />
+                  </button>
+                  <span className="px-2">
+                    {childCurrentPage} / {childPageCount}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Next page"
+                    disabled={childCurrentPage === childPageCount}
+                    onClick={() => setChildPage(childCurrentPage + 1)}
+                    className="rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50 disabled:opacity-40"
+                  >
+                    <CaretRight size={14} aria-hidden="true" />
+                  </button>
+                </div>
+              </nav>
+            )}
           </div>
         )}
 
