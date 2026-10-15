@@ -85,7 +85,14 @@ export function CalendarItemModal({
               type="button"
               disabled={!canEdit}
               aria-pressed={draft.kind === entry.key}
-              onClick={() => set('kind', entry.key as CalendarItemKind)}
+              onClick={() =>
+                setDraft((current) => ({
+                  ...current,
+                  kind: entry.key as CalendarItemKind,
+                  // A meeting happens at a time, so it starts with one instead of "all day".
+                  startTime: entry.key === 'meeting' && current.startTime === '' ? '10:00' : current.startTime,
+                }))
+              }
               className={cn(
                 'rounded-lg px-2 py-1.5 text-sm font-semibold transition disabled:cursor-not-allowed',
                 draft.kind === entry.key ? 'bg-white text-[#be185d] shadow-sm' : 'text-slate-500 hover:text-slate-800',
@@ -122,16 +129,20 @@ export function CalendarItemModal({
               className={cn(FIELD, 'mt-1')}
             />
           </label>
-          <label className="flex items-end gap-2 pb-2 text-sm font-medium text-slate-700">
-            <input
-              type="checkbox"
-              checked={allDay}
-              disabled={!canEdit || draft.kind === 'meeting'}
-              onChange={(event) => setDraft((current) => ({ ...current, startTime: event.target.checked ? '' : '09:00', endTime: '' }))}
-              className="h-4 w-4 accent-[#fc0c97]"
-            />
-            All day
-          </label>
+          {draft.kind !== 'meeting' && (
+            <label className="flex items-end gap-2 pb-2 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                checked={allDay}
+                disabled={!canEdit}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, startTime: event.target.checked ? '' : '09:00', endTime: '' }))
+                }
+                className="h-4 w-4 accent-[#fc0c97]"
+              />
+              All day
+            </label>
+          )}
           {!allDay && (
             <>
               <label className="block text-sm font-medium text-slate-700">
