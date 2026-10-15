@@ -3,6 +3,8 @@ import type { ChatwootClient, Sender } from '../lib/chatwootClient'
 import { startChat } from '../lib/startChat'
 import { CONFIRM_POLL_MS, CONFIRM_TIMEOUT_MS, fileKind, splitSequence } from '../lib/outbox'
 import {
+  SOCIAL_CONFIRM_SECONDS,
+  confirmsBySource,
   getOwner,
   getPhoneReadTarget,
   isOnAllowedNumber,
@@ -502,6 +504,13 @@ export function useWhatsAppInbox(
             throw new Error('failed')
           }
           if (message.source_id) {
+            return
+          }
+          // A GoHighLevel reply gets no id; the bridge only marks it failed. Some seconds without that is sent.
+          if (
+            !confirmsBySource(mapRef.current.get(conversationId)?.meta.sender) &&
+            Math.floor(Date.now() / 1000) - message.created_at >= SOCIAL_CONFIRM_SECONDS
+          ) {
             return
           }
         }

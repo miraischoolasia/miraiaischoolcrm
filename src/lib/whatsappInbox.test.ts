@@ -11,6 +11,7 @@ import {
   formatListTime,
   getChatIdentity,
   socialKindOf,
+  confirmsBySource,
   isGroupChat,
   isMessengerChannel,
   isOnAllowedNumber,
@@ -496,5 +497,27 @@ describe('socialKindOf', () => {
     expect(identity.subtitle).toBe('Instagram')
     expect(identity.hasRealPhone).toBe(true)
     expect(getChatIdentity({ ...sender('ghl:abc123', 'IG'), name: null }, null, 'Channel::Api').title).toBe('Instagram user')
+  })
+})
+
+describe('replies in a GoHighLevel chat', () => {
+  const reply = (over: Partial<{ status: string; source_id: string | null; created_at: number }> = {}) =>
+    ({ id: 1, content: 'hi', message_type: 1, created_at: 1000, private: false, status: 'sent', source_id: null, ...over }) as never
+
+  it('knows which chats get no id back', () => {
+    expect(confirmsBySource({ id: 1, name: 'x', phone_number: null, identifier: 'ghl:abc' })).toBe(false)
+    expect(confirmsBySource({ id: 1, name: 'x', phone_number: null, identifier: '6012@s.whatsapp.net' })).toBe(true)
+    expect(confirmsBySource(null)).toBe(true)
+  })
+
+  it('counts as sent a few seconds after, unless the bridge marked it failed', () => {
+    expect(getSendState(reply(), 1002, false)).toBe('sending')
+    expect(getSendState(reply(), 1005, false)).toBe('sent')
+    expect(getSendState(reply({ status: 'failed' }), 1005, false)).toBe('failed')
+  })
+
+  it('still waits for the WhatsApp id in a WhatsApp chat', () => {
+    expect(getSendState(reply(), 1005)).toBe('sending')
+    expect(getSendState(reply({ source_id: 'WAID:3EB0' }), 1005)).toBe('sent')
   })
 })

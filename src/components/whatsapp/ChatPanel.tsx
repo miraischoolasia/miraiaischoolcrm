@@ -5,6 +5,7 @@ import { cn } from '../../lib/cn'
 import type { Sender } from '../../lib/chatwootClient'
 import type { SendInput } from '../../hooks/useWhatsAppInbox'
 import {
+  confirmsBySource,
   formatDayLabel,
   getChatIdentity,
   getInitials,
@@ -428,6 +429,7 @@ export function ChatPanel({
                 avatar={avatar}
                 showAvatar={showAvatar}
                 nowSeconds={nowSeconds}
+                idConfirms={confirmsBySource(conversation.meta.sender)}
                 onDismiss={message.local ? () => onDismissUnsent(-message.id) : undefined}
                 extras={extrasFor(message)}
                 actions={{

@@ -155,13 +155,24 @@ type MessageBubbleProps = {
   // The picture shows on the first message of a run; later ones keep the space.
   showAvatar: boolean
   nowSeconds: number
+  // False in a GoHighLevel chat: its replies never get an id of their own.
+  idConfirms?: boolean
   // For a message that never left this computer: remove it from the chat.
   onDismiss?: () => void
   extras?: BubbleExtras
   actions?: BubbleActions
 }
 
-export function MessageBubble({ message, avatar, showAvatar, nowSeconds, onDismiss, extras = {}, actions = {} }: MessageBubbleProps) {
+export function MessageBubble({
+  message,
+  avatar,
+  showAvatar,
+  nowSeconds,
+  idConfirms = true,
+  onDismiss,
+  extras = {},
+  actions = {},
+}: MessageBubbleProps) {
   const [reacting, setReacting] = useState(false)
   const [editing, setEditing] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -178,7 +189,7 @@ export function MessageBubble({ message, avatar, showAvatar, nowSeconds, onDismi
   const isNote = message.private
   const sender = getSenderLabel(message)
   const local = message.local
-  const sendState = local ? (local === 'cancelled' ? 'failed' : 'sending') : getSendState(message, nowSeconds)
+  const sendState = local ? (local === 'cancelled' ? 'failed' : 'sending') : getSendState(message, nowSeconds, idConfirms)
   const text = (extras.editedText ?? message.content ?? '').trim()
   const deletedForEveryone = extras.deletedForEveryone === true
   const special = parseSpecialMessage(text)

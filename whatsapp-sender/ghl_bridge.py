@@ -200,6 +200,28 @@ def ghl_send(contact_id, channel, text, attachments):
         return response.status
 
 
+def flag_failed(payload, reason):
+    """The reply did not go out: mark the message failed (the CRM shows it) and leave a note that says why."""
+    conversation_id = (payload.get("conversation") or {}).get("id")
+    message_id = payload.get("id")
+    if not conversation_id:
+        return
+    reason = reason[:200]
+    try:
+        if message_id:
+            chatwoot("PATCH", f"/conversations/{conversation_id}/messages/{message_id}", {"status": "failed", "external_error": reason})
+    except Exception as error:  # noqa: BLE001 - best effort, the note below still tells the team
+        log("Could not mark the message failed:", type(error).__name__)
+    try:
+        chatwoot(
+            "POST",
+            f"/conversations/{conversation_id}/messages",
+            {"content": "Reply not sent: " + reason, "message_type": "outgoing", "private": True},
+        )
+    except Exception as error:  # noqa: BLE001
+        log("Could not leave the note:", type(error).__name__)
+
+
 def handle_outbound(payload):
     """A Chatwoot webhook: a staff reply in a Messenger chat goes out through GoHighLevel."""
     if payload.get("event") != "message_created":
@@ -225,9 +247,11 @@ def handle_outbound(payload):
     except urllib.error.HTTPError as error:
         detail = error.read().decode("utf-8", "replace")[:300]
         log("GoHighLevel refused the reply:", error.code, detail)
+        flag_failed(payload, f"GoHighLevel answered {error.code}: {detail}")
         return 502, {"ok": False, "error": f"GoHighLevel answered {error.code}"}
     except Exception as error:  # noqa: BLE001 - say why in the log, the caller only needs the status
         log("Reply not sent:", error)
+        flag_failed(payload, str(error))
         return 502, {"ok": False, "error": str(error)[:200]}
     return 200, {"ok": True}
 

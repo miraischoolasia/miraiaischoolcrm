@@ -526,9 +526,24 @@ export type SendState = 'sent' | 'sending' | 'stalled' | 'failed' | 'note' | 'in
 // gone out.
 export const SENDING_WARNING_SECONDS = 90
 
+// A reply through GoHighLevel never gets a WhatsApp-style id back; its bridge only says so when it failed,
+// so such a message counts as sent once this many seconds passed without that.
+export const SOCIAL_CONFIRM_SECONDS = 4
+
+// Whether a chat's replies come back with an id of their own (WhatsApp, Messenger through our Meta app).
+// The GoHighLevel bridge's chats ("ghl:<id>") do not.
+export function confirmsBySource(sender?: ChatwootSender | null) {
+  return !sender?.identifier?.startsWith('ghl:')
+}
+
 // Whether a message has really reached WhatsApp. A message we sent only counts
 // as sent once WhatsApp gave it an id.
-export function getSendState(message: ChatwootMessage, nowSeconds: number): SendState {
+export function getSendState(
+  message: ChatwootMessage,
+  nowSeconds: number,
+  // False in a chat whose replies never get an id: then "not failed for a few seconds" is sent.
+  idConfirms = true,
+): SendState {
   if (message.message_type !== 1) {
     return 'incoming'
   }
@@ -540,6 +555,9 @@ export function getSendState(message: ChatwootMessage, nowSeconds: number): Send
   }
   if (message.source_id) {
     return 'sent'
+  }
+  if (!idConfirms) {
+    return nowSeconds - message.created_at >= SOCIAL_CONFIRM_SECONDS ? 'sent' : 'sending'
   }
   return nowSeconds - message.created_at > SENDING_WARNING_SECONDS ? 'stalled' : 'sending'
 }
