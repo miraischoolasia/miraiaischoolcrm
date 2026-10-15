@@ -15,6 +15,7 @@ type StudentCardProps = {
 // to see how the student is getting on.
 export function StudentCard({ student, crm, onUnlink, forStudent = false }: StudentCardProps) {
   const classroom = crm.classrooms.find((entry) => entry.id === student.classroomId)
+  const classes = crm.classesOfStudent(student)
   const plan = crm.packages.find((entry) => entry.id === student.packageId)
   const canMakeUp = crm.canBookMakeup && student.studentType === 'regular' && classroom?.category === 'regular'
   return (
@@ -37,8 +38,28 @@ export function StudentCard({ student, crm, onUnlink, forStudent = false }: Stud
 
       <dl className="space-y-2">
         <div>
-          <dt className="text-slate-500">Class</dt>
-          <dd className="text-sm text-slate-900">{classroom?.name ?? 'Not in a class'}</dd>
+          <dt className="text-slate-500">{classes.length > 1 ? 'Classes' : 'Class'}</dt>
+          {classes.length === 0 ? (
+            <dd className="text-sm text-slate-900">{classroom?.name ?? 'Not in a class'}</dd>
+          ) : (
+            classes.map((entry, index) => (
+              <dd key={`${entry.title}-${entry.when}-${index}`} className="mt-1 text-sm text-slate-900">
+                <span className="block font-medium">{entry.title}</span>
+                <span className="block text-slate-700">{entry.when}</span>
+                {entry.teacher && <span className="block text-xs text-slate-500">Teacher: {entry.teacher}</span>}
+                {entry.zoomLink && (
+                  <a
+                    href={entry.zoomLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block text-xs font-medium text-[#be185d] underline"
+                  >
+                    Zoom link
+                  </a>
+                )}
+              </dd>
+            ))
+          )}
         </div>
         <div>
           <dt className="text-slate-500">Package</dt>

@@ -163,6 +163,7 @@ import { AutomationsSection } from './components/sections/AutomationsSection'
 import { WhatsAppOpenProvider, type WhatsAppTarget } from './components/WhatsAppLink'
 import type { LeadFormValues, WhatsAppCrm } from './components/whatsapp/crm'
 import { describeHoaSlot, upcomingHoaSlots, type HoaSlot } from './lib/hoaSlots'
+import { classesOfStudent } from './lib/studentClasses'
 import { findLeadsByPhone, sameNumberMessage } from './lib/chatLink'
 import { getChatwootUrl } from './lib/chatwoot'
 import { createChatwootClient } from './lib/chatwootClient'
@@ -194,6 +195,9 @@ import { StudentRenewalModal } from './components/modals/StudentRenewalModal'
 import { ScheduleModal } from './components/modals/ScheduleModal'
 import { TrialBookingModal } from './components/modals/TrialBookingModal'
 import { CancelledOccurrenceModal } from './components/modals/CancelledOccurrenceModal'
+import { CalendarItemModal } from './components/modals/CalendarItemModal'
+import { useCalendarItems } from './hooks/useCalendarItems'
+import { buildCalendarItemEvents, itemsVisibleTo, type CalendarItem } from './lib/calendarItems'
 import { AttendanceModal } from './components/modals/AttendanceModal'
 import { MakeupPlanModal, type MakeupPlanInput } from './components/modals/MakeupPlanModal'
 import {
@@ -648,6 +652,9 @@ function App() {
   const isTeacherAccount = currentSession?.role === 'teacher'
   const canEditCalendar = can('calendar', 'edit')
   const canDeleteCalendar = can('calendar', 'delete')
+  // Tasks, Zoom meetings and events on the calendar, beside the classes.
+  const calendarItems = useCalendarItems(Boolean(authUserId) && can('calendar'), currentSession?.teacherId ?? null)
+  const [calendarItemEditor, setCalendarItemEditor] = useState<{ item: CalendarItem | null; date: string } | null>(null)
   // Same rule as can_view_classes(): any class module shows every class.
   // Without one, a teacher sees only their own classes.
   const seesAllClasses = can('calendar') || can('classrooms') || can('students')
@@ -1505,12 +1512,28 @@ function App() {
         makeupEntries,
       ),
       ...malaysiaHolidayEvents,
+      // The class-type buttons are about classes; tasks, meetings and events show under "All".
+      ...(calendarClassFilter === 'all'
+        ? buildCalendarItemEvents(
+            itemsVisibleTo(calendarItems.items, {
+              teacherId: currentSession?.teacherId ?? null,
+              sees: canEditCalendar ? 'all' : 'own',
+            }).filter(
+              (item) =>
+                calendarTeacherFilter === 'all' || item.kind === 'event' || item.assigneeId === calendarTeacherFilter,
+            ),
+            (id) => (id === null ? null : (teacherMap.get(id)?.fullName ?? null)),
+          )
+        : []),
     ],
     [
       calendarClassFilter,
       calendarTeacherFilter,
+      calendarItems.items,
+      canEditCalendar,
       classroomMap,
       classroomStudentMap,
+      currentSession?.teacherId,
       makeupEntries,
       scheduleExceptions,
       scheduleParticipantMap,
@@ -3768,6 +3791,8 @@ function App() {
         nowTime: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
       })
     },
+    classesOfStudent: (student: Student) =>
+      classesOfStudent({ student, classrooms, schedules, teachers, trialBookings, today: todayString }),
     describeHoaBooking: (booking: TrialBooking) => {
       const schedule = schedules.find((entry) => entry.id === booking.scheduleId)
       return schedule
@@ -5455,6 +5480,30 @@ function App() {
     <main className="compact-admin min-h-screen bg-white pb-20 text-slate-900 lg:pb-0">
       {confirmDialog}
       {toastHost}
+      {calendarItemEditor && (
+        <CalendarItemModal
+          item={calendarItemEditor.item}
+          defaultDate={calendarItemEditor.date}
+          teachers={activeTeachers.map((teacher) => ({ id: teacher.id, fullName: teacher.fullName }))}
+          canEdit={canEditCalendar}
+          onClose={() => setCalendarItemEditor(null)}
+          onSave={(draft) => calendarItems.save(calendarItemEditor.item, draft)}
+          onDelete={calendarItemEditor.item ? () => calendarItems.remove(calendarItemEditor.item!.id) : undefined}
+          onToggleDone={
+            calendarItemEditor.item
+              ? async (isDone) => {
+                  const problem = await calendarItems.setDone(calendarItemEditor.item!.id, isDone)
+                  if (!problem) {
+                    setCalendarItemEditor((current) =>
+                      current && current.item ? { ...current, item: { ...current.item, isDone } } : current,
+                    )
+                  }
+                  return problem
+                }
+              : undefined
+          }
+        />
+      )}
       <div className="flex min-h-screen">
         <aside
           className={cn(
@@ -5838,13 +5887,22 @@ function App() {
                           </div>
                         ))}
                         {canEditCalendar && (
-                          <button
-                            type="button"
-                            onClick={() => openCreateSchedule()}
-                            className="ml-auto rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
-                          >
-                            Add Class
-                          </button>
+                          <div className="ml-auto flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setCalendarItemEditor({ item: null, date: todayString })}
+                              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                            >
+                              Add Task / Meeting / Event
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openCreateSchedule()}
+                              className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
+                            >
+                              Add Class
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -5982,6 +6040,17 @@ function App() {
                       }}
                       eventClick={(arg: EventClickArg) => {
                         if (arg.event.extendedProps.isHoliday) {
+                          return
+                        }
+
+                        // A task, Zoom meeting or event: open it, not a class.
+                        if (arg.event.extendedProps.calendarItemId !== undefined) {
+                          const picked = calendarItems.items.find(
+                            (entry) => entry.id === Number(arg.event.extendedProps.calendarItemId),
+                          )
+                          if (picked) {
+                            setCalendarItemEditor({ item: picked, date: picked.date })
+                          }
                           return
                         }
 

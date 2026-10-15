@@ -1,4 +1,5 @@
 import type { HoaSlot } from '../../lib/hoaSlots'
+import type { StudentClassLine } from '../../lib/studentClasses'
 import type {
   Classroom,
   Lead,
@@ -49,6 +50,8 @@ export type WhatsAppCrm = {
     slot: HoaSlot,
     child: { name: string; age: number | null; phone: string },
   ) => Promise<string | null>
+  // The classes a student is signed up for: the weekly times of their class, or the HOA class they booked.
+  classesOfStudent: (student: Student) => StudentClassLine[]
   // How a booked class reads to a parent ("Sat 18 Oct, 10:00 to 12:00").
   describeHoaBooking: (booking: TrialBooking) => string
   // Takes the child out of the class again.

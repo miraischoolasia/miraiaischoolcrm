@@ -403,6 +403,57 @@ export type Database = {
         }
         Relationships: []
       }
+      calendar_items: {
+        Row: {
+          id: number
+          kind: 'task' | 'meeting' | 'event'
+          title: string
+          notes: string | null
+          item_date: string
+          start_time: string | null
+          end_time: string | null
+          zoom_link: string | null
+          assignee_id: number | null
+          lead_id: number | null
+          is_done: boolean
+          created_by: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          kind: 'task' | 'meeting' | 'event'
+          title: string
+          notes?: string | null
+          item_date: string
+          start_time?: string | null
+          end_time?: string | null
+          zoom_link?: string | null
+          assignee_id?: number | null
+          lead_id?: number | null
+          is_done?: boolean
+          created_by?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          kind?: 'task' | 'meeting' | 'event'
+          title?: string
+          notes?: string | null
+          item_date?: string
+          start_time?: string | null
+          end_time?: string | null
+          zoom_link?: string | null
+          assignee_id?: number | null
+          lead_id?: number | null
+          is_done?: boolean
+          created_by?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       whatsapp_numbers: {
         Row: {
           id: number

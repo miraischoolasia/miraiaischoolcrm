@@ -53,6 +53,7 @@ function makeCrm(patch: Partial<WhatsAppCrm> = {}): WhatsAppCrm {
     trialBookings: [],
     leadIdsWithForms: new Set<number>(),
     listHoaSlots: () => [slot],
+    classesOfStudent: () => [],
     describeHoaBooking: () => 'Sat 17 Oct, 10:00 to 12:00',
     onBookHoa: vi.fn().mockResolvedValue(null),
     onCancelHoa: vi.fn().mockResolvedValue(null),
