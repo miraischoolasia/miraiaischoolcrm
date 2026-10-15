@@ -312,6 +312,13 @@ describe('the function side', () => {
     })
   })
 
+  it('names Mirai by default and another school by its own name', () => {
+    expect(buildSystemPrompt('x')).toContain('你是 Mirai AI School 的客服同事')
+    expect(buildSystemPrompt('x', '英雄教育')).toContain('你是 英雄教育 的客服同事')
+    expect(buildSystemPrompt('x', '英雄教育')).not.toContain('Mirai')
+    expect(buildSystemPrompt('x', '  ')).toContain('你是 Mirai AI School 的客服同事')
+  })
+
   it('puts the school facts and the rules in the system prompt, and the chat in the question', () => {
     expect(buildSystemPrompt('FACTS HERE')).toContain('FACTS HERE')
     expect(buildSystemPrompt('x')).toContain('体验课')

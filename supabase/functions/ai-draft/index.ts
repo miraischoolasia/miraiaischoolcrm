@@ -10,9 +10,13 @@
 //   GEMINI_API_KEY   required
 //   GEMINI_MODEL     optional, default gemini-3.5-flash-lite
 //   AI_DAILY_CAP     optional, most drafts per day for the whole school, default 300
+//   SCHOOL_NAME      optional, the school's name in the AI's instructions, default Mirai AI School. A school
+//                    other than Mirai never falls back to the bundled Mirai text: with no notes its AI
+//                    has no school facts until an admin writes them in the CRM.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { KNOWLEDGE } from './knowledge.ts'
 import {
+  DEFAULT_SCHOOL_NAME,
   buildSystemPrompt,
   buildUserPrompt,
   composeKnowledge,
@@ -52,8 +56,10 @@ function whyGeminiFailed(status: number, body: string, key: string) {
 }
 
 // Every note that is switched on, in the order the admin put them. With no notes at all (the table is
-// missing or empty) the text bundled with the function is used, so the AI never loses its knowledge.
-async function loadKnowledge(admin: ReturnType<typeof createClient>): Promise<string> {
+// missing or empty) Mirai's deployment uses the text bundled with the function, so its AI never loses its
+// knowledge; another school gets nothing, because the bundled text is Mirai's courses and prices.
+async function loadKnowledge(admin: ReturnType<typeof createClient>, schoolName: string): Promise<string> {
+  const bundled = schoolName === DEFAULT_SCHOOL_NAME ? KNOWLEDGE : ''
   const { data, error } = await admin
     .from('ai_knowledge_notes')
     .select('title, body, enabled')
@@ -61,10 +67,10 @@ async function loadKnowledge(admin: ReturnType<typeof createClient>): Promise<st
     .order('id', { ascending: true })
   if (error) {
     console.error('Could not read the knowledge notes', error.message)
-    return KNOWLEDGE
+    return bundled
   }
   if (!data || data.length === 0) {
-    return KNOWLEDGE
+    return bundled
   }
   return composeKnowledge(
     data
@@ -163,7 +169,8 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: 'The AI draft limit for today has been reached.' }, 429)
   }
 
-  const knowledge = await loadKnowledge(admin)
+  const schoolName = Deno.env.get('SCHOOL_NAME')?.trim() || DEFAULT_SCHOOL_NAME
+  const knowledge = await loadKnowledge(admin, schoolName)
   const model = Deno.env.get('GEMINI_MODEL') || DEFAULT_MODEL
   const startedAt = Date.now()
   // Google sometimes hangs or answers "busy" for a moment, so the request is tried twice (20 s, then 25 s).
@@ -180,7 +187,7 @@ Deno.serve(async (req) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
           body: JSON.stringify({
-            systemInstruction: { parts: [{ text: buildSystemPrompt(knowledge) }] },
+            systemInstruction: { parts: [{ text: buildSystemPrompt(knowledge, schoolName) }] },
             contents: [{ role: 'user', parts: [{ text: buildUserPrompt(input) }] }],
             generationConfig: { temperature: 0.4, maxOutputTokens: 1024, responseMimeType: 'application/json' },
           }),

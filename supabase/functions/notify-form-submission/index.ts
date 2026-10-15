@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
     method: 'POST',
     headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      from: Deno.env.get('RESEND_FROM') ?? 'Mirai CRM <onboarding@resend.dev>',
+      from: Deno.env.get('RESEND_FROM') ?? `${Deno.env.get('SCHOOL_NAME')?.trim() || 'Mirai'} CRM <onboarding@resend.dev>`,
       to: recipients,
       subject: email.subject,
       text: email.text,

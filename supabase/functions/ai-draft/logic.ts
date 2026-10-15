@@ -152,8 +152,10 @@ export function composeKnowledge(notes: KnowledgeNote[]): string {
 export const EMPTY_KNOWLEDGE =
   '（知识库现在是空的，没有任何资料可以用。所有细节都不要写，在 staff_note 告诉同事要自己补。）'
 
-export function buildSystemPrompt(knowledge: string): string {
-  return `你是 Mirai AI School 的客服同事，帮同事写「要发给家长的 WhatsApp 回复草稿」。草稿会放在同事的输入框里，同事看过、修改后才会自己发出去。
+export const DEFAULT_SCHOOL_NAME = 'Mirai AI School'
+
+export function buildSystemPrompt(knowledge: string, schoolName: string = DEFAULT_SCHOOL_NAME): string {
+  return `你是 ${schoolName.trim() || DEFAULT_SCHOOL_NAME} 的客服同事，帮同事写「要发给家长的 WhatsApp 回复草稿」。草稿会放在同事的输入框里，同事看过、修改后才会自己发出去。
 
 规则：
 1. 只写同事「下一条」要发的消息（可以分成几行短句）。一次只往流程前进一步：看聊天记录判断现在在哪一步。
