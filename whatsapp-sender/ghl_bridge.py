@@ -21,6 +21,9 @@ Settings (environment, from ghl-bridge.env):
   GHL_TOKEN         a GoHighLevel Private Integration token (scope: conversations/message.write); empty = replies
                     from the CRM are refused with a clear note instead of being lost
   GHL_API_URL       https://services.leadconnectorhq.com   (default)
+  PAGE_INBOXES      optional, "<facebook page id>:<inbox id>,..." - a chat of that Page goes to that inbox, so two
+                    Pages of one GoHighLevel account show as two Messengers in the CRM. A chat of any other Page
+                    goes to INBOX_ID. The Page of a chat is read from GoHighLevel (meta.fb.pageId of its messages).
 """
 
 import hmac
@@ -43,6 +46,18 @@ INBOX_ID = int(os.environ.get("INBOX_ID", "0") or 0)
 GHL_TOKEN = os.environ.get("GHL_TOKEN", "")
 GHL_API_URL = os.environ.get("GHL_API_URL", "https://services.leadconnectorhq.com").rstrip("/")
 PORT = int(os.environ.get("PORT", "9100"))
+
+
+def _read_page_inboxes(text):
+    found = {}
+    for part in text.split(","):
+        page, _, inbox = part.strip().partition(":")
+        if page.isdigit() and inbox.isdigit():
+            found[page] = int(inbox)
+    return found
+
+
+PAGE_INBOXES = _read_page_inboxes(os.environ.get("PAGE_INBOXES", ""))
 
 IDENTIFIER_PREFIX = "ghl:"
 MAX_TEXT = 4000
@@ -122,17 +137,68 @@ def find_contact(contact_id):
     return None
 
 
-def conversation_for(contact):
+def conversation_for(contact, inbox_id):
     conversations = chatwoot("GET", f"/contacts/{contact['id']}/conversations").get("payload", [])
-    ours = sorted((c for c in conversations if c.get("inbox_id") == INBOX_ID), key=lambda c: c["id"], reverse=True)
+    ours = sorted((c for c in conversations if c.get("inbox_id") == inbox_id), key=lambda c: c["id"], reverse=True)
     for conversation in ours:
         if conversation.get("status") != "resolved":
             return conversation["id"]
     if ours:
         chatwoot("POST", f"/conversations/{ours[0]['id']}/toggle_status", {"status": "open"})
         return ours[0]["id"]
-    created = chatwoot("POST", "/conversations", {"contact_id": contact["id"], "inbox_id": INBOX_ID})
+    created = chatwoot("POST", "/conversations", {"contact_id": contact["id"], "inbox_id": inbox_id})
     return created["id"]
+
+
+def ghl_get(path, version="2021-04-15"):
+    request = urllib.request.Request(
+        GHL_API_URL + path,
+        headers={
+            "Authorization": f"Bearer {GHL_TOKEN}",
+            "Version": version,
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (compatible; MiraiCrmGhlBridge/1.0)",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=20) as response:
+        return json.loads(response.read().decode())
+
+
+_pages: dict[str, tuple[str, str]] = {}
+_location_id = ""
+
+
+def page_of(contact_id):
+    """The Facebook Page (id, name) a GoHighLevel contact writes to, read from the meta.fb of its messages.
+
+    A contact belongs to one Page, so the answer is remembered. Empty strings when it cannot be told (an
+    Instagram chat, GoHighLevel not answering): the chat then goes to the default inbox.
+    """
+    global _location_id
+    if contact_id in _pages:
+        return _pages[contact_id]
+    if not GHL_TOKEN:
+        return "", ""
+    try:
+        if not _location_id:
+            _location_id = (ghl_get(f"/contacts/{contact_id}", "2021-07-28").get("contact") or {}).get("locationId") or ""
+        if not _location_id:
+            return "", ""
+        found = ghl_get(
+            "/conversations/search?" + urllib.parse.urlencode({"locationId": _location_id, "contactId": contact_id})
+        ).get("conversations") or []
+        if not found:
+            return "", ""
+        data = ghl_get(f"/conversations/{found[0]['id']}/messages?limit=10")
+        for message in ((data.get("messages") or {}).get("messages") or []):
+            fb = (message.get("meta") or {}).get("fb") or {}
+            page_id = str(fb.get("pageId") or "")
+            if page_id:
+                _pages[contact_id] = (page_id, str(fb.get("pageName") or ""))
+                return _pages[contact_id]
+    except Exception as error:  # noqa: BLE001 - the chat must arrive even when the Page cannot be told
+        log("Could not tell the Page of a contact:", type(error).__name__)
+    return "", ""
 
 
 def handle_inbound(payload):
@@ -152,12 +218,18 @@ def handle_inbound(payload):
 
     contact = find_contact(info["contact_id"])
     attributes = {"ghl_contact_id": info["contact_id"], "ghl_channel": info["channel"]}
+    # Two Pages of one GoHighLevel account are two Messengers in the CRM: each goes to its own inbox.
+    page_id, page_name = page_of(info["contact_id"]) if info["channel"] == "FB" else ("", "")
+    inbox_id = PAGE_INBOXES.get(page_id, INBOX_ID)
+    if page_id:
+        attributes["ghl_page_id"] = page_id
+        attributes["ghl_page_name"] = page_name
     if contact is None:
         created = chatwoot(
             "POST",
             "/contacts",
             {
-                "inbox_id": INBOX_ID,
+                "inbox_id": inbox_id,
                 "name": info["name"] or "Messenger user",
                 "identifier": IDENTIFIER_PREFIX + info["contact_id"],
                 "additional_attributes": attributes,
@@ -168,7 +240,7 @@ def handle_inbound(payload):
         merged = {**(contact.get("additional_attributes") or {}), **attributes}
         if merged != (contact.get("additional_attributes") or {}):
             chatwoot("PUT", f"/contacts/{contact['id']}", {"additional_attributes": merged})
-    conversation_id = conversation_for(contact)
+    conversation_id = conversation_for(contact, inbox_id)
 
     text = info["text"] or "[attachment]"
     if info["attachments"]:
@@ -230,7 +302,7 @@ def handle_outbound(payload):
         return 200, {"ok": True, "ignored": "not a reply"}
     conversation = payload.get("conversation") or {}
     inbox_id = (payload.get("inbox") or {}).get("id") or conversation.get("inbox_id")
-    if INBOX_ID and inbox_id != INBOX_ID:
+    if INBOX_ID and inbox_id != INBOX_ID and inbox_id not in PAGE_INBOXES.values():
         return 200, {"ok": True, "ignored": "another inbox"}
     sender = (conversation.get("meta") or {}).get("sender") or {}
     identifier = sender.get("identifier") or ""
@@ -267,7 +339,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.split("?", 1)[0] == "/ghl/health":
-            return self._reply(200, {"ok": True, "inbox": INBOX_ID, "can_reply": bool(GHL_TOKEN)})
+            return self._reply(
+                200, {"ok": True, "inbox": INBOX_ID, "pages": len(PAGE_INBOXES), "can_reply": bool(GHL_TOKEN)}
+            )
         return self._reply(404, {"ok": False})
 
     def do_POST(self):
@@ -308,5 +382,5 @@ if __name__ == "__main__":
         sys.exit("BRIDGE_KEY must be set (16+ characters)")
     if not CHATWOOT_TOKEN or not INBOX_ID:
         sys.exit("CHATWOOT_TOKEN and INBOX_ID must be set")
-    log("ghl-bridge ready; inbox", INBOX_ID, "can reply:", bool(GHL_TOKEN))
+    log("ghl-bridge ready; inbox", INBOX_ID, "pages:", PAGE_INBOXES, "can reply:", bool(GHL_TOKEN))
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
