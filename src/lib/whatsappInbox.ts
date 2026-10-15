@@ -48,6 +48,8 @@ export type ChatwootSender = {
   phone_number: string | null
   identifier: string | null
   thumbnail?: string | null
+  // What the contact carries (the GoHighLevel bridge notes its channel here: ghl_channel "FB" or "IG").
+  additional_attributes?: Record<string, unknown> | null
 }
 
 // What the CRM keeps on a chat. Chatwoot replaces all of these whenever one is
@@ -145,6 +147,20 @@ export function isMessengerChannel(channel: string | null | undefined) {
   return channel === 'Channel::FacebookPage'
 }
 
+export type SocialKind = 'messenger' | 'instagram'
+
+// A chat that is not WhatsApp: Messenger through our own Meta app, or Messenger / Instagram through
+// GoHighLevel (its bridge names the contact "ghl:<id>" and notes the channel). Null for WhatsApp.
+export function socialKindOf(channel: string | null | undefined, sender?: ChatwootSender | null): SocialKind | null {
+  if (isMessengerChannel(channel)) {
+    return 'messenger'
+  }
+  if (sender?.identifier?.startsWith('ghl:')) {
+    return sender.additional_attributes?.ghl_channel === 'IG' ? 'instagram' : 'messenger'
+  }
+  return null
+}
+
 export type ChatIdentity = {
   // The name the person gave WhatsApp, or null when there is none. For matching only, never shown.
   name: string | null
@@ -163,15 +179,16 @@ export type ChatIdentity = {
 export function getChatIdentity(
   sender: ChatwootSender,
   leadName?: string | null,
-  // The kind of inbox the chat is in; only a Messenger chat is treated differently.
+  // The kind of inbox the chat is in; a Messenger or Instagram chat is treated differently.
   channel?: string | null,
 ): ChatIdentity {
-  if (isMessengerChannel(channel)) {
+  const social = socialKindOf(channel, sender)
+  if (social) {
     const name = (sender.name ?? '').trim()
     return {
       name: name || null,
-      title: leadName?.trim() || name || 'Messenger user',
-      subtitle: 'Facebook Messenger',
+      title: leadName?.trim() || name || (social === 'instagram' ? 'Instagram user' : 'Messenger user'),
+      subtitle: social === 'instagram' ? 'Instagram' : 'Facebook Messenger',
       hasRealPhone: true,
       initials: name ? getInitials(name) : '?',
       isGroup: false,

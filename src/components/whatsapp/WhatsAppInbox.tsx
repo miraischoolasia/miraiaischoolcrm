@@ -17,7 +17,7 @@ import {
   getRealPhone,
   getTab,
   isGroupChat,
-  isMessengerChannel,
+  socialKindOf,
   isRecentlyOverdue,
   type InboxTab,
 } from '../../lib/whatsappInbox'
@@ -693,7 +693,7 @@ export function WhatsAppInbox({
       !inbox.selected ||
       !crm.canEditLeads ||
       isGroupChat(inbox.selected.meta.sender) ||
-      isMessengerChannel(inbox.selected.meta.channel)
+      socialKindOf(inbox.selected.meta.channel, inbox.selected.meta.sender) !== null
     ) {
       return null
     }

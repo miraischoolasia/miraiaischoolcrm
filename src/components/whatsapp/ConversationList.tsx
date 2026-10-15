@@ -20,7 +20,7 @@ import {
   OVERDUE_SECONDS,
   STALE_SECONDS,
   getChatIdentity,
-  isMessengerChannel,
+  socialKindOf,
   getPreview,
   type ChatwootConversation,
   type InboxTab,
@@ -451,9 +451,14 @@ export function ConversationList({
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className="truncate text-sm font-semibold text-slate-900">{identity.title}</span>
-                    {isMessengerChannel(conversation.meta.channel) && (
+                    {socialKindOf(conversation.meta.channel, conversation.meta.sender) === 'messenger' && (
                       <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
                         Messenger
+                      </span>
+                    )}
+                    {socialKindOf(conversation.meta.channel, conversation.meta.sender) === 'instagram' && (
+                      <span className="shrink-0 rounded bg-fuchsia-50 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-700">
+                        Instagram
                       </span>
                     )}
                     {numberOf?.(conversation) && (

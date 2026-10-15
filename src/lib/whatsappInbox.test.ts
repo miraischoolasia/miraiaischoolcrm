@@ -10,6 +10,7 @@ import {
   formatDayLabel,
   formatListTime,
   getChatIdentity,
+  socialKindOf,
   isGroupChat,
   isMessengerChannel,
   isOnAllowedNumber,
@@ -462,5 +463,38 @@ describe('getChatRole', () => {
     expect(getChatRole({ custom_attributes: {} })).toBeNull()
     expect(getChatRole({ custom_attributes: null })).toBeNull()
     expect(getChatRole({ custom_attributes: { crm_chat_role: 'uncle' as never } })).toBeNull()
+  })
+})
+
+describe('socialKindOf', () => {
+  const sender = (identifier: string | null, ghlChannel?: string) => ({
+    id: 1,
+    name: 'Mei Ling',
+    phone_number: null,
+    identifier,
+    additional_attributes: ghlChannel ? { ghl_channel: ghlChannel } : null,
+  })
+
+  it('is null for a WhatsApp chat', () => {
+    expect(socialKindOf('Channel::Whatsapp', sender('60123456789@s.whatsapp.net'))).toBeNull()
+    expect(socialKindOf(undefined, sender(null))).toBeNull()
+  })
+
+  it('knows Messenger through our own Meta app', () => {
+    expect(socialKindOf('Channel::FacebookPage', sender(null))).toBe('messenger')
+  })
+
+  it('knows Messenger and Instagram that come through GoHighLevel', () => {
+    expect(socialKindOf('Channel::Api', sender('ghl:abc123', 'FB'))).toBe('messenger')
+    expect(socialKindOf('Channel::Api', sender('ghl:abc123', 'IG'))).toBe('instagram')
+    expect(socialKindOf('Channel::Api', sender('ghl:abc123'))).toBe('messenger')
+  })
+
+  it('shows such a chat by name with no phone warning', () => {
+    const identity = getChatIdentity(sender('ghl:abc123', 'IG'), null, 'Channel::Api')
+    expect(identity.title).toBe('Mei Ling')
+    expect(identity.subtitle).toBe('Instagram')
+    expect(identity.hasRealPhone).toBe(true)
+    expect(getChatIdentity({ ...sender('ghl:abc123', 'IG'), name: null }, null, 'Channel::Api').title).toBe('Instagram user')
   })
 })
