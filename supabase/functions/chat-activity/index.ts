@@ -8,6 +8,11 @@
 // (Settings > Integrations > Webhooks, tick "Message created"). What the team writes is never kept. What a
 // parent writes is kept for 35 days (cut at 500 characters) so a flow can wait for a reply and read it.
 //
+// A parent's first message that contains the phrase of a source rule also makes the lead (auto_lead_from_chat),
+// so a new lead no longer waits for someone to have the inbox open.
+//
+// A message the school sends moves the lead of that chat from "new" to "contacted" (mark_lead_contacted_from_chat).
+//
 // Deploy (once, and after changes):
 //   npx supabase functions deploy chat-activity --no-verify-jwt
 import { createClient } from 'jsr:@supabase/supabase-js@2'
@@ -51,6 +56,43 @@ Deno.serve(async (req) => {
   const message = parsed.message
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
+
+  // A parent's first message that holds an advert's keyword makes the lead right now, so the automations
+  // that start from "a new lead" do not wait for someone to open the inbox. It runs before the message is
+  // recorded: the database only treats a chat it has not seen yet as a first message. It never stops the
+  // message from being recorded.
+  if (message.direction === 'incoming' && message.text !== null && message.phone !== null) {
+    const { data: leadId, error: leadError } = await admin.rpc('auto_lead_from_chat', {
+      p_key: key,
+      p_conversation_id: message.conversationId,
+      p_contact_id: message.contactId,
+      p_at: message.at.toISOString(),
+      p_name: message.name,
+      p_phone: message.phone,
+      p_text: message.text,
+    })
+    if (leadError) {
+      console.error('Could not make a lead', leadError.code, leadError.message)
+    } else if (leadId !== null) {
+      console.log('Lead', leadId, 'made from the first message of chat', message.conversationId)
+    }
+  }
+
+  // Anything the school sends (a person in the inbox, an automation, the phone) means the parent has been
+  // contacted: a lead still in "new" moves to "contacted". It never stops the message from being recorded.
+  if (message.direction === 'outgoing') {
+    const { data: movedId, error: stageError } = await admin.rpc('mark_lead_contacted_from_chat', {
+      p_key: key,
+      p_contact_id: message.contactId,
+      p_phone: message.phone,
+    })
+    if (stageError) {
+      console.error('Could not move the lead to contacted', stageError.code, stageError.message)
+    } else if (movedId !== null) {
+      console.log('Lead', movedId, 'is now contacted (the school wrote in chat', message.conversationId + ')')
+    }
+  }
+
   const { error } = await admin.rpc('record_chat_message', {
     p_key: key,
     p_conversation_id: message.conversationId,
