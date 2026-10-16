@@ -34,7 +34,7 @@ import { ConversationList } from './ConversationList'
 import { ChannelPicturesDialog, type ChannelPictureRow } from './ChannelPicturesDialog'
 import type { ChannelInfo } from './ChannelBadge'
 import { useChannelAvatars } from '../../hooks/useChannelAvatars'
-import { channelKeyOf, facebookPictureUrl } from '../../lib/channelAvatars'
+import { channelKeyOf, facebookPictureUrl, mainPageOf } from '../../lib/channelAvatars'
 import { useQuickReplies } from '../../hooks/useQuickReplies'
 import { useAutomationQueue } from '../../hooks/useAutomationQueue'
 import { needsApproval, type QueueItem } from '../../lib/automationQueue'
@@ -734,12 +734,16 @@ export function WhatsAppInbox({
         names.set(pageId, name)
       }
     }
+    // The Page an inbox stands for: the one that has the inbox's own name, else the one most of its chats are on.
     const main = new Map<number, string>()
     for (const [inboxId, inboxCounts] of counts) {
-      main.set(inboxId, [...inboxCounts.entries()].sort((x, y) => y[1] - x[1])[0][0])
+      const pageId = mainPageOf(inboxCounts, names, socialInboxNames.get(inboxId))
+      if (pageId) {
+        main.set(inboxId, pageId)
+      }
     }
     return { main, names }
-  }, [inbox.conversations])
+  }, [inbox.conversations, socialInboxNames])
   const pageIdOf = useCallback(
     (conversation: ChatwootConversation) => {
       const noted = conversation.meta.sender.additional_attributes?.ghl_page_id

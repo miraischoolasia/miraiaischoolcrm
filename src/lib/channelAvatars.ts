@@ -8,6 +8,15 @@ export function normalizePageName(name: string | null | undefined) {
   return (name ?? '').normalize('NFKC').replace(/\p{Cf}/gu, '').replace(/\s+/g, '').toLowerCase()
 }
 
+// The Page an inbox stands for, from the Pages its chats are on (page id -> number of chats): the one that has the
+// inbox's own name, else the one with the most chats (a tie goes to the first listed).
+export function mainPageOf(counts: Map<string, number>, names: Map<string, string>, inboxName: string | null | undefined) {
+  const wanted = normalizePageName(inboxName)
+  const pageIds = [...counts.keys()]
+  const named = wanted ? pageIds.find((pageId) => normalizePageName(names.get(pageId)) === wanted) : undefined
+  return named ?? [...counts.entries()].sort((x, y) => y[1] - x[1])[0]?.[0] ?? null
+}
+
 export function channelKeyOf(inboxId: number | undefined | null, pageName?: string | null) {
   const inbox = inboxId ?? 0
   const page = normalizePageName(pageName)
