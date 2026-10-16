@@ -765,19 +765,23 @@ export function WhatsAppInbox({
   // the number (also one whose number WhatsApp hides), else the one the server has, else a new one.
   // Resolves to an error message, or null once WhatsApp has accepted the message.
   async function sendQueued(entry: QueueItem, message: string) {
-    const known = findChatForNumber({
-      conversations: inbox.conversations,
-      phone: entry.phone,
-      leadId: entry.leadId,
-      leads: crm.leads,
-      students: crm.students,
-    })
-    let conversationId = known?.id ?? null
+    // A Messenger / Instagram message names its chat; a WhatsApp one is found by its number.
+    const known =
+      entry.conversationId !== null
+        ? (inbox.conversations.find((chat) => chat.id === entry.conversationId) ?? null)
+        : findChatForNumber({
+            conversations: inbox.conversations,
+            phone: entry.phone ?? '',
+            leadId: entry.leadId,
+            leads: crm.leads,
+            students: crm.students,
+          })
+    let conversationId = known?.id ?? entry.conversationId
     if (known && known.status === 'resolved') {
       await inbox.setStatus(known.id, 'open')
     }
     if (conversationId === null) {
-      const started = await startChat(client, { phone: entry.phone, name: entry.parentName ?? '' })
+      const started = await startChat(client, { phone: entry.phone ?? '', name: entry.parentName ?? '' })
       if (started.error !== null) {
         return started.error
       }
@@ -890,7 +894,8 @@ export function WhatsAppInbox({
     </div>
     <div
       className={cn(
-        'grid h-[calc(100dvh-262px)] min-h-[520px] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white lg:h-[calc(100dvh-182px)] lg:grid-cols-[380px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)_280px]',
+        // The channel switch above the box takes 52px (40 + the gap), which the box gives back.
+        'grid h-[calc(100dvh-314px)] min-h-[520px] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white lg:h-[calc(100dvh-234px)] lg:grid-cols-[380px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)_280px]',
         // On a phone an open chat takes the whole screen, above the page title and
         // tools, and stops just above the bottom menu.
         hasChat && 'max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-[5.7rem] max-lg:z-30 max-lg:h-auto max-lg:min-h-0 max-lg:rounded-none max-lg:border-0',

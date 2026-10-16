@@ -199,10 +199,12 @@ import { CalendarItemModal } from './components/modals/CalendarItemModal'
 import { useCalendarItems } from './hooks/useCalendarItems'
 import { useLeadChannels } from './hooks/useLeadChannels'
 import { mergeLeads } from './lib/leadChannels'
+import { upcomingZoomSlots } from './lib/zoomSlots'
 import { MOCK_SOCIAL_CHANNELS, MOCK_SOCIAL_LEADS } from './lib/mockSocialLeads'
 
 // The "mock" Vite mode (npm run dev -- --mode mock) shows made-up Messenger / Instagram leads on the Leads page.
 const isMockMode = import.meta.env.MODE === 'mock'
+
 import { buildCalendarItemEvents, itemsVisibleTo, type CalendarItem } from './lib/calendarItems'
 import { AttendanceModal } from './components/modals/AttendanceModal'
 import { MakeupPlanModal, type MakeupPlanInput } from './components/modals/MakeupPlanModal'
@@ -3843,6 +3845,7 @@ function App() {
     onAddOption: handleAddLeadOption,
     onSetStudentPhone: setStudentPhoneFromChat,
     onOpenLead: openEditLeadModal,
+    zoomSlots: upcomingZoomSlots(calendarItems.items, new Date()),
     leadChannels: leadChannels.rows,
     // A chat that became a lead here: read the leads and the chats again.
     refreshLeadChannels: () => {
@@ -5894,27 +5897,13 @@ function App() {
 
                 <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
                   <div className="border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                      <div>
+                    <div className="flex flex-col gap-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
                         <h2 className="text-lg font-semibold text-slate-900">
                           Full Calendar Timetable Board
                         </h2>
-                      </div>
-
-                      <div className="flex w-full flex-wrap items-center gap-3 xl:w-auto xl:shrink-0">
-                        {getLegendKeys({
-                          canEdit: canEditCalendar,
-                          kinds: getScheduleKinds(visibleSchedules, classroomMap),
-                          hasMakeups: makeupEntries.length > 0,
-                          hasCancelledDays: scheduleExceptions.length > 0,
-                        }).map((key) => (
-                          <div key={key} className="flex items-center gap-2 text-sm text-slate-600">
-                            <span className={cn('h-3 w-3 rounded-full', legendEntries[key].dot)} />
-                            <span>{legendEntries[key].label}</span>
-                          </div>
-                        ))}
                         {canEditCalendar && (
-                          <div className="ml-auto flex flex-wrap items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <button
                               type="button"
                               onClick={() => setCalendarItemEditor({ item: null, date: todayString })}
@@ -5931,6 +5920,20 @@ function App() {
                             </button>
                           </div>
                         )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                        {getLegendKeys({
+                          canEdit: canEditCalendar,
+                          kinds: getScheduleKinds(visibleSchedules, classroomMap),
+                          hasMakeups: makeupEntries.length > 0,
+                          hasCancelledDays: scheduleExceptions.length > 0,
+                        }).map((key) => (
+                          <div key={key} className="flex items-center gap-2 text-sm text-slate-600">
+                            <span className={cn('h-3 w-3 rounded-full', legendEntries[key].dot)} />
+                            <span>{legendEntries[key].label}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>

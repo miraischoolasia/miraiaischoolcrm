@@ -36,7 +36,10 @@ describe('CalendarItemModal', () => {
     expect(screen.queryByRole('checkbox', { name: 'All day' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('From')).toHaveValue('10:00')
     await userEvent.type(screen.getByLabelText('Title'), 'Parent meeting')
+    await userEvent.type(screen.getByLabelText('Zoom link'), 'https://zoom.us/j/123')
     await userEvent.click(screen.getByRole('button', { name: 'Add' }))
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ kind: 'meeting', startTime: '10:00' }))
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'meeting', startTime: '10:00', zoomLink: 'https://zoom.us/j/123' }),
+    )
   })
 })

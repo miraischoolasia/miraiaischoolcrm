@@ -1,6 +1,7 @@
 import type { HoaSlot } from '../../lib/hoaSlots'
 import type { StudentClassLine } from '../../lib/studentClasses'
 import type { LeadChannel } from '../../lib/leadChannels'
+import type { ZoomSlot } from '../../lib/zoomSlots'
 import type {
   Classroom,
   Lead,
@@ -78,6 +79,8 @@ export type WhatsAppCrm = {
   // Writes the parent's number on a student who has none, so the chat finds them by phone too.
   onSetStudentPhone: (studentId: number, phone: string) => Promise<string | null>
   onOpenLead: (leadId: number) => void
+  // The Zoom meetings on the calendar a parent can be put into (time and link already set), soonest first.
+  zoomSlots?: ZoomSlot[]
   // The chats every lead has (WhatsApp numbers, Messenger Pages, Instagram), and a way to read them again.
   leadChannels: LeadChannel[]
   refreshLeadChannels: () => void

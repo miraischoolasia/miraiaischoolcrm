@@ -39,7 +39,17 @@ describe('itemDraftError', () => {
     expect(itemDraftError(draft({ kind: 'meeting', startTime: '10:00', endTime: '09:00' }))).toBe(
       'The end time has to be after the start time.',
     )
-    expect(itemDraftError(draft({ kind: 'meeting', startTime: '10:00', endTime: '11:00' }))).toBeNull()
+    expect(
+      itemDraftError(draft({ kind: 'meeting', startTime: '10:00', endTime: '11:00', zoomLink: 'https://zoom.us/j/1' })),
+    ).toBeNull()
+  })
+
+  it('wants the Zoom link on a meeting, so it can be given to a parent', () => {
+    expect(itemDraftError(draft({ kind: 'meeting', startTime: '10:00' }))).toBe(
+      'Paste the Zoom link, starting with https://',
+    )
+    // A task or an event does not need one.
+    expect(itemDraftError(draft({ kind: 'task' }))).toBeNull()
   })
 
   it('refuses a meeting link that is not a web address', () => {

@@ -58,6 +58,17 @@ async function start() {
     return
   }
 
+  // Dev server only: /?demo=zoomstep shows the Zoom step with made-up times, without logging in.
+  if (import.meta.env.DEV && params.get('demo') === 'zoomstep') {
+    const { ZoomStepDemo } = await import('./dev/ZoomStepDemo.tsx')
+    root.render(
+      <StrictMode>
+        <ZoomStepDemo />
+      </StrictMode>,
+    )
+    return
+  }
+
   const { default: App } = await import('./App.tsx')
   root.render(
     <StrictMode>

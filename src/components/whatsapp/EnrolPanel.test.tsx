@@ -166,6 +166,42 @@ describe('EnrolPanel', () => {
     expect(api.addLeadZoomMeeting.mock.calls[0][2]).toBe('https://zoom.us/j/123')
   })
 
+  it('lets the team pick a Zoom time from the calendar, like an HOA class', async () => {
+    const startsAt = new Date('2099-10-20T15:30:00')
+    renderPanel(
+      makeCrm({
+        zoomSlots: [
+          { id: 7, startsAt, link: 'https://zoom.us/j/777', title: 'Parent Zoom' },
+          { id: 8, startsAt: new Date('2099-10-22T10:00:00'), link: 'https://zoom.us/j/888', title: 'Open day' },
+        ],
+      }),
+    )
+
+    // The times are offered; typing a date and a link is the other way.
+    expect(screen.queryByLabelText('Date and time')).not.toBeInTheDocument()
+    const save = screen.getByRole('button', { name: 'Save the Zoom meeting' })
+    expect(save).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('button', { name: /Parent Zoom/ }))
+    await userEvent.click(save)
+
+    await waitFor(() => expect(api.addLeadZoomMeeting).toHaveBeenCalledTimes(1))
+    expect(api.addLeadZoomMeeting.mock.calls[0][0]).toBe(11)
+    expect((api.addLeadZoomMeeting.mock.calls[0][1] as Date).getTime()).toBe(startsAt.getTime())
+    expect(api.addLeadZoomMeeting.mock.calls[0][2]).toBe('https://zoom.us/j/777')
+  })
+
+  it('can still type a time and a link when the calendar has no suitable one', async () => {
+    renderPanel(
+      makeCrm({ zoomSlots: [{ id: 7, startsAt: new Date('2099-10-20T15:30:00'), link: 'https://zoom.us/j/777', title: '' }] }),
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Use another time or link' }))
+
+    expect(screen.getByLabelText('Date and time')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Pick from the calendar instead' })).toBeInTheDocument()
+  })
+
   it('writes the message from what is saved', async () => {
     api.fetchLeadEnrolment.mockResolvedValue({
       receipts: [{ id: 1, leadId: 11, path: 'p', name: 'slip.pdf', size: 10, addedBy: 'Amy', createdAt: '2026-10-09T01:00:00Z' }],

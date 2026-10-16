@@ -3,6 +3,7 @@ import { CheckCircle, FilePdf, Trash } from '@phosphor-icons/react'
 import type { useLeadEnrolment } from '../../hooks/useLeadEnrolment'
 import { formatDate } from '../../domain/studentStatus'
 import { formatZoomTime } from '../../lib/enrolMessage'
+import type { ZoomSlot } from '../../lib/zoomSlots'
 import { prepareReceipt } from '../../lib/receiptPdf'
 
 // The pieces the enrol panels (HOA and Holiday Camp) have in common.
@@ -124,17 +125,49 @@ export function ZoomStep({
   enrolment,
   canEdit,
   hint,
+  slots = [],
 }: {
   number: number
   enrolment: Enrolment
   canEdit: boolean
   // A line shown above the meetings, such as "usually set after the form is filled in".
   hint?: string | null
+  // The Zoom meetings already on the calendar: pick a time, like an HOA class, instead of typing one.
+  slots?: ZoomSlot[]
 }) {
   const [at, setAt] = useState('')
   const [link, setLink] = useState('')
   const [problem, setProblem] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [pickedId, setPickedId] = useState<number | null>(null)
+  const [typing, setTyping] = useState(false)
+  const [showAll, setShowAll] = useState(false)
+  // A time this parent already has is not offered again.
+  const free = slots.filter(
+    (slot) =>
+      !enrolment.meetings.some(
+        (meeting) => meeting.link === slot.link && new Date(meeting.startsAt).getTime() === slot.startsAt.getTime(),
+      ),
+  )
+  const shown = showAll ? free : free.slice(0, 5)
+  const picking = free.length > 0 && !typing
+
+  async function saveSlot() {
+    const slot = free.find((entry) => entry.id === pickedId)
+    if (!slot) {
+      setProblem('Pick a time first.')
+      return
+    }
+    setSaving(true)
+    setProblem(null)
+    const failed = await enrolment.addMeeting(slot.startsAt, slot.link)
+    setSaving(false)
+    if (failed) {
+      setProblem(failed)
+      return
+    }
+    setPickedId(null)
+  }
 
   async function save() {
     const startsAt = new Date(at)
@@ -181,8 +214,56 @@ export function ZoomStep({
           )}
         </div>
       ))}
-      {canEdit && (
+      {canEdit && picking && (
         <>
+          <span className="block text-slate-600">Pick a time</span>
+          <div role="group" aria-label="Zoom times" className="space-y-1">
+            {shown.map((slot) => (
+              <button
+                key={slot.id}
+                type="button"
+                aria-pressed={pickedId === slot.id}
+                onClick={() => {
+                  setPickedId(slot.id)
+                  setProblem(null)
+                }}
+                className={`block w-full rounded-lg border px-2.5 py-1.5 text-left ${
+                  pickedId === slot.id
+                    ? 'border-[#fc0c97] bg-[#fff0f8] text-slate-900'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span className="block font-medium">{formatZoomTime(slot.startsAt)}</span>
+                {slot.title && <span className="block truncate text-slate-500">{slot.title}</span>}
+              </button>
+            ))}
+          </div>
+          {free.length > shown.length && (
+            <button type="button" onClick={() => setShowAll(true)} className="text-xs font-medium text-[#be185d] hover:underline">
+              Show all {free.length} times
+            </button>
+          )}
+          <Problem text={problem} />
+          <button
+            type="button"
+            disabled={saving || pickedId === null}
+            onClick={() => void saveSlot()}
+            className={`${buttonClass} w-full`}
+          >
+            {saving ? 'Saving...' : 'Save the Zoom meeting'}
+          </button>
+          <button type="button" onClick={() => setTyping(true)} className="block text-xs font-medium text-[#be185d] hover:underline">
+            Use another time or link
+          </button>
+        </>
+      )}
+      {canEdit && !picking && (
+        <>
+          {free.length > 0 && (
+            <button type="button" onClick={() => setTyping(false)} className="block text-xs font-medium text-[#be185d] hover:underline">
+              Pick from the calendar instead
+            </button>
+          )}
           <label className="block">
             <span className="text-slate-600">Date and time</span>
             <input

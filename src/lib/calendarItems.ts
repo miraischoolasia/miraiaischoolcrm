@@ -82,6 +82,10 @@ export function itemDraftError(draft: CalendarItemDraft): string | null {
     return 'A meeting needs a start time.'
   }
   const link = draft.zoomLink.trim()
+  // A meeting without its link cannot be given to a parent, so the link is part of the meeting.
+  if (draft.kind === 'meeting' && !link) {
+    return 'Paste the Zoom link, starting with https://'
+  }
   if (link && !/^https?:\/\/\S+$/i.test(link)) {
     return 'The meeting link has to start with https://'
   }

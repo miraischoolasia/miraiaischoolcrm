@@ -324,6 +324,7 @@ export function CampEnrolPanel({ lead, crm, userName, onWriteMessage, forStudent
         number={4}
         enrolment={enrolment}
         canEdit={canEdit}
+        slots={crm.zoomSlots ?? []}
         hint={!submitted ? (forStudent ? 'This is usually set after the form has been filled in.' : 'This is usually set after the parent has filled in the form.') : null}
       />
 
