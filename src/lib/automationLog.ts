@@ -17,6 +17,7 @@ export type FlowLogKind =
   | 'action_done'
   | 'action_skipped'
   | 'channel_off'
+  | 'keyword_matched'
 
 export type FlowLogRow = {
   id: number
@@ -163,6 +164,7 @@ const LOG_TITLES: Record<FlowLogKind, string> = {
   action_done: 'Changed the lead',
   action_skipped: 'Step not done',
   channel_off: 'Not sent: wrong channel',
+  keyword_matched: 'Wrote a keyword',
 }
 
 // What a log row of each kind means for the filter chips: the three about replies are steps in between; a
@@ -180,6 +182,7 @@ const LOG_GROUPS: Record<FlowLogKind, TimelineEntry['group']> = {
   action_done: 'sent',
   action_skipped: 'skipped',
   channel_off: 'skipped',
+  keyword_matched: 'other',
 }
 
 export function personLabel(row: { childName: string | null; parentName: string | null; phone: string | null }) {
@@ -373,9 +376,14 @@ export function buildEnrollments(activity: FlowActivity, now = Date.now()): Enro
       // Nothing was messaged, but the flow changed the lead.
       status = 'done'
       reason = log.find((row) => row.kind === 'action_done')?.detail ?? null
+    } else if (log.every((row) => row.kind === 'keyword_matched')) {
+      // Only the words that started it are known so far: the steps are not due yet.
+      status = 'waiting'
+      reason = log[0]?.detail ?? null
     } else {
+      const why = log.find((row) => row.kind !== 'keyword_matched')
       status = 'not_sent'
-      reason = log[0]?.detail ?? LOG_TITLES[log[0]?.kind ?? 'no_message']
+      reason = why?.detail ?? LOG_TITLES[why?.kind ?? 'no_message']
     }
 
     enrollments.push({

@@ -38,6 +38,8 @@ type ComposerProps = {
   aiSuggestion?: { text: string; note: string } | null
   aiLoading?: boolean
   aiError?: string | null
+  // Why the AI wrote no reply for this message, when it said.
+  aiSkipNote?: string | null
   // Whether there is an unanswered message the AI could answer (shows the "Suggest a reply" button).
   aiAvailable?: boolean
   onAiSuggest?: () => void
@@ -109,6 +111,7 @@ export function Composer({
   aiSuggestion = null,
   aiLoading = false,
   aiError = null,
+  aiSkipNote = null,
   aiAvailable = false,
   onAiSuggest,
   onAiUse,
@@ -632,6 +635,9 @@ ${draftRequest.text}` : draftRequest.text))
           AI suggestion: click the grey text to use it, then check it before you send.
           {aiSuggestion?.note ? <span className="ml-1 font-semibold text-amber-700">{aiSuggestion.note}</span> : null}
         </p>
+      )}
+      {aiSkipNote && !aiError && !showSuggestion && text === '' && mode === 'reply' && (
+        <p className="mt-1.5 text-[11px] text-slate-500">AI wrote no reply: {aiSkipNote}</p>
       )}
       {aiError && !showSuggestion && text === '' && mode === 'reply' && (
         <p className="mt-1.5 text-[11px] text-slate-500">{aiError}</p>

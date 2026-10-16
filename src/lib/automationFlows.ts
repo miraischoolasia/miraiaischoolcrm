@@ -714,6 +714,9 @@ export type FlowTestChild = {
   // How a pretend parent answers a "wait for a reply" block: wrote back (with this text) or stayed silent.
   reply?: 'replied' | 'silent' | null
   replyText?: string
+  // For a flow that starts from a message: what the pretend parent wrote and where.
+  message?: string
+  channel?: FlowChannel | null
 }
 
 // What is typed in the tester, as text.
@@ -730,6 +733,9 @@ export type TestInputs = {
   // '' (not said), 'replied' or 'silent'
   reply: string
   replyText: string
+  // A flow that starts from a message: the text that came in, and the channel ('' = WhatsApp).
+  message: string
+  channel: string
 }
 export const EMPTY_TEST: TestInputs = {
   age: '',
@@ -743,6 +749,8 @@ export const EMPTY_TEST: TestInputs = {
   keywordId: '',
   reply: '',
   replyText: '',
+  message: '',
+  channel: '',
 }
 
 export function isTesting(test: TestInputs) {
@@ -763,7 +771,33 @@ export function testChildOf(test: TestInputs): FlowTestChild {
     keywordId: number(test.keywordId),
     reply: test.reply === 'replied' || test.reply === 'silent' ? test.reply : null,
     replyText: test.replyText,
+    message: test.message,
+    channel: FLOW_CHANNELS.some((entry) => entry.key === test.channel) ? (test.channel as FlowChannel) : null,
   }
+}
+
+// The same reading as automation.keyword_norm: lower case, every run of other characters becomes one space.
+function normalizeKeywordText(text: string) {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+}
+
+// Would this message start a flow that starts from a message? A reason when it would not, else null.
+export function keywordMissReason(settings: FlowSettings | undefined, message: string, channel: FlowChannel | null) {
+  const listens = settings?.channels ?? ['whatsapp']
+  const on = channel ?? 'whatsapp'
+  if (message.trim() === '') {
+    return 'Type what the parent writes to see what would happen.'
+  }
+  if (!listens.includes(on)) {
+    const label = FLOW_CHANNELS.find((entry) => entry.key === on)?.label ?? on
+    return `The flow does not listen on ${label}: tick it under Settings, “Channels”.`
+  }
+  const text = normalizeKeywordText(message)
+  const hit = (settings?.keywords ?? []).some((word) => {
+    const clean = normalizeKeywordText(word)
+    return clean !== '' && text.includes(clean)
+  })
+  return hit ? null : 'That message holds none of the keywords, so the flow would not start.'
 }
 
 export type FlowTestResult = {
@@ -782,6 +816,11 @@ export function simulateFlow(graph: FlowGraph, child: FlowTestChild): FlowTestRe
   const messages: MessageNode[] = []
   const actions: ActionNode[] = []
   const stack: string[] = [TRIGGER_ID]
+
+  // A flow that starts from a message only starts when the message holds a keyword.
+  if ((graph.settings?.keywords ?? []).length > 0 && keywordMissReason(graph.settings, child.message ?? '', child.channel ?? null)) {
+    return { nodes, edges, messages, actions }
+  }
 
   while (stack.length > 0) {
     const id = stack.shift() as string

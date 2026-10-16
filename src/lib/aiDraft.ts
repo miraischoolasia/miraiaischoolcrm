@@ -21,7 +21,10 @@ export type AiDraftContext = {
 export type AiDraftSuggestion = { id: number | null; text: string; note: string }
 
 export type AiDraftOutcome =
-  { kind: 'draft'; suggestion: AiDraftSuggestion } | { kind: 'skip' } | { kind: 'error'; message: string }
+  | { kind: 'draft'; suggestion: AiDraftSuggestion }
+  // The AI saw no reply to write; note is the reason it gave the team (a fact the notes lack, say), or ''.
+  | { kind: 'skip'; note: string }
+  | { kind: 'error'; message: string }
 
 // replyTo is the message this one quotes in WhatsApp: a bare "Yes" only means something next to the
 // question it answers.
@@ -169,7 +172,7 @@ export async function requestAiDraft(body: AiDraftBody): Promise<AiDraftOutcome>
     }
     const reply = typeof answer.reply === 'string' ? answer.reply.trim() : ''
     if (answer.skip === true || reply === '') {
-      return { kind: 'skip' }
+      return { kind: 'skip', note: typeof answer.staffNote === 'string' ? answer.staffNote.trim() : '' }
     }
     return {
       kind: 'draft',

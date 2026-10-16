@@ -88,8 +88,18 @@ describe('useAiSuggestion', () => {
     await waitFor(() => expect(request).toHaveBeenCalledTimes(1))
   })
 
+  it('keeps the reason the AI gave for writing nothing', async () => {
+    const { request, hook } = setup({ conversationId: 16, outcome: { kind: 'skip', note: '知识库里没有价钱资料' } })
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(hook.result.current.skipNote).toBe('知识库里没有价钱资料'))
+    expect(hook.result.current.suggestion).toBeNull()
+    // Putting the suggestion away is not a reason to show.
+    act(() => hook.result.current.dismiss())
+    expect(hook.result.current.skipNote).toBeNull()
+  })
+
   it('shows nothing when the AI sees no reply is needed, but can be asked again by hand', async () => {
-    const { request, hook } = setup({ conversationId: 6, outcome: { kind: 'skip' } })
+    const { request, hook } = setup({ conversationId: 6, outcome: { kind: 'skip', note: '' } })
     await waitFor(() => expect(request).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(hook.result.current.isLoading).toBe(false))
     expect(hook.result.current.suggestion).toBeNull()
@@ -132,7 +142,7 @@ describe('useAiSuggestion', () => {
   })
 
   it('has no draft id when nothing was suggested or the team spoke last', async () => {
-    const skipped = setup({ conversationId: 11, outcome: { kind: 'skip' } })
+    const skipped = setup({ conversationId: 11, outcome: { kind: 'skip', note: '' } })
     await act(async () => {})
     expect(skipped.hook.result.current.draftId).toBeNull()
     const answered = setup({ messages: [message({ message_type: 1, content: 'Hi' })], conversationId: 12 })

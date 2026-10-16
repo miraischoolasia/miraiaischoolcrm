@@ -13,8 +13,9 @@ import type { ChatwootMessage } from '../lib/whatsappInbox'
 type Entry =
   | { status: 'loading' }
   | { status: 'ready'; suggestion: AiDraftSuggestion }
-  // Nothing to show: the AI saw no need to reply, or the suggestion was used or dismissed.
-  | { status: 'none' }
+  // Nothing to show: the AI saw no need to reply, or the suggestion was used or dismissed. note is why the AI
+  // wrote nothing, when it said.
+  | { status: 'none'; note?: string }
   | { status: 'error'; message: string }
 
 // What was asked for each parent message, kept while the page is open so going back to a chat, or a
@@ -41,7 +42,9 @@ function entryOf(outcome: AiDraftOutcome): Entry {
   if (outcome.kind === 'draft') {
     return { status: 'ready', suggestion: outcome.suggestion }
   }
-  return outcome.kind === 'skip' ? { status: 'none' } : { status: 'error', message: outcome.message }
+  return outcome.kind === 'skip'
+    ? { status: 'none', ...(outcome.note ? { note: outcome.note } : {}) }
+    : { status: 'error', message: outcome.message }
 }
 
 type Args = {
@@ -135,6 +138,8 @@ export function useAiSuggestion({
     draftId: key === null ? null : (draftIds.get(key) ?? null),
     suggestion: entry?.status === 'ready' ? entry.suggestion : null,
     isLoading: entry?.status === 'loading',
+    // Why the AI wrote nothing for this message (it asked for a fact the notes do not have, say).
+    skipNote: entry?.status === 'none' ? (entry.note ?? null) : null,
     error: entry?.status === 'error' ? entry.message : null,
     suggest,
     dismiss,

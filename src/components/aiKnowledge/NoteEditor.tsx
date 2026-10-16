@@ -170,7 +170,7 @@ export function NoteEditor({
             value={draft.title}
             readOnly={readOnly}
             maxLength={MAX_TITLE}
-            placeholder="For example: HOA, Payment, Refund"
+            placeholder="For example: Prices, Payment, Refund"
             onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-base text-slate-900 focus:border-[#fc0c97] focus:outline-none read-only:bg-slate-50"
           />

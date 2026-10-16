@@ -21,6 +21,9 @@ type FlowTesterProps = {
   filterOptions: FilterOptions
   test: TestInputs
   outcome: FlowTestResult
+  // A flow that starts from a message: the tester asks for the text; missReason says why it would not start.
+  startsFromMessage?: boolean
+  missReason?: string | null
   onTest: (change: Partial<TestInputs>) => void
   onClear: () => void
   // Only an admin can send a test.
@@ -63,6 +66,8 @@ export function FlowTester({
   filterOptions,
   test,
   outcome,
+  startsFromMessage = false,
+  missReason = null,
   onTest,
   onClear,
   canSend,
@@ -138,6 +143,29 @@ export function FlowTester({
         }
       >
         {!panel && <span className="font-semibold text-slate-900">Try it with a child</span>}
+        {startsFromMessage && (
+          <span className={row}>
+            <span>Message</span>
+            <input
+              type="text"
+              aria-label="Test message"
+              value={test.message}
+              placeholder="what the parent writes"
+              onChange={(event) => onTest({ message: event.target.value })}
+              className={fieldCx('w-56')}
+            />
+            <select
+              aria-label="Test channel"
+              value={test.channel}
+              onChange={(event) => onTest({ channel: event.target.value })}
+              className={fieldCx('max-w-[130px]')}
+            >
+              <option value="">WhatsApp</option>
+              <option value="messenger">Messenger</option>
+              <option value="instagram">Instagram</option>
+            </select>
+          </span>
+        )}
         <span className={row}>
           <span>Age</span>
           <input
@@ -259,7 +287,9 @@ export function FlowTester({
         )}
       </div>
       {testing &&
-        (outcome.messages.length === 0 && outcome.actions.length === 0 ? (
+        (startsFromMessage && missReason ? (
+          <p className="mt-2 text-sm text-slate-500">{missReason}</p>
+        ) : outcome.messages.length === 0 && outcome.actions.length === 0 ? (
           <p className="mt-2 text-sm text-slate-500">This child would get no message.</p>
         ) : (
           <div className="mt-2 space-y-2">

@@ -1,13 +1,16 @@
 import { useState } from 'react'
-import { ChatCircleText, Funnel, Lightning, Plus, X } from '@phosphor-icons/react'
+import { ChatCircleText, Funnel, Lightning, Plus, Tag, X } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import {
   TRIGGERS,
+  describeAction,
   describeNode,
   describeOffset,
   previewMessage,
   triggerInfo,
   updateSettings,
+  type ActionKind,
+  type ActionNode,
   type ChoiceKind,
   type ConditionNode,
   type FilterOptions,
@@ -20,10 +23,12 @@ import {
 import {
   TRIGGER_GROUPS,
   addBranchMessage,
+  addActionStep,
   addFilter,
   addMessageStep,
   addReplyRule,
   addReplyStep,
+  removeActionStep,
   removeBranchMessage,
   removeFilter,
   removeMessageStep,
@@ -64,6 +69,14 @@ const FILTER_KINDS: { kind: Exclude<NewBlockKind, 'message'>; label: string; hin
   { kind: 'hours', label: 'Lessons left', hint: 'Nearly out of lessons' },
 ]
 
+const STEP_KINDS: { kind: ActionKind; label: string; hint: string }[] = [
+  { kind: 'make_lead', label: 'Make them a lead', hint: 'For a flow that starts from a message' },
+  { kind: 'add_tag', label: 'Add a tag', hint: 'Put a tag on the lead' },
+  { kind: 'set_source', label: 'Set the source', hint: 'Change the lead’s source' },
+  { kind: 'assign_pic', label: 'Assign a PIC', hint: 'Who handles the lead from now on' },
+  { kind: 'set_stage', label: 'Change the lead stage', hint: 'Move the lead to another stage' },
+]
+
 // "A lead comes in from a source" is the new-lead trigger with a Source filter in front. It is shown as
 // one choice in the picker so nobody has to know that.
 const FROM_SOURCE = 'lead_from_source'
@@ -99,6 +112,7 @@ export function SimpleBuilder({
 }: SimpleBuilderProps) {
   const [openId, setOpenId] = useState<string | null>(null)
   const [pickingFilter, setPickingFilter] = useState(false)
+  const [pickingStep, setPickingStep] = useState(false)
   const info = triggerInfo(draft.trigger)
 
   function toggle(id: string) {
@@ -144,6 +158,13 @@ export function SimpleBuilder({
     if (added) {
       setOpenId(added.id)
     }
+  }
+
+  function addStepOf(kind: ActionKind) {
+    const result = addActionStep(draft.graph, kind)
+    onGraphChange(result.graph)
+    setPickingStep(false)
+    setOpenId(result.id)
   }
 
   // The editor puts the list back in time order when a time was changed.
@@ -285,6 +306,51 @@ export function SimpleBuilder({
     )
   }
 
+  const steps = parts.actions ?? []
+  const stepCard = (step: ActionNode) => {
+    const open = openId === step.id
+    return (
+      <li key={step.id} className="rounded-xl border border-slate-200 bg-white">
+        <div className="flex items-center gap-1 px-3 py-2">
+          <Tag size={16} className="shrink-0 text-violet-500" aria-hidden="true" />
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => toggle(step.id)}
+            className="min-w-0 flex-1 text-left text-sm font-semibold text-slate-900"
+          >
+            {describeAction(step, choiceName)}
+          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              aria-label="Remove this step"
+              onClick={() => onGraphChange(removeActionStep(draft.graph, step.id))}
+              className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-red-700"
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
+          )}
+        </div>
+        {open && (
+          <div className="border-t border-slate-100 px-3 py-3">
+            <FlowInspector
+              node={step}
+              trigger={draft.trigger}
+              classrooms={classrooms}
+              contacts={contacts}
+              filterOptions={filterOptions}
+              graph={draft.graph}
+              readOnly={readOnly}
+              onChange={(change) => changeNode(step.id, change)}
+              onDelete={() => onGraphChange(removeActionStep(draft.graph, step.id))}
+            />
+          </div>
+        )}
+      </li>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* 1. When */}
@@ -326,18 +392,12 @@ export function SimpleBuilder({
             {triggerValue === FROM_KEYWORD && ' Tick the source keywords under "Who it is for".'}
           </p>
           {draft.trigger === 'message_keyword' && (
-            <>
-              <KeywordsField
-                keywords={draft.graph.settings?.keywords}
-                everyTime={draft.graph.settings?.everyTime}
-                readOnly={readOnly}
-                onChange={(change) => onGraphChange(updateSettings(draft.graph, change))}
-              />
-              <p className="text-xs text-slate-500">
-                To make the person a lead, add a tag or change their source, use the Advanced view: those steps
-                are drawn there.
-              </p>
-            </>
+            <KeywordsField
+              keywords={draft.graph.settings?.keywords}
+              everyTime={draft.graph.settings?.everyTime}
+              readOnly={readOnly}
+              onChange={(change) => onGraphChange(updateSettings(draft.graph, change))}
+            />
           )}
         </div>
       </section>
@@ -394,10 +454,63 @@ export function SimpleBuilder({
         </div>
       </section>
 
-      {/* 3. Then send */}
+      {/* 3. Then change the lead */}
       <section className="space-y-2">
         <div className="flex items-center gap-2">
           <StepNumber n={3} />
+          <h2 className="text-sm font-bold text-slate-900">Then update the lead</h2>
+        </div>
+        <div className="ml-8 space-y-2">
+          {steps.length === 0 ? (
+            <p className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              Nothing changes on the lead. Add a step to tag them, set the source and more.
+            </p>
+          ) : (
+            <ol className="space-y-2">{steps.map(stepCard)}</ol>
+          )}
+          {!readOnly && (
+            <div className="relative">
+              <button
+                type="button"
+                aria-expanded={pickingStep}
+                onClick={() => setPickingStep((value) => !value)}
+                className="flex items-center gap-1 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                <Plus size={14} weight="bold" aria-hidden="true" />
+                Add a step
+              </button>
+              {pickingStep && (
+                <ul
+                  role="menu"
+                  aria-label="Steps"
+                  className="absolute left-0 top-11 z-10 w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg"
+                >
+                  {STEP_KINDS.filter((entry) => entry.kind !== 'make_lead' || draft.trigger === 'message_keyword').map(
+                    (entry) => (
+                      <li key={entry.kind} role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => addStepOf(entry.kind)}
+                          className="block w-full rounded-lg px-2.5 py-1.5 text-left hover:bg-slate-50"
+                        >
+                          <span className="block text-sm font-semibold text-slate-900">{entry.label}</span>
+                          <span className="block text-xs text-slate-500">{entry.hint}</span>
+                        </button>
+                      </li>
+                    ),
+                  )}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* 4. Then send */}
+      <section className="space-y-2">
+        <div className="flex items-center gap-2">
+          <StepNumber n={4} />
           <h2 className="text-sm font-bold text-slate-900">Then send</h2>
         </div>
         <div className="ml-8">

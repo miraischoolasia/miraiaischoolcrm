@@ -233,7 +233,15 @@ describe('what comes back', () => {
 
   it('says nothing is needed when the AI skips', async () => {
     client.invoke.mockResolvedValue({ data: { ok: true, id: 8, reply: '', skip: true, staffNote: '' }, error: null })
-    expect(await requestAiDraft(body)).toEqual({ kind: 'skip' })
+    expect(await requestAiDraft(body)).toEqual({ kind: 'skip', note: '' })
+  })
+
+  it('passes on the reason when the AI writes nothing', async () => {
+    client.invoke.mockResolvedValue({
+      data: { ok: true, id: 9, reply: '', skip: true, staffNote: ' 知识库里没有价钱资料 ' },
+      error: null,
+    })
+    expect(await requestAiDraft(body)).toEqual({ kind: 'skip', note: '知识库里没有价钱资料' })
   })
 
   it('shows the sentence the function gave when it refuses', async () => {

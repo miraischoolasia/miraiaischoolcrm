@@ -4,7 +4,11 @@ import {
   addNode,
   cleanKeywords,
   describeAction,
+  keywordMissReason,
   parseGraph,
+  simulateFlow,
+  testChildOf,
+  EMPTY_TEST,
   triggerInfo,
   updateSettings,
   validateDraft,
@@ -13,6 +17,7 @@ import {
   type FlowGraph,
 } from './automationFlows'
 import { FLOW_RECIPES, TRIGGER_GROUPS, analyzeFlow } from './flowSteps'
+import { buildEnrollments, buildTimeline, type FlowLogRow } from './automationLog'
 
 const base: FlowGraph = { trigger: { x: 24, y: 140 }, nodes: [], edges: [] }
 
@@ -135,8 +140,72 @@ describe('the recipe that turns a keyword message into a lead', () => {
     expect(validateDraft(withWords)).toMatch(/needs a tag picked/)
   })
 
-  it('opens in the advanced view, because the simple list has no place for steps that change the lead', () => {
+  it('opens in the simple list, with its three steps ahead of the message', () => {
     const built = recipe?.build([]) as FlowDraft
-    expect(analyzeFlow(built.graph).simple).toBe(false)
+    const analysis = analyzeFlow(built.graph)
+    expect(analysis.simple).toBe(true)
+    expect(analysis.simple && analysis.actions?.map((step) => step.action)).toEqual(['make_lead', 'add_tag', 'set_source'])
+    expect(analysis.simple && analysis.messages).toHaveLength(1)
+  })
+})
+
+describe('the log of a flow that starts from a message', () => {
+  const matched: FlowLogRow = {
+    id: 1,
+    eventKey: 'kw:7:70',
+    nodeId: '',
+    kind: 'keyword_matched',
+    detail: 'They wrote “HOA course” on Messenger.',
+    phone: null,
+    parentName: 'Mei',
+    childName: null,
+    createdAt: '2026-10-16T10:00:00Z',
+  }
+
+  it('says what the person wrote, and counts them as waiting while nothing else has happened', () => {
+    const [enrollment] = buildEnrollments({ queue: [], log: [matched] })
+    expect(enrollment).toMatchObject({ person: 'Mei', status: 'waiting', reason: 'They wrote “HOA course” on Messenger.' })
+    expect(buildTimeline({ queue: [], log: [matched] })[0]).toMatchObject({ title: 'Wrote a keyword', group: 'other' })
+  })
+
+  it('gives the real reason when a step then stopped the flow', () => {
+    const stopped: FlowLogRow = { ...matched, id: 2, nodeId: 'c1', kind: 'condition_no', detail: 'Stage is not New.' }
+    const [enrollment] = buildEnrollments({ queue: [], log: [stopped, matched] })
+    expect(enrollment).toMatchObject({ status: 'not_sent', reason: 'Stage is not New.' })
+  })
+})
+
+describe('trying a flow that starts from a message', () => {
+  const graph: FlowGraph = {
+    ...base,
+    nodes: [step({ id: 'a1', action: 'make_lead' })],
+    edges: [{ from: TRIGGER_ID, port: 'out', to: 'a1' }],
+    settings: { keywords: ['HOA', 'Hari Terbuka'] },
+  }
+  const child = (change: Partial<typeof EMPTY_TEST>) => testChildOf({ ...EMPTY_TEST, ...change })
+
+  it('walks the steps when the text holds a keyword, whatever the capitals and punctuation', () => {
+    expect(simulateFlow(graph, child({ message: 'Hi! I want to join h.o.a? ' })).actions).toHaveLength(0)
+    expect(simulateFlow(graph, child({ message: 'hello, hari   terbuka please' })).actions).toHaveLength(1)
+    expect(simulateFlow(graph, child({ message: 'Interested in HOA!' })).actions).toHaveLength(1)
+  })
+
+  it('stops with a reason when no keyword is in the text', () => {
+    expect(simulateFlow(graph, child({ message: 'good morning' })).actions).toHaveLength(0)
+    expect(keywordMissReason(graph.settings, 'good morning', null)).toMatch(/none of the keywords/)
+    expect(keywordMissReason(graph.settings, '  ', null)).toMatch(/Type what the parent writes/)
+    expect(keywordMissReason(graph.settings, 'HOA', null)).toBeNull()
+  })
+
+  it('does not start on a channel the flow does not listen on', () => {
+    expect(keywordMissReason(graph.settings, 'HOA', 'messenger')).toMatch(/does not listen on Messenger/)
+    const everywhere = { ...graph.settings, channels: ['whatsapp', 'messenger'] as const }
+    expect(keywordMissReason({ ...everywhere, channels: [...everywhere.channels] }, 'HOA', 'messenger')).toBeNull()
+    expect(simulateFlow(graph, child({ message: 'HOA', channel: 'instagram' })).actions).toHaveLength(0)
+  })
+
+  it('leaves other flows alone: no keywords means no text is needed', () => {
+    const plain: FlowGraph = { ...graph, settings: undefined }
+    expect(simulateFlow(plain, child({})).actions).toHaveLength(1)
   })
 })

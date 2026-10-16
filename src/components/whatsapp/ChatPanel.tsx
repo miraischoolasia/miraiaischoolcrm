@@ -537,6 +537,7 @@ export function ChatPanel({
         aiSuggestion={ai.suggestion ? { text: ai.suggestion.text, note: ai.suggestion.note } : null}
         aiLoading={ai.isLoading}
         aiError={ai.error}
+        aiSkipNote={ai.skipNote}
         aiAvailable={ai.available}
         onAiSuggest={aiContext !== null ? ai.suggest : undefined}
         onAiUse={ai.markUsed}

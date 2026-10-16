@@ -883,6 +883,7 @@ export type Database = {
             | 'action_done'
             | 'action_skipped'
             | 'channel_off'
+            | 'keyword_matched'
           detail: string | null
           phone: string | null
           parent_name: string | null

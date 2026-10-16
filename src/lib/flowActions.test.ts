@@ -16,6 +16,7 @@ import {
   type ActionNode,
   type FlowDraft,
   type FlowGraph,
+  type MessageNode,
 } from './automationFlows'
 import { analyzeFlow } from './flowSteps'
 import { buildEnrollments, buildTimeline, type FlowActivity, type FlowLogRow } from './automationLog'
@@ -130,10 +131,24 @@ describe('saving and reading', () => {
     expect(read.nodes).toEqual([])
   })
 
-  it('is read in the advanced editor, not in the list', () => {
+  it('is shown in the list when the steps come one after another before the messages', () => {
     const graph: FlowGraph = { ...base, nodes: [tag()], edges: [{ from: TRIGGER_ID, port: 'out', to: 'a1' }] }
     const analysis = analyzeFlow(graph)
-    expect(analysis.simple).toBe(false)
+    expect(analysis.simple).toBe(true)
+    expect(analysis.simple && analysis.actions?.map((step) => step.id)).toEqual(['a1'])
+  })
+
+  it('is read in the advanced editor when a step comes after a message', () => {
+    const message: MessageNode = { id: 'm1', type: 'message', x: 0, y: 0, mins: 60, text: 'Hi', after: true }
+    const graph: FlowGraph = {
+      ...base,
+      nodes: [message, { ...tag(), id: 'a1' }],
+      edges: [
+        { from: TRIGGER_ID, port: 'out', to: 'm1' },
+        { from: 'm1', port: 'out', to: 'a1' },
+      ],
+    }
+    expect(analyzeFlow(graph).simple).toBe(false)
   })
 })
 

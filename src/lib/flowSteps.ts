@@ -7,6 +7,7 @@ import {
   isMessage,
   nextNodeId,
   triggerInfo,
+  type ActionKind,
   type ActionNode,
   type ConditionNode,
   type FlowDraft,
@@ -25,12 +26,14 @@ import type { AutomationContact } from './automationContacts'
 // (optionally) one "wait for a reply" step with what happens next. That is a plain way of reading the
 // same graph the canvas draws, as long as the flow has this shape:
 //
-//   trigger -> filter -> ... -> message, message, ... -> wait
+//   trigger -> filter -> ... -> step -> ... -> message, message, ... -> wait
 //                                                        |- replied -> [a reply has words -> messages]...
 //                                                        |             (each word check on its own)
 //                                                        '- no reply -> messages
 //
-// (filters are conditions whose "No" goes nowhere, so a lead that does not match simply gets nothing).
+// (filters are conditions whose "No" goes nowhere, so a lead that does not match simply gets nothing;
+// steps change the lead - a tag, a source, a PIC, a stage, making the lead - one after another before the
+// messages, which all hang off the last step).
 // A flow with other Yes/No branches, or with blocks that no line reaches, is not this shape and is opened in
 // the advanced editor instead.
 
@@ -52,6 +55,8 @@ export type ReplyPlan = {
 
 export type FlowParts = {
   filters: ConditionNode[]
+  // Steps that change the lead, in the order they are done; left out when there are none.
+  actions?: ActionNode[]
   messages: MessageNode[]
   // Waiting for a reply and what follows it; left out when the flow does not wait.
   reply?: ReplyPlan | null
@@ -60,11 +65,6 @@ export type FlowParts = {
 export type FlowAnalysis = ({ simple: true } & FlowParts) | { simple: false; reason: string }
 
 export function analyzeFlow(graph: FlowGraph): FlowAnalysis {
-  // A step that changes the lead (a tag, a PIC, a stage) sits anywhere in the graph; the list has no place
-  // for it, so such a flow is read in the advanced editor.
-  if (graph.nodes.some(isAction)) {
-    return { simple: false, reason: 'It has a step that changes the lead (a tag, a source, a PIC or a stage, or making the lead).' }
-  }
   const byId = new Map(graph.nodes.map((node) => [node.id, node]))
   const outs = (id: string, port: FlowEdge['port']) =>
     graph.edges.filter((edge) => edge.from === id && edge.port === port).map((edge) => edge.to)
@@ -97,6 +97,23 @@ export function analyzeFlow(graph: FlowGraph): FlowAnalysis {
     targets = outs(from, port)
   }
 
+  // Steps that change the lead, one after another, between the filters and the messages.
+  const actions: ActionNode[] = []
+  while (targets.length === 1) {
+    const node = byId.get(targets[0])
+    if (!node || !isAction(node)) {
+      break
+    }
+    if (seen.has(node.id)) {
+      return { simple: false, reason: 'Two lines lead to the same block.' }
+    }
+    seen.add(node.id)
+    actions.push(node)
+    from = node.id
+    port = 'out'
+    targets = outs(from, port)
+  }
+
   const messages: MessageNode[] = []
   let wait: WaitCondition | null = null
   const stack = [...targets]
@@ -114,6 +131,9 @@ export function analyzeFlow(graph: FlowGraph): FlowAnalysis {
       if (isCondition(node) && node.kind === 'wait' && wait === null) {
         wait = node
         continue
+      }
+      if (isAction(node)) {
+        return { simple: false, reason: 'It changes the lead after a message, or in two places at once.' }
       }
       return { simple: false, reason: 'It asks a question after a message.' }
     }
@@ -172,7 +192,13 @@ export function analyzeFlow(graph: FlowGraph): FlowAnalysis {
   if (seen.size - 1 !== graph.nodes.length) {
     return { simple: false, reason: 'It has blocks that no line reaches.' }
   }
-  return { simple: true, filters, messages: orderMessages(messages), ...(reply ? { reply } : {}) }
+  return {
+    simple: true,
+    filters,
+    messages: orderMessages(messages),
+    ...(actions.length > 0 ? { actions } : {}),
+    ...(reply ? { reply } : {}),
+  }
 }
 
 // Time order: the ones before the event, furthest first, then the ones after it, soonest first.
@@ -197,7 +223,14 @@ export function buildGraph(base: FlowGraph, parts: FlowParts): FlowGraph {
     from = filter.id
     port = 'yes'
   })
-  const messageX = startX + parts.filters.length * 260
+  const actions = parts.actions ?? []
+  actions.forEach((action, index) => {
+    nodes.push({ ...action, x: startX + (parts.filters.length + index) * 260, y })
+    edges.push({ from, port, to: action.id })
+    from = action.id
+    port = 'out'
+  })
+  const messageX = startX + (parts.filters.length + actions.length) * 260
   parts.messages.forEach((message, index) => {
     nodes.push({ ...message, x: messageX, y: y + index * 130 - ((parts.messages.length - 1) * 130) / 2 })
     edges.push({ from, port, to: message.id })
@@ -256,7 +289,12 @@ export function changeParts(graph: FlowGraph, change: (parts: FlowParts) => Flow
   }
   return buildGraph(
     graph,
-    change({ filters: analysis.filters, messages: analysis.messages, reply: analysis.reply ?? null }),
+    change({
+      filters: analysis.filters,
+      actions: analysis.actions ?? [],
+      messages: analysis.messages,
+      reply: analysis.reply ?? null,
+    }),
   )
 }
 
@@ -265,6 +303,7 @@ function allBlocks(parts: FlowParts): FlowNode[] {
   const reply = parts.reply
   return [
     ...parts.filters,
+    ...(parts.actions ?? []),
     ...parts.messages,
     ...(reply
       ? [
@@ -287,6 +326,22 @@ export function addFilter(graph: FlowGraph, kind: Exclude<NewBlockKind, 'message
 
 export function removeFilter(graph: FlowGraph, id: string): FlowGraph {
   return changeParts(graph, (parts) => ({ ...parts, filters: parts.filters.filter((filter) => filter.id !== id) }))
+}
+
+// A new step that changes the lead, after the last one.
+export function addActionStep(graph: FlowGraph, kind: ActionKind): { graph: FlowGraph; id: string } {
+  let id = ''
+  const next = changeParts(graph, (parts) => {
+    const added = addNode({ trigger: graph.trigger, nodes: allBlocks(parts), edges: [] }, kind)
+    id = added.id
+    const node = added.graph.nodes.find((entry) => entry.id === added.id) as ActionNode
+    return { ...parts, actions: [...(parts.actions ?? []), node] }
+  })
+  return { graph: next, id }
+}
+
+export function removeActionStep(graph: FlowGraph, id: string): FlowGraph {
+  return changeParts(graph, (parts) => ({ ...parts, actions: (parts.actions ?? []).filter((step) => step.id !== id) }))
 }
 
 // A new message after the last one: a day later, or an hour before for events that can be told early.
@@ -499,7 +554,7 @@ const message = (id: string, mins: number, text: string, extra: Partial<MessageN
 })
 
 // A flow that starts from a message with a keyword: make the lead, tag it, set its source, then say hello. The
-// steps that change the lead are drawn on the canvas, so it opens in the Advanced view. The tag, the source and
+// steps that change the lead come first, then the message. The tag, the source and
 // the keywords are for the person to fill in.
 function keywordLeadDraft(): FlowDraft {
   const step = (id: string, action: ActionNode['action'], x: number): ActionNode => ({

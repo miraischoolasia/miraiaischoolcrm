@@ -403,7 +403,7 @@ export function AdminHomeSection({
         {hasInbox && (
           <Block
             id="admin-inbox-title"
-            title="WhatsApp & automations"
+            title="Inbox & automations"
             summary="What is waiting for a reply or an approval."
           >
             <ul className="divide-y divide-slate-200">
@@ -420,7 +420,7 @@ export function AdminHomeSection({
                   <div className="flex items-center gap-2">
                     {whatsApp.waiting > 0 && <Chip tone="warn">{whatsApp.waiting} late</Chip>}
                     <button type="button" onClick={onOpenWhatsApp} className={primaryButton}>
-                      Open WhatsApp
+                      Open Inbox
                     </button>
                   </div>
                 </li>

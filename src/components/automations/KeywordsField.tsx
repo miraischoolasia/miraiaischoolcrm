@@ -37,7 +37,7 @@ export function KeywordsField({ keywords, everyTime, readOnly, onChange }: Keywo
           rows={4}
           disabled={readOnly}
           maxLength={MAX_KEYWORDS * (MAX_KEYWORD_LENGTH + 1)}
-          placeholder={'one word or phrase per line, for example\nHOA course\nI want to join'}
+          placeholder={'one word or phrase per line, for example\nprice list\nI want to join'}
           onChange={(event) => {
             setText(event.target.value)
             onChange({ keywords: event.target.value.split('\n') })

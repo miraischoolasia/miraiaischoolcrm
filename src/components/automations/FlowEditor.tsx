@@ -13,6 +13,7 @@ import {
   newFlowDraft,
   removeNode,
   sendAfterOnly,
+  keywordMissReason,
   simulateFlow,
   testChildOf,
   triggerInfo,
@@ -157,6 +158,10 @@ export function FlowEditor({
 
   const testing = isTesting(test)
   const outcome = useMemo(() => simulateFlow(draft.graph, testChildOf(test)), [draft.graph, test])
+  const startsFromMessage = draft.trigger === 'message_keyword'
+  const missReason = startsFromMessage
+    ? keywordMissReason(draft.graph.settings, test.message, testChildOf(test).channel ?? null)
+    : null
   const showTest = testing && testOpen
   const highlight = useMemo(
     () => (showTest ? { nodes: outcome.nodes, edges: outcome.edges } : null),
@@ -489,6 +494,8 @@ export function FlowEditor({
                       filterOptions={filterOptions}
                       test={test}
                       outcome={outcome}
+                      startsFromMessage={startsFromMessage}
+                      missReason={missReason}
                       onTest={(change) => setTest((current) => ({ ...current, ...change }))}
                       onClear={() => setTest(EMPTY_TEST)}
                       canSend={canEdit}
@@ -594,6 +601,8 @@ export function FlowEditor({
               filterOptions={filterOptions}
               test={test}
               outcome={outcome}
+              startsFromMessage={startsFromMessage}
+              missReason={missReason}
               onTest={(change) => setTest((current) => ({ ...current, ...change }))}
               onClear={() => setTest(EMPTY_TEST)}
               onClose={() => setTestOpen(false)}

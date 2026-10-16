@@ -552,6 +552,8 @@ describe('the tester inputs', () => {
       keywordId: 12,
       reply: null,
       replyText: '',
+      message: '',
+      channel: null,
     })
   })
 

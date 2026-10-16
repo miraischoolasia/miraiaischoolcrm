@@ -61,7 +61,7 @@ describe('AdminHomeSection', () => {
     expect(screen.getByRole('region', { name: 'Classes today' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Students to follow up' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Leads' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: 'WhatsApp & automations' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Inbox & automations' })).not.toBeInTheDocument()
   })
 
   it("lists today's classes with the teacher and opens the attendance", async () => {
@@ -142,14 +142,14 @@ describe('AdminHomeSection', () => {
       },
     })
 
-    const block = screen.getByRole('region', { name: 'WhatsApp & automations' })
+    const block = screen.getByRole('region', { name: 'Inbox & automations' })
     expect(within(block).getByText('4 unread chats')).toBeInTheDocument()
     expect(within(block).getByText('2 waiting over 30 minutes')).toBeInTheDocument()
     expect(within(block).getByText('6 messages waiting for approval')).toBeInTheDocument()
     expect(within(block).getByText('Sent today 12 of 40')).toBeInTheDocument()
     expect(within(block).getByText('Paused')).toBeInTheDocument()
     expect(within(block).getByText('1 failed')).toBeInTheDocument()
-    await userEvent.click(within(block).getByRole('button', { name: 'Open WhatsApp' }))
+    await userEvent.click(within(block).getByRole('button', { name: 'Open Inbox' }))
     expect(onOpenWhatsApp).toHaveBeenCalled()
     await userEvent.click(within(block).getByRole('button', { name: 'Automations' }))
     expect(onOpenAutomations).toHaveBeenCalled()

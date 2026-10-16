@@ -3,6 +3,7 @@ import { TRIGGER_ID, validateDraft, type FlowGraph, type MessageNode } from './a
 import {
   FLOW_RECIPES,
   TRIGGER_GROUPS,
+  addActionStep,
   addFilter,
   addMessageStep,
   analyzeFlow,
@@ -10,6 +11,7 @@ import {
   orderMessages,
   removeFilter,
   removeMessageStep,
+  removeActionStep,
   reorderMessages,
 } from './flowSteps'
 
@@ -40,6 +42,35 @@ describe('flowSteps', () => {
     }
     expect(graph.edges).toContainEqual({ from: TRIGGER_ID, port: 'out', to: 'c1' })
     expect(graph.edges).toContainEqual({ from: 'c1', port: 'yes', to: 'm1' })
+  })
+
+  it('adds steps that change the lead before the messages, and takes them away again', () => {
+    let graph = buildGraph(base, { filters: [], messages: [msg('m1', 60, true)] })
+    const tag = addActionStep(graph, 'add_tag')
+    const source = addActionStep(tag.graph, 'set_source')
+    graph = source.graph
+    const analysis = analyzeFlow(graph)
+    expect(analysis.simple && analysis.actions?.map((step) => step.action)).toEqual(['add_tag', 'set_source'])
+    // trigger -> tag -> source -> message
+    expect(graph.edges).toContainEqual({ from: TRIGGER_ID, port: 'out', to: tag.id })
+    expect(graph.edges).toContainEqual({ from: tag.id, port: 'out', to: source.id })
+    expect(graph.edges).toContainEqual({ from: source.id, port: 'out', to: 'm1' })
+
+    const removed = removeActionStep(graph, tag.id)
+    const again = analyzeFlow(removed)
+    expect(again.simple && again.actions?.map((step) => step.id)).toEqual([source.id])
+    expect(removed.edges).toContainEqual({ from: TRIGGER_ID, port: 'out', to: source.id })
+  })
+
+  it('keeps the steps when a message is added or a filter is put in front', () => {
+    let graph = addActionStep(buildGraph(base, { filters: [], messages: [] }), 'assign_pic').graph
+    graph = addFilter(graph, 'stage')
+    graph = addMessageStep(graph, 'lead_created').graph
+    const analysis = analyzeFlow(graph)
+    expect(analysis.simple).toBe(true)
+    expect(analysis.simple && analysis.filters).toHaveLength(1)
+    expect(analysis.simple && analysis.actions).toHaveLength(1)
+    expect(analysis.simple && analysis.messages).toHaveLength(1)
   })
 
   it('puts messages in time order: before the event furthest first, then after it soonest first', () => {
@@ -144,8 +175,7 @@ describe('flowSteps', () => {
         }
         expect(draft.enabled).toBe(false)
         expect(draft.id).toBeNull()
-        // The recipe that changes the lead has steps the simple list cannot show: it opens in the advanced view.
-        expect(analyzeFlow(draft.graph).simple).toBe(recipe.key !== 'keyword_to_lead')
+        expect(analyzeFlow(draft.graph).simple).toBe(true)
         // The source recipe is only finished once a source is ticked.
         if (recipe.key === 'lead_from_source' || recipe.key === 'lead_from_keyword') {
           expect(validateDraft(draft)).toMatch(/ticked/)
