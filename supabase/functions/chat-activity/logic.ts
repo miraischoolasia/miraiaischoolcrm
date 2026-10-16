@@ -21,6 +21,20 @@ export type ChatMessage = {
   inboxId: number | null
   inboxName: string | null
   pageName: string | null
+  // Where a GoHighLevel contact came from, as the bridge wrote it on the contact; null for any other chat.
+  origin: ChatOrigin | null
+}
+
+export type ChatOrigin = {
+  // The person came from a paid advert.
+  paid: boolean
+  // GoHighLevel's own source text and the advert campaign, when it has them.
+  source: string | null
+  campaign: string | null
+  // When GoHighLevel first met this person: the lead's date.
+  firstSeen: Date | null
+  // The tags GoHighLevel has on the contact (at most 20).
+  tags: string[]
 }
 
 export type ParsedEvent = { ok: true; message: ChatMessage } | { ok: false; reason: string }
@@ -86,6 +100,22 @@ const STOP_WORDS = new Set([
   '退订',
   '停止',
 ])
+
+// What the bridge (ghl_bridge.py) writes on a GoHighLevel contact: ghl_paid, ghl_source, ghl_campaign, ghl_first_seen, ghl_tags.
+function originOf(attributes: Json | null): ChatOrigin | null {
+  if (!attributes || (attributes.ghl_first_seen === undefined && attributes.ghl_paid === undefined)) {
+    return null
+  }
+  return {
+    paid: attributes.ghl_paid === true || attributes.ghl_paid === 'true',
+    source: asText(attributes.ghl_source),
+    campaign: asText(attributes.ghl_campaign),
+    firstSeen: asTime(attributes.ghl_first_seen),
+    tags: Array.isArray(attributes.ghl_tags)
+      ? attributes.ghl_tags.map((tag) => asText(tag, 60)).filter((tag): tag is string => tag !== null).slice(0, 20)
+      : [],
+  }
+}
 
 export function isStopRequest(content: unknown): boolean {
   if (typeof content !== 'string') {
@@ -181,6 +211,7 @@ export function parseChatwootEvent(payload: unknown): ParsedEvent {
       inboxId: asId(inbox?.id) ?? asId(conversation?.inbox_id),
       inboxName: asText(inbox?.name),
       pageName: asText(attributes?.ghl_page_name),
+      origin: identifier.startsWith('ghl:') ? originOf(attributes) : null,
     },
   }
 }

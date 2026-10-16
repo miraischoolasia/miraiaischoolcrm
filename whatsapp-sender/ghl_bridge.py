@@ -201,6 +201,42 @@ def page_of(contact_id):
     return "", ""
 
 
+_origins: dict[str, dict] = {}
+
+
+def origin_of(contact_id):
+    """Where GoHighLevel says a contact came from, as attributes for the Chatwoot contact.
+
+    ghl_paid (true for a paid advert: sessionSource "Paid Social", or GoHighLevel has a source text), ghl_source,
+    ghl_campaign, ghl_tags (its tags, up to 20) and ghl_first_seen (when GoHighLevel first met the person). The CRM writes them on the lead made from
+    the chat. Remembered per contact; empty when GoHighLevel cannot be asked, so the chat still arrives.
+    """
+    if contact_id in _origins:
+        return _origins[contact_id]
+    if not GHL_TOKEN:
+        return {}
+    try:
+        contact = ghl_get(f"/contacts/{contact_id}", "2021-07-28").get("contact") or {}
+    except Exception as error:  # noqa: BLE001 - the chat must arrive even when the origin cannot be told
+        log("Could not tell the origin of a contact:", type(error).__name__)
+        return {}
+    attribution = contact.get("attributionSource") or {}
+    source = str(contact.get("source") or "").strip()
+    found = {
+        "ghl_paid": attribution.get("sessionSource") == "Paid Social" or bool(source),
+        "ghl_first_seen": str(contact.get("dateAdded") or ""),
+    }
+    if source:
+        found["ghl_source"] = source[:200]
+    if attribution.get("campaign"):
+        found["ghl_campaign"] = str(attribution["campaign"])[:200]
+    tags = [str(t).strip()[:60] for t in (contact.get("tags") or []) if str(t).strip()][:20]
+    if tags:
+        found["ghl_tags"] = tags
+    _origins[contact_id] = {k: v for k, v in found.items() if v != ""}
+    return _origins[contact_id]
+
+
 def handle_inbound(payload):
     info = read_inbound(payload)
     if not info["contact_id"] or not re.fullmatch(r"[A-Za-z0-9_-]{4,64}", info["contact_id"]):
@@ -224,6 +260,7 @@ def handle_inbound(payload):
     if page_id:
         attributes["ghl_page_id"] = page_id
         attributes["ghl_page_name"] = page_name
+    attributes.update(origin_of(info["contact_id"]))
     if contact is None:
         created = chatwoot(
             "POST",

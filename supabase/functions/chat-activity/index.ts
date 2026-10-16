@@ -13,6 +13,9 @@
 //
 // Every chat is listed on its lead (record_chat_channel): a Messenger / Instagram chat makes a lead with no phone.
 //
+// A GoHighLevel person's origin (advert, campaign, first seen) is written on the lead made from their chat
+// (record_lead_origin).
+//
 // A message the school sends moves the lead of that chat from "new" to "contacted" (mark_lead_contacted_from_chat).
 //
 // Deploy (once, and after changes):
@@ -98,6 +101,23 @@ Deno.serve(async (req) => {
     })
     if (channelError) {
       console.error('Could not list the chat on its lead', channelError.code, channelError.message)
+    }
+  }
+
+  // A GoHighLevel person arrives with where they came from (advert or not, campaign, first met): the lead made
+  // from the chat gets that as its source, date, note and tags. It only touches a lead nobody has edited yet.
+  if (message.origin !== null && message.contactId !== null) {
+    const { error: originError } = await admin.rpc('record_lead_origin', {
+      p_key: key,
+      p_contact_id: message.contactId,
+      p_paid: message.origin.paid,
+      p_source: message.origin.source,
+      p_campaign: message.origin.campaign,
+      p_first_seen: message.origin.firstSeen === null ? null : message.origin.firstSeen.toISOString(),
+      p_tags: message.origin.tags,
+    })
+    if (originError) {
+      console.error('Could not set where the lead came from', originError.code, originError.message)
     }
   }
 

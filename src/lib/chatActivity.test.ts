@@ -36,6 +36,7 @@ describe('reading what the WhatsApp inbox sends for a message', () => {
         inboxId: null,
         inboxName: null,
         pageName: null,
+        origin: null,
       },
     })
   })
@@ -69,6 +70,40 @@ describe('reading what the WhatsApp inbox sends for a message', () => {
         pageName: 'EduHero 英雄教育 Online',
       },
     })
+  })
+
+  it('reads where a GoHighLevel person came from, as the bridge wrote it on the contact', () => {
+    const withAttributes = (additional: Record<string, unknown>) => ({
+      ...incoming,
+      sender: { id: 55, name: 'Sim Guatyin', type: 'contact', identifier: 'ghl:abc123' },
+      conversation: {
+        id: 90,
+        inbox_id: 4,
+        meta: { sender: { id: 55, name: 'Sim Guatyin', identifier: 'ghl:abc123', additional_attributes: { ghl_channel: 'FB', ...additional } } },
+      },
+    })
+    expect(
+      parseChatwootEvent(
+        withAttributes({ ghl_paid: true, ghl_source: 'SEJ MATERIAL下单RM99.00', ghl_campaign: '【1】万能教SEJARAH正课', ghl_first_seen: '2026-10-15T09:16:57.419Z', ghl_tags: ['fb-sej-material-99', '', 7, 'cuba-class'] }),
+      ),
+    ).toMatchObject({
+      ok: true,
+      message: {
+        origin: {
+          paid: true,
+          source: 'SEJ MATERIAL下单RM99.00',
+          campaign: '【1】万能教SEJARAH正课',
+          firstSeen: new Date('2026-10-15T09:16:57.419Z'),
+          tags: ['fb-sej-material-99', 'cuba-class'],
+        },
+      },
+    })
+    expect(parseChatwootEvent(withAttributes({ ghl_paid: false, ghl_first_seen: 'not a date' }))).toMatchObject({
+      ok: true,
+      message: { origin: { paid: false, source: null, campaign: null, firstSeen: null, tags: [] } },
+    })
+    // A contact the bridge has not written an origin on (an older one) has none.
+    expect(parseChatwootEvent(withAttributes({}))).toMatchObject({ ok: true, message: { origin: null } })
   })
 
   it('knows an Instagram chat', () => {
