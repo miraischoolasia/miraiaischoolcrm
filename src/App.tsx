@@ -197,6 +197,12 @@ import { TrialBookingModal } from './components/modals/TrialBookingModal'
 import { CancelledOccurrenceModal } from './components/modals/CancelledOccurrenceModal'
 import { CalendarItemModal } from './components/modals/CalendarItemModal'
 import { useCalendarItems } from './hooks/useCalendarItems'
+import { useLeadChannels } from './hooks/useLeadChannels'
+import { mergeLeads } from './lib/leadChannels'
+import { MOCK_SOCIAL_CHANNELS, MOCK_SOCIAL_LEADS } from './lib/mockSocialLeads'
+
+// The "mock" Vite mode (npm run dev -- --mode mock) shows made-up Messenger / Instagram leads on the Leads page.
+const isMockMode = import.meta.env.MODE === 'mock'
 import { buildCalendarItemEvents, itemsVisibleTo, type CalendarItem } from './lib/calendarItems'
 import { AttendanceModal } from './components/modals/AttendanceModal'
 import { MakeupPlanModal, type MakeupPlanInput } from './components/modals/MakeupPlanModal'
@@ -655,6 +661,8 @@ function App() {
   // Tasks, Zoom meetings and events on the calendar, beside the classes.
   const calendarItems = useCalendarItems(Boolean(authUserId) && can('calendar'), currentSession?.teacherId ?? null)
   const [calendarItemEditor, setCalendarItemEditor] = useState<{ item: CalendarItem | null; date: string } | null>(null)
+  // The chats each lead has: WhatsApp numbers, Messenger Pages, Instagram.
+  const leadChannels = useLeadChannels(Boolean(authUserId) && can('leads'))
   // Same rule as can_view_classes(): any class module shows every class.
   // Without one, a teacher sees only their own classes.
   const seesAllClasses = can('calendar') || can('classrooms') || can('students')
@@ -2819,6 +2827,18 @@ function App() {
     setTeachers(nextTeachers)
   }
 
+  // Two leads that turned out to be one family become one; the one with a phone number stays.
+  async function handleMergeLeads(keepId: number, removeId: number) {
+    try {
+      const leadId = await mergeLeads(keepId, removeId)
+      await Promise.all([refreshLeads(), leadChannels.refresh()])
+      return { leadId, error: null }
+    } catch (failure) {
+      const message = failure instanceof Error ? failure.message : (failure as { message?: string } | null)?.message
+      return { leadId: null, error: message && message.trim() ? message : 'Could not join the leads. Try again.' }
+    }
+  }
+
   async function refreshLeads() {
     const nextLeads = await fetchLeadsFromSupabase()
     setLeads(nextLeads)
@@ -3823,6 +3843,13 @@ function App() {
     onAddOption: handleAddLeadOption,
     onSetStudentPhone: setStudentPhoneFromChat,
     onOpenLead: openEditLeadModal,
+    leadChannels: leadChannels.rows,
+    // A chat that became a lead here: read the leads and the chats again.
+    refreshLeadChannels: () => {
+      void leadChannels.refresh()
+      void refreshLeads().catch(() => undefined)
+    },
+    onMergeLeads: handleMergeLeads,
     leadIdsWithForms,
     onOpenFormAnswers: openLeadFormAnswers,
     loadFormAnswers: fetchLeadFormSubmissions,
@@ -6248,7 +6275,7 @@ function App() {
             {visibleSection === 'leads' && (
               <LeadsSection
                 isLoading={isLoading}
-                leads={leads}
+                leads={isMockMode ? [...MOCK_SOCIAL_LEADS, ...leads] : leads}
                 canEdit={can('leads', 'edit')}
                 canDelete={can('leads', 'delete')}
                 canConvert={can('leads', 'edit') && can('students', 'edit')}
@@ -6267,6 +6294,7 @@ function App() {
                 onToggleCheck={handleToggleLeadCheck}
                 teacherNames={teacherNames}
                 onBulkAction={handleBulkLeadAction}
+                leadChannels={isMockMode ? [...MOCK_SOCIAL_CHANNELS, ...leadChannels.rows] : leadChannels.rows}
               />
             )}
 

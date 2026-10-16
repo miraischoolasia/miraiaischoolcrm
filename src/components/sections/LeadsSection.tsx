@@ -1,4 +1,15 @@
 import { useState } from 'react'
+import { LeadChannelLines } from '../LeadChannelLines'
+import {
+  channelsByLead,
+  CHANNEL_LABEL,
+  matchesChannelFilter,
+  NO_CHANNEL_FILTER,
+  placeChoices,
+  type ChannelFilter,
+  type LeadChannel,
+  type LeadChannelKind,
+} from '../../lib/leadChannels'
 import { cn } from '../../lib/cn'
 import { formatDate, getTodayString, parseLocalDate } from '../../domain/studentStatus'
 import { leadStatusOptions } from '../../lib/constants'
@@ -114,6 +125,9 @@ type LeadsSectionProps = {
   // Does one action to the selected leads (the page asks to confirm first) and
   // says whether it went through.
   onBulkAction?: (action: LeadBulkAction, leadIds: number[]) => Promise<boolean>
+  // The chats each lead has (WhatsApp numbers, Messenger Pages, Instagram): shown under the phone number and
+  // filterable.
+  leadChannels?: LeadChannel[]
 }
 
 export function LeadsSection({
@@ -137,12 +151,14 @@ export function LeadsSection({
   onToggleCheck,
   teacherNames,
   onBulkAction,
+  leadChannels = [],
 }: LeadsSectionProps) {
   const [view, setView] = useState<'pipeline' | 'board' | 'children' | 'dashboard'>('pipeline')
   // The Children view: one row per child. '' = every age.
   const [childAge, setChildAge] = useState('')
   const [childPage, setChildPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
+  const [channelFilter, setChannelFilter] = useState<ChannelFilter>(NO_CHANNEL_FILTER)
   const [stageFilter, setStageFilter] = useState<LeadStatus | 'all'>('all')
   const todayString = getTodayString()
   const [dateFrom, setDateFrom] = useState(() => getOneMonthAgo(todayString))
@@ -189,6 +205,11 @@ export function LeadsSection({
         ? lead.tagIds.length === 0
         : lead.tagIds.includes(Number(tagFilter))
 
+  const channelsOfLead = channelsByLead(leadChannels)
+  const matchesChannel = (lead: Lead) =>
+    matchesChannelFilter(channelFilter, channelsOfLead.get(lead.id) ?? [], Boolean(lead.phone && lead.phone.trim()))
+  const pagePlaces = placeChoices(leadChannels, channelFilter.channel)
+
   const normalizedSearch = searchTerm.trim().toLowerCase()
   const searchDigits = normalizedSearch.replace(/\D/g, '')
   function matchesText(value: string | null) {
@@ -212,6 +233,7 @@ export function LeadsSection({
   )
     .filter(matchesPic)
     .filter(matchesTag)
+    .filter(matchesChannel)
   // Search, PIC and date apply to both Pipeline and Board; the stage filter
   // only to Pipeline (the board's columns are the stages).
   const datedLeads = searchedLeads.filter(
@@ -231,6 +253,7 @@ export function LeadsSection({
   const leadsForChildren = leads
     .filter(matchesPic)
     .filter(matchesTag)
+    .filter(matchesChannel)
     .filter((lead) => (!dateFrom || lead.addedDate >= dateFrom) && (!dateTo || lead.addedDate <= dateTo))
     .filter((lead) => (stageFilter === 'all' ? true : lead.status === stageFilter))
   const childRows = view === 'children' ? buildChildRows(leadsForChildren, { search: searchTerm, ageGroup: childAge }) : []
@@ -247,6 +270,7 @@ export function LeadsSection({
     searchTerm,
     picFilter,
     tagFilter,
+    channelFilter,
     stageFilter,
     dateFrom,
     dateTo,
@@ -360,14 +384,46 @@ export function LeadsSection({
 
       <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Leads</h2>
               <p className="mt-1 text-sm text-slate-500">
                 Track prospective students from first inquiry through to enrollment.
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {canEdit && (
+              <>
+              <button
+                type="button"
+                onClick={onOpenCreateLead}
+                className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
+              >
+                <UserPlus size={16} weight="bold" aria-hidden="true" />
+                Add Lead
+              </button>
+              <button
+                type="button"
+                onClick={onOpenLeadOptions}
+                className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                <GearSix size={16} aria-hidden="true" />
+                Sources, PIC &amp; Tags
+              </button>
+              <button
+                type="button"
+                onClick={onOpenBulkImportLeads}
+                className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                <UploadSimple size={16} weight="bold" aria-hidden="true" />
+                Bulk Import
+              </button>
+              </>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 overflow-x-auto">
               <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
                 <button
                   type="button"
@@ -422,40 +478,12 @@ export function LeadsSection({
                   Dashboard
                 </button>
               </div>
-              {canEdit && (
-              <>
-              <button
-                type="button"
-                onClick={onOpenLeadOptions}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                <GearSix size={16} aria-hidden="true" />
-                Sources, PIC &amp; Tags
-              </button>
-              <button
-                type="button"
-                onClick={onOpenBulkImportLeads}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                <UploadSimple size={16} weight="bold" aria-hidden="true" />
-                Bulk Import
-              </button>
-              <button
-                type="button"
-                onClick={onOpenCreateLead}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
-              >
-                <UserPlus size={16} weight="bold" aria-hidden="true" />
-                Add Lead
-              </button>
-              </>
-              )}
-            </div>
           </div>
 
           {(view === 'pipeline' || view === 'board' || view === 'children') && (
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="relative">
+            <div className="mt-3 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+              <div className="relative min-w-0 flex-1 basis-64">
                 <MagnifyingGlass
                   size={16}
                   className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -466,15 +494,49 @@ export function LeadsSection({
                   value={searchTerm}
                   onChange={(event) => withPageReset(setSearchTerm)(event.target.value)}
                   placeholder="Search leads by name, phone, or child's name..."
-                  className="w-full max-w-xs rounded-xl border border-slate-200 py-2 pl-9! pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#fc0c97] focus:outline-none"
+                  className="h-10 w-full rounded-xl border border-slate-200 pl-9! pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#fc0c97] focus:outline-none"
                 />
               </div>
 
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(event) => withPageReset(setDateFrom)(event.target.value)}
+                  max={dateTo || undefined}
+                  aria-label="From date"
+                  className="h-10 w-40 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#fc0c97]"
+                />
+                <span className="text-sm text-slate-400">to</span>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(event) => withPageReset(setDateTo)(event.target.value)}
+                  min={dateFrom || undefined}
+                  aria-label="To date"
+                  className="h-10 w-40 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#fc0c97]"
+                />
+                {(dateFrom || dateTo) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDateFrom('')
+                      setDateTo('')
+                      setPage(1)
+                    }}
+                    className="text-sm font-medium text-slate-400 transition hover:text-slate-600"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
               <select
                 value={picFilter}
                 aria-label="Filter by PIC"
                 onChange={(event) => withPageReset(setPicFilter)(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] sm:w-44"
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#fc0c97]"
               >
                 <option value="all">All PICs</option>
                 <option value="none">Not assigned</option>
@@ -490,13 +552,51 @@ export function LeadsSection({
                   value={tagFilter}
                   aria-label="Filter by tag"
                   onChange={(event) => withPageReset(setTagFilter)(event.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] sm:w-44"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#fc0c97]"
                 >
                   <option value="all">All tags</option>
                   <option value="none">No tag</option>
                   {tagOptions.map((option) => (
                     <option key={option.id} value={option.id}>
                       {option.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <select
+                value={channelFilter.channel}
+                aria-label="Filter by channel"
+                onChange={(event) =>
+                  withPageReset(setChannelFilter)({ channel: event.target.value as ChannelFilter['channel'], place: 'all' })
+                }
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#fc0c97]"
+              >
+                <option value="all">All channels</option>
+                {(Object.keys(CHANNEL_LABEL) as LeadChannelKind[]).map((key) => (
+                  <option key={key} value={key}>
+                    {CHANNEL_LABEL[key]}
+                  </option>
+                ))}
+              </select>
+
+              {pagePlaces.length > 0 && (
+                <select
+                  value={channelFilter.place}
+                  aria-label="Filter by Page or number"
+                  onChange={(event) => withPageReset(setChannelFilter)({ ...channelFilter, place: event.target.value })}
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#fc0c97]"
+                >
+                  <option value="all">
+                    {channelFilter.channel === 'whatsapp'
+                      ? 'All numbers'
+                      : channelFilter.channel === 'all'
+                        ? 'All Pages and numbers'
+                        : 'All Pages'}
+                  </option>
+                  {pagePlaces.map((place) => (
+                    <option key={place} value={place}>
+                      {place}
                     </option>
                   ))}
                 </select>
@@ -510,7 +610,7 @@ export function LeadsSection({
                     setChildPage(1)
                   }}
                   aria-label="Child age"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] sm:w-44"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#fc0c97]"
                 >
                   <option value="">All ages</option>
                   {CHILD_AGE_GROUPS.map((group) => (
@@ -528,7 +628,7 @@ export function LeadsSection({
                 onChange={(event) =>
                   withPageReset(setStageFilter)(event.target.value as LeadStatus | 'all')
                 }
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] sm:w-52"
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#fc0c97]"
               >
                 <option value="all">All Stages</option>
                 {leadStatusOptions.map((option) => (
@@ -540,37 +640,6 @@ export function LeadsSection({
               </>
               )}
 
-              <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(event) => withPageReset(setDateFrom)(event.target.value)}
-                  max={dateTo || undefined}
-                  aria-label="From date"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] sm:w-40"
-                />
-                <span className="text-sm text-slate-400">to</span>
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={(event) => withPageReset(setDateTo)(event.target.value)}
-                  min={dateFrom || undefined}
-                  aria-label="To date"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] sm:w-40"
-                />
-                {(dateFrom || dateTo) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDateFrom('')
-                      setDateTo('')
-                      setPage(1)
-                    }}
-                    className="text-sm font-medium text-slate-400 transition hover:text-slate-600"
-                  >
-                    Clear
-                  </button>
-                )}
               </div>
             </div>
           )}
@@ -818,10 +887,21 @@ export function LeadsSection({
 
                   <dl className="space-y-1 rounded-xl bg-slate-50 p-3 text-sm">
                     <div className="flex justify-between gap-3">
-                      <dt className="text-xs font-medium text-slate-500">Phone</dt>
-                      <dd className="inline-flex items-center gap-1 text-slate-700">
-                        {lead.phone || '-'}
-                        <WhatsAppLink phone={lead.phone} name={lead.fullName} leadId={lead.id} />
+                      <dt className="text-xs font-medium text-slate-500">
+                        {channelsOfLead.has(lead.id) ? 'Chats' : 'Phone'}
+                      </dt>
+                      <dd className="min-w-0 text-slate-700">
+                        {lead.phone || channelsOfLead.has(lead.id) ? (
+                          <LeadChannelLines
+                            phone={lead.phone}
+                            leadId={lead.id}
+                            channels={channelsOfLead.get(lead.id) ?? []}
+                            showPlaces={false}
+                            phoneAction={<WhatsAppLink phone={lead.phone} name={lead.fullName} leadId={lead.id} />}
+                          />
+                        ) : (
+                          '-'
+                        )}
                       </dd>
                     </div>
                     <div className="flex justify-between gap-3">
@@ -858,7 +938,7 @@ export function LeadsSection({
                       onChangeStatus(lead.id, event.target.value as LeadStatus)
                     }
                     disabled={!canEdit || lead.status === 'converted'}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97] disabled:bg-slate-50 disabled:text-slate-400"
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#fc0c97] disabled:bg-slate-50 disabled:text-slate-400"
                   >
                     {leadStatusOptions.map((option) => (
                       <option key={option.key} value={option.key}>
@@ -996,10 +1076,21 @@ export function LeadsSection({
                         {lead.fullName && (
                           <div className="font-semibold text-slate-900">{lead.fullName}</div>
                         )}
-                        <span className="inline-flex items-center gap-1">
-                          {lead.phone || '-'}
-                          <WhatsAppLink phone={lead.phone} name={lead.fullName} leadId={lead.id} />
-                        </span>
+                        {lead.phone || channelsOfLead.has(lead.id) ? (
+                          <LeadChannelLines
+                            phone={lead.phone}
+                            leadId={lead.id}
+                            channels={channelsOfLead.get(lead.id) ?? []}
+                            showPlaces={false}
+                            phoneAction={<WhatsAppLink phone={lead.phone} name={lead.fullName} leadId={lead.id} />}
+                            className="text-sm text-slate-600"
+                          />
+                        ) : (
+                          <span className="inline-flex items-center gap-1">
+                            -
+                            <WhatsAppLink phone={lead.phone} name={lead.fullName} leadId={lead.id} />
+                          </span>
+                        )}
                         <div className="mt-1">
                           <SourceLink
                             label={sourceLabel(lead)}

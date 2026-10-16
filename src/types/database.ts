@@ -454,6 +454,48 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_channels: {
+        Row: {
+          id: number
+          lead_id: number
+          channel: 'whatsapp' | 'messenger' | 'instagram'
+          chatwoot_contact_id: number
+          inbox_id: number
+          inbox_name: string | null
+          conversation_id: number | null
+          display_name: string | null
+          page_name: string | null
+          first_seen_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          lead_id: number
+          channel: 'whatsapp' | 'messenger' | 'instagram'
+          chatwoot_contact_id: number
+          inbox_id?: number
+          inbox_name?: string | null
+          conversation_id?: number | null
+          display_name?: string | null
+          page_name?: string | null
+          first_seen_at?: string
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          lead_id?: number
+          channel?: 'whatsapp' | 'messenger' | 'instagram'
+          chatwoot_contact_id?: number
+          inbox_id?: number
+          inbox_name?: string | null
+          conversation_id?: number | null
+          display_name?: string | null
+          page_name?: string | null
+          first_seen_at?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
       whatsapp_numbers: {
         Row: {
           id: number
@@ -1684,6 +1726,19 @@ export type Database = {
       ensure_contact_people: {
         Args: {
           p_contacts: Json
+        }
+        Returns: number
+      }
+      ensure_lead_channels: {
+        Args: {
+          p_rows: Json
+        }
+        Returns: Json
+      }
+      merge_leads: {
+        Args: {
+          p_keep: number
+          p_remove: number
         }
         Returns: number
       }

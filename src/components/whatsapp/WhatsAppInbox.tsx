@@ -1,3 +1,4 @@
+import type { WhatsAppTarget } from '../WhatsAppLink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { InstagramLogo, MessengerLogo, WhatsappLogo } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
@@ -34,6 +35,7 @@ import { useAutomationQueue } from '../../hooks/useAutomationQueue'
 import { needsApproval, type QueueItem } from '../../lib/automationQueue'
 import { useSourceRules } from '../../hooks/useSourceRules'
 import { useAutoLeads } from '../../hooks/useAutoLeads'
+import { useSocialLeads } from '../../hooks/useSocialLeads'
 import { makeLeadResolver, quickReplyValues, resolveChatLead } from '../../lib/chatLink'
 import { findChatForNumber } from '../../lib/chatForNumber'
 import { useAutoChatRole } from '../../hooks/useAutoChatRole'
@@ -67,7 +69,7 @@ type WhatsAppInboxProps = {
   // False while another page is showing; this page stays mounted so it is as it was left.
   active?: boolean
   // A number somewhere else in the app asked for its chat. Each request has its own id.
-  openRequest?: { id: number; phone: string; name: string | null; leadId: number | null } | null
+  openRequest?: (WhatsAppTarget & { id: number }) | null
   // The school's WhatsApp numbers and who may see which. Without it the page is one inbox for everybody.
   numbersView?: WhatsAppNumbersView
 }
@@ -501,6 +503,22 @@ export function WhatsAppInbox({
     hasStudents: (conversation) => studentsOf(conversation).length > 0,
     linkLead: setLeadLinkAndFamily,
   })
+  // A Messenger / Instagram chat is a lead of its own (no phone), every chat is listed on its lead, and the
+  // chats that were here before this existed are caught up once, by whoever has the inbox open.
+  useSocialLeads({
+    enabled: active && !inbox.isLoading,
+    canEdit: crm.canEditLeads,
+    conversations: inbox.conversations,
+    channels: crm.leadChannels,
+    inboxNameOf: (inboxId) =>
+      numbersView?.numbers.find((entry) => entry.inboxId === inboxId)?.label ??
+      socialInboxNames.get(inboxId) ??
+      inboxList.find((entry) => entry.id === inboxId)?.name ??
+      null,
+    linkLead: (conversationId, leadId) => inbox.setLeadLink(conversationId, leadId),
+    leadExists: (leadId) => crm.leads.length === 0 || crm.leads.some((entry) => entry.id === leadId),
+    onChanged: crm.refreshLeadChannels,
+  })
   // Set while the source rules window is open; phrase starts a new rule from a message.
   const [managingRules, setManagingRules] = useState<{ phrase: string } | null>(null)
   const [managingReplies, setManagingReplies] = useState(false)
@@ -536,9 +554,45 @@ export function WhatsAppInbox({
       setUnreadRound(0)
     }
   }, [tab])
-  const { conversations: loadedChats, isLoading: isLoadingChats, setSelectedId, startNewChat } = inbox
+  const {
+    conversations: loadedChats,
+    isLoading: isLoadingChats,
+    setSelectedId,
+    startNewChat,
+  } = inbox
+  const askedForChat = useRef(new Set<number>())
   useEffect(() => {
     if (!openRequest || !active || isLoadingChats || handledRequest.current === openRequest.id) {
+      return
+    }
+    // A Messenger / Instagram chat is asked for by its chat or contact: there is no number to look for.
+    const wanted = openRequest.chat
+    if (wanted) {
+      const chat =
+        loadedChats.find((entry) => wanted.conversationId !== null && entry.id === wanted.conversationId) ??
+        loadedChats.find((entry) => wanted.contactId !== null && entry.meta.sender.id === wanted.contactId) ??
+        null
+      if (!chat) {
+        // Not on the list yet (an older chat): fetch it once; this runs again when it arrives.
+        if (wanted.conversationId !== null && !askedForChat.current.has(openRequest.id)) {
+          askedForChat.current.add(openRequest.id)
+          void loadMissingConversations([wanted.conversationId])
+          return
+        }
+        handledRequest.current = openRequest.id
+        return
+      }
+      handledRequest.current = openRequest.id
+      setCategory(categoryOf(chat))
+      setInboxFilter(null)
+      setSearch('')
+      setTagId(null)
+      setSourceId(null)
+      setKind(null)
+      setOwnerId(null)
+      setDetailsOpen(false)
+      setTab(getTab(chat))
+      setSelectedId(chat.id)
       return
     }
     handledRequest.current = openRequest.id
@@ -581,7 +635,18 @@ export function WhatsAppInbox({
       setChatPrefill({ phone: openRequest.phone, name: openRequest.name ?? '', leadId: openRequest.leadId })
       setStartingChat(true)
     })()
-  }, [openRequest, active, isLoadingChats, loadedChats, client, setSelectedId, startNewChat, crm.leads, crm.students])
+  }, [
+    openRequest,
+    active,
+    isLoadingChats,
+    loadedChats,
+    client,
+    setSelectedId,
+    startNewChat,
+    loadMissingConversations,
+    crm.leads,
+    crm.students,
+  ])
 
   // Someone who writes "我是学生" is the student themself: set it when the chat is open, once.
   useAutoChatRole({

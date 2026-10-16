@@ -1,5 +1,6 @@
 import type { HoaSlot } from '../../lib/hoaSlots'
 import type { StudentClassLine } from '../../lib/studentClasses'
+import type { LeadChannel } from '../../lib/leadChannels'
 import type {
   Classroom,
   Lead,
@@ -77,6 +78,12 @@ export type WhatsAppCrm = {
   // Writes the parent's number on a student who has none, so the chat finds them by phone too.
   onSetStudentPhone: (studentId: number, phone: string) => Promise<string | null>
   onOpenLead: (leadId: number) => void
+  // The chats every lead has (WhatsApp numbers, Messenger Pages, Instagram), and a way to read them again.
+  leadChannels: LeadChannel[]
+  refreshLeadChannels: () => void
+  // Joins two leads that are one family; the one with a phone number stays. Resolves to the lead that stays,
+  // or an error message.
+  onMergeLeads: (keepId: number, removeId: number) => Promise<{ leadId: number | null; error: string | null }>
   // Leads that filled in one of the school's forms, and a way to read what they wrote.
   leadIdsWithForms: Set<number>
   onOpenFormAnswers: (leadId: number) => void

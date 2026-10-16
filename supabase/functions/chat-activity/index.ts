@@ -11,6 +11,8 @@
 // A parent's first message that contains the phrase of a source rule also makes the lead (auto_lead_from_chat),
 // so a new lead no longer waits for someone to have the inbox open.
 //
+// Every chat is listed on its lead (record_chat_channel): a Messenger / Instagram chat makes a lead with no phone.
+//
 // A message the school sends moves the lead of that chat from "new" to "contacted" (mark_lead_contacted_from_chat).
 //
 // Deploy (once, and after changes):
@@ -75,6 +77,27 @@ Deno.serve(async (req) => {
       console.error('Could not make a lead', leadError.code, leadError.message)
     } else if (leadId !== null) {
       console.log('Lead', leadId, 'made from the first message of chat', message.conversationId)
+    }
+  }
+
+  // The chat is listed on its lead: a Messenger / Instagram person becomes a lead of their own, and a
+  // WhatsApp chat is listed on the lead of that contact or number. It never stops the message from being recorded.
+  if (message.contactId !== null) {
+    const { error: channelError } = await admin.rpc('record_chat_channel', {
+      p_key: key,
+      p_channel: message.channel,
+      p_contact_id: message.contactId,
+      p_conversation_id: message.conversationId,
+      p_inbox_id: message.inboxId,
+      p_inbox_name: message.inboxName,
+      p_name: message.name,
+      p_phone: message.phone,
+      p_page_name: message.pageName,
+      p_at: message.at.toISOString(),
+      p_text: message.text,
+    })
+    if (channelError) {
+      console.error('Could not list the chat on its lead', channelError.code, channelError.message)
     }
   }
 

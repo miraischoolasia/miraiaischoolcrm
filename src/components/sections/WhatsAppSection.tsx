@@ -1,3 +1,4 @@
+import type { WhatsAppTarget } from '../WhatsAppLink'
 import { ArrowSquareOut } from '@phosphor-icons/react'
 import type { Sender } from '../../lib/chatwootClient'
 import type { WhatsAppCrm } from '../whatsapp/crm'
@@ -15,7 +16,7 @@ type WhatsAppSectionProps = {
   // False while another page is showing (the page stays mounted).
   active?: boolean
   // A number elsewhere in the app asked for its chat.
-  openRequest?: { id: number; phone: string; name: string | null; leadId: number | null } | null
+  openRequest?: (WhatsAppTarget & { id: number }) | null
   // The school's WhatsApp numbers and who may see which.
   numbersView?: WhatsAppNumbersView
 }

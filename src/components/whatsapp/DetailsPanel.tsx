@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { CaretLeft } from '@phosphor-icons/react'
 import { getFirstMessage, guessSourceAndTags, parentNumberUpdate, resolveChatLead } from '../../lib/chatLink'
-import { searchLeads } from '../../lib/leadSearch'
 import { parentPhoneOf } from '../../lib/studentContact'
 import { familyOf } from '../../lib/family'
 import type { Person } from '../../lib/peopleApi'
@@ -122,7 +121,6 @@ export function DetailsPanel({
 }: DetailsPanelProps) {
   const sender = conversation.meta.sender
   const phone = getRealPhone(sender.phone_number)
-  const [query, setQuery] = useState('')
 
   const { lead, byPhone } = resolveChatLead(getLinkedLeadId(conversation), phone, crm.leads)
 
@@ -245,7 +243,6 @@ export function DetailsPanel({
 
   const first = useMemo(() => getFirstMessage(messages), [messages])
   const guess = useMemo(() => guessSourceAndTags(first?.text ?? '', crm.leadOptions, sourceRules), [first, crm.leadOptions, sourceRules])
-  const found = useMemo(() => searchLeads(crm.leads, query), [crm.leads, query])
 
   // Once the family card knows who this is, the pickers that say who it is move into one folded box.
   const rolePicker = onSetRole ? (
@@ -414,38 +411,6 @@ export function DetailsPanel({
             onManageRules={crm.canEditLeads ? onManageRules : undefined}
           />
         ) : null}
-        {showLeadPart && !lead ? (
-        <div className="text-xs">
-          <label className="block">
-            <span className="font-semibold text-slate-700">Already a lead? Find them</span>
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Name or phone number"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-[#fc0c97]"
-            />
-          </label>
-          {query.trim() && found.length === 0 && <p className="mt-1 text-slate-500">No lead found.</p>}
-          {found.length > 0 && (
-            <ul className="mt-1 space-y-1">
-              {found.map((entry) => (
-                <li key={entry.id}>
-                  <button
-                    type="button"
-                    onClick={() => void linkLead(entry.id)}
-                    className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-left hover:bg-slate-50"
-                  >
-                    <span className="block truncate text-sm text-slate-900">
-                      {entry.fullName || entry.children[0]?.name || 'Unnamed lead'}
-                    </span>
-                    <span className="block truncate text-slate-500">{entry.phone ?? 'No phone number'}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        ) : null}
         {!showLeadPart ? null : lead || crm.canEditLeads ? (
           <LeadForm
             key={conversation.id}
@@ -459,6 +424,7 @@ export function DetailsPanel({
             onCreated={async (leadId) => {
               await onLinkLead(leadId)
             }}
+            onFindLead={linkLead}
           />
         ) : (
           <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">

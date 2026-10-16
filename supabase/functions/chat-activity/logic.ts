@@ -15,6 +15,12 @@ export type ChatMessage = {
   // What a parent wrote (cut at 500 characters), so a flow can read their reply; null for a message of ours
   // or one with no text (a picture).
   text: string | null
+  // Which kind of chat it is, and where it sits: the Chatwoot inbox (a WhatsApp number, a Facebook Page) and,
+  // for Messenger / Instagram, the Page's name. Used to list the chat on its lead.
+  channel: 'whatsapp' | 'messenger' | 'instagram'
+  inboxId: number | null
+  inboxName: string | null
+  pageName: string | null
 }
 
 export type ParsedEvent = { ok: true; message: ChatMessage } | { ok: false; reason: string }
@@ -145,6 +151,19 @@ export function parseChatwootEvent(payload: unknown): ParsedEvent {
     return { ok: false, reason: 'whatsapp group' }
   }
 
+  // Messenger through our own Meta app is a Facebook Page channel; Messenger / Instagram through GoHighLevel
+  // is a contact whose identifier starts with "ghl:" and whose attributes say which one.
+  const attributes = asObject(contactSource?.additional_attributes) ?? asObject(metaSender?.additional_attributes)
+  const inbox = asObject(body.inbox)
+  const channelName = asText(conversation?.channel) ?? asText(inbox?.channel_type) ?? ''
+  const identifier = asText(contactSource?.identifier) ?? asText(metaSender?.identifier) ?? ''
+  let channel: ChatMessage['channel'] = 'whatsapp'
+  if (channelName === 'Channel::FacebookPage') {
+    channel = 'messenger'
+  } else if (identifier.startsWith('ghl:')) {
+    channel = attributes?.ghl_channel === 'IG' ? 'instagram' : 'messenger'
+  }
+
   const at = asTime(body.created_at) ?? asTime(conversation?.timestamp) ?? new Date()
 
   return {
@@ -158,6 +177,10 @@ export function parseChatwootEvent(payload: unknown): ParsedEvent {
       phone: asDigits(contactSource?.phone_number) ?? asDigits(contactInbox?.source_id),
       optOut: direction === 'incoming' && isStopRequest(body.content),
       text: direction === 'incoming' ? asText(body.content, 500) : null,
+      channel,
+      inboxId: asId(inbox?.id) ?? asId(conversation?.inbox_id),
+      inboxName: asText(inbox?.name),
+      pageName: asText(attributes?.ghl_page_name),
     },
   }
 }

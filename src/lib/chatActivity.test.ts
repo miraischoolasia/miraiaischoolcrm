@@ -32,8 +32,56 @@ describe('reading what the WhatsApp inbox sends for a message', () => {
         phone: '60122552285',
         optOut: false,
         text: 'Hello, is there a class on Saturday?',
+        channel: 'whatsapp',
+        inboxId: null,
+        inboxName: null,
+        pageName: null,
       },
     })
+  })
+
+  it('knows a Messenger chat from GoHighLevel and which Page it wrote to', () => {
+    const parsed = parseChatwootEvent({
+      ...incoming,
+      inbox: { id: 4, name: 'EduHero Online' },
+      sender: { id: 55, name: 'Sim Guatyin', type: 'contact', identifier: 'ghl:abc123' },
+      conversation: {
+        id: 90,
+        inbox_id: 4,
+        meta: {
+          sender: {
+            id: 55,
+            name: 'Sim Guatyin',
+            identifier: 'ghl:abc123',
+            additional_attributes: { ghl_channel: 'FB', ghl_page_name: 'EduHero 英雄教育 Online' },
+          },
+        },
+      },
+    })
+    expect(parsed).toMatchObject({
+      ok: true,
+      message: {
+        contactId: 55,
+        phone: null,
+        channel: 'messenger',
+        inboxId: 4,
+        inboxName: 'EduHero Online',
+        pageName: 'EduHero 英雄教育 Online',
+      },
+    })
+  })
+
+  it('knows an Instagram chat', () => {
+    const parsed = parseChatwootEvent({
+      ...incoming,
+      sender: { id: 56, name: 'Vivien', type: 'contact', identifier: 'ghl:def456' },
+      conversation: {
+        id: 91,
+        inbox_id: 4,
+        meta: { sender: { id: 56, name: 'Vivien', identifier: 'ghl:def456', additional_attributes: { ghl_channel: 'IG' } } },
+      },
+    })
+    expect(parsed).toMatchObject({ ok: true, message: { channel: 'instagram', inboxId: 4 } })
   })
 
   it('keeps the parent text (cut at 500 characters) and never the text of the team', () => {

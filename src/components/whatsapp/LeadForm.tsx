@@ -12,7 +12,9 @@ import { leadPhoneFor, parentPhoneOf, studentPhoneOf } from '../../lib/studentCo
 import type { ChatRole } from '../../lib/whatsappInbox'
 import type { Lead, LeadOption, LeadStatus } from '../../types/domain'
 import type { LeadFormValues, WhatsAppCrm } from './crm'
+import { LeadChannelLines } from '../LeadChannelLines'
 import { FormAnswers } from './FormAnswers'
+import { LeadFinder } from './LeadFinder'
 import { PanelSection } from './PanelSection'
 
 // Typed text is saved this long after the last key; a pick from a list is saved at once.
@@ -32,6 +34,9 @@ type LeadFormProps = {
   role?: ChatRole | null
   // Called once a new lead is saved, so the chat can be tied to it.
   onCreated: (leadId: number) => Promise<void>
+  // The team found the lead this person already is: ties the chat to that lead (after the two leads were
+  // joined, when this person already had one of their own).
+  onFindLead?: (leadId: number) => Promise<void>
 }
 
 type ChildRow = { name: string; age: string; phone: string | null }
@@ -81,6 +86,7 @@ export function LeadForm({
   guess,
   role = null,
   onCreated,
+  onFindLead,
 }: LeadFormProps) {
   const isStudent = role === 'student'
   const sources = crm.leadOptions.filter((option) => option.kind === 'source' && option.isActive)
@@ -403,6 +409,32 @@ export function LeadForm({
             className={fieldClass}
           />
         </label>
+        {lead && (
+          <LeadChannelLines
+            phone={null}
+            leadId={lead.id}
+            channels={crm.leadChannels.filter((row) => row.leadId === lead.id)}
+            className="-mt-1 rounded-lg bg-slate-50 px-2.5 py-1.5"
+          />
+        )}
+        {canEdit && onFindLead && (
+          <LeadFinder
+            leads={crm.leads}
+            currentLeadId={lead?.id ?? null}
+            onPick={async (picked) => {
+              if (!lead) {
+                await onFindLead(picked.id)
+                return null
+              }
+              const merged = await crm.onMergeLeads(lead.id, picked.id)
+              if (merged.error || merged.leadId === null) {
+                return merged.error ?? 'Could not join the leads.'
+              }
+              await onFindLead(merged.leadId)
+              return null
+            }}
+          />
+        )}
 
         <div className="space-y-1.5">
           <span className="block text-slate-600">Children</span>
