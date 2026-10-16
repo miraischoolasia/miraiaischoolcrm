@@ -12,6 +12,7 @@ import {
   getChatIdentity,
   socialKindOf,
   categoryOf,
+  firstCategory,
   numbersContacted,
   unreadByCategory,
   confirmsBySource,
@@ -566,6 +567,20 @@ describe('the parts of the inbox', () => {
   it('counts the unread chats of each part', () => {
     const all = [whatsapp(1, 2), whatsapp(2, 1), social(3, 'FB', 1), social(4, 'IG')]
     expect(unreadByCategory(all)).toEqual({ whatsapp: 2, messenger: 1, instagram: 0 })
+  })
+
+  it('opens on WhatsApp when the school has a WhatsApp chat, even if Messenger has more', () => {
+    expect(firstCategory([whatsapp(1), social(2, 'FB'), social(3, 'FB')])).toBe('whatsapp')
+  })
+
+  it('opens on the part that has chats when there is no WhatsApp chat', () => {
+    expect(firstCategory([social(1, 'FB'), social(2, 'FB'), social(3, 'IG')])).toBe('messenger')
+    expect(firstCategory([social(1, 'IG'), social(2, 'IG'), social(3, 'FB')])).toBe('instagram')
+    expect(firstCategory([social(1, 'FB'), social(2, 'IG')])).toBe('messenger')
+  })
+
+  it('opens on WhatsApp when there is no chat at all', () => {
+    expect(firstCategory([])).toBe('whatsapp')
   })
 })
 

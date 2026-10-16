@@ -22,6 +22,7 @@ import {
   socialKindOf,
   isRecentlyOverdue,
   categoryOf,
+  firstCategory,
   numbersContacted,
   unreadByCategory,
   type InboxCategory,
@@ -114,6 +115,9 @@ export function WhatsAppInbox({
   const [inboxFilter, setInboxFilter] = useState<number | null>(null)
   // WhatsApp, Messenger and Instagram chats are kept apart; WhatsApp is the one that opens first.
   const [category, setCategory] = useState<InboxCategory>('whatsapp')
+  // The part that opens first is decided once, when the chats arrive: a school with no WhatsApp chat (Messenger only)
+  // opens on Messenger. After that, or after anybody picked a part, it is left alone.
+  const categoryDecided = useRef(false)
   const [socialInboxNames, setSocialInboxNames] = useState<Map<number, string>>(new Map())
   const askedInboxNames = useRef(false)
   const [managingNumbers, setManagingNumbers] = useState(false)
@@ -129,6 +133,13 @@ export function WhatsAppInbox({
     [inbox.conversations, category],
   )
   const categoryUnread = useMemo(() => unreadByCategory(inbox.conversations), [inbox.conversations])
+  useEffect(() => {
+    if (categoryDecided.current || inbox.conversations.length === 0) {
+      return
+    }
+    categoryDecided.current = true
+    setCategory(firstCategory(inbox.conversations))
+  }, [inbox.conversations])
   const counts = useMemo(() => countByTab(categoryChats), [categoryChats])
   // Words typed in the search are also looked for inside the messages of every chat.
   const messageHits = useMessageSearch(client, search)
@@ -583,6 +594,7 @@ export function WhatsAppInbox({
         return
       }
       handledRequest.current = openRequest.id
+      categoryDecided.current = true
       setCategory(categoryOf(chat))
       setInboxFilter(null)
       setSearch('')
@@ -597,6 +609,7 @@ export function WhatsAppInbox({
     }
     handledRequest.current = openRequest.id
     const show = (conversation: ChatwootConversation | null) => {
+      categoryDecided.current = true
       setCategory('whatsapp')
       setSearch('')
       setTagId(null)
@@ -698,6 +711,7 @@ export function WhatsAppInbox({
   }, [category, numberChoices, categoryChats, socialInboxNames])
   const changeCategory = useCallback(
     (next: InboxCategory) => {
+      categoryDecided.current = true
       setCategory(next)
       setInboxFilter(null)
       // A chat of the other part is not left open beside a list that does not show it.

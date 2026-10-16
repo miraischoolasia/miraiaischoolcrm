@@ -190,6 +190,22 @@ export function categoryOf(conversation: Pick<ChatwootConversation, 'meta'>): In
   return socialKindOf(conversation.meta.channel, conversation.meta.sender) ?? 'whatsapp'
 }
 
+// The part of the inbox that opens first: WhatsApp, unless the school has no WhatsApp chat at all (a school that
+// only answers on Messenger) - then the part that has the most chats, Messenger before Instagram on a tie.
+export function firstCategory(conversations: Pick<ChatwootConversation, 'meta'>[]): InboxCategory {
+  const counts: Record<InboxCategory, number> = { whatsapp: 0, messenger: 0, instagram: 0 }
+  for (const conversation of conversations) {
+    counts[categoryOf(conversation)] += 1
+  }
+  if (counts.whatsapp > 0) {
+    return 'whatsapp'
+  }
+  if (counts.messenger === 0 && counts.instagram === 0) {
+    return 'whatsapp'
+  }
+  return counts.instagram > counts.messenger ? 'instagram' : 'messenger'
+}
+
 export type ChatIdentity = {
   // The name the person gave WhatsApp, or null when there is none. For matching only, never shown.
   name: string | null
