@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { buildPathway, type PathwayReviewInput } from './pathway'
+import { buildPathway as buildPathwayWith, type PathwayReviewInput } from './pathway'
+import { defaultReviewCriteria, getReviewMetrics } from './reviewCriteria'
+
+// The five starting criteria: ids 1 (Logical) to 5 (Sustained Focus).
+const metrics = getReviewMetrics(defaultReviewCriteria)
+const LOGIC = 1
+const CODING = 2
+const FOCUS = 5
+const buildPathway = (entries: PathwayReviewInput[]) => buildPathwayWith(entries, metrics)
 
 const review = (
   lessonDate: string,
@@ -9,20 +17,8 @@ const review = (
   lessonDate,
   revisionNumber: 1,
   isTrial: false,
-  scores: {
-    logicalThinkingScore: score,
-    codingCreativityScore: score,
-    problemSolvingScore: score,
-    expressivenessScore: score,
-    sustainedFocusScore: score,
-  },
-  remarks: {
-    logicalThinkingRemark: null,
-    codingCreativityRemark: null,
-    problemSolvingRemark: null,
-    expressivenessRemark: null,
-    sustainedFocusRemark: null,
-  },
+  scores: { 1: score, 2: score, 3: score, 4: score, 5: score },
+  remarks: { 1: null, 2: null, 3: null, 4: null, 5: null },
   ...overrides,
 })
 
@@ -64,10 +60,10 @@ describe('buildPathway', () => {
     ]
     const [first, second] = buildPathway(entries)
 
-    expect(first.averages.logicalThinkingScore).toBe(2)
-    expect(first.deltas.logicalThinkingScore).toBeNull()
-    expect(second.averages.logicalThinkingScore).toBe(3.5)
-    expect(second.deltas.logicalThinkingScore).toBe(1.5)
+    expect(first.averages[LOGIC]).toBe(2)
+    expect(first.deltas[LOGIC]).toBeNull()
+    expect(second.averages[LOGIC]).toBe(3.5)
+    expect(second.deltas[LOGIC]).toBe(1.5)
   })
 
   it('keeps trial lessons in their own stage and compares Month 1 against it', () => {
@@ -79,19 +75,13 @@ describe('buildPathway', () => {
     expect(stages.map((stage) => stage.label)).toEqual(['Trial', 'Month 1'])
     expect(stages[0].kind).toBe('trial')
     expect(stages[0].inProgress).toBe(false)
-    expect(stages[1].deltas.sustainedFocusScore).toBe(1)
+    expect(stages[1].deltas[FOCUS]).toBe(1)
   })
 
   it('collects non-empty remarks with their metric and date', () => {
     const [stage] = buildPathway([
       review('2026-09-01', 2, {
-        remarks: {
-          logicalThinkingRemark: '  Struggled with loops ',
-          codingCreativityRemark: null,
-          problemSolvingRemark: '',
-          expressivenessRemark: null,
-          sustainedFocusRemark: null,
-        },
+        remarks: { 1: '  Struggled with loops ', 2: null, 3: '', 4: null, 5: null },
       }),
     ])
 
@@ -107,17 +97,27 @@ describe('buildPathway', () => {
   it('ignores null scores when averaging', () => {
     const [stage] = buildPathway([
       review('2026-09-01', 4, {
-        scores: {
-          logicalThinkingScore: null,
-          codingCreativityScore: 4,
-          problemSolvingScore: 4,
-          expressivenessScore: 4,
-          sustainedFocusScore: 4,
-        },
+        scores: { 1: null, 2: 4, 3: 4, 4: 4, 5: 4 },
       }),
     ])
 
-    expect(stage.averages.logicalThinkingScore).toBeNull()
-    expect(stage.averages.codingCreativityScore).toBe(4)
+    expect(stage.averages[LOGIC]).toBeNull()
+    expect(stage.averages[CODING]).toBe(4)
+  })
+
+  it("averages a school's own criterion on its own scale", () => {
+    const teamwork = getReviewMetrics([
+      { id: 9, name: 'Teamwork', description: null, maxScore: 3, remarkRequiredAtOrBelow: 1, sortOrder: 10, isActive: true, legacyKey: null },
+    ])
+    const [stage] = buildPathwayWith(
+      [
+        { lessonDate: '2026-09-01', revisionNumber: 1, isTrial: false, scores: { 9: 3 }, remarks: { 9: null } },
+        { lessonDate: '2026-09-08', revisionNumber: 1, isTrial: false, scores: { 9: 2 }, remarks: { 9: 'Shy' } },
+      ],
+      teamwork,
+    )
+
+    expect(stage.averages).toEqual({ 9: 2.5 })
+    expect(stage.remarks).toEqual([{ metricLabel: 'Teamwork', lessonDate: '2026-09-08', text: 'Shy' }])
   })
 })

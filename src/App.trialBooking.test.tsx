@@ -371,16 +371,13 @@ describe('trial slots on the calendar', () => {
           id: 1,
           lessonLogId: 90,
           studentId: 501,
-          logicalThinkingScore: 4,
-          logicalThinkingRemark: null,
-          codingCreativityScore: 4,
-          codingCreativityRemark: null,
-          problemSolvingScore: 4,
-          problemSolvingRemark: null,
-          expressivenessScore: 4,
-          expressivenessRemark: null,
-          sustainedFocusScore: 4,
-          sustainedFocusRemark: null,
+          scores: {
+            1: { score: 4, remark: null },
+            2: { score: 4, remark: null },
+            3: { score: 4, remark: null },
+            4: { score: 4, remark: null },
+            5: { score: 4, remark: null },
+          },
           lessonRemark: 'Loved the loops',
         },
       ],
@@ -453,7 +450,7 @@ describe('trial slots on the calendar', () => {
 
     const dialog = within(screen.getByRole('dialog'))
     // Five metrics, rate each 4 out of 5.
-    for (const star of dialog.getAllByRole('button', { name: 'Rate 4 out of 5' })) {
+    for (const star of dialog.getAllByRole('button', { name: /^Rate .* 4 out of 5$/ })) {
       await userEvent.click(star)
     }
     // The one-and-only "Lesson Remark" box belongs to Aiden, not the class.

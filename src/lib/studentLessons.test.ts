@@ -1,21 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import { buildStudentLessons, getAttendedStudentIds } from './studentLessons'
+import { defaultReviewCriteria, getReviewMetrics } from './reviewCriteria'
 import type { LessonLogStudentReview, LessonLogSummary } from '../types/domain'
+
+const metrics = getReviewMetrics(defaultReviewCriteria)
 
 function log(id: number, lessonDate: string, revisionNumber = 1, scheduleId = 1): LessonLogSummary {
   return { id, scheduleId, teacherId: 1, lessonDate, lessonRemark: null, submittedAt: '', revisionNumber, parentLogId: null }
 }
 
 function review(lessonLogId: number, studentId: number, score: number | null): LessonLogStudentReview {
-  return {
-    id: lessonLogId * 10 + studentId, lessonLogId, studentId,
-    logicalThinkingScore: score, logicalThinkingRemark: null, codingCreativityScore: score, codingCreativityRemark: null,
-    problemSolvingScore: score, problemSolvingRemark: null, expressivenessScore: score, expressivenessRemark: null,
-    sustainedFocusScore: score, sustainedFocusRemark: null,
-  } as LessonLogStudentReview
+  const scores: LessonLogStudentReview['scores'] = {}
+  if (score !== null) {
+    for (const metric of metrics) scores[metric.id] = { score, remark: null }
+  }
+  return { id: lessonLogId * 10 + studentId, lessonLogId, studentId, scores, lessonRemark: null }
 }
 
-const base = { studentId: 1, studentIsTrial: false, trialStudentIds: [], schedules: [] }
+const base = { studentId: 1, studentIsTrial: false, trialStudentIds: [], schedules: [], metrics }
 
 describe('buildStudentLessons', () => {
   it('lists present, absent and leave lessons newest first, with the review average', () => {

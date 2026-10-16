@@ -1,0 +1,428 @@
+import { useState } from 'react'
+import { Eye, EyeSlash, Plus, X } from '@phosphor-icons/react'
+import { ModalShell } from '../ModalShell'
+import { cn } from '../../lib/cn'
+import type { ZoomMeetingOptions } from '../../lib/api'
+import type { ReviewCriterion } from '../../types/domain'
+
+export type ReviewCriterionDraft = Pick<
+  ReviewCriterion,
+  'name' | 'description' | 'maxScore' | 'remarkRequiredAtOrBelow'
+>
+
+type Tab = 'criteria' | 'zoom'
+
+type ClassSettingsModalProps = {
+  criteria: ReviewCriterion[]
+  zoomOptions: ZoomMeetingOptions | null
+  onClose: () => void
+  // Each resolves to an error message, or null when saved.
+  onAddCriterion: (draft: ReviewCriterionDraft) => Promise<string | null>
+  onSaveCriterion: (criterion: ReviewCriterion, draft: ReviewCriterionDraft) => Promise<string | null>
+  onSetCriterionActive: (criterion: ReviewCriterion, isActive: boolean) => Promise<string | null>
+  onMoveCriterion: (criterion: ReviewCriterion, direction: -1 | 1) => Promise<string | null>
+  onSaveZoomOptions: (options: ZoomMeetingOptions) => Promise<string | null>
+}
+
+const inputClass =
+  'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#fc0c97]'
+
+const emptyDraft: ReviewCriterionDraft = {
+  name: '',
+  description: null,
+  maxScore: 5,
+  remarkRequiredAtOrBelow: 2,
+}
+
+// Admin settings for classes: what teachers rate each present student on, and
+// how the Zoom meeting of each lesson is set up.
+export function ClassSettingsModal({
+  criteria,
+  zoomOptions,
+  onClose,
+  onAddCriterion,
+  onSaveCriterion,
+  onSetCriterionActive,
+  onMoveCriterion,
+  onSaveZoomOptions,
+}: ClassSettingsModalProps) {
+  const [tab, setTab] = useState<Tab>('criteria')
+  const [error, setError] = useState<string | null>(null)
+
+  async function run(action: Promise<string | null>) {
+    const message = await action
+    setError(message)
+    return message === null
+  }
+
+  const sorted = [...criteria].sort((left, right) => left.sortOrder - right.sortOrder || left.id - right.id)
+  const active = sorted.filter((criterion) => criterion.isActive)
+  const hidden = sorted.filter((criterion) => !criterion.isActive)
+
+  return (
+    <ModalShell maxWidth="2xl" onClose={onClose}>
+      <div className="border-b border-slate-200 bg-white px-6 py-5 sm:px-8">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-sm font-medium text-[#be185d]">Classrooms settings</div>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-900">Class Settings</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-xl border border-slate-200 p-2 text-slate-600 transition hover:bg-white"
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+        </div>
+        <div role="tablist" className="mt-4 flex gap-2">
+          {(
+            [
+              ['criteria', 'Review criteria'],
+              ['zoom', 'Zoom'],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={tab === key}
+              onClick={() => {
+                setTab(key)
+                setError(null)
+              }}
+              className={cn(
+                'rounded-xl px-4 py-2 text-sm font-semibold transition',
+                tab === key ? 'bg-[#fc0c97] text-white' : 'border border-slate-200 text-slate-700 hover:bg-slate-50',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div data-modal-body className="max-h-[70vh] space-y-4 overflow-y-auto px-6 py-6 sm:px-8">
+        {error && (
+          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        {tab === 'criteria' && (
+          <>
+            <p className="text-sm text-slate-500">
+              Teachers rate every present student on each criterion when they take attendance. A criterion
+              you hide stays on the lessons already scored on it.
+            </p>
+            <div className="hidden grid-cols-[1fr_5rem_6.5rem_7.5rem] gap-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-500 sm:grid">
+              <span>Name</span>
+              <span>Top score</span>
+              <span>Remark at or below</span>
+              <span />
+            </div>
+            <ul className="space-y-2">
+              {active.map((criterion, index) => (
+                <CriterionRow
+                  key={`${criterion.id}-${criterion.name}-${criterion.maxScore}-${criterion.remarkRequiredAtOrBelow}-${criterion.sortOrder}`}
+                  criterion={criterion}
+                  canMoveUp={index > 0}
+                  canMoveDown={index < active.length - 1}
+                  isOnlyActive={active.length === 1}
+                  onSave={(draft) => run(onSaveCriterion(criterion, draft))}
+                  onSetActive={(isActive) => run(onSetCriterionActive(criterion, isActive))}
+                  onMove={(direction) => run(onMoveCriterion(criterion, direction))}
+                />
+              ))}
+            </ul>
+            <NewCriterionRow onAdd={(draft) => run(onAddCriterion(draft))} />
+            {hidden.length > 0 && (
+              <div className="space-y-2 border-t border-slate-200 pt-4">
+                <div className="text-sm font-semibold text-slate-700">Hidden</div>
+                <ul className="space-y-2">
+                  {hidden.map((criterion) => (
+                    <li
+                      key={criterion.id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-500"
+                    >
+                      <span>
+                        {criterion.name} · top score {criterion.maxScore}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void run(onSetCriterionActive(criterion, true))}
+                        aria-label={`Show ${criterion.name}`}
+                        title="Show"
+                        className="rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50"
+                      >
+                        <EyeSlash size={16} aria-hidden="true" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
+
+        {tab === 'zoom' && (
+          <ZoomOptionsForm
+            // Starts over once the saved settings have loaded.
+            key={zoomOptions ? 'loaded' : 'loading'}
+            options={zoomOptions}
+            onSave={(options) => run(onSaveZoomOptions(options))}
+          />
+        )}
+      </div>
+    </ModalShell>
+  )
+}
+
+function isValid(draft: ReviewCriterionDraft) {
+  return (
+    draft.name.trim().length > 0 &&
+    draft.name.trim().length <= 60 &&
+    Number.isInteger(draft.maxScore) &&
+    draft.maxScore >= 2 &&
+    draft.maxScore <= 10 &&
+    Number.isInteger(draft.remarkRequiredAtOrBelow) &&
+    draft.remarkRequiredAtOrBelow >= 0 &&
+    draft.remarkRequiredAtOrBelow < draft.maxScore
+  )
+}
+
+function DraftFields({
+  draft,
+  onChange,
+  label,
+  scaleLocked = false,
+}: {
+  draft: ReviewCriterionDraft
+  onChange: (next: ReviewCriterionDraft) => void
+  label: string
+  // The top score cannot change once students were scored on it.
+  scaleLocked?: boolean
+}) {
+  return (
+    <>
+      <input
+        type="text"
+        value={draft.name}
+        maxLength={60}
+        placeholder="e.g. Teamwork"
+        aria-label={`${label} name`}
+        onChange={(event) => onChange({ ...draft, name: event.target.value })}
+        className={inputClass}
+      />
+      <input
+        type="number"
+        min={2}
+        max={10}
+        value={draft.maxScore}
+        disabled={scaleLocked}
+        title={scaleLocked ? 'Students have been scored on this, so its top score stays.' : undefined}
+        aria-label={`${label} top score`}
+        onChange={(event) => onChange({ ...draft, maxScore: Number(event.target.value) })}
+        className={cn(inputClass, scaleLocked && 'bg-slate-50 text-slate-400')}
+      />
+      <input
+        type="number"
+        min={0}
+        max={draft.maxScore - 1}
+        value={draft.remarkRequiredAtOrBelow}
+        title="A score at or below this needs a remark. 0 = never."
+        aria-label={`${label} remark at or below`}
+        onChange={(event) => onChange({ ...draft, remarkRequiredAtOrBelow: Number(event.target.value) })}
+        className={inputClass}
+      />
+    </>
+  )
+}
+
+function CriterionRow({
+  criterion,
+  canMoveUp,
+  canMoveDown,
+  isOnlyActive,
+  onSave,
+  onSetActive,
+  onMove,
+}: {
+  criterion: ReviewCriterion
+  canMoveUp: boolean
+  canMoveDown: boolean
+  isOnlyActive: boolean
+  onSave: (draft: ReviewCriterionDraft) => Promise<boolean>
+  onSetActive: (isActive: boolean) => Promise<boolean>
+  onMove: (direction: -1 | 1) => Promise<boolean>
+}) {
+  const initial: ReviewCriterionDraft = {
+    name: criterion.name,
+    description: criterion.description,
+    maxScore: criterion.maxScore,
+    remarkRequiredAtOrBelow: criterion.remarkRequiredAtOrBelow,
+  }
+  const [draft, setDraft] = useState(initial)
+  const isDirty = JSON.stringify(draft) !== JSON.stringify(initial)
+
+  return (
+    <li className="grid grid-cols-3 items-center gap-2 rounded-xl border border-slate-200 p-2 sm:grid-cols-[1fr_5rem_6.5rem_7.5rem] sm:border-0 sm:p-0">
+      <DraftFields
+        draft={draft}
+        onChange={setDraft}
+        label={criterion.name}
+        scaleLocked={criterion.legacyKey !== null}
+      />
+      <div className="col-span-3 flex items-center justify-end gap-1 sm:col-span-1">
+        {isDirty && (
+          <button
+            type="button"
+            disabled={!isValid(draft)}
+            onClick={() => void onSave({ ...draft, name: draft.name.trim() })}
+            className="rounded-xl bg-[#fc0c97] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#de0a84] disabled:opacity-50"
+          >
+            Save
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={!canMoveUp}
+          onClick={() => void onMove(-1)}
+          aria-label={`Move ${criterion.name} up`}
+          className="rounded-xl border border-slate-200 px-2 py-1.5 text-xs text-slate-500 transition hover:bg-slate-50 disabled:opacity-30"
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          disabled={!canMoveDown}
+          onClick={() => void onMove(1)}
+          aria-label={`Move ${criterion.name} down`}
+          className="rounded-xl border border-slate-200 px-2 py-1.5 text-xs text-slate-500 transition hover:bg-slate-50 disabled:opacity-30"
+        >
+          ↓
+        </button>
+        <button
+          type="button"
+          disabled={isOnlyActive}
+          onClick={() => void onSetActive(false)}
+          aria-label={`Hide ${criterion.name}`}
+          title={isOnlyActive ? 'Keep at least one criterion' : 'Hide'}
+          className="rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 disabled:opacity-30"
+        >
+          <Eye size={16} aria-hidden="true" />
+        </button>
+      </div>
+    </li>
+  )
+}
+
+function NewCriterionRow({ onAdd }: { onAdd: (draft: ReviewCriterionDraft) => Promise<boolean> }) {
+  const [draft, setDraft] = useState(emptyDraft)
+
+  async function add() {
+    if (await onAdd({ ...draft, name: draft.name.trim() })) {
+      setDraft(emptyDraft)
+    }
+  }
+
+  return (
+    <div className="space-y-2 border-t border-slate-200 pt-4">
+      <div className="text-sm font-semibold text-slate-700">Add a criterion</div>
+      <div className="grid grid-cols-3 items-center gap-2 sm:grid-cols-[1fr_5rem_6.5rem_7.5rem]">
+        <DraftFields draft={draft} onChange={setDraft} label="New criterion" />
+        <div className="col-span-3 flex justify-end sm:col-span-1">
+          <button
+            type="button"
+            disabled={!isValid(draft)}
+            onClick={() => void add()}
+            aria-label="Add criterion"
+            className="inline-flex items-center gap-1 rounded-xl bg-[#fc0c97] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#de0a84] disabled:opacity-50"
+          >
+            <Plus size={14} aria-hidden="true" />
+            Add
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ZoomOptionsForm({
+  options,
+  onSave,
+}: {
+  options: ZoomMeetingOptions | null
+  onSave: (options: ZoomMeetingOptions) => Promise<boolean>
+}) {
+  const [draft, setDraft] = useState<ZoomMeetingOptions | null>(options)
+  const [saved, setSaved] = useState(false)
+
+  if (!draft) {
+    return <div className="py-8 text-center text-sm text-slate-500">Loading the Zoom settings…</div>
+  }
+
+  const isDirty = JSON.stringify(draft) !== JSON.stringify(options)
+  const toggles: Array<[keyof Omit<ZoomMeetingOptions, 'auto_recording'>, string, string]> = [
+    ['mute_upon_entry', 'Students join muted', 'The teacher unmutes whoever should speak.'],
+    ['waiting_room', 'Waiting room', 'The teacher lets each student in.'],
+    ['join_before_host', 'Students may join before the teacher', 'Off: the lesson opens when the teacher arrives.'],
+  ]
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-slate-500">
+        Used for every lesson's Zoom meeting once lessons start from the CRM. The school's Zoom account itself is
+        connected on the server, not here.
+      </p>
+      <ul className="space-y-2">
+        {toggles.map(([key, label, note]) => (
+          <li key={key}>
+            <label className="flex items-start gap-3 rounded-xl border border-slate-200 px-4 py-3">
+              <input
+                type="checkbox"
+                checked={draft[key]}
+                onChange={(event) => {
+                  setSaved(false)
+                  setDraft({ ...draft, [key]: event.target.checked })
+                }}
+                className="mt-0.5 h-4 w-4 accent-[#fc0c97]"
+              />
+              <span>
+                <span className="block text-sm font-semibold text-slate-900">{label}</span>
+                <span className="block text-xs text-slate-500">{note}</span>
+              </span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      <label className="block space-y-1.5">
+        <span className="text-sm font-semibold text-slate-900">Recording</span>
+        <select
+          value={draft.auto_recording}
+          onChange={(event) => {
+            setSaved(false)
+            setDraft({ ...draft, auto_recording: event.target.value as ZoomMeetingOptions['auto_recording'] })
+          }}
+          className={inputClass}
+        >
+          <option value="cloud">Record to Zoom's cloud</option>
+          <option value="local">Record on the teacher's computer</option>
+          <option value="none">Do not record</option>
+        </select>
+      </label>
+      <div className="flex items-center justify-end gap-3">
+        {saved && <span className="text-sm font-semibold text-emerald-700">Saved</span>}
+        <button
+          type="button"
+          disabled={!isDirty}
+          onClick={() => void onSave(draft).then((ok) => setSaved(ok))}
+          className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84] disabled:opacity-50"
+        >
+          Save Zoom settings
+        </button>
+      </div>
+    </div>
+  )
+}

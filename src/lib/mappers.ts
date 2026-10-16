@@ -18,6 +18,9 @@ import type {
   LessonLogStudentRow,
   LessonLogStudentReview,
   LessonLogStudentReviewRow,
+  LessonReviewScoreRow,
+  ReviewCriterion,
+  ReviewCriterionRow,
   LessonLogSummary,
   LessonLogSummaryRow,
   MakeupPlan,
@@ -274,41 +277,43 @@ export function mapLessonLogStudentRow(row: LessonLogStudentRow): LessonLogStude
   }
 }
 
+// A review row plus its scores (one row per criterion, from
+// lesson_review_scores).
 export function mapLessonLogStudentReviewRow(
   row: LessonLogStudentReviewRow,
+  scoreRows: LessonReviewScoreRow[] = [],
 ): LessonLogStudentReview {
+  const scores: LessonLogStudentReview['scores'] = {}
+  for (const scoreRow of scoreRows) {
+    if (scoreRow.lesson_log_id === row.lesson_log_id && scoreRow.student_id === row.student_id) {
+      scores[scoreRow.criterion_id] = { score: scoreRow.score, remark: scoreRow.remark }
+    }
+  }
+
   return {
     id: row.id,
     lessonLogId: row.lesson_log_id,
     studentId: row.student_id,
-    logicalThinkingScore: row.logical_thinking_score,
-    logicalThinkingRemark: row.logical_thinking_remark,
-    codingCreativityScore: row.coding_creativity_score,
-    codingCreativityRemark: row.coding_creativity_remark,
-    problemSolvingScore: row.problem_solving_score,
-    problemSolvingRemark: row.problem_solving_remark,
-    expressivenessScore: row.expressiveness_score,
-    expressivenessRemark: row.expressiveness_remark,
-    sustainedFocusScore: row.sustained_focus_score,
-    sustainedFocusRemark: row.sustained_focus_remark,
+    scores,
     lessonRemark: row.lesson_remark,
   }
 }
 
-export function createEmptyAttendanceReviewForm(): AttendanceReviewFormState {
+export function mapReviewCriterionRow(row: ReviewCriterionRow): ReviewCriterion {
   return {
-    logicalThinkingScore: null,
-    logicalThinkingRemark: '',
-    codingCreativityScore: null,
-    codingCreativityRemark: '',
-    problemSolvingScore: null,
-    problemSolvingRemark: '',
-    expressivenessScore: null,
-    expressivenessRemark: '',
-    sustainedFocusScore: null,
-    sustainedFocusRemark: '',
-    lessonRemark: '',
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    maxScore: row.max_score,
+    remarkRequiredAtOrBelow: row.remark_required_at_or_below,
+    sortOrder: row.sort_order,
+    isActive: row.is_active,
+    legacyKey: row.legacy_key,
   }
+}
+
+export function createEmptyAttendanceReviewForm(): AttendanceReviewFormState {
+  return { scores: {}, remarks: {}, lessonRemark: '' }
 }
 
 export function mapReviewToFormState(
@@ -318,19 +323,13 @@ export function mapReviewToFormState(
     return createEmptyAttendanceReviewForm()
   }
 
-  return {
-    logicalThinkingScore: review.logicalThinkingScore,
-    logicalThinkingRemark: review.logicalThinkingRemark ?? '',
-    codingCreativityScore: review.codingCreativityScore,
-    codingCreativityRemark: review.codingCreativityRemark ?? '',
-    problemSolvingScore: review.problemSolvingScore,
-    problemSolvingRemark: review.problemSolvingRemark ?? '',
-    expressivenessScore: review.expressivenessScore,
-    expressivenessRemark: review.expressivenessRemark ?? '',
-    sustainedFocusScore: review.sustainedFocusScore,
-    sustainedFocusRemark: review.sustainedFocusRemark ?? '',
-    lessonRemark: review.lessonRemark ?? '',
+  const form = createEmptyAttendanceReviewForm()
+  for (const [id, entry] of Object.entries(review.scores)) {
+    form.scores[Number(id)] = entry.score
+    form.remarks[Number(id)] = entry.remark ?? ''
   }
+  form.lessonRemark = review.lessonRemark ?? ''
+  return form
 }
 
 export function getLatestLessonLogMap(logs: LessonLogSummary[]) {

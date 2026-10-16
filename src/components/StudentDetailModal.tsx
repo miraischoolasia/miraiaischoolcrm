@@ -9,7 +9,7 @@ import {
   getWorstFee,
 } from '../domain/studentStatus'
 import { cn } from '../lib/cn'
-import { performanceMetricDefinitions } from '../lib/constants'
+import { defaultReviewCriteria, getReviewMetrics, labelWithScale, type ReviewMetric } from '../lib/reviewCriteria'
 import { buildPathway } from '../lib/pathway'
 import { getCurrentClassPeriod } from '../lib/roster'
 import { weekdayLabels } from '../lib/schedule'
@@ -26,7 +26,7 @@ import type {
   LessonLogSummary,
   MakeupPlan,
   Package,
-  ReviewScoreField,
+  ReviewCriterion,
   Schedule,
   Student,
   StudentEnrollment,
@@ -40,6 +40,9 @@ type StudentDetailModalProps = {
   student: Student
   lessonLogs: LessonLogSummary[]
   lessonReviews: LessonLogStudentReview[]
+  // The school's review criteria (switched-off ones still show where a
+  // lesson was scored on them).
+  reviewCriteria?: ReviewCriterion[]
   onClose: () => void
   schedules: Schedule[]
   teacherMap: Map<number, Teacher>
@@ -106,6 +109,7 @@ export function StudentDetailModal({
   student,
   lessonLogs,
   lessonReviews,
+  reviewCriteria = defaultReviewCriteria,
   onClose,
   schedules,
   teacherMap,
@@ -128,6 +132,14 @@ export function StudentDetailModal({
   const isBilled = student.studentType === 'regular'
   const todayString = getTodayString()
 
+  const metrics = useMemo(() => {
+    const ids = new Set([student.id, ...trialStudentIds])
+    return getReviewMetrics(
+      reviewCriteria,
+      lessonReviews.filter((review) => ids.has(review.studentId)),
+    )
+  }, [lessonReviews, reviewCriteria, student.id, trialStudentIds])
+
   const lessons = useMemo(
     () =>
       buildStudentLessons({
@@ -138,60 +150,51 @@ export function StudentDetailModal({
         lessonReviews,
         attendance,
         schedules,
+        metrics,
       }),
-    [attendance, lessonLogs, lessonReviews, schedules, student.id, student.studentType, trialStudentIds],
+    [attendance, lessonLogs, lessonReviews, metrics, schedules, student.id, student.studentType, trialStudentIds],
   )
   const reviewed = useMemo(
     () => lessons.filter((lesson): lesson is StudentLesson & { review: LessonLogStudentReview } => lesson.review !== null),
     [lessons],
   )
 
+  // By criterion id, on the criterion's own scale; 0 when never scored.
   const metricAverages = useMemo(() => {
-    const result = {
-      logicalThinkingScore: 0,
-      codingCreativityScore: 0,
-      problemSolvingScore: 0,
-      expressivenessScore: 0,
-      sustainedFocusScore: 0,
-    } satisfies Record<ReviewScoreField, number>
-
-    for (const metric of performanceMetricDefinitions) {
+    const result: Record<number, number> = {}
+    for (const metric of metrics) {
       const values = reviewed
-        .map((lesson) => lesson.review[metric.scoreField])
+        .map((lesson) => lesson.review.scores[metric.id]?.score ?? null)
         .filter((value): value is number => value !== null)
-      result[metric.scoreField] =
+      result[metric.id] =
         values.length > 0
           ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1))
           : 0
     }
-
     return result
-  }, [reviewed])
+  }, [metrics, reviewed])
 
   const pathwayStages = useMemo(
     () =>
       buildPathway(
-        reviewed.map(({ review, log, isTrial }) => ({
-          lessonDate: log.lessonDate,
-          revisionNumber: log.revisionNumber,
-          isTrial,
-          scores: {
-            logicalThinkingScore: review.logicalThinkingScore,
-            codingCreativityScore: review.codingCreativityScore,
-            problemSolvingScore: review.problemSolvingScore,
-            expressivenessScore: review.expressivenessScore,
-            sustainedFocusScore: review.sustainedFocusScore,
-          },
-          remarks: {
-            logicalThinkingRemark: review.logicalThinkingRemark,
-            codingCreativityRemark: review.codingCreativityRemark,
-            problemSolvingRemark: review.problemSolvingRemark,
-            expressivenessRemark: review.expressivenessRemark,
-            sustainedFocusRemark: review.sustainedFocusRemark,
-          },
-        })),
+        reviewed.map(({ review, log, isTrial }) => {
+          const scores: Record<number, number | null> = {}
+          const remarks: Record<number, string | null> = {}
+          for (const [id, entry] of Object.entries(review.scores)) {
+            scores[Number(id)] = entry.score
+            remarks[Number(id)] = entry.remark
+          }
+          return {
+            lessonDate: log.lessonDate,
+            revisionNumber: log.revisionNumber,
+            isTrial,
+            scores,
+            remarks,
+          }
+        }),
+        metrics,
       ),
-    [reviewed],
+    [metrics, reviewed],
   )
 
   const assignedClassroom =
@@ -511,27 +514,29 @@ export function StudentDetailModal({
 
         {tab === 'progress' && !isPreview && (
           <>
-            <Card title="Five-metric profile" note={`Average of ${reviewed.length} reviewed ${reviewed.length === 1 ? 'lesson' : 'lessons'}`}>
+            <Card title="Skills profile" note={`Average of ${reviewed.length} reviewed ${reviewed.length === 1 ? 'lesson' : 'lessons'}`}>
               {reviewed.length === 0 ? (
                 <div className="py-8 text-center text-sm text-slate-500">
                   No performance reviews have been submitted for this student yet.
                 </div>
               ) : (
                 <div className="grid items-center gap-4 sm:grid-cols-2">
-                  <PerformanceRadarChart averages={metricAverages} />
+                  <PerformanceRadarChart averages={metricAverages} metrics={metrics} />
                   <div className="space-y-3">
-                    {performanceMetricDefinitions.map((metric) => (
+                    {metrics.map((metric) => (
                       <MetricBar
-                        key={metric.key}
-                        label={metric.label}
-                        value={metricAverages[metric.scoreField]}
+                        key={metric.id}
+                        label={labelWithScale(metric)}
+                        value={metricAverages[metric.id] ?? 0}
+                        max={metric.maxScore}
+                        lowAtOrBelow={metric.remarkRequiredAtOrBelow}
                       />
                     ))}
                   </div>
                 </div>
               )}
             </Card>
-            <PathwaySection studentName={student.name} stages={pathwayStages} />
+            <PathwaySection studentName={student.name} stages={pathwayStages} metrics={metrics} />
           </>
         )}
 
@@ -567,14 +572,14 @@ export function StudentDetailModal({
               )}
             </Card>
 
-            <Card title="Lesson reviews" note="Open a lesson to see all five scores" flush>
+            <Card title="Lesson reviews" note="Open a lesson to see every score" flush>
               {lessons.length === 0 && (
                 <div className="px-4 py-10 text-center text-sm text-slate-500">
                   No lessons have been recorded for this student yet.
                 </div>
               )}
               {lessons.map((lesson) => (
-                <LessonRow key={lesson.log.id} lesson={lesson} teacherMap={teacherMap} />
+                <LessonRow key={lesson.log.id} lesson={lesson} teacherMap={teacherMap} metrics={metrics} />
               ))}
             </Card>
 
@@ -762,15 +767,26 @@ function AttendanceChip({ status }: { status: AttendanceStatus }) {
   )
 }
 
-function MetricBar({ label, value }: { label: string; value: number | null }) {
-  const low = value !== null && value > 0 && value <= 2
+function MetricBar({
+  label,
+  value,
+  max = 5,
+  lowAtOrBelow = 2,
+}: {
+  label: string
+  value: number | null
+  max?: number
+  // Scores at or below this show red (the criterion's remark threshold).
+  lowAtOrBelow?: number
+}) {
+  const low = value !== null && value > 0 && value <= lowAtOrBelow
   return (
     <div className="grid grid-cols-[minmax(0,150px)_1fr_32px] items-center gap-3 text-sm">
       <span className="text-slate-700">{label}</span>
       <span className="h-2 overflow-hidden rounded-full bg-slate-200">
         <span
           className={cn('block h-full rounded-full', low ? 'bg-red-600' : 'bg-[#fc0c97]')}
-          style={{ width: `${((value ?? 0) / 5) * 100}%` }}
+          style={{ width: `${(Math.min(value ?? 0, max) / max) * 100}%` }}
         />
       </span>
       <b className="text-right text-slate-900">
@@ -780,7 +796,15 @@ function MetricBar({ label, value }: { label: string; value: number | null }) {
   )
 }
 
-function LessonRow({ lesson, teacherMap }: { lesson: StudentLesson; teacherMap: Map<number, Teacher> }) {
+function LessonRow({
+  lesson,
+  teacherMap,
+  metrics,
+}: {
+  lesson: StudentLesson
+  teacherMap: Map<number, Teacher>
+  metrics: ReviewMetric[]
+}) {
   const { log, review, schedule, status, isTrial, average } = lesson
   return (
     <details className="group border-b border-slate-200 last:border-b-0">
@@ -806,11 +830,17 @@ function LessonRow({ lesson, teacherMap }: { lesson: StudentLesson; teacherMap: 
       </summary>
       <div className="space-y-3 bg-slate-50 px-4 pb-4 pt-3">
         {review ? (
-          performanceMetricDefinitions.map((metric) => {
-            const remark = review[metric.remarkField]
+          metrics.map((metric) => {
+            const entry = review.scores[metric.id]
+            const remark = entry?.remark ?? null
             return (
-              <div key={metric.key} className="space-y-1">
-                <MetricBar label={metric.label} value={review[metric.scoreField]} />
+              <div key={metric.id} className="space-y-1">
+                <MetricBar
+                  label={labelWithScale(metric)}
+                  value={entry?.score ?? null}
+                  max={metric.maxScore}
+                  lowAtOrBelow={metric.remarkRequiredAtOrBelow}
+                />
                 {remark && <div className="text-xs text-slate-500">Remark: {remark}</div>}
               </div>
             )

@@ -1,4 +1,4 @@
-import { performanceMetricDefinitions } from './constants'
+import { toFivePointScale, type ReviewMetric } from './reviewCriteria'
 import { getLatestLessonLogMap } from './mappers'
 import type {
   AttendanceStatus,
@@ -28,7 +28,7 @@ export type StudentLesson = {
   // Only a present student has a review.
   review: LessonLogStudentReview | null
   isTrial: boolean
-  // Mean of the five scores, null without a review.
+  // Mean of the review's scores on the 1-5 scale, null without a review.
   average: number | null
 }
 
@@ -43,6 +43,7 @@ export function buildStudentLessons({
   lessonReviews,
   attendance,
   schedules,
+  metrics,
 }: {
   studentId: number
   studentIsTrial: boolean
@@ -51,6 +52,8 @@ export function buildStudentLessons({
   lessonReviews: LessonLogStudentReview[]
   attendance: Array<{ lessonLogId: number; status: AttendanceStatus }>
   schedules: Schedule[]
+  // Scores of criteria not listed here are left out of the average.
+  metrics: ReviewMetric[]
 }): StudentLesson[] {
   const trialIds = new Set(trialStudentIds)
   const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]))
@@ -71,8 +74,11 @@ export function buildStudentLessons({
     }
 
     const scores = review
-      ? performanceMetricDefinitions
-          .map((metric) => review[metric.scoreField])
+      ? metrics
+          .map((metric) => {
+            const entry = review.scores[metric.id]
+            return entry ? toFivePointScale(entry.score, metric.maxScore) : null
+          })
           .filter((value): value is number => value !== null)
       : []
 

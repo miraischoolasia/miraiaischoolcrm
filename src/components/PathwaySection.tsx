@@ -1,5 +1,5 @@
 import { formatDate } from '../domain/studentStatus'
-import { pathwayMetricColors, performanceMetricDefinitions } from '../lib/constants'
+import { labelWithScale, type ReviewMetric } from '../lib/reviewCriteria'
 import { LESSONS_PER_STAGE, type PathwayStage } from '../lib/pathway'
 import { printPathwayReport } from '../lib/pathwayReport'
 import { PathwayLineChart } from './PathwayLineChart'
@@ -14,9 +14,11 @@ function DeltaBadge({ delta }: { delta: number | null }) {
 export function PathwaySection({
   studentName,
   stages,
+  metrics,
 }: {
   studentName: string
   stages: PathwayStage[]
+  metrics: ReviewMetric[]
 }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white">
@@ -31,7 +33,7 @@ export function PathwaySection({
         {stages.length > 0 && (
           <button
             type="button"
-            onClick={() => printPathwayReport(studentName, stages)}
+            onClick={() => printPathwayReport(studentName, stages, metrics)}
             className="shrink-0 self-start rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
           >
             Export Parent Report (PDF)
@@ -47,17 +49,17 @@ export function PathwaySection({
 
       {stages.length > 0 && (
         <div className="space-y-5 p-5">
-          <PathwayLineChart stages={stages} />
+          <PathwayLineChart stages={stages} metrics={metrics} />
 
           <div className="flex flex-wrap justify-center gap-x-4 gap-y-1">
-            {performanceMetricDefinitions.map((metric) => (
+            {metrics.map((metric) => (
               <span
-                key={metric.key}
+                key={metric.id}
                 className="inline-flex items-center gap-1.5 text-xs text-slate-600"
               >
                 <i
                   className="inline-block h-2.5 w-2.5 rounded-full"
-                  style={{ background: pathwayMetricColors[metric.key] }}
+                  style={{ background: metric.color }}
                 />
                 {metric.label}
               </span>
@@ -81,18 +83,18 @@ export function PathwaySection({
                 </tr>
               </thead>
               <tbody>
-                {performanceMetricDefinitions.map((metric) => (
-                  <tr key={metric.key} className="border-b border-slate-100">
-                    <td className="px-2 py-2 text-slate-700">{metric.label}</td>
+                {metrics.map((metric) => (
+                  <tr key={metric.id} className="border-b border-slate-100">
+                    <td className="px-2 py-2 text-slate-700">{labelWithScale(metric)}</td>
                     {stages.map((stage) => {
-                      const score = stage.averages[metric.scoreField]
+                      const score = stage.averages[metric.id] ?? null
                       return (
                         <td key={stage.label} className="px-2 py-2 text-center">
                           <div className="font-semibold text-slate-900">
                             {score === null ? '-' : score.toFixed(1)}
                           </div>
                           <div className="text-xs">
-                            <DeltaBadge delta={stage.deltas[metric.scoreField]} />
+                            <DeltaBadge delta={stage.deltas[metric.id] ?? null} />
                           </div>
                         </td>
                       )

@@ -58,24 +58,24 @@ export type ProgramLevel =
   | 'VibeTech Pro'
   | 'VibeTech Future'
   | 'Software Engineer'
-export type PerformanceMetricKey =
-  | 'logicalThinking'
-  | 'codingCreativity'
-  | 'problemSolving'
-  | 'expressiveness'
-  | 'sustainedFocus'
-export type ReviewScoreField =
-  | 'logicalThinkingScore'
-  | 'codingCreativityScore'
-  | 'problemSolvingScore'
-  | 'expressivenessScore'
-  | 'sustainedFocusScore'
-export type ReviewRemarkField =
-  | 'logicalThinkingRemark'
-  | 'codingCreativityRemark'
-  | 'problemSolvingRemark'
-  | 'expressivenessRemark'
-  | 'sustainedFocusRemark'
+// A review criterion a school sets itself (Logical Thinking, Teamwork, ...).
+export type ReviewCriterion = {
+  id: number
+  name: string
+  description: string | null
+  maxScore: number
+  // A score at or below this needs a remark (0 = never).
+  remarkRequiredAtOrBelow: number
+  sortOrder: number
+  isActive: boolean
+  // Set on the five criteria that were fixed columns before.
+  legacyKey: string | null
+}
+
+export type ReviewScore = {
+  score: number
+  remark: string | null
+}
 
 export type Student = {
   id: number
@@ -331,31 +331,16 @@ export type LessonLogStudentReview = {
   id: number
   lessonLogId: number
   studentId: number
-  logicalThinkingScore: number | null
-  logicalThinkingRemark: string | null
-  codingCreativityScore: number | null
-  codingCreativityRemark: string | null
-  problemSolvingScore: number | null
-  problemSolvingRemark: string | null
-  expressivenessScore: number | null
-  expressivenessRemark: string | null
-  sustainedFocusScore: number | null
-  sustainedFocusRemark: string | null
+  // By criterion id.
+  scores: Record<number, ReviewScore>
   // This student's own note on the lesson (progress, homework, ...).
   lessonRemark: string | null
 }
 
 export type AttendanceReviewFormState = {
-  logicalThinkingScore: number | null
-  logicalThinkingRemark: string
-  codingCreativityScore: number | null
-  codingCreativityRemark: string
-  problemSolvingScore: number | null
-  problemSolvingRemark: string
-  expressivenessScore: number | null
-  expressivenessRemark: string
-  sustainedFocusScore: number | null
-  sustainedFocusRemark: string
+  // By criterion id; a missing entry is not rated yet.
+  scores: Record<number, number | null>
+  remarks: Record<number, string>
   lessonRemark: string
 }
 
@@ -625,21 +610,15 @@ export type LessonLogStudentRow = Pick<
 
 export type LessonLogStudentReviewRow = Pick<
   Database['public']['Tables']['lesson_log_student_reviews']['Row'],
-  | 'id'
-  | 'lesson_log_id'
-  | 'student_id'
-  | 'logical_thinking_score'
-  | 'logical_thinking_remark'
-  | 'coding_creativity_score'
-  | 'coding_creativity_remark'
-  | 'problem_solving_score'
-  | 'problem_solving_remark'
-  | 'expressiveness_score'
-  | 'expressiveness_remark'
-  | 'sustained_focus_score'
-  | 'sustained_focus_remark'
-  | 'lesson_remark'
+  'id' | 'lesson_log_id' | 'student_id' | 'lesson_remark'
 >
+
+export type LessonReviewScoreRow = Pick<
+  Database['public']['Tables']['lesson_review_scores']['Row'],
+  'lesson_log_id' | 'student_id' | 'criterion_id' | 'score' | 'remark'
+>
+
+export type ReviewCriterionRow = Database['public']['Tables']['review_criteria']['Row']
 
 export type PackageRow = Pick<
   Database['public']['Tables']['packages']['Row'],

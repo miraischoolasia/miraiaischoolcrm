@@ -3,8 +3,8 @@ import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { cn } from '../../lib/cn'
 import { formatDate } from '../../domain/studentStatus'
-import { performanceMetricDefinitions } from '../../lib/constants'
-import { countRatedMetrics, getReviewProgress, isReviewComplete } from '../../lib/attendance'
+import { needsRemark, type ReviewMetric } from '../../lib/reviewCriteria'
+import { countRatedMetrics, getReviewProgress, isReviewComplete, lowScoreText } from '../../lib/attendance'
 import { createEmptyAttendanceReviewForm } from '../../lib/mappers'
 import { StarRatingInput } from '../StarRatingInput'
 import type {
@@ -12,8 +12,6 @@ import type {
   AttendanceReviewFormState,
   AttendanceStatus,
   LessonLogSummary,
-  ReviewRemarkField,
-  ReviewScoreField,
   Student,
 } from '../../types/domain'
 
@@ -39,6 +37,8 @@ type AttendanceModalProps = {
   attendanceRoster: Student[]
   attendanceStatuses: Record<number, AttendanceStatus>
   attendanceReviews: Record<number, AttendanceReviewFormState>
+  // The criteria each present student is rated on, in order.
+  reviewMetrics: ReviewMetric[]
   // A class-wide note from before each student had their own: shown as
   // read-only history and carried along unchanged on an edit.
   attendanceRemark: string
@@ -47,17 +47,8 @@ type AttendanceModalProps = {
   onClose: () => void
   onSubmit: React.FormEventHandler<HTMLFormElement>
   onSetStatus: (studentId: number, status: AttendanceStatus) => void
-  onUpdateReviewScore: (
-    studentId: number,
-    scoreField: ReviewScoreField,
-    remarkField: ReviewRemarkField,
-    score: number,
-  ) => void
-  onUpdateReviewRemark: (
-    studentId: number,
-    remarkField: ReviewRemarkField,
-    value: string,
-  ) => void
+  onUpdateReviewScore: (studentId: number, metric: ReviewMetric, score: number) => void
+  onUpdateReviewRemark: (studentId: number, criterionId: number, value: string) => void
   onUpdateLessonRemark: (studentId: number, value: string) => void
 }
 
@@ -74,6 +65,7 @@ export function AttendanceModal({
   attendanceRoster,
   attendanceStatuses,
   attendanceReviews,
+  reviewMetrics,
   attendanceRemark,
   attendanceSaveError,
   isSavingAttendance,
@@ -89,7 +81,7 @@ export function AttendanceModal({
   const isRosterOnly = isUpcoming || (isViewOnly && !attendanceExistingLog)
 
   const rosterIds = attendanceRoster.map((student) => student.id)
-  const progress = getReviewProgress(rosterIds, attendanceStatuses, attendanceReviews)
+  const progress = getReviewProgress(rosterIds, attendanceStatuses, attendanceReviews, reviewMetrics)
   // A new submission opens one student's review at a time, starting with the
   // first one still to review. A submitted report opens every review, as it
   // is there to be read, and each can be closed on its own.
@@ -239,8 +231,8 @@ export function AttendanceModal({
                   attendanceReviews[student.id] ??
                   createEmptyAttendanceReviewForm()
                 const isOpen = !isRosterOnly && currentStatus === 'present' && openIds.includes(student.id)
-                const ratedCount = countRatedMetrics(reviewForm)
-                const complete = isReviewComplete(reviewForm)
+                const ratedCount = countRatedMetrics(reviewForm, reviewMetrics)
+                const complete = isReviewComplete(reviewForm, reviewMetrics)
                 const nextPendingId = progress.pendingIds.find((id) => id !== student.id) ?? null
 
                 return (
@@ -334,7 +326,7 @@ export function AttendanceModal({
                             <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-700">
                               {ratedCount === 0
                                 ? 'Not reviewed'
-                                : `${ratedCount} of 5 rated${ratedCount === 5 ? ' · remark needed' : ''}`}
+                                : `${ratedCount} of ${reviewMetrics.length} rated${ratedCount === reviewMetrics.length ? ' · remark needed' : ''}`}
                             </span>
                           )}
                           <span className="text-xs font-semibold text-slate-500">
@@ -346,44 +338,37 @@ export function AttendanceModal({
 
                     {isOpen && (
                       <div className="space-y-3 border-t border-slate-200 p-4">
-                        {performanceMetricDefinitions.map((metric) => {
-                          const score = reviewForm[metric.scoreField]
-                          const needsRemark = score !== null && score <= 2
+                        {reviewMetrics.map((metric) => {
+                          const score = reviewForm.scores[metric.id] ?? null
+                          const remarkNeeded = needsRemark(metric, score)
 
                           return (
-                            <div key={`${student.id}-${metric.key}`}>
+                            <div key={`${student.id}-${metric.id}`}>
                               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                                 <div className="text-sm font-medium text-slate-800">{metric.label}</div>
                                 <StarRatingInput
                                   value={score}
+                                  max={metric.maxScore}
+                                  label={metric.label}
                                   disabled={attendanceLocked}
                                   onChange={(nextScore) => {
                                     focusReview(student.id)
-                                    onUpdateReviewScore(
-                                      student.id,
-                                      metric.scoreField,
-                                      metric.remarkField,
-                                      nextScore,
-                                    )
+                                    onUpdateReviewScore(student.id, metric, nextScore)
                                   }}
                                 />
                               </div>
 
-                              {needsRemark && (
+                              {remarkNeeded && (
                                 <div className="mt-2 space-y-1.5">
                                   <div className="text-xs font-semibold uppercase tracking-[0.12em] text-red-600">
-                                    Remark Required for 1-2 Stars
+                                    Remark Required for {lowScoreText(metric)} {metric.remarkRequiredAtOrBelow === 1 ? 'Star' : 'Stars'}
                                   </div>
                                   <textarea
                                     rows={2}
-                                    value={reviewForm[metric.remarkField]}
+                                    value={reviewForm.remarks[metric.id] ?? ''}
                                     disabled={attendanceLocked}
                                     onChange={(event) =>
-                                      onUpdateReviewRemark(
-                                        student.id,
-                                        metric.remarkField,
-                                        event.target.value,
-                                      )
+                                      onUpdateReviewRemark(student.id, metric.id, event.target.value)
                                     }
                                     placeholder="Explain the low score for this metric."
                                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2] disabled:bg-slate-50"

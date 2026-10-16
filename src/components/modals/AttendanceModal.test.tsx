@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { AttendanceModal } from './AttendanceModal'
 import { createEmptyAttendanceReviewForm } from '../../lib/mappers'
+import { defaultReviewCriteria, getReviewMetrics } from '../../lib/reviewCriteria'
 import type {
   AttendanceReviewFormState,
   AttendanceStatus,
@@ -22,10 +23,13 @@ function student(id: number, name: string): Student {
 const roster = [student(1, 'Ava Tan'), student(2, 'Chloe Wong'), student(3, 'Zoe Lau')]
 const existingLog = { id: 9, revisionNumber: 1, submittedAt: '2026-10-09T10:00:00Z', lessonRemark: null } as LessonLogSummary
 
+const metrics = getReviewMetrics(defaultReviewCriteria)
+
+// Every one of the five starting criteria (ids 1-5) rated 4.
 function fullReview(overrides: Partial<AttendanceReviewFormState> = {}): AttendanceReviewFormState {
   return {
     ...createEmptyAttendanceReviewForm(),
-    logicalThinkingScore: 4, codingCreativityScore: 4, problemSolvingScore: 4, expressivenessScore: 4, sustainedFocusScore: 4,
+    scores: { 1: 4, 2: 4, 3: 4, 4: 4, 5: 4 },
     ...overrides,
   }
 }
@@ -55,6 +59,7 @@ function Harness({
       attendanceRoster={roster}
       attendanceStatuses={statuses}
       attendanceReviews={forms}
+      reviewMetrics={metrics}
       attendanceRemark=""
       attendanceSaveError={null}
       isSavingAttendance={false}
@@ -64,14 +69,24 @@ function Harness({
         onSubmit()
       }}
       onSetStatus={(id, status) => setStatuses((current) => ({ ...current, [id]: status }))}
-      onUpdateReviewScore={(id, scoreField, remarkField, score) =>
-        setForms((current) => ({
-          ...current,
-          [id]: { ...form(current, id), [scoreField]: score, ...(score >= 3 ? { [remarkField]: '' } : {}) },
-        }))
+      onUpdateReviewScore={(id, metric, score) =>
+        setForms((current) => {
+          const previous = form(current, id)
+          return {
+            ...current,
+            [id]: {
+              ...previous,
+              scores: { ...previous.scores, [metric.id]: score },
+              remarks: score >= 3 ? { ...previous.remarks, [metric.id]: '' } : previous.remarks,
+            },
+          }
+        })
       }
-      onUpdateReviewRemark={(id, remarkField, value) =>
-        setForms((current) => ({ ...current, [id]: { ...form(current, id), [remarkField]: value } }))
+      onUpdateReviewRemark={(id, criterionId, value) =>
+        setForms((current) => {
+          const previous = form(current, id)
+          return { ...current, [id]: { ...previous, remarks: { ...previous.remarks, [criterionId]: value } } }
+        })
       }
       onUpdateLessonRemark={(id, value) =>
         setForms((current) => ({ ...current, [id]: { ...form(current, id), lessonRemark: value } }))
@@ -81,7 +96,7 @@ function Harness({
 }
 
 const rateAll = async (stars: number) => {
-  for (const button of screen.getAllByRole('button', { name: `Rate ${stars} out of 5` })) {
+  for (const button of screen.getAllByRole('button', { name: new RegExp(`^Rate .* ${stars} out of 5$`) })) {
     await userEvent.click(button)
   }
 }
@@ -115,7 +130,7 @@ describe('AttendanceModal (new submission)', () => {
     render(<Harness />)
 
     await rateAll(4)
-    await userEvent.click(screen.getAllByRole('button', { name: 'Rate 2 out of 5' })[1])
+    await userEvent.click(screen.getAllByRole('button', { name: /^Rate .* 2 out of 5$/ })[1])
     expect(screen.getByText('5 of 5 rated · remark needed')).toBeInTheDocument()
     expect(screen.getByText('Reviewed 0 of 3 present students')).toBeInTheDocument()
 

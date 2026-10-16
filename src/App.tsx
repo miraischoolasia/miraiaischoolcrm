@@ -66,8 +66,7 @@ import type {
   LessonLogSummary,
   MakeupPlan,
   RenewalFormState,
-  ReviewRemarkField,
-  ReviewScoreField,
+  ReviewCriterion,
   Schedule,
   ScheduleException,
   ScheduleFormState,
@@ -84,6 +83,7 @@ import type {
 import {
   createEmptyAttendanceReviewForm,
   getLatestLessonLogMap,
+  mapReviewCriterionRow,
   mapReviewToFormState,
   mapScheduleParticipantRow,
   mapLeadOptionRow,
@@ -91,6 +91,7 @@ import {
   mapScheduleRow,
 } from './lib/mappers'
 import { buildAttendanceSubmission } from './lib/attendance'
+import { defaultReviewCriteria, getReviewMetrics, type ReviewMetric } from './lib/reviewCriteria'
 import type { BulkLeadRow } from './lib/leadCsv'
 import type { BulkPreviewStudentRow } from './lib/studentCsv'
 import { provisionTeacherLogin, resetTeacherPassword } from './lib/teacherAuth'
@@ -107,6 +108,9 @@ import {
   fetchMakeupPlansFromSupabase,
   fetchStudentAttendanceRows,
   fetchLessonLogStudentReviewsFromSupabase,
+  fetchReviewCriteriaFromSupabase,
+  fetchZoomMeetingOptions,
+  type ZoomMeetingOptions,
   fetchLessonLogSummariesFromSupabase,
   fetchScheduleExceptionsFromSupabase,
   fetchScheduleParticipantsFromSupabase,
@@ -189,6 +193,7 @@ import { LeadOptionsModal } from './components/modals/LeadOptionsModal'
 import { LeadStagesModal } from './components/modals/LeadStagesModal'
 import { useLeadStages } from './hooks/useLeadStages'
 import { PackagesModal, type PackageDraft } from './components/modals/PackagesModal'
+import { ClassSettingsModal, type ReviewCriterionDraft } from './components/modals/ClassSettingsModal'
 import { ChangePackageModal, type PackageChange } from './components/modals/ChangePackageModal'
 import {
   AssignPackagesModal,
@@ -288,6 +293,17 @@ function sameData(current: unknown, next: unknown) {
   return current === next || JSON.stringify(current) === JSON.stringify(next)
 }
 
+// The review criteria never hold up the page: on a failed read the attendance
+// form keeps the five starting criteria (same ids as the seeded rows).
+async function loadReviewCriteria() {
+  try {
+    return await fetchReviewCriteriaFromSupabase()
+  } catch (error) {
+    console.error('Could not load the review criteria.', error)
+    return null
+  }
+}
+
 function App() {
   const isMobile = useIsMobile()
   const todayString = getTodayString()
@@ -352,6 +368,11 @@ function App() {
   const dragBlockReasonRef = useRef<string | null>(null)
   const [lessonLogs, setLessonLogs] = useState<LessonLogSummary[]>([])
   const [lessonReviews, setLessonReviews] = useState<LessonLogStudentReview[]>([])
+  // The school's own review criteria (Settings > Review criteria).
+  const [reviewCriteria, setReviewCriteria] = useState<ReviewCriterion[]>(defaultReviewCriteria)
+  const [isClassSettingsOpen, setIsClassSettingsOpen] = useState(false)
+  // Loaded when Class Settings opens.
+  const [zoomOptions, setZoomOptions] = useState<ZoomMeetingOptions | null>(null)
   const [adminActivities, setAdminActivities] = useState<AdminActivity[]>([])
   // The Activity Log shows one day at a time, loaded only while it is open.
   const [activityDay, setActivityDay] = useState(todayString)
@@ -1369,6 +1390,7 @@ function App() {
           nextMakeupPlans,
           nextLeadOptions,
           nextPackages,
+          nextReviewCriteria,
         ] = await Promise.all([
           fetchClassroomsFromSupabase(),
           fetchTeachersFromSupabase(),
@@ -1383,6 +1405,7 @@ function App() {
           fetchMakeupPlansFromSupabase(),
           fetchLeadOptionsFromSupabase(),
           fetchPackagesFromSupabase(),
+          loadReviewCriteria(),
         ])
 
         if (!cancelled) {
@@ -1399,6 +1422,9 @@ function App() {
           setMakeupPlans(nextMakeupPlans)
           setLeadOptions(nextLeadOptions)
           setPackages(nextPackages)
+          if (nextReviewCriteria) {
+            setReviewCriteria(nextReviewCriteria)
+          }
           setLoadedUserId(authUserId)
         }
       } catch (error) {
@@ -1436,6 +1462,7 @@ function App() {
       nextMakeupPlans,
       nextLeadOptions,
       nextPackages,
+      nextReviewCriteria,
     ] = await Promise.all([
       fetchClassroomsFromSupabase(),
       fetchTeachersFromSupabase(),
@@ -1450,6 +1477,7 @@ function App() {
       fetchMakeupPlansFromSupabase(),
       fetchLeadOptionsFromSupabase(),
       fetchPackagesFromSupabase(),
+      loadReviewCriteria(),
     ])
     setClassrooms((current) => (sameData(current, nextClassrooms) ? current : nextClassrooms))
     setTeachers((current) => (sameData(current, nextTeachers) ? current : nextTeachers))
@@ -1464,6 +1492,9 @@ function App() {
     setMakeupPlans((current) => (sameData(current, nextMakeupPlans) ? current : nextMakeupPlans))
     setLeadOptions((current) => (sameData(current, nextLeadOptions) ? current : nextLeadOptions))
     setPackages((current) => (sameData(current, nextPackages) ? current : nextPackages))
+    if (nextReviewCriteria) {
+      setReviewCriteria((current) => (sameData(current, nextReviewCriteria) ? current : nextReviewCriteria))
+    }
   }
   useLiveSync(Boolean(authUserId) && loadedUserId === authUserId && !isLoading && !loadError, syncCoreQuietly)
 
@@ -1670,6 +1701,13 @@ function App() {
       </button>
     )
   }
+
+  // What the open attendance form rates: every switched-on criterion, plus
+  // switched-off ones the lesson's saved reviews were scored on.
+  const attendanceReviewMetrics = useMemo(
+    () => getReviewMetrics(reviewCriteria, Object.values(attendanceReviews)),
+    [attendanceReviews, reviewCriteria],
+  )
 
   const attendanceRoster = useMemo(() => {
     if (!attendanceModal) {
@@ -2258,6 +2296,78 @@ function App() {
   }
 
   const packageColumns = 'id, name, kind, class_count, duration_months, includes_fees, is_active, sort_order'
+
+  function openClassSettings() {
+    setIsClassSettingsOpen(true)
+    fetchZoomMeetingOptions()
+      .then(setZoomOptions)
+      .catch((error) => showToast(getErrorMessage(error, 'Failed to load the Zoom settings.')))
+  }
+
+  // Adds (criterion null) or changes a review criterion; null when saved,
+  // else the reason.
+  async function saveReviewCriterion(
+    criterion: ReviewCriterion | null,
+    changes: Partial<ReviewCriterionDraft> & { sortOrder?: number; isActive?: boolean },
+  ) {
+    if (!supabase) {
+      return 'Supabase is not configured.'
+    }
+
+    const { data, error } = await supabase.rpc('save_review_criterion', {
+      p_id: criterion?.id ?? null,
+      p_name: changes.name ?? criterion?.name ?? '',
+      p_description: changes.description !== undefined ? changes.description : (criterion?.description ?? null),
+      p_max_score: changes.maxScore ?? null,
+      p_remark_required_at_or_below: changes.remarkRequiredAtOrBelow ?? null,
+      p_sort_order: changes.sortOrder ?? null,
+      p_is_active: changes.isActive ?? null,
+    })
+
+    if (error) {
+      return error.code === '23505'
+        ? `"${changes.name ?? criterion?.name}" is already a criterion.`
+        : getErrorMessage(error, 'Failed to save this criterion.')
+    }
+
+    const saved = mapReviewCriterionRow(data)
+    setReviewCriteria((current) =>
+      current.some((entry) => entry.id === saved.id)
+        ? current.map((entry) => (entry.id === saved.id ? saved : entry))
+        : [...current, saved],
+    )
+    return null
+  }
+
+  // Swaps the order with the next shown criterion up or down.
+  async function moveReviewCriterion(criterion: ReviewCriterion, direction: -1 | 1) {
+    const shown = reviewCriteria
+      .filter((entry) => entry.isActive)
+      .sort((left, right) => left.sortOrder - right.sortOrder || left.id - right.id)
+    const index = shown.findIndex((entry) => entry.id === criterion.id)
+    const other = shown[index + direction]
+    if (!other) {
+      return null
+    }
+    // Equal orders would not move; spread them first.
+    const mine = criterion.sortOrder === other.sortOrder ? criterion.sortOrder + direction : other.sortOrder
+    return (
+      (await saveReviewCriterion(criterion, { sortOrder: mine })) ??
+      (await saveReviewCriterion(other, { sortOrder: criterion.sortOrder }))
+    )
+  }
+
+  async function saveZoomOptions(options: ZoomMeetingOptions) {
+    if (!supabase) {
+      return 'Supabase is not configured.'
+    }
+    const { error } = await supabase.rpc('set_zoom_meeting_options', { p_options: options })
+    if (error) {
+      return getErrorMessage(error, 'Failed to save the Zoom settings.')
+    }
+    setZoomOptions(options)
+    return null
+  }
 
   async function handleAddPackage(draft: PackageDraft) {
     if (!supabase) {
@@ -5142,34 +5252,30 @@ function App() {
     setAttendanceViewOnly(false)
   }
 
-  function updateAttendanceReviewScore(
-    studentId: number,
-    scoreField: ReviewScoreField,
-    remarkField: ReviewRemarkField,
-    score: number,
-  ) {
-    setAttendanceReviews((currentState) => ({
-      ...currentState,
-      [studentId]: {
-        ...(currentState[studentId] ?? createEmptyAttendanceReviewForm()),
-        [scoreField]: score,
-        ...(score >= 3 ? { [remarkField]: '' } : {}),
-      },
-    }))
+  // A score above the criterion's remark threshold clears its remark.
+  function updateAttendanceReviewScore(studentId: number, metric: ReviewMetric, score: number) {
+    setAttendanceReviews((currentState) => {
+      const form = currentState[studentId] ?? createEmptyAttendanceReviewForm()
+      return {
+        ...currentState,
+        [studentId]: {
+          ...form,
+          scores: { ...form.scores, [metric.id]: score },
+          remarks:
+            score > metric.remarkRequiredAtOrBelow ? { ...form.remarks, [metric.id]: '' } : form.remarks,
+        },
+      }
+    })
   }
 
-  function updateAttendanceReviewRemark(
-    studentId: number,
-    remarkField: ReviewRemarkField,
-    remark: string,
-  ) {
-    setAttendanceReviews((currentState) => ({
-      ...currentState,
-      [studentId]: {
-        ...(currentState[studentId] ?? createEmptyAttendanceReviewForm()),
-        [remarkField]: remark,
-      },
-    }))
+  function updateAttendanceReviewRemark(studentId: number, criterionId: number, remark: string) {
+    setAttendanceReviews((currentState) => {
+      const form = currentState[studentId] ?? createEmptyAttendanceReviewForm()
+      return {
+        ...currentState,
+        [studentId]: { ...form, remarks: { ...form.remarks, [criterionId]: remark } },
+      }
+    })
   }
 
   function updateAttendanceLessonRemark(studentId: number, remark: string) {
@@ -5199,6 +5305,7 @@ function App() {
       attendanceStatuses,
       attendanceReviews,
       studentNameById,
+      attendanceReviewMetrics,
     )
 
     if (!submission.ok) {
@@ -6238,6 +6345,7 @@ function App() {
                 onEditClassroom={openEditClassroom}
                 onEditSchedule={openEditSchedule}
                 onOpenCreateClassroom={can('classrooms', 'edit') ? openCreateClassroom : undefined}
+                onOpenClassSettings={isAdmin ? openClassSettings : undefined}
                 onOpenCreateRegularSchedule={
                   can('classrooms', 'edit')
                     ? (classroomId) => openCreateSchedule(undefined, classroomId)
@@ -6548,6 +6656,19 @@ function App() {
         />
       )}
 
+      {isClassSettingsOpen && (
+        <ClassSettingsModal
+          criteria={reviewCriteria}
+          zoomOptions={zoomOptions}
+          onClose={() => setIsClassSettingsOpen(false)}
+          onAddCriterion={(draft) => saveReviewCriterion(null, draft)}
+          onSaveCriterion={(criterion, draft) => saveReviewCriterion(criterion, draft)}
+          onSetCriterionActive={(criterion, isActive) => saveReviewCriterion(criterion, { isActive })}
+          onMoveCriterion={moveReviewCriterion}
+          onSaveZoomOptions={saveZoomOptions}
+        />
+      )}
+
       {isPackagesOpen && (
         <PackagesModal
           packages={packages}
@@ -6604,6 +6725,7 @@ function App() {
           student={selectedStudentDetail}
           lessonLogs={lessonLogs}
           lessonReviews={lessonReviews}
+          reviewCriteria={reviewCriteria}
           onClose={closeStudentDetail}
           schedules={schedules}
           teacherMap={teacherMap}
@@ -6857,6 +6979,7 @@ function App() {
           attendanceRoster={attendanceRoster}
           attendanceStatuses={attendanceStatuses}
           attendanceReviews={attendanceReviews}
+          reviewMetrics={attendanceReviewMetrics}
           attendanceRemark={attendanceRemark}
           attendanceSaveError={attendanceSaveError}
           isSavingAttendance={isSavingAttendance}

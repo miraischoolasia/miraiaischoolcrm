@@ -3,7 +3,7 @@ import { brand } from './brand'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { PathwayLineChart } from '../components/PathwayLineChart'
 import { formatDate } from '../domain/studentStatus'
-import { pathwayMetricColors, performanceMetricDefinitions } from './constants'
+import { labelWithScale, type ReviewMetric } from './reviewCriteria'
 import type { PathwayStage } from './pathway'
 
 const escapeHtml = (value: string) =>
@@ -24,14 +24,14 @@ function formatDelta(delta: number | null) {
  * Parent-facing progress report. Deliberately omits teacher remarks: they are
  * internal notes (low scores require one) and are not written for parents.
  */
-export function buildPathwayReportHtml(studentName: string, stages: PathwayStage[]) {
-  const chart = renderToStaticMarkup(createElement(PathwayLineChart, { stages }))
+export function buildPathwayReportHtml(studentName: string, stages: PathwayStage[], metrics: ReviewMetric[]) {
+  const chart = renderToStaticMarkup(createElement(PathwayLineChart, { stages, metrics }))
 
-  const legend = performanceMetricDefinitions
+  const legend = metrics
     .map(
       (metric) =>
         `<span style="display:inline-flex;align-items:center;gap:6px;margin-right:16px;font-size:12px;color:#334155">` +
-        `<i style="width:10px;height:10px;border-radius:50%;background:${pathwayMetricColors[metric.key]};display:inline-block"></i>${escapeHtml(metric.label)}</span>`,
+        `<i style="width:10px;height:10px;border-radius:50%;background:${metric.color};display:inline-block"></i>${escapeHtml(metric.label)}</span>`,
     )
     .join('')
 
@@ -42,15 +42,15 @@ export function buildPathwayReportHtml(studentName: string, stages: PathwayStage
     )
     .join('')
 
-  const rows = performanceMetricDefinitions
+  const rows = metrics
     .map((metric) => {
       const cells = stages
         .map((stage) => {
-          const score = stage.averages[metric.scoreField]
-          return `<td style="text-align:center;padding:8px;border-bottom:1px solid #f1f5f9;font-size:13px"><strong>${score === null ? '-' : score.toFixed(1)}</strong><div style="font-size:11px">${formatDelta(stage.deltas[metric.scoreField])}</div></td>`
+          const score = stage.averages[metric.id] ?? null
+          return `<td style="text-align:center;padding:8px;border-bottom:1px solid #f1f5f9;font-size:13px"><strong>${score === null ? '-' : score.toFixed(1)}</strong><div style="font-size:11px">${formatDelta(stage.deltas[metric.id] ?? null)}</div></td>`
         })
         .join('')
-      return `<tr><td style="padding:8px;border-bottom:1px solid #f1f5f9;font-size:13px">${escapeHtml(metric.label)}</td>${cells}</tr>`
+      return `<tr><td style="padding:8px;border-bottom:1px solid #f1f5f9;font-size:13px">${escapeHtml(labelWithScale(metric))}</td>${cells}</tr>`
     })
     .join('')
 
@@ -78,7 +78,7 @@ export function buildPathwayReportHtml(studentName: string, stages: PathwayStage
 
 // Prints the report through a hidden iframe (not a pop-up, so blockers can't
 // stop it); the print dialog's "Save as PDF" produces the file.
-export function printPathwayReport(studentName: string, stages: PathwayStage[]) {
+export function printPathwayReport(studentName: string, stages: PathwayStage[], metrics: ReviewMetric[]) {
   const frame = document.createElement('iframe')
   frame.setAttribute('aria-hidden', 'true')
   frame.style.cssText =
@@ -93,6 +93,6 @@ export function printPathwayReport(studentName: string, stages: PathwayStage[]) 
     frameWindow.focus()
     frameWindow.print()
   }
-  frame.srcdoc = buildPathwayReportHtml(studentName, stages)
+  frame.srcdoc = buildPathwayReportHtml(studentName, stages, metrics)
   document.body.appendChild(frame)
 }

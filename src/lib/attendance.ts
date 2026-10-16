@@ -1,11 +1,6 @@
 import { createEmptyAttendanceReviewForm } from './mappers'
-import { performanceMetricDefinitions } from './constants'
-import type {
-  AttendanceReviewFormState,
-  AttendanceStatus,
-  ReviewRemarkField,
-  ReviewScoreField,
-} from '../types/domain'
+import { needsRemark, type ReviewMetric } from './reviewCriteria'
+import type { AttendanceReviewFormState, AttendanceStatus } from '../types/domain'
 
 export type AttendanceStatusPayload = {
   student_id: number
@@ -14,28 +9,29 @@ export type AttendanceStatusPayload = {
 
 export type AttendanceReviewPayload = {
   student_id: number
-} & Record<ReviewScoreField, number> &
-  Record<ReviewRemarkField, string | null> & {
-    // This student's own note on the lesson.
-    lessonRemark: string | null
-  }
+  // This student's own note on the lesson.
+  lessonRemark: string | null
+  scores: Array<{ criterion_id: number; score: number; remark: string | null }>
+}
 
 export type AttendanceSubmissionResult =
   | { ok: true; payload: AttendanceStatusPayload[]; reviewPayload: AttendanceReviewPayload[] }
   | { ok: false; error: string }
 
 /**
- * Validates every present student has a full performance review (a remark is
- * mandatory when a score is 1 or 2, mirroring the same rule enforced server-side
- * by the `submit_lesson_attendance` Postgres function), then builds the RPC
- * payload. Pure and side-effect free so the validation rule can be unit tested
- * without mounting the attendance modal or hitting Supabase.
+ * Validates every present student has a full review against the school's
+ * criteria (a remark is mandatory when a score is at or below the criterion's
+ * threshold, mirroring the rule enforced server-side by the
+ * `submit_lesson_attendance` Postgres function), then builds the RPC payload.
+ * Pure and side-effect free so the validation rule can be unit tested without
+ * mounting the attendance modal or hitting Supabase.
  */
 export function buildAttendanceSubmission(
   rosterIds: number[],
   attendanceStatuses: Record<number, AttendanceStatus>,
   attendanceReviews: Record<number, AttendanceReviewFormState>,
   studentNameById: Map<number, string>,
+  metrics: ReviewMetric[],
 ): AttendanceSubmissionResult {
   const payload: AttendanceStatusPayload[] = rosterIds.map((studentId) => ({
     student_id: studentId,
@@ -50,9 +46,10 @@ export function buildAttendanceSubmission(
     }
 
     const reviewForm = attendanceReviews[studentId] ?? createEmptyAttendanceReviewForm()
+    const scores: AttendanceReviewPayload['scores'] = []
 
-    for (const metric of performanceMetricDefinitions) {
-      const score = reviewForm[metric.scoreField]
+    for (const metric of metrics) {
+      const score = reviewForm.scores[metric.id] ?? null
       if (score === null) {
         return {
           ok: false,
@@ -60,47 +57,49 @@ export function buildAttendanceSubmission(
         }
       }
 
-      if (score <= 2 && !reviewForm[metric.remarkField].trim()) {
+      const remark = (reviewForm.remarks[metric.id] ?? '').trim()
+      if (needsRemark(metric, score) && !remark) {
         const studentName = studentNameById.get(studentId) ?? 'this student'
         return {
           ok: false,
-          error: `${studentName}: ${metric.label} requires a remark when the score is 1 or 2.`,
+          error: `${studentName}: ${metric.label} requires a remark when the score is ${lowScoreText(metric)}.`,
         }
       }
+
+      scores.push({ criterion_id: metric.id, score, remark: remark || null })
     }
 
     reviewPayload.push({
       student_id: studentId,
-      logicalThinkingScore: reviewForm.logicalThinkingScore ?? 3,
-      logicalThinkingRemark: reviewForm.logicalThinkingRemark.trim() || null,
-      codingCreativityScore: reviewForm.codingCreativityScore ?? 3,
-      codingCreativityRemark: reviewForm.codingCreativityRemark.trim() || null,
-      problemSolvingScore: reviewForm.problemSolvingScore ?? 3,
-      problemSolvingRemark: reviewForm.problemSolvingRemark.trim() || null,
-      expressivenessScore: reviewForm.expressivenessScore ?? 3,
-      expressivenessRemark: reviewForm.expressivenessRemark.trim() || null,
-      sustainedFocusScore: reviewForm.sustainedFocusScore ?? 3,
-      sustainedFocusRemark: reviewForm.sustainedFocusRemark.trim() || null,
       lessonRemark: reviewForm.lessonRemark.trim() || null,
+      scores,
     })
   }
 
   return { ok: true, payload, reviewPayload }
 }
 
-// A review is complete when all five metrics are rated and every 1-2 star
-// metric has its remark. The same rule buildAttendanceSubmission enforces.
-export function isReviewComplete(reviewForm: AttendanceReviewFormState | undefined) {
+// "1 or 2" for the usual threshold of 2, "1" for 1, "1-3" for 3, ...
+export function lowScoreText(metric: ReviewMetric) {
+  const top = metric.remarkRequiredAtOrBelow
+  if (top <= 1) return '1'
+  if (top === 2) return '1 or 2'
+  return `1-${top}`
+}
+
+// A review is complete when every criterion is rated and every low score has
+// its remark. The same rule buildAttendanceSubmission enforces.
+export function isReviewComplete(reviewForm: AttendanceReviewFormState | undefined, metrics: ReviewMetric[]) {
   const form = reviewForm ?? createEmptyAttendanceReviewForm()
-  return performanceMetricDefinitions.every((metric) => {
-    const score = form[metric.scoreField]
-    return score !== null && (score > 2 || form[metric.remarkField].trim() !== '')
+  return metrics.every((metric) => {
+    const score = form.scores[metric.id] ?? null
+    return score !== null && (!needsRemark(metric, score) || (form.remarks[metric.id] ?? '').trim() !== '')
   })
 }
 
-export function countRatedMetrics(reviewForm: AttendanceReviewFormState | undefined) {
+export function countRatedMetrics(reviewForm: AttendanceReviewFormState | undefined, metrics: ReviewMetric[]) {
   const form = reviewForm ?? createEmptyAttendanceReviewForm()
-  return performanceMetricDefinitions.filter((metric) => form[metric.scoreField] !== null).length
+  return metrics.filter((metric) => (form.scores[metric.id] ?? null) !== null).length
 }
 
 // Who is present, who has a finished review, and who still needs one.
@@ -108,9 +107,10 @@ export function getReviewProgress(
   rosterIds: number[],
   attendanceStatuses: Record<number, AttendanceStatus>,
   attendanceReviews: Record<number, AttendanceReviewFormState>,
+  metrics: ReviewMetric[],
 ) {
   const presentIds = rosterIds.filter((id) => (attendanceStatuses[id] ?? 'present') === 'present')
-  const doneIds = presentIds.filter((id) => isReviewComplete(attendanceReviews[id]))
+  const doneIds = presentIds.filter((id) => isReviewComplete(attendanceReviews[id], metrics))
   const pendingIds = presentIds.filter((id) => !doneIds.includes(id))
   return { presentIds, doneIds, pendingIds, awayCount: rosterIds.length - presentIds.length }
 }

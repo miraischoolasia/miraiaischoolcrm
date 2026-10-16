@@ -13,6 +13,7 @@ import {
   CalendarPlus,
   Clock,
   DotsThreeVertical,
+  GearSix,
   PencilSimple,
   Plus,
   Trash,
@@ -40,6 +41,8 @@ type ClassListingSectionProps = {
   onEditClassroom: (classroomId: number) => void
   onEditSchedule: (scheduleId: number) => void
   onOpenCreateClassroom?: () => void
+  // Admin only: review criteria and Zoom settings.
+  onOpenClassSettings?: () => void
   onOpenCreateRegularSchedule?: (classroomId: number) => void
   onOpenStudentDetail: (studentId: number) => void
   onRestoreClassroom?: (classroomId: number) => void
@@ -63,6 +66,7 @@ export function ClassListingSection({
   onEditClassroom,
   onEditSchedule,
   onOpenCreateClassroom,
+  onOpenClassSettings,
   onOpenCreateRegularSchedule,
   onOpenStudentDetail,
   onRestoreClassroom,
@@ -168,6 +172,16 @@ export function ClassListingSection({
                 {activeClassrooms.length} classroom
                 {activeClassrooms.length === 1 ? '' : 's'}
               </div>
+              {onOpenClassSettings && (
+                <button
+                  type="button"
+                  onClick={onOpenClassSettings}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  <GearSix size={16} aria-hidden="true" />
+                  Class Settings
+                </button>
+              )}
               {canEdit && onOpenCreateClassroom && (
                 <button
                   type="button"

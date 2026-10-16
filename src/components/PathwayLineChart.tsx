@@ -1,9 +1,9 @@
-import { pathwayMetricColors, performanceMetricDefinitions } from '../lib/constants'
+import { toFivePointScale, type ReviewMetric } from '../lib/reviewCriteria'
 import type { PathwayStage } from '../lib/pathway'
 
 // Inline SVG attributes only (no Tailwind classes) so the same markup renders
 // correctly inside the standalone print window used for the parent report.
-export function PathwayLineChart({ stages }: { stages: PathwayStage[] }) {
+export function PathwayLineChart({ stages, metrics }: { stages: PathwayStage[]; metrics: ReviewMetric[] }) {
   const width = 640
   const height = 280
   const padding = { top: 16, right: 24, bottom: 44, left: 36 }
@@ -14,7 +14,8 @@ export function PathwayLineChart({ stages }: { stages: PathwayStage[] }) {
     stages.length === 1
       ? padding.left + plotWidth / 2
       : padding.left + (plotWidth * index) / (stages.length - 1)
-  // Scores run 1-5; 1 sits on the baseline.
+  // Scores are drawn on 1-5 (another top score is stretched to it); 1 sits on
+  // the baseline.
   const y = (score: number) => padding.top + plotHeight - ((score - 1) / 4) * plotHeight
 
   return (
@@ -63,14 +64,17 @@ export function PathwayLineChart({ stages }: { stages: PathwayStage[] }) {
         </text>
       ))}
 
-      {performanceMetricDefinitions.map((metric) => {
-        const color = pathwayMetricColors[metric.key]
+      {metrics.map((metric) => {
+        const color = metric.color
         const points = stages
-          .map((stage, index) => ({ index, score: stage.averages[metric.scoreField] }))
+          .map((stage, index) => {
+            const score = stage.averages[metric.id] ?? null
+            return { index, score: score === null ? null : toFivePointScale(score, metric.maxScore) }
+          })
           .filter((point): point is { index: number; score: number } => point.score !== null)
 
         return (
-          <g key={metric.key}>
+          <g key={metric.id}>
             {points.length > 1 && (
               <polyline
                 points={points.map((point) => `${x(point.index)},${y(point.score)}`).join(' ')}

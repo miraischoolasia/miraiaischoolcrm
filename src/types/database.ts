@@ -1593,6 +1593,83 @@ export type Database = {
           },
         ]
       }
+      review_criteria: {
+        Row: {
+          id: number
+          name: string
+          description: string | null
+          max_score: number
+          remark_required_at_or_below: number
+          sort_order: number
+          is_active: boolean
+          legacy_key: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: never
+          name: string
+          description?: string | null
+          max_score?: number
+          remark_required_at_or_below?: number
+          sort_order?: number
+          is_active?: boolean
+          legacy_key?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: never
+          name?: string
+          description?: string | null
+          max_score?: number
+          remark_required_at_or_below?: number
+          sort_order?: number
+          is_active?: boolean
+          legacy_key?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      lesson_review_scores: {
+        Row: {
+          id: number
+          lesson_log_id: number
+          student_id: number
+          criterion_id: number
+          score: number
+          remark: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: never
+          lesson_log_id: number
+          student_id: number
+          criterion_id: number
+          score: number
+          remark?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: never
+          lesson_log_id?: number
+          student_id?: number
+          criterion_id?: number
+          score?: number
+          remark?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'lesson_review_scores_criterion_id_fkey'
+            columns: ['criterion_id']
+            isOneToOne: false
+            referencedRelation: 'review_criteria'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       student_lesson_ledger: {
         Row: {
           id: number
@@ -1920,6 +1997,24 @@ export type Database = {
         }
         Returns: undefined
       }
+      save_review_criterion: {
+        Args: {
+          p_id: number | null
+          p_name: string
+          p_description: string | null
+          p_max_score: number | null
+          p_remark_required_at_or_below: number | null
+          p_sort_order: number | null
+          p_is_active: boolean | null
+        }
+        Returns: Database['public']['Tables']['review_criteria']['Row']
+      }
+      set_zoom_meeting_options: {
+        Args: {
+          p_options: Json
+        }
+        Returns: undefined
+      }
       set_late_feedback_edit: {
         Args: {
           p_open: boolean
@@ -2180,17 +2275,8 @@ export type Database = {
           }[]
           p_student_reviews: {
             student_id: number
-            logicalThinkingScore: number
-            logicalThinkingRemark: string | null
-            codingCreativityScore: number
-            codingCreativityRemark: string | null
-            problemSolvingScore: number
-            problemSolvingRemark: string | null
-            expressivenessScore: number
-            expressivenessRemark: string | null
-            sustainedFocusScore: number
-            sustainedFocusRemark: string | null
             lessonRemark?: string | null
+            scores: { criterion_id: number; score: number; remark: string | null }[]
           }[]
         }
         Returns: {

@@ -1,5 +1,4 @@
-import { performanceMetricDefinitions } from './constants'
-import type { ReviewRemarkField, ReviewScoreField } from '../types/domain'
+import type { ReviewMetric } from './reviewCriteria'
 
 export const LESSONS_PER_STAGE = 4
 
@@ -7,8 +6,9 @@ export type PathwayReviewInput = {
   lessonDate: string
   revisionNumber: number
   isTrial: boolean
-  scores: Record<ReviewScoreField, number | null>
-  remarks: Record<ReviewRemarkField, string | null>
+  // By criterion id.
+  scores: Record<number, number | null>
+  remarks: Record<number, string | null>
 }
 
 export type PathwayRemark = {
@@ -27,10 +27,11 @@ export type PathwayStage = {
   endDate: string
   // A regular stage with fewer than LESSONS_PER_STAGE reviewed lessons.
   inProgress: boolean
-  averages: Record<ReviewScoreField, number | null>
+  // By criterion id, on the criterion's own scale.
+  averages: Record<number, number | null>
   // Change against the previous stage (regular stages only; the first regular
   // stage compares to the trial when there is one).
-  deltas: Record<ReviewScoreField, number | null>
+  deltas: Record<number, number | null>
   remarks: PathwayRemark[]
 }
 
@@ -38,13 +39,14 @@ const round1 = (value: number) => Number(value.toFixed(1))
 
 function averageStage(
   entries: PathwayReviewInput[],
-): Record<ReviewScoreField, number | null> {
-  const result = {} as Record<ReviewScoreField, number | null>
-  for (const metric of performanceMetricDefinitions) {
+  metrics: ReviewMetric[],
+): Record<number, number | null> {
+  const result: Record<number, number | null> = {}
+  for (const metric of metrics) {
     const values = entries
-      .map((entry) => entry.scores[metric.scoreField])
+      .map((entry) => entry.scores[metric.id] ?? null)
       .filter((value): value is number => value !== null)
-    result[metric.scoreField] =
+    result[metric.id] =
       values.length > 0
         ? round1(values.reduce((sum, value) => sum + value, 0) / values.length)
         : null
@@ -52,11 +54,11 @@ function averageStage(
   return result
 }
 
-function collectRemarks(entries: PathwayReviewInput[]): PathwayRemark[] {
+function collectRemarks(entries: PathwayReviewInput[], metrics: ReviewMetric[]): PathwayRemark[] {
   const remarks: PathwayRemark[] = []
   for (const entry of entries) {
-    for (const metric of performanceMetricDefinitions) {
-      const text = entry.remarks[metric.remarkField]?.trim()
+    for (const metric of metrics) {
+      const text = entry.remarks[metric.id]?.trim()
       if (text) {
         remarks.push({ metricLabel: metric.label, lessonDate: entry.lessonDate, text })
       }
@@ -71,13 +73,14 @@ function buildStage(
   label: string,
   entries: PathwayReviewInput[],
   previous: PathwayStage | null,
+  metrics: ReviewMetric[],
 ): PathwayStage {
-  const averages = averageStage(entries)
-  const deltas = {} as Record<ReviewScoreField, number | null>
-  for (const metric of performanceMetricDefinitions) {
-    const now = averages[metric.scoreField]
-    const before = previous?.averages[metric.scoreField] ?? null
-    deltas[metric.scoreField] =
+  const averages = averageStage(entries, metrics)
+  const deltas: Record<number, number | null> = {}
+  for (const metric of metrics) {
+    const now = averages[metric.id]
+    const before = previous?.averages[metric.id] ?? null
+    deltas[metric.id] =
       now !== null && before !== null ? round1(now - before) : null
   }
 
@@ -91,7 +94,7 @@ function buildStage(
     inProgress: kind === 'regular' && entries.length < LESSONS_PER_STAGE,
     averages,
     deltas,
-    remarks: collectRemarks(entries),
+    remarks: collectRemarks(entries, metrics),
   }
 }
 
@@ -102,7 +105,7 @@ function buildStage(
  * no review so they never take up a stage slot. Callers must pass the latest
  * revision of each lesson only.
  */
-export function buildPathway(entries: PathwayReviewInput[]): PathwayStage[] {
+export function buildPathway(entries: PathwayReviewInput[], metrics: ReviewMetric[]): PathwayStage[] {
   const byDate = (left: PathwayReviewInput, right: PathwayReviewInput) =>
     `${left.lessonDate}-${String(left.revisionNumber).padStart(4, '0')}`.localeCompare(
       `${right.lessonDate}-${String(right.revisionNumber).padStart(4, '0')}`,
@@ -114,7 +117,7 @@ export function buildPathway(entries: PathwayReviewInput[]): PathwayStage[] {
   const stages: PathwayStage[] = []
 
   if (trialEntries.length > 0) {
-    stages.push(buildStage('trial', 0, 'Trial', trialEntries, null))
+    stages.push(buildStage('trial', 0, 'Trial', trialEntries, null, metrics))
   }
 
   for (let start = 0; start < regularEntries.length; start += LESSONS_PER_STAGE) {
@@ -127,6 +130,7 @@ export function buildPathway(entries: PathwayReviewInput[]): PathwayStage[] {
         `Month ${index}`,
         chunk,
         stages[stages.length - 1] ?? null,
+        metrics,
       ),
     )
   }

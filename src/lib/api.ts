@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { defaultReviewCriteria } from './reviewCriteria'
 import { mapFormRow, mapPublicForm, mapSubmissionRow, suggestSlug } from './forms'
 import {
   mapAdminActivityRow,
@@ -8,6 +9,7 @@ import {
   mapMakeupPlanRow,
   mapPackageRow,
   mapLessonLogStudentReviewRow,
+  mapReviewCriterionRow,
   mapLessonLogStudentRow,
   mapLessonLogSummaryRow,
   mapScheduleExceptionRow,
@@ -26,6 +28,7 @@ import type {
   LeadFormSubmission,
   LessonLogStudent,
   LessonLogStudentReview,
+  LessonReviewScoreRow,
   LeadRow,
   LessonLogSummary,
   ScheduleExceptionRow,
@@ -487,24 +490,112 @@ export async function fetchLessonLogSummariesFromSupabase() {
   return data.map(mapLessonLogSummaryRow)
 }
 
+const REVIEW_SCORE_COLUMNS = 'lesson_log_id, student_id, criterion_id, score, remark'
+const SCORE_PAGE_SIZE = 1000
+
+// Every review score, read in pages (one row per criterion per review, so it
+// passes the API's 1000-row cap quickly).
+async function fetchAllLessonReviewScores() {
+  if (!supabase) {
+    return []
+  }
+
+  const rows: LessonReviewScoreRow[] = []
+  for (let from = 0; ; from += SCORE_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('lesson_review_scores')
+      .select(REVIEW_SCORE_COLUMNS)
+      .order('id')
+      .range(from, from + SCORE_PAGE_SIZE - 1)
+
+    if (error) {
+      throw error
+    }
+
+    rows.push(...data)
+    if (data.length < SCORE_PAGE_SIZE) {
+      return rows
+    }
+  }
+}
+
 export async function fetchLessonLogStudentReviewsFromSupabase() {
   if (!supabase) {
     return []
   }
 
-  const { data, error } = await supabase
-    .from('lesson_log_student_reviews')
-    .select(
-      'id, lesson_log_id, student_id, logical_thinking_score, logical_thinking_remark, coding_creativity_score, coding_creativity_remark, problem_solving_score, problem_solving_remark, expressiveness_score, expressiveness_remark, sustained_focus_score, sustained_focus_remark, lesson_remark',
-    )
-    .order('lesson_log_id')
-    .order('student_id')
+  const [{ data, error }, scoreRows] = await Promise.all([
+    supabase
+      .from('lesson_log_student_reviews')
+      .select('id, lesson_log_id, student_id, lesson_remark')
+      .order('lesson_log_id')
+      .order('student_id'),
+    fetchAllLessonReviewScores(),
+  ])
 
   if (error) {
     throw error
   }
 
-  return data.map(mapLessonLogStudentReviewRow)
+  const scoresByReview = new Map<string, LessonReviewScoreRow[]>()
+  for (const row of scoreRows) {
+    const key = `${row.lesson_log_id}:${row.student_id}`
+    scoresByReview.set(key, [...(scoresByReview.get(key) ?? []), row])
+  }
+
+  return data.map((row) =>
+    mapLessonLogStudentReviewRow(row, scoresByReview.get(`${row.lesson_log_id}:${row.student_id}`) ?? []),
+  )
+}
+
+export async function fetchReviewCriteriaFromSupabase() {
+  if (!supabase) {
+    return defaultReviewCriteria
+  }
+
+  const { data, error } = await supabase
+    .from('review_criteria')
+    .select('*')
+    .order('sort_order')
+    .order('id')
+
+  if (error) {
+    throw error
+  }
+
+  return data.map(mapReviewCriterionRow)
+}
+
+export type ZoomMeetingOptions = {
+  mute_upon_entry: boolean
+  waiting_room: boolean
+  join_before_host: boolean
+  auto_recording: 'cloud' | 'local' | 'none'
+}
+
+export const defaultZoomMeetingOptions: ZoomMeetingOptions = {
+  mute_upon_entry: true,
+  waiting_room: false,
+  join_before_host: false,
+  auto_recording: 'cloud',
+}
+
+export async function fetchZoomMeetingOptions(): Promise<ZoomMeetingOptions> {
+  if (!supabase) {
+    return defaultZoomMeetingOptions
+  }
+
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'zoom_meeting_options')
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  return { ...defaultZoomMeetingOptions, ...((data?.value as Partial<ZoomMeetingOptions> | null) ?? {}) }
 }
 
 export async function fetchLatestLessonLogStudents(scheduleId: number, lessonDate: string) {
@@ -545,22 +636,26 @@ export async function fetchLatestLessonLogStudents(scheduleId: number, lessonDat
     throw attendanceError
   }
 
-  const { data: reviewRows, error: reviewError } = await supabase
-    .from('lesson_log_student_reviews')
-    .select(
-      'id, lesson_log_id, student_id, logical_thinking_score, logical_thinking_remark, coding_creativity_score, coding_creativity_remark, problem_solving_score, problem_solving_remark, expressiveness_score, expressiveness_remark, sustained_focus_score, sustained_focus_remark, lesson_remark',
-    )
-    .eq('lesson_log_id', summaryRow.id)
-    .order('student_id')
+  const [{ data: reviewRows, error: reviewError }, { data: scoreRows, error: scoreError }] = await Promise.all([
+    supabase
+      .from('lesson_log_student_reviews')
+      .select('id, lesson_log_id, student_id, lesson_remark')
+      .eq('lesson_log_id', summaryRow.id)
+      .order('student_id'),
+    supabase.from('lesson_review_scores').select(REVIEW_SCORE_COLUMNS).eq('lesson_log_id', summaryRow.id),
+  ])
 
   if (reviewError) {
     throw reviewError
+  }
+  if (scoreError) {
+    throw scoreError
   }
 
   return {
     summary: mapLessonLogSummaryRow(summaryRow),
     students: attendanceRows.map(mapLessonLogStudentRow),
-    reviews: reviewRows.map(mapLessonLogStudentReviewRow),
+    reviews: reviewRows.map((row) => mapLessonLogStudentReviewRow(row, scoreRows)),
   }
 }
 

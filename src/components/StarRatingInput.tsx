@@ -4,14 +4,20 @@ export function StarRatingInput({
   value,
   disabled,
   onChange,
+  max = 5,
+  label,
 }: {
   value: number | null
   disabled?: boolean
   onChange: (score: number) => void
+  // The criterion's top score.
+  max?: number
+  // Names the stars for screen readers ("Rate Teamwork 2 out of 3").
+  label?: string
 }) {
   return (
     <div className="flex flex-wrap gap-1">
-      {[1, 2, 3, 4, 5].map((score) => {
+      {Array.from({ length: max }, (_, index) => index + 1).map((score) => {
         const active = (value ?? 0) >= score
         return (
           <button
@@ -19,7 +25,7 @@ export function StarRatingInput({
             type="button"
             disabled={disabled}
             onClick={() => onChange(score)}
-            aria-label={`Rate ${score} out of 5`}
+            aria-label={label ? `Rate ${label} ${score} out of ${max}` : `Rate ${score} out of ${max}`}
             aria-pressed={active}
             className={cn(
               'text-xl leading-none transition',

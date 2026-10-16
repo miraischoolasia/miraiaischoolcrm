@@ -165,14 +165,17 @@ describe('StudentDetailModal', () => {
       { id: 1, scheduleId: 1, teacherId: 1, lessonDate: '2026-10-01', lessonRemark: 'Built a game', submittedAt: '', revisionNumber: 1, parentLogId: null },
       { id: 2, scheduleId: 1, teacherId: 1, lessonDate: '2026-10-08', lessonRemark: null, submittedAt: '', revisionNumber: 1, parentLogId: null },
     ]
-    const review = {
-      id: 1, lessonLogId: 1, studentId: 1,
-      logicalThinkingScore: 4, logicalThinkingRemark: null,
-      codingCreativityScore: 2, codingCreativityRemark: 'Copied the example',
-      problemSolvingScore: 4, problemSolvingRemark: null,
-      expressivenessScore: 4, expressivenessRemark: null,
-      sustainedFocusScore: 4, sustainedFocusRemark: null,
-    } as LessonLogStudentReview
+    // Criteria 1-5 are the five starting ones; 2 is Coding Creativity.
+    const review: LessonLogStudentReview = {
+      id: 1, lessonLogId: 1, studentId: 1, lessonRemark: null,
+      scores: {
+        1: { score: 4, remark: null },
+        2: { score: 2, remark: 'Copied the example' },
+        3: { score: 4, remark: null },
+        4: { score: 4, remark: null },
+        5: { score: 4, remark: null },
+      },
+    }
     const schedules = [{ id: 1, title: 'WED C002 class' }] as Schedule[]
     const attendance = [
       { lessonLogId: 1, status: 'present' as const },
