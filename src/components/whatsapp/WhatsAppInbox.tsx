@@ -714,29 +714,64 @@ export function WhatsAppInbox({
       .catch(() => undefined)
   }, [category, client])
   // The channel a chat came through: WhatsApp, or a Messenger Page / Instagram account with its picture (the one an
-  // admin uploaded, else the Page's own from Facebook).
-  // The Facebook Pages each inbox has chats from (the bridge notes the Page's id on the contact). Pages and inboxes
-  // go one to one, so a Page is told apart from its inbox only when an inbox really has more than one.
-  const pageIdsByInbox = useMemo(() => {
-    const found = new Map<number, Set<string>>()
+  // admin uploaded, else the Page's own from Facebook). The bridge notes the Facebook Page's id on each contact, so a
+  // chat knows its own Page even when an inbox holds the chats of more than one. A chat without a Page id is taken
+  // to be on the Page most of its inbox's chats are on.
+  const pages = useMemo(() => {
+    const counts = new Map<number, Map<string, number>>()
+    const names = new Map<string, string>()
     for (const conversation of inbox.conversations) {
-      const pageId = conversation.meta.sender.additional_attributes?.ghl_page_id
+      const attributes = conversation.meta.sender.additional_attributes
+      const pageId = attributes?.ghl_page_id
       if (conversation.inbox_id === undefined || typeof pageId !== 'string' || !pageId) {
         continue
       }
-      found.set(conversation.inbox_id, (found.get(conversation.inbox_id) ?? new Set()).add(pageId))
+      const inboxCounts = counts.get(conversation.inbox_id) ?? new Map<string, number>()
+      inboxCounts.set(pageId, (inboxCounts.get(pageId) ?? 0) + 1)
+      counts.set(conversation.inbox_id, inboxCounts)
+      const name = attributes?.ghl_page_name
+      if (typeof name === 'string' && name && !names.has(pageId)) {
+        names.set(pageId, name)
+      }
     }
-    return found
+    const main = new Map<number, string>()
+    for (const [inboxId, inboxCounts] of counts) {
+      main.set(inboxId, [...inboxCounts.entries()].sort((x, y) => y[1] - x[1])[0][0])
+    }
+    return { main, names }
   }, [inbox.conversations])
+  const pageIdOf = useCallback(
+    (conversation: ChatwootConversation) => {
+      const noted = conversation.meta.sender.additional_attributes?.ghl_page_id
+      if (typeof noted === 'string' && noted) {
+        return noted
+      }
+      const inboxId = conversation.inbox_id
+      return inboxId === undefined ? null : (pages.main.get(inboxId) ?? inboxPageIds.get(inboxId) ?? null)
+    },
+    [pages, inboxPageIds],
+  )
   const channelKeyFor = useCallback(
     (conversation: ChatwootConversation) => {
-      const pageId = conversation.meta.sender.additional_attributes?.ghl_page_id
-      if (typeof pageId === 'string' && pageId && (pageIdsByInbox.get(conversation.inbox_id ?? -1)?.size ?? 0) > 1) {
-        return channelKeyOf(conversation.inbox_id, pageId)
-      }
-      return channelKeyOf(conversation.inbox_id)
+      const pageId = pageIdOf(conversation)
+      return pageId ? `page:${pageId}` : channelKeyOf(conversation.inbox_id)
     },
-    [pageIdsByInbox],
+    [pageIdOf],
+  )
+  // What a Page looks like in the list: its name, and its picture (uploaded, else fetched from Facebook).
+  const pageInfo = useCallback(
+    (kind: 'messenger' | 'instagram', pageId: string | null, inboxId: number | undefined): ChannelInfo => {
+      const inboxName = inboxId === undefined ? null : (socialInboxNames.get(inboxId) ?? null)
+      return {
+        kind,
+        name: (pageId ? pages.names.get(pageId) : null) ?? inboxName,
+        avatar:
+          (pageId ? channelAvatars.avatars.get(`page:${pageId}`) : undefined) ??
+          channelAvatars.avatars.get(channelKeyOf(inboxId)) ??
+          (pageId ? facebookPictureUrl(pageId) : null),
+      }
+    },
+    [channelAvatars.avatars, pages, socialInboxNames],
   )
   const channelOf = useCallback(
     (conversation: ChatwootConversation): ChannelInfo | null => {
@@ -744,26 +779,9 @@ export function WhatsAppInbox({
       if (!social) {
         return { kind: 'whatsapp', name: null, avatar: null }
       }
-      const attributes = conversation.meta.sender.additional_attributes
-      const noted = typeof attributes?.ghl_page_id === 'string' && attributes.ghl_page_id ? attributes.ghl_page_id : null
-      const inboxPages = pageIdsByInbox.get(conversation.inbox_id ?? -1)
-      const pageId =
-        noted ??
-        (conversation.inbox_id === undefined ? undefined : inboxPageIds.get(conversation.inbox_id)) ??
-        (inboxPages?.size === 1 ? [...inboxPages][0] : undefined)
-      const inboxName = conversation.inbox_id === undefined ? null : (socialInboxNames.get(conversation.inbox_id) ?? null)
-      const pageName = typeof attributes?.ghl_page_name === 'string' && attributes.ghl_page_name ? attributes.ghl_page_name : null
-      return {
-        kind: social,
-        // Several Pages in one inbox are named by their Page; otherwise the inbox's own name is the name.
-        name: (inboxPages?.size ?? 0) > 1 ? (pageName ?? inboxName) : (inboxName ?? pageName),
-        avatar:
-          channelAvatars.avatars.get(channelKeyFor(conversation)) ??
-          channelAvatars.avatars.get(channelKeyOf(conversation.inbox_id)) ??
-          (pageId ? facebookPictureUrl(pageId) : null),
-      }
+      return pageInfo(social, pageIdOf(conversation), conversation.inbox_id)
     },
-    [channelAvatars.avatars, channelKeyFor, inboxPageIds, pageIdsByInbox, socialInboxNames],
+    [pageInfo, pageIdOf],
   )
   const channelRows = useMemo<ChannelPictureRow[]>(() => {
     const rows = new Map<string, ChannelPictureRow>()
@@ -791,9 +809,12 @@ export function WhatsAppInbox({
   const channelChoices = useMemo(() => {
     // The icon of a channel is the one its chats show (the Page's picture, or the channel's logo).
     const infoOf = (inboxId: number, label: string): ChannelInfo => {
-      const first = categoryChats.find((conversation) => conversation.inbox_id === inboxId)
-      const info = first ? channelOf(first) : null
-      return { kind: category, name: label, avatar: info?.avatar ?? null }
+      if (category === 'whatsapp') {
+        return { kind: 'whatsapp', name: label, avatar: null }
+      }
+      // An inbox stands for the Page most of its chats are on.
+      const info = pageInfo(category, pages.main.get(inboxId) ?? inboxPageIds.get(inboxId) ?? null, inboxId)
+      return { kind: category, name: label, avatar: info.avatar }
     }
     if (category === 'whatsapp') {
       return numberChoices.map((choice) => ({ ...choice, info: infoOf(choice.inboxId, choice.label) }))
@@ -806,7 +827,7 @@ export function WhatsAppInbox({
       const label = socialInboxNames.get(id) ?? `${word} ${index + 1}`
       return { inboxId: id, label, info: infoOf(id, label) }
     })
-  }, [category, numberChoices, categoryChats, socialInboxNames, channelOf])
+  }, [category, numberChoices, categoryChats, socialInboxNames, pageInfo, pages, inboxPageIds])
   const changeCategory = useCallback(
     (next: InboxCategory) => {
       categoryDecided.current = true
