@@ -713,16 +713,6 @@ export function WhatsAppInbox({
       })
       .catch(() => undefined)
   }, [category, client])
-  const channelChoices = useMemo(() => {
-    if (category === 'whatsapp') {
-      return numberChoices
-    }
-    const ids = [...new Set(categoryChats.map((conversation) => conversation.inbox_id))]
-      .filter((id): id is number => id !== undefined)
-      .sort((a, b) => a - b)
-    const word = category === 'instagram' ? 'Instagram' : 'Messenger'
-    return ids.map((id, index) => ({ inboxId: id, label: socialInboxNames.get(id) ?? `${word} ${index + 1}` }))
-  }, [category, numberChoices, categoryChats, socialInboxNames])
   // The channel a chat came through: WhatsApp, or a Messenger Page / Instagram account with its picture (the one an
   // admin uploaded, else the Page's own from Facebook).
   const channelKeyFor = useCallback((conversation: ChatwootConversation) => {
@@ -771,6 +761,25 @@ export function WhatsAppInbox({
     }
     return [...rows.values()].sort((a, b) => a.name.localeCompare(b.name))
   }, [inbox.conversations, channelAvatars.avatars, channelKeyFor, channelOf])
+  const channelChoices = useMemo(() => {
+    // The icon of a channel is the one its chats show (the Page's picture, or the channel's logo).
+    const infoOf = (inboxId: number, label: string): ChannelInfo => {
+      const first = categoryChats.find((conversation) => conversation.inbox_id === inboxId)
+      const info = first ? channelOf(first) : null
+      return { kind: category, name: label, avatar: info?.avatar ?? null }
+    }
+    if (category === 'whatsapp') {
+      return numberChoices.map((choice) => ({ ...choice, info: infoOf(choice.inboxId, choice.label) }))
+    }
+    const ids = [...new Set(categoryChats.map((conversation) => conversation.inbox_id))]
+      .filter((id): id is number => id !== undefined)
+      .sort((a, b) => a - b)
+    const word = category === 'instagram' ? 'Instagram' : 'Messenger'
+    return ids.map((id, index) => {
+      const label = socialInboxNames.get(id) ?? `${word} ${index + 1}`
+      return { inboxId: id, label, info: infoOf(id, label) }
+    })
+  }, [category, numberChoices, categoryChats, socialInboxNames, channelOf])
   const changeCategory = useCallback(
     (next: InboxCategory) => {
       categoryDecided.current = true

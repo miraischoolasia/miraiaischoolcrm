@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, BellSlash, CaretDown, ChatCircleDots, CheckCircle, EnvelopeSimple, FunnelSimple, ImageSquare, Lightning, MagnifyingGlass, Phone, Plus, SpeakerHigh, SpeakerSlash, PushPin } from '@phosphor-icons/react'
+import { Bell, BellSlash, CaretDown, ChatCircleDots, CheckCircle, EnvelopeSimple, FunnelSimple, ImageSquare, Lightning, X, MagnifyingGlass, Phone, Plus, SpeakerHigh, SpeakerSlash, PushPin } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { LeadTagChip } from '../LeadTagChip'
@@ -99,7 +99,9 @@ type ConversationListProps = {
   // small badge on the chat's picture.
   channelOf?: (conversation: ChatwootConversation) => ChannelInfo | null
   inboxId?: number | null
-  numberChoices?: { inboxId: number; label: string }[]
+  // The channels the inbox has (the numbers, Pages or accounts of this part): each is a button at the top of the left
+  // bar; pressing one shows only its chats, and pressing it again (the X) shows them all.
+  numberChoices?: { inboxId: number; label: string; info?: ChannelInfo }[]
   onInbox?: (inboxId: number | null) => void
   // Admin: opens the window where numbers are added and given to staff.
   onManageNumbers?: () => void
@@ -204,7 +206,6 @@ export function ConversationList({
     sourceId !== null,
     ownerId !== null,
     Boolean(kind),
-    inboxId !== null && inboxId !== undefined,
   ].filter(Boolean).length
   const [filtersOpen, setFiltersOpen] = useState(false)
   const showFilters = filtersOpen || activeFilters > 0
@@ -220,6 +221,37 @@ export function ConversationList({
         aria-label="Inbox menu"
         className="flex w-[58px] shrink-0 flex-col items-center gap-1.5 border-r border-slate-200 bg-slate-50 py-3"
       >
+        {onInbox && numberChoices.length > 1 && (
+          <>
+            {numberChoices.map((choice) => {
+              const on = inboxId === choice.inboxId
+              return (
+                <button
+                  key={choice.inboxId}
+                  type="button"
+                  onClick={() => onInbox(on ? null : choice.inboxId)}
+                  aria-label={on ? `${choice.label}: show ${allChannelsLabel.toLowerCase()}` : `Only ${choice.label}`}
+                  aria-pressed={on}
+                  title={on ? `${choice.label} (press to see ${allChannelsLabel.toLowerCase()})` : choice.label}
+                  className={cn(
+                    railButton,
+                    'gap-1 px-0.5',
+                    on ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white',
+                  )}
+                >
+                  <ChannelBadge info={choice.info ?? { kind: category, name: choice.label, avatar: null }} size={26} className="ring-0" />
+                  <span className="w-full truncate text-center">{choice.label}</span>
+                  {on && (
+                    <span aria-hidden="true" className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#fc0c97] text-white">
+                      <X size={10} weight="bold" />
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+            <span aria-hidden="true" className="my-1 h-px w-8 bg-slate-200" />
+          </>
+        )}
         {tabs.map(({ key, label, icon: TabIcon }) => {
           const active = tab === key
           const count = counts[key]
@@ -342,27 +374,6 @@ export function ConversationList({
         )}
         {showFilters && (
         <div className={cn('mt-2 grid gap-2 text-sm', onKind ? 'grid-cols-3' : 'grid-cols-2')}>
-          {onInbox && numberChoices.length > 1 && (
-            <label className="relative col-span-full min-w-0">
-              <span className="sr-only">Filter by channel</span>
-              <select
-                value={inboxId ?? ''}
-                onChange={(event) => onInbox(event.target.value ? Number(event.target.value) : null)}
-                className={cn(
-                  'w-full appearance-none rounded-lg border bg-white py-1.5 pl-2.5 pr-7 text-xs outline-none focus:border-[#fc0c97]',
-                  inboxId === null ? 'border-slate-200 text-slate-700' : 'border-[#fc0c97] text-slate-900',
-                )}
-              >
-                <option value="">{allChannelsLabel}</option>
-                {numberChoices.map((choice) => (
-                  <option key={choice.inboxId} value={choice.inboxId}>
-                    {choice.label}
-                  </option>
-                ))}
-              </select>
-              <CaretDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" />
-            </label>
-          )}
           {onOwner && (
             <label className="relative col-span-full min-w-0">
               <span className="sr-only">Filter by staff</span>

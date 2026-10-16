@@ -92,6 +92,65 @@ describe('ConversationList channel badge', () => {
   })
 })
 
+describe('ConversationList channel buttons', () => {
+  function renderWith(onInbox: (id: number | null) => void, inboxId: number | null) {
+    render(
+      <ConversationList
+        conversations={[social(1, 'EduHero Online', 7)]}
+        counts={{ chats: 1, unread: 0, done: 0 }}
+        hasMoreOpen={false}
+        tab="chats"
+        search=""
+        tagId={null}
+        sourceId={null}
+        tags={[]}
+        sources={[]}
+        snippets={new Map()}
+        selectedId={null}
+        nowSeconds={NOW}
+        overdueCount={0}
+        isLoading={false}
+        loadError={null}
+        canLoadMore={false}
+        category="messenger"
+        allChannelsLabel="All Messenger pages"
+        inboxId={inboxId}
+        onInbox={onInbox}
+        numberChoices={[
+          { inboxId: 7, label: 'EduHero Online', info: { kind: 'messenger', name: 'EduHero Online', avatar: 'https://x.test/a.jpg' } },
+          { inboxId: 8, label: '万能教', info: { kind: 'messenger', name: '万能教', avatar: null } },
+        ]}
+        onTab={vi.fn()}
+        onTag={vi.fn()}
+        onSource={vi.fn()}
+        onSearch={vi.fn()}
+        onSelect={vi.fn()}
+        onLoadMore={vi.fn()}
+        onNewChat={vi.fn()}
+      />,
+    )
+  }
+
+  it('has one button per channel in the left bar, and no channel drop-down', async () => {
+    const onInbox = vi.fn()
+    renderWith(onInbox, null)
+
+    expect(screen.queryByLabelText('Filter by channel')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Only 万能教' }))
+
+    expect(onInbox).toHaveBeenCalledWith(8)
+  })
+
+  it('shows all channels again when the chosen one is pressed (the X)', async () => {
+    const onInbox = vi.fn()
+    renderWith(onInbox, 7)
+
+    await userEvent.click(screen.getByRole('button', { name: /EduHero Online: show all messenger pages/ }))
+
+    expect(onInbox).toHaveBeenCalledWith(null)
+  })
+})
+
 const rows: ChannelPictureRow[] = [
   { key: '7|EduHero Online', kind: 'messenger', name: 'EduHero Online', auto: null, uploaded: null },
   { key: '7|万能教', kind: 'messenger', name: '万能教', auto: 'https://x.test/p.jpg', uploaded: null },
