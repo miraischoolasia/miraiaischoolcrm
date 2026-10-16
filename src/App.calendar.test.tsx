@@ -248,6 +248,31 @@ describe('adding a class', () => {
   })
 })
 
+describe('the "+more" box', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.exceptions.mockResolvedValue([])
+  })
+
+  it('is closed when a card inside it is clicked, so it does not float over the class window', async () => {
+    await signInAsAdmin()
+    // What FullCalendar leaves open after "+3 more" is pressed.
+    const box = document.createElement('div')
+    box.className = 'fc-popover'
+    const close = document.createElement('span')
+    close.className = 'fc-popover-close'
+    const onClose = vi.fn()
+    close.addEventListener('click', onClose)
+    box.appendChild(close)
+    document.body.appendChild(box)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Regular Coding' }))
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    box.remove()
+  })
+})
+
 describe('cancelling a single class day', () => {
   beforeEach(() => {
     vi.clearAllMocks()

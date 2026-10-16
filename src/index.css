@@ -249,6 +249,19 @@ h3 {
   --fc-button-active-border-color: #de0a84;
 }
 
+/* FullCalendar's "+more" box defaults to z-index 9999, which floats it above
+   the class windows (z-50/60) that open when a card inside it is clicked.
+   FullCalendar adds its own styles after this file loads, so the selector is
+   one class more specific to win regardless of order. */
+.fc.fc-theme-standard .fc-popover {
+  z-index: 40;
+  /* A fixed width, so FullCalendar can keep the box inside the screen: it
+     checks the width once when the box opens, and a box that grows afterwards
+     (long class names) used to run off the right edge. */
+  width: 17rem;
+  max-width: calc(100vw - 20px);
+}
+
 .fc .fc-toolbar {
   gap: 0.5rem;
 }

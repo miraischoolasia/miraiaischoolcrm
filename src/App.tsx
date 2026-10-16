@@ -240,6 +240,7 @@ import {
 import { getDragBlockReason, getTimeFromDate, getTrialSlotsOnDate } from './lib/move'
 import { describeClashes, findTeacherClashes, type ClashCandidate } from './lib/clash'
 import { hasPermission } from './lib/permissions'
+import { closeCalendarMorePopover } from './lib/calendarPopover'
 import { getClassroomRosterOn } from './lib/roster'
 import {
   getOfferedPackages,
@@ -6182,7 +6183,9 @@ function App() {
                   ]}
                 />
 
-                <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+                {/* Not overflow-hidden: FullCalendar's "+more" box has to be able to
+                    reach past the edge of this card instead of being cut off. */}
+                <section className="rounded-[24px] border border-slate-200 bg-white shadow-sm">
                   <div className="border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
                     <div className="flex flex-col gap-3">
                       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -6386,6 +6389,8 @@ function App() {
                           ) {
                             void openAttendanceForEvent(
                               scheduleId,
+                        closeCalendarMorePopover()
+
                               occurrenceDate,
                               arg.event.title,
                             )
