@@ -173,6 +173,7 @@ export function ChangePackageModal({
                   className={fieldClass}
                 />
               </label>
+              {brand.usesFees && (
               <label className="space-y-2">
                 <span className="text-sm font-semibold text-slate-700">Account Fee Expiry Date</span>
                 <input
@@ -182,6 +183,8 @@ export function ChangePackageModal({
                   className={fieldClass}
                 />
               </label>
+              )}
+              {brand.usesFees && (
               <label className="space-y-2">
                 <span className="text-sm font-semibold text-slate-700">{brand.clubName} Expiry Date</span>
                 <input
@@ -191,6 +194,7 @@ export function ChangePackageModal({
                   className={fieldClass}
                 />
               </label>
+              )}
               <label className="space-y-2 sm:col-span-2">
                 <span className="text-sm font-semibold text-slate-700">Reason (optional)</span>
                 <input

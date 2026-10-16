@@ -19,6 +19,9 @@ export const brand = {
   usesMiraiArt: !customName,
   // What the yearly membership fee next to the Account Fee is called (Mirai's is the Mirai Club).
   clubName: text(import.meta.env.VITE_BRAND_CLUB_NAME) || (customName ? 'Membership' : 'Mirai Club'),
+  // Whether the school charges the yearly Account Fee and membership fee. Mirai does; another brand starts with
+  // none (nothing about fees shows) until it sets VITE_BRAND_FEES=true.
+  usesFees: !customName || text(import.meta.env.VITE_BRAND_FEES) === 'true',
   // The tab icon: another brand's own picture (VITE_BRAND_FAVICON_URL, else its logo), or none; null for Mirai's.
   favicon: customName ? faviconUrl || logoUrl || null : null,
 }

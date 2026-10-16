@@ -24,8 +24,13 @@ const emptyDraft: PackageDraft = {
   kind: 'regular',
   classCount: 4,
   durationMonths: 1,
-  includesFees: true,
+  includesFees: brand.usesFees,
 }
+
+// The columns of a package row: the Fees tick only exists for a school that charges fees.
+const rowColumns = brand.usesFees
+  ? 'sm:grid-cols-[1fr_7rem_5rem_5rem_4rem_5.5rem]'
+  : 'sm:grid-cols-[1fr_7rem_5rem_5rem_5.5rem]'
 
 const inputClass =
   'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#fc0c97]'
@@ -42,7 +47,7 @@ export function PackagesModal({ packages, onClose, onAdd, onSave, onSetActive }:
             <h2 className="mt-1 text-2xl font-semibold text-slate-900">Packages</h2>
             <p className="mt-2 text-sm text-slate-500">
               Picking a package on sign-up or renewal fills in the classes and expiry dates.
-              Packages with fees also set the yearly Account Fee and {brand.clubName} dates.
+              {brand.usesFees && <>Packages with fees also set the yearly Account Fee and {brand.clubName} dates.</>}
             </p>
           </div>
           <button
@@ -57,12 +62,12 @@ export function PackagesModal({ packages, onClose, onAdd, onSave, onSetActive }:
       </div>
 
       <div data-modal-body className="max-h-[70vh] space-y-3 overflow-y-auto px-6 py-6 sm:px-8">
-        <div className="hidden grid-cols-[1fr_7rem_5rem_5rem_4rem_5.5rem] gap-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-500 sm:grid">
+        <div className={cn('hidden gap-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-500 sm:grid', rowColumns)}>
           <span>Name</span>
           <span>Type</span>
           <span>Classes</span>
           <span>Months</span>
-          <span>Fees</span>
+          {brand.usesFees && <span>Fees</span>}
           <span />
         </div>
         <ul className="space-y-2">
@@ -109,7 +114,7 @@ function DraftFields({
         onChange={(event) => {
           const kind = event.target.value as PackageKind
           // Only regular packages carry the yearly fees by default.
-          onChange({ ...draft, kind, includesFees: kind === 'regular' })
+          onChange({ ...draft, kind, includesFees: brand.usesFees && kind === 'regular' })
         }}
         className={inputClass}
       >
@@ -137,16 +142,18 @@ function DraftFields({
         onChange={(event) => onChange({ ...draft, durationMonths: Number(event.target.value) })}
         className={inputClass}
       />
-      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
-        <input
-          type="checkbox"
-          checked={draft.includesFees}
-          aria-label={`${label} includes fees`}
-          onChange={(event) => onChange({ ...draft, includesFees: event.target.checked })}
-          className="h-4 w-4 accent-[#fc0c97]"
-        />
-        <span className="sm:hidden">Account Fee &amp; {brand.clubName}</span>
-      </label>
+      {brand.usesFees && (
+        <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+          <input
+            type="checkbox"
+            checked={draft.includesFees}
+            aria-label={`${label} includes fees`}
+            onChange={(event) => onChange({ ...draft, includesFees: event.target.checked })}
+            className="h-4 w-4 accent-[#fc0c97]"
+          />
+          <span className="sm:hidden">Account Fee &amp; {brand.clubName}</span>
+        </label>
+      )}
     </>
   )
 }
@@ -183,7 +190,7 @@ function PackageRow({
   const isDirty = JSON.stringify(draft) !== JSON.stringify(initial)
 
   return (
-    <li className="grid grid-cols-2 items-center gap-2 rounded-xl border border-slate-200 p-2 sm:grid-cols-[1fr_7rem_5rem_5rem_4rem_5.5rem] sm:border-0 sm:p-0">
+    <li className={cn('grid grid-cols-2 items-center gap-2 rounded-xl border border-slate-200 p-2 sm:border-0 sm:p-0', rowColumns)}>
       <DraftFields draft={draft} onChange={setDraft} label={pkg.name} muted={!pkg.isActive} />
       <div className="flex items-center justify-end gap-1.5">
         {isDirty && (
@@ -226,7 +233,7 @@ function NewPackageRow({ onAdd }: { onAdd: (draft: PackageDraft) => Promise<bool
   return (
     <div className="space-y-2 border-t border-slate-200 pt-4">
       <div className="text-sm font-semibold text-slate-700">Add a package</div>
-      <div className="grid grid-cols-2 items-center gap-2 sm:grid-cols-[1fr_7rem_5rem_5rem_4rem_5.5rem]">
+      <div className={cn('grid grid-cols-2 items-center gap-2', rowColumns)}>
         <DraftFields draft={draft} onChange={setDraft} label="New package" />
         <div className="flex justify-end">
           <button

@@ -136,8 +136,8 @@ export function describeActivity(activity: AdminActivity, names: ActivityNames):
       note(d.package ? `Package: ${text(d.package)}` : '')
       note(Number(d.classes_added) > 0 ? `+${text(d.classes_added)} classes` : '')
       note(d.lesson_expiry ? `Lessons until ${date(d.lesson_expiry)}` : '')
-      note(d.account_fee_expiry ? `Account Fee until ${date(d.account_fee_expiry)}` : '')
-      note(d.mirai_club_expiry ? `${brand.clubName} until ${date(d.mirai_club_expiry)}` : '')
+      note(brand.usesFees && d.account_fee_expiry ? `Account Fee until ${date(d.account_fee_expiry)}` : '')
+      note(brand.usesFees && d.mirai_club_expiry ? `${brand.clubName} until ${date(d.mirai_club_expiry)}` : '')
       return { title: `Renewed ${label}`, changes, notes }
     case 'student_package_corrected':
       change('Package', text(d.previous_package), text(d.new_package))

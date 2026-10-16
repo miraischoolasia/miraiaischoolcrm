@@ -1,4 +1,5 @@
 import type { Package, PackageKind } from '../types/domain'
+import { brand } from './brand'
 
 export const packageKindLabels: Record<PackageKind, string> = {
   trial: 'Trial',
@@ -45,7 +46,7 @@ export function planFeeChange(
   currentExpiry: string | null,
   history: PastEnrollment[],
 ): FeeChange | null {
-  if (!pkg.includesFees) {
+  if (!brand.usesFees || !pkg.includesFees) {
     return null
   }
 

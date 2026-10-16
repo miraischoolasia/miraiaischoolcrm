@@ -103,7 +103,7 @@ export function getStudentStatus(
 
   const hoursLow = student.remainingHours <= 2
   const lessonExpiry = getDateMeta(student.lessonExpiryDate, todayString)
-  const feesApply = student.feesApply ?? true
+  const feesApply = brand.usesFees && (student.feesApply ?? true)
   const noFee = { daysUntil: 0, expired: false, dueSoon: false }
   const accountFeeExpiry = feesApply
     ? getDateMeta(student.accountFeeExpiryDate, todayString)

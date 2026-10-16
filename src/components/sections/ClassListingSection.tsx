@@ -529,8 +529,8 @@ export function ClassListingSection({
                                 <th className="py-3 pr-4">Student</th>
                                 <th className="py-3 pr-4">Classes</th>
                                 <th className="py-3 pr-4">Lesson Expiry</th>
-                                <th className="py-3 pr-4">Account Fee Expiry</th>
-                                <th className="py-3 pr-4">{brand.clubName} Expiry</th>
+                                {brand.usesFees && <th className="py-3 pr-4">Account Fee Expiry</th>}
+                                {brand.usesFees && <th className="py-3 pr-4">{brand.clubName} Expiry</th>}
                                 <th className="py-3 pr-4">Status</th>
                               </tr>
                             </thead>
@@ -562,18 +562,22 @@ export function ClassListingSection({
                                         meta={status.lessonExpiry}
                                       />
                                     </td>
-                                    <td className="py-3 pr-4">
-                                      <ExpiryCell
-                                        date={student.accountFeeExpiryDate}
-                                        meta={status.accountFeeExpiry}
-                                      />
-                                    </td>
-                                    <td className="py-3 pr-4">
-                                      <ExpiryCell
-                                        date={student.miraiClubExpiryDate}
-                                        meta={status.miraiClubExpiry}
-                                      />
-                                    </td>
+                                    {brand.usesFees && (
+                                      <>
+                                        <td className="py-3 pr-4">
+                                          <ExpiryCell
+                                            date={student.accountFeeExpiryDate}
+                                            meta={status.accountFeeExpiry}
+                                          />
+                                        </td>
+                                        <td className="py-3 pr-4">
+                                          <ExpiryCell
+                                            date={student.miraiClubExpiryDate}
+                                            meta={status.miraiClubExpiry}
+                                          />
+                                        </td>
+                                      </>
+                                    )}
                                     <td className="py-3 pr-4">
                                       <StatusChip
                                         label={status.isNormal ? 'Normal' : status.tags[0].label}
@@ -616,10 +620,12 @@ export function ClassListingSection({
                                     Classes: {student.remainingHours} - Lesson Expiry:{' '}
                                     {formatDate(student.lessonExpiryDate)}
                                   </div>
-                                  <div className="mt-1 text-xs text-slate-500">
-                                    Account Fee: {formatDate(student.accountFeeExpiryDate)} - {brand.clubName}:{' '}
-                                    {formatDate(student.miraiClubExpiryDate)}
-                                  </div>
+                                  {brand.usesFees && (
+                                    <div className="mt-1 text-xs text-slate-500">
+                                      Account Fee: {formatDate(student.accountFeeExpiryDate)} - {brand.clubName}:{' '}
+                                      {formatDate(student.miraiClubExpiryDate)}
+                                    </div>
+                                  )}
                                   {!student.isActive && (
                                     <div className="mt-2 text-sm font-semibold text-red-600">
                                       Deactivated student

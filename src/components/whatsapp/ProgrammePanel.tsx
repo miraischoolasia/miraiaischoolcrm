@@ -2,13 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { Trash } from '@phosphor-icons/react'
 import { useLeadEnrolment } from '../../hooks/useLeadEnrolment'
 import { useLeadProgrammeSteps } from '../../hooks/useLeadProgrammeSteps'
+import { formatDate } from '../../domain/studentStatus'
 import { fetchFormsFromSupabase } from '../../lib/api'
+import { brand } from '../../lib/brand'
+import { canonicalPhone } from '../../lib/chatLink'
 import { formatZoomTime } from '../../lib/enrolMessage'
 import { buildFormUrl } from '../../lib/forms'
 import { cleanHoaTitle, describeHoaSlot, type HoaSlot } from '../../lib/hoaSlots'
 import { MAX_NOTE } from '../../lib/leadProgrammeSteps'
+import { getOfferedPackages, planEnrollment } from '../../lib/packages'
 import { DEFAULT_MESSAGE_TEMPLATE, fillTemplate, type Programme, type ProgrammeStep } from '../../lib/programmes'
-import type { Form, Lead } from '../../types/domain'
+import type { Form, Lead, Student } from '../../types/domain'
 import type { WhatsAppCrm } from './crm'
 import { PanelSection } from './PanelSection'
 import { buttonClass, fieldClass, Problem, ReceiptStep, Step, ZoomStep } from './enrolSteps'
@@ -74,12 +78,28 @@ export function ProgrammePanel({ lead, crm, programme, userName, onWriteMessage,
     [crm, lead.id, programme.id],
   )
 
+  // The children of this lead who are students of a class of this programme (programmes that enrol).
+  const enrolled = useMemo(() => {
+    if (programme.outcome !== 'enrol') {
+      return []
+    }
+    const classIds = new Set(crm.classrooms.filter((classroom) => classroom.programmeId === programme.id).map((classroom) => classroom.id))
+    const phone = canonicalPhone(lead.phone)
+    const names = new Set(lead.children.map((entry) => (entry.name ?? '').trim().toLowerCase()).filter(Boolean))
+    return crm.students.filter(
+      (student) =>
+        student.classroomId !== null &&
+        classIds.has(student.classroomId) &&
+        (phone !== null ? canonicalPhone(student.phone) === phone : names.has(student.name.trim().toLowerCase())),
+    )
+  }, [crm.classrooms, crm.students, lead.children, lead.phone, programme.id, programme.outcome])
+
   function stepDone(step: ProgrammeStep) {
     switch (step.kind) {
       case 'form':
         return submitted
       case 'class':
-        return bookings.length > 0
+        return programme.outcome === 'enrol' ? enrolled.length > 0 : bookings.length > 0
       case 'receipt':
         return enrolment.receipts.length > 0
       case 'zoom':
@@ -144,7 +164,7 @@ export function ProgrammePanel({ lead, crm, programme, userName, onWriteMessage,
               />
             )
           case 'class':
-            return <ClassStep key={step.id} number={number} title={step.title} lead={lead} crm={crm} programme={programme} bookings={bookings} />
+            return <ClassStep key={step.id} number={number} title={step.title} lead={lead} crm={crm} programme={programme} bookings={bookings} enrolled={enrolled} />
           case 'receipt':
             return <ReceiptStep key={step.id} number={number} title={step.title} enrolment={enrolment} canEdit={canEdit} />
           case 'zoom':
@@ -245,7 +265,7 @@ function FormStep({
 }
 
 // Picking a class of the programme. A programme that keeps a place for the lead books it like an HOA class;
-// making the lead a student of the class is a later step.
+// one that enrols makes the lead a student of the class, on the package chosen with it.
 function ClassStep({
   number,
   title,
@@ -253,6 +273,7 @@ function ClassStep({
   crm,
   programme,
   bookings,
+  enrolled,
 }: {
   number: number
   title: string
@@ -260,6 +281,7 @@ function ClassStep({
   crm: WhatsAppCrm
   programme: Programme
   bookings: WhatsAppCrm['trialBookings']
+  enrolled: Student[]
 }) {
   const slots = useMemo(() => crm.listProgrammeSlots?.(programme.id) ?? [], [crm, programme.id])
   const [childIndex, setChildIndex] = useState(0)
@@ -294,11 +316,7 @@ function ClassStep({
   }
 
   if (programme.outcome === 'enrol') {
-    return (
-      <Step number={number} done={false} title={title}>
-        <p className="text-slate-600">Making the lead a student of a class from here is coming in the next update.</p>
-      </Step>
-    )
+    return <EnrolClassStep number={number} title={title} lead={lead} crm={crm} programme={programme} enrolled={enrolled} />
   }
 
   return (
@@ -379,6 +397,185 @@ function ClassStep({
           <button type="button" disabled={busy || slots.length === 0} onClick={() => void book()} className={`${buttonClass} w-full`}>
             {busy ? 'Booking...' : 'Book this class'}
           </button>
+        </>
+      )}
+    </Step>
+  )
+}
+
+function todayKey() {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
+// A programme that enrols: pick the class, the package and the start date, and the child becomes a student
+// of that class on that package.
+function EnrolClassStep({
+  number,
+  title,
+  lead,
+  crm,
+  programme,
+  enrolled,
+}: {
+  number: number
+  title: string
+  lead: Lead
+  crm: WhatsAppCrm
+  programme: Programme
+  enrolled: Student[]
+}) {
+  const classes = useMemo(
+    () => crm.classrooms.filter((classroom) => classroom.programmeId === programme.id && classroom.status === 'active'),
+    [crm.classrooms, programme.id],
+  )
+  const packages = useMemo(() => getOfferedPackages(crm.packages), [crm.packages])
+  const [childIndex, setChildIndex] = useState(0)
+  const [classroomId, setClassroomId] = useState<number | null>(null)
+  const [packageId, setPackageId] = useState<number | null>(null)
+  const [startDate, setStartDate] = useState(todayKey)
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+  const children = lead.children
+  const child = children[childIndex] ?? null
+  const chosenClass = classes.find((classroom) => classroom.id === classroomId) ?? (classes.length === 1 ? classes[0] : null)
+  const chosenPackage = packages.find((pkg) => pkg.id === packageId) ?? (packages.length === 1 ? packages[0] : null)
+  const plan = chosenPackage && startDate ? planEnrollment(chosenPackage, startDate) : null
+  const alreadyIn = child
+    ? enrolled.some((student) => student.name.trim().toLowerCase() === (child.name ?? '').trim().toLowerCase())
+    : false
+
+  async function enrol() {
+    if (!crm.onEnrolStudent) {
+      return
+    }
+    if (!chosenClass) {
+      setProblem('Pick a class first.')
+      return
+    }
+    if (!chosenPackage) {
+      setProblem('Pick a package.')
+      return
+    }
+    if (!child?.name?.trim()) {
+      setProblem("Add the child's name on the lead first.")
+      return
+    }
+    if (!startDate) {
+      setProblem('Pick the date the package starts.')
+      return
+    }
+    setBusy(true)
+    setProblem(null)
+    const failed = await crm.onEnrolStudent({
+      leadId: lead.id,
+      childName: child.name,
+      phone: lead.phone ?? '',
+      classroomId: chosenClass.id,
+      packageId: chosenPackage.id,
+      startDate,
+    })
+    setBusy(false)
+    if (failed) {
+      setProblem(failed)
+    }
+  }
+
+  return (
+    <Step number={number} done={enrolled.length > 0} title={title}>
+      {enrolled.map((student) => {
+        const classroom = crm.classrooms.find((entry) => entry.id === student.classroomId)
+        const pkg = crm.packages.find((entry) => entry.id === student.packageId)
+        return (
+          <div key={student.id} className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-emerald-900">
+            <span className="block font-medium">{student.name}</span>
+            <span className="block">
+              {classroom?.name ?? 'No class'}
+              {pkg ? ` · ${pkg.name}` : ''} · until {formatDate(student.lessonExpiryDate)}
+            </span>
+            <button type="button" onClick={() => crm.onOpenStudent(student.id)} className="mt-0.5 font-medium text-[#be185d] hover:underline">
+              Open the student
+            </button>
+          </div>
+        )
+      })}
+      {!crm.canEditStudents || !crm.onEnrolStudent ? (
+        <p className="text-slate-500">You can look but not enrol.</p>
+      ) : alreadyIn ? (
+        <p className="text-slate-500">{child?.name} is already in a class of {programme.name}.</p>
+      ) : (
+        <>
+          {children.length > 1 && (
+            <label className="block">
+              <span className="text-slate-600">Child</span>
+              <select value={childIndex} onChange={(event) => setChildIndex(Number(event.target.value))} className={fieldClass}>
+                {children.map((entry, index) => (
+                  <option key={index} value={index}>
+                    {entry.name || `Child ${index + 1}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {classes.length === 0 ? (
+            <p className="text-slate-500">No class of {programme.name} yet. Add one in My Classroom, with this programme chosen.</p>
+          ) : packages.length === 0 ? (
+            <p className="text-slate-500">There is no package yet. Add one under Packages in the settings first.</p>
+          ) : (
+            <>
+              <label className="block">
+                <span className="text-slate-600">Class</span>
+                <select
+                  value={chosenClass?.id ?? ''}
+                  onChange={(event) => {
+                    setClassroomId(event.target.value ? Number(event.target.value) : null)
+                    setProblem(null)
+                  }}
+                  className={fieldClass}
+                >
+                  {!chosenClass && <option value="">Choose a class</option>}
+                  {classes.map((classroom) => (
+                    <option key={classroom.id} value={classroom.id}>
+                      {classroom.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-slate-600">Package</span>
+                <select
+                  value={chosenPackage?.id ?? ''}
+                  onChange={(event) => {
+                    setPackageId(event.target.value ? Number(event.target.value) : null)
+                    setProblem(null)
+                  }}
+                  className={fieldClass}
+                >
+                  {!chosenPackage && <option value="">Choose a package</option>}
+                  {packages.map((pkg) => (
+                    <option key={pkg.id} value={pkg.id}>
+                      {pkg.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-slate-600">Starts on</span>
+                <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className={fieldClass} />
+              </label>
+              {plan && chosenPackage && (
+                <p className="text-slate-500">
+                  {plan.classCount} classes, until {formatDate(plan.endDate)}.
+                  {brand.usesFees && (chosenPackage.includesFees ? ` Account Fee and ${brand.clubName} for a year.` : ` No Account Fee or ${brand.clubName}.`)}
+                </p>
+              )}
+              <Problem text={problem} />
+              <button type="button" disabled={busy || !chosenClass || !chosenPackage} onClick={() => void enrol()} className={`${buttonClass} w-full`}>
+                {busy ? 'Enrolling...' : 'Enrol in this class'}
+              </button>
+              <p className="text-slate-500">This makes {child?.name?.trim() || 'the child'} a student of the class, on the package above.</p>
+            </>
+          )}
         </>
       )}
     </Step>

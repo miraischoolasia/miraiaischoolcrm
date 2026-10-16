@@ -589,7 +589,7 @@ function keywordLeadDraft(): FlowDraft {
   }
 }
 
-export const FLOW_RECIPES: FlowRecipe[] = [
+const ALL_FLOW_RECIPES: FlowRecipe[] = [
   {
     key: 'keyword_to_lead',
     title: 'Turn a message with a keyword into a lead',
@@ -698,3 +698,5 @@ export const FLOW_RECIPES: FlowRecipe[] = [
       ]),
   },
 ]
+
+export const FLOW_RECIPES: FlowRecipe[] = ALL_FLOW_RECIPES.filter((recipe) => brand.usesFees || recipe.key !== 'fee_ending')

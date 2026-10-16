@@ -75,6 +75,16 @@ export type WhatsAppCrm = {
     packageId: number
     startDate: string
   }) => Promise<string | null>
+  // Signs a child up for a class of a programme the school made: makes the student (from this lead), puts them
+  // in the class, and gives them the chosen package from the start date. Left out, the panel cannot enrol.
+  onEnrolStudent?: (input: {
+    leadId: number
+    childName: string
+    phone: string
+    classroomId: number
+    packageId: number
+    startDate: string
+  }) => Promise<string | null>
   // Make-up classes are arranged with the calendar's permission.
   canBookMakeup: boolean
   // existingLeadId is set when no lead was made because the number already has one.

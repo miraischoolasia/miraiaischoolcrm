@@ -305,7 +305,7 @@ export function CampEnrolPanel({ lead, crm, userName, onWriteMessage, forStudent
                 </label>
                 {plan && (
                   <p className="text-slate-500">
-                    {plan.classCount} classes, until {formatDate(plan.endDate)}. No Account Fee or {brand.clubName}.
+                    {plan.classCount} classes, until {formatDate(plan.endDate)}.{brand.usesFees && ` No Account Fee or ${brand.clubName}.`}
                   </p>
                 )}
                 <Problem text={problem} />

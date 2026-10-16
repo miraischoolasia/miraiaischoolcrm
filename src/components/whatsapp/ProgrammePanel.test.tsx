@@ -155,11 +155,78 @@ describe('ProgrammePanel', () => {
     expect(screen.getByText('1 of 4 done')).toBeInTheDocument()
   })
 
-  it('says that enrolling as a student is not here yet for a programme that enrols', () => {
-    renderPanel(makeCrm(), { ...maths, outcome: 'enrol' })
+  describe('a programme that enrols', () => {
+    const enrolling = { ...maths, outcome: 'enrol' as const }
+    const classrooms = [
+      { id: 21, name: 'Maths F1 Sat', programmeId: 5, status: 'active' },
+      { id: 22, name: 'Maths F1 Sun', programmeId: 5, status: 'active' },
+      { id: 23, name: 'English F1', programmeId: 9, status: 'active' },
+    ]
+    const packages = [
+      { id: 31, name: 'Trial 1 Month', isActive: true, sortOrder: 10, classCount: 4, durationMonths: 1, includesFees: false },
+      { id: 32, name: '3 Months', isActive: true, sortOrder: 20, classCount: 12, durationMonths: 3, includesFees: true },
+    ]
+    const enrolCrm = (patch: Partial<WhatsAppCrm> = {}) =>
+      makeCrm({
+        canEditStudents: true,
+        classrooms: classrooms as never,
+        packages: packages as never,
+        students: [],
+        onEnrolStudent: vi.fn().mockResolvedValue(null),
+        onOpenStudent: vi.fn(),
+        ...patch,
+      })
 
-    expect(screen.getByText(/coming in the next update/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Book this class' })).not.toBeInTheDocument()
+    it('offers only the classes of this programme, and every package', () => {
+      renderPanel(enrolCrm(), enrolling)
+
+      expect(screen.queryByRole('button', { name: 'Book this class' })).not.toBeInTheDocument()
+      const classOptions = screen.getAllByRole('option', { name: /Maths F1|English F1/ }).map((entry) => entry.textContent)
+      expect(classOptions).toEqual(['Maths F1 Sat', 'Maths F1 Sun'])
+      expect(screen.getByRole('option', { name: 'Trial 1 Month' })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: '3 Months' })).toBeInTheDocument()
+    })
+
+    it('makes the child a student of the class on the package picked with it', async () => {
+      const crm = enrolCrm()
+      renderPanel(crm, enrolling)
+
+      expect(screen.getByRole('button', { name: 'Enrol in this class' })).toBeDisabled()
+
+      await userEvent.selectOptions(screen.getByLabelText('Class'), '22')
+      await userEvent.selectOptions(screen.getByLabelText('Package'), '32')
+      await userEvent.clear(screen.getByLabelText('Starts on'))
+      await userEvent.type(screen.getByLabelText('Starts on'), '2026-11-01')
+      expect(screen.getByText(/12 classes, until/)).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Enrol in this class' }))
+
+      await waitFor(() =>
+        expect(crm.onEnrolStudent).toHaveBeenCalledWith({
+          leadId: 11,
+          childName: 'Ethan',
+          phone: '0123456789',
+          classroomId: 22,
+          packageId: 32,
+          startDate: '2026-11-01',
+        }),
+      )
+    })
+
+    it('shows the child as enrolled, and does not offer to enrol again', () => {
+      const student = { id: 7, name: 'Ethan', phone: '0123456789', classroomId: 21, packageId: 32, lessonExpiryDate: '2027-02-01' }
+      renderPanel(enrolCrm({ students: [student] as never }), enrolling)
+
+      expect(screen.getByText(/Maths F1 Sat · 3 Months/)).toBeInTheDocument()
+      expect(screen.getByText('1 of 4 done')).toBeInTheDocument()
+      expect(screen.getByText(/already in a class of Maths tuition/)).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Enrol in this class' })).not.toBeInTheDocument()
+    })
+
+    it('does not offer enrolling to a person who may not edit students', () => {
+      renderPanel(enrolCrm({ canEditStudents: false }), enrolling)
+
+      expect(screen.getByText('You can look but not enrol.')).toBeInTheDocument()
+    })
   })
 
   it("writes the message from the programme's own wording", async () => {

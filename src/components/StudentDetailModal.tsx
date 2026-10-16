@@ -414,6 +414,7 @@ export function StudentDetailModal({
                         {currentPackage ? ` · ${currentPackage.name}` : ''}
                       </div>
                     </Stat>
+                    {brand.usesFees && (
                     <Stat label="Fees">
                       {!feesApply ? (
                         <>
@@ -441,6 +442,7 @@ export function StudentDetailModal({
                         </>
                       )}
                     </Stat>
+                    )}
                   </>
                 ) : (
                   <Stat label="Type">
@@ -714,9 +716,9 @@ export function StudentDetailModal({
               </dl>
             </Card>
 
-            <Card title="Expiry dates" note={feesApply ? `Account Fee and ${brand.clubName} are paid once a year` : 'No fees for this package'} flush>
+            <Card title="Expiry dates" note={!brand.usesFees ? undefined : feesApply ? `Account Fee and ${brand.clubName} are paid once a year` : 'No fees for this package'} flush>
               <ExpiryRow label="Lesson Expiry" date={student.lessonExpiryDate} meta={status.lessonExpiry} />
-              {feesApply ? (
+              {!brand.usesFees ? null : feesApply ? (
                 <>
                   <ExpiryRow label="Account Fee Expiry" date={student.accountFeeExpiryDate} meta={status.accountFeeExpiry} />
                   <ExpiryRow label={`${brand.clubName} Expiry`} date={student.miraiClubExpiryDate} meta={status.miraiClubExpiry} />

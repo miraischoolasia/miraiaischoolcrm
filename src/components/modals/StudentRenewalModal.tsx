@@ -129,6 +129,7 @@ export function StudentRenewalModal({
             />
           </label>
 
+          {brand.usesFees && (
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">
               New Account Fee Expiry Date
@@ -145,7 +146,9 @@ export function StudentRenewalModal({
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
             />
           </label>
+          )}
 
+          {brand.usesFees && (
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">
               New {brand.clubName} Expiry Date
@@ -162,6 +165,7 @@ export function StudentRenewalModal({
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
             />
           </label>
+          )}
 
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-slate-700">

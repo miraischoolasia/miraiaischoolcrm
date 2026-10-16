@@ -39,7 +39,10 @@ export type TriggerInfo = {
   afterOnly?: boolean
 }
 
-export const TRIGGERS: TriggerInfo[] = [
+// The fee triggers only make sense for a school that charges fees.
+const FEE_TRIGGERS: FlowTrigger[] = ['account_fee_expiry', 'club_fee_expiry']
+
+const ALL_TRIGGERS: TriggerInfo[] = [
   {
     key: 'class_start',
     label: 'A regular class starts',
@@ -135,6 +138,8 @@ export const TRIGGERS: TriggerInfo[] = [
     afterOnly: true,
   },
 ]
+
+export const TRIGGERS: TriggerInfo[] = ALL_TRIGGERS.filter((entry) => brand.usesFees || !FEE_TRIGGERS.includes(entry.key))
 
 export function triggerInfo(key: FlowTrigger): TriggerInfo {
   return TRIGGERS.find((entry) => entry.key === key) ?? TRIGGERS[0]

@@ -1,3 +1,4 @@
+import { brand } from '../../lib/brand'
 import { useMemo, useState } from 'react'
 import { cn } from '../../lib/cn'
 import { formatStudentAge, getStudentAge } from '../../lib/age'
@@ -376,12 +377,14 @@ export function StudentDashboardSection({
                         <EndsCell row={row} />
                       </dd>
                     </div>
-                    <div>
-                      <dt className="text-xs font-medium text-slate-500">Fees</dt>
-                      <dd className="mt-0.5">
-                        <FeesCell row={row} />
-                      </dd>
-                    </div>
+                    {brand.usesFees && (
+                      <div>
+                        <dt className="text-xs font-medium text-slate-500">Fees</dt>
+                        <dd className="mt-0.5">
+                          <FeesCell row={row} />
+                        </dd>
+                      </div>
+                    )}
                   </dl>
                   <div className="flex items-center justify-end gap-2">
                     {renewButton(row)}
@@ -403,7 +406,7 @@ export function StudentDashboardSection({
                     <th className="px-3 py-3">Package</th>
                     <th className="px-3 py-3">Classes left</th>
                     <th className="px-3 py-3">Ends</th>
-                    <th className="px-3 py-3">Fees</th>
+                    {brand.usesFees && <th className="px-3 py-3">Fees</th>}
                     <th className="px-3 py-3">Status</th>
                     <th className="px-3 py-3">
                       <span className="sr-only">Actions</span>
@@ -435,9 +438,11 @@ export function StudentDashboardSection({
                       <td className="px-3 py-3">
                         <EndsCell row={row} />
                       </td>
-                      <td className="px-3 py-3">
-                        <FeesCell row={row} />
-                      </td>
+                      {brand.usesFees && (
+                        <td className="px-3 py-3">
+                          <FeesCell row={row} />
+                        </td>
+                      )}
                       <td className="px-3 py-3">
                         <StatusCell row={row} todayString={todayString} />
                       </td>

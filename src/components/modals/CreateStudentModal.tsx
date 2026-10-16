@@ -188,7 +188,7 @@ export function CreateStudentModal({
           </label>
           )}
 
-          {!isPreviewStudent && (
+          {brand.usesFees && !isPreviewStudent && (
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">
               Account Fee Expiry Date
@@ -207,7 +207,7 @@ export function CreateStudentModal({
           </label>
           )}
 
-          {!isPreviewStudent && (
+          {brand.usesFees && !isPreviewStudent && (
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">
               {brand.clubName} Expiry Date

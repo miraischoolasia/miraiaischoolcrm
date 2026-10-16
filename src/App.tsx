@@ -2051,7 +2051,7 @@ function App() {
 
   function getCreatePackageNotice() {
     const pkg = findPackage(createStudentFormState.packageId)
-    if (!pkg) {
+    if (!pkg || !brand.usesFees) {
       return null
     }
     return pkg.includesFees
@@ -2108,7 +2108,7 @@ function App() {
 
   function getRenewalPackageNotice() {
     const pkg = findPackage(studentFormState.packageId)
-    if (!pkg) {
+    if (!pkg || !brand.usesFees) {
       return null
     }
     if (!pkg.includesFees) {
@@ -4116,6 +4116,73 @@ function App() {
     return problem
   }
 
+  // A child joins a class of a programme the school made: the student is made from the lead, put in the class,
+  // and put on the package chosen with it. Fees follow the package, as the Add Student window does.
+  async function enrolStudentFromChat(input: {
+    leadId: number
+    childName: string
+    phone: string
+    classroomId: number
+    packageId: number
+    startDate: string
+  }) {
+    if (!supabase) {
+      return 'Supabase is not configured.'
+    }
+    const pkg = findPackage(String(input.packageId))
+    const classroom = classroomMap.get(input.classroomId)
+    if (!pkg || !pkg.isActive) {
+      return 'That package is not available.'
+    }
+    if (!classroom || classroom.status !== 'active') {
+      return 'Pick a class that is still running.'
+    }
+    const name = input.childName.trim()
+    if (!name) {
+      return "Add the child's name on the lead first."
+    }
+    if (!input.startDate) {
+      return 'Pick the date the package starts.'
+    }
+    const plan = planEnrollment(pkg, input.startDate)
+    const fees = planFeeChange(pkg, input.startDate, plan.endDate, null, [])
+    const feeExpiry = fees?.to ?? input.startDate
+    const { data: created, error } = await supabase.rpc('create_student_record', {
+      p_full_name: name,
+      p_phone: input.phone.trim() || null,
+      p_teacher_id: null,
+      p_classroom_id: input.classroomId,
+      p_lead_id: input.leadId,
+      p_initial_hours: 0,
+      p_lesson_expiry_date: plan.endDate,
+      p_account_fee_expiry_date: feeExpiry,
+      p_mirai_club_expiry_date: feeExpiry,
+      p_notes: null,
+      p_student_type: 'regular',
+    })
+    if (error) {
+      return getErrorMessage(error, 'Failed to make the student.')
+    }
+    const studentId = (created as { student_id: number }[] | null)?.[0]?.student_id
+    let problem: string | null = null
+    if (studentId) {
+      const { error: enrollError } = await supabase.rpc('enroll_student_package', {
+        p_student_id: studentId,
+        p_package_id: pkg.id,
+        p_start_date: input.startDate,
+        p_class_count: plan.classCount,
+        p_lesson_expiry_date: plan.endDate,
+        p_account_fee_expiry_date: feeExpiry,
+        p_mirai_club_expiry_date: feeExpiry,
+      })
+      if (enrollError) {
+        problem = `The student was made, but the package was not added: ${getErrorMessage(enrollError, 'unknown error')}. Add it from the student's page.`
+      }
+    }
+    await Promise.all([refreshStudentsAndLogs(), refreshClassrooms(), refreshLeads(), refreshAdminActivities()])
+    return problem
+  }
+
   async function cancelHoaFromChat(booking: TrialBooking) {
     if (!supabase) {
       return 'Supabase is not configured.'
@@ -4182,6 +4249,7 @@ function App() {
     onBookHoa: bookHoaFromChat,
     onCancelHoa: cancelHoaFromChat,
     onEnrolCamp: enrolCampFromChat,
+    onEnrolStudent: enrolStudentFromChat,
     leadOptions,
     canEditLeads: can('leads', 'edit'),
     canEditStudents: can('students', 'edit'),
