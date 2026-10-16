@@ -4,7 +4,7 @@ import { cn } from '../../lib/cn'
 import {
   MAX_REPLY_WORDS,
   PLACEHOLDERS,
-  SETTABLE_STAGES,
+  isSettableStage,
   actionLabel,
   isAction,
   isChoiceCondition,
@@ -457,7 +457,7 @@ export function FlowInspector({
               ))}
             {node.action === 'set_stage' &&
               leadStatusOptions
-                .filter((option) => SETTABLE_STAGES.includes(option.key))
+                .filter((option) => isSettableStage(option.key))
                 .map((option) => (
                   <option key={option.key} value={option.key}>
                     {option.label}

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
+import { brand } from '../../lib/brand'
 import { cn } from '../../lib/cn'
 import { formatDate, getStudentStatus } from '../../domain/studentStatus'
 import { ageGroupOptions } from '../../lib/constants'
 import { weekdayLabels } from '../../lib/schedule'
 import { ExpiryCell } from '../ExpiryCell'
 import { StatusChip } from '../StatusChip'
-import mascotGordo from '../../assets/mascot-gordo.png'
+import { BrandMascot } from '../BrandMascot'
 import {
   ArrowCounterClockwise,
   CalendarBlank,
@@ -246,7 +247,7 @@ export function ClassListingSection({
 
                 {filteredClassrooms.length === 0 ? (
                   <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
-                    <img src={mascotGordo} alt="" aria-hidden="true" className="h-20 w-auto" />
+                    <BrandMascot name="gordo" className="h-20 w-auto" />
                     <p className="text-sm text-slate-500">
                       No classroom in this category yet.
                     </p>
@@ -507,7 +508,7 @@ export function ClassListingSection({
                                 <th className="py-3 pr-4">Classes</th>
                                 <th className="py-3 pr-4">Lesson Expiry</th>
                                 <th className="py-3 pr-4">Account Fee Expiry</th>
-                                <th className="py-3 pr-4">Mirai Club Expiry</th>
+                                <th className="py-3 pr-4">{brand.clubName} Expiry</th>
                                 <th className="py-3 pr-4">Status</th>
                               </tr>
                             </thead>
@@ -594,7 +595,7 @@ export function ClassListingSection({
                                     {formatDate(student.lessonExpiryDate)}
                                   </div>
                                   <div className="mt-1 text-xs text-slate-500">
-                                    Account Fee: {formatDate(student.accountFeeExpiryDate)} - Mirai Club:{' '}
+                                    Account Fee: {formatDate(student.accountFeeExpiryDate)} - {brand.clubName}:{' '}
                                     {formatDate(student.miraiClubExpiryDate)}
                                   </div>
                                   {!student.isActive && (

@@ -173,9 +173,17 @@ export function createChatwootClient(
     },
 
     // Every inbox (= WhatsApp number) Chatwoot has.
-    async listInboxes(): Promise<{ id: number; name: string; channelType: string }[]> {
-      const data = await request<{ payload: { id: number; name: string; channel_type: string }[] }>('/inboxes')
-      return data.payload.map((entry) => ({ id: entry.id, name: entry.name, channelType: entry.channel_type }))
+    async listInboxes(): Promise<{ id: number; name: string; channelType: string; pageId: string | null }[]> {
+      const data = await request<{ payload: { id: number; name: string; channel_type: string; page_id?: string | number | null }[] }>(
+        '/inboxes',
+      )
+      return data.payload.map((entry) => ({
+        id: entry.id,
+        name: entry.name,
+        channelType: entry.channel_type,
+        // A Facebook Page inbox says which Page it is, so its picture can be fetched.
+        pageId: entry.page_id === undefined || entry.page_id === null || entry.page_id === '' ? null : String(entry.page_id),
+      }))
     },
 
     // The WhatsApp inbox: where new chats are created.

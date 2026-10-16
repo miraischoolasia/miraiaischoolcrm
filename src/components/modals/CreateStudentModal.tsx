@@ -1,4 +1,5 @@
 import { getTodayString } from '../../domain/studentStatus'
+import { brand } from '../../lib/brand'
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { PackagePicker } from '../PackagePicker'
@@ -193,7 +194,7 @@ export function CreateStudentModal({
           {!isPreviewStudent && (
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">
-              Mirai Club Expiry Date
+              {brand.clubName} Expiry Date
             </span>
             <input
               type="date"

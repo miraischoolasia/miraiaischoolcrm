@@ -14,7 +14,7 @@ import type { Lead, LeadOption, LeadStatus } from '../../types/domain'
 import type { LeadFormValues, WhatsAppCrm } from './crm'
 import { LeadChannelLines } from '../LeadChannelLines'
 import { FormAnswers } from './FormAnswers'
-import { LeadFinder } from './LeadFinder'
+import { LeadMatches } from './LeadFinder'
 import { PanelSection } from './PanelSection'
 
 // Typed text is saved this long after the last key; a pick from a list is saved at once.
@@ -418,7 +418,8 @@ export function LeadForm({
           />
         )}
         {canEdit && onFindLead && (
-          <LeadFinder
+          <LeadMatches
+            query={form.phone}
             leads={crm.leads}
             currentLeadId={lead?.id ?? null}
             onPick={async (picked) => {

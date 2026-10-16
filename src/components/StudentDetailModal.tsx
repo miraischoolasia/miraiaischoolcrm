@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { brand } from '../lib/brand'
 import { PencilSimple, X } from '@phosphor-icons/react'
 import {
   formatDate,
@@ -415,7 +416,7 @@ export function StudentDetailModal({
                               : 'Paid'}
                           </div>
                           <div className="mt-1 text-sm text-slate-500">
-                            Account Fee to {formatDate(student.accountFeeExpiryDate)} · Mirai Club to{' '}
+                            Account Fee to {formatDate(student.accountFeeExpiryDate)} · {brand.clubName} to{' '}
                             {formatDate(student.miraiClubExpiryDate)}
                           </div>
                         </>
@@ -674,17 +675,17 @@ export function StudentDetailModal({
               </dl>
             </Card>
 
-            <Card title="Expiry dates" note={feesApply ? 'Account Fee and Mirai Club are paid once a year' : 'No fees for this package'} flush>
+            <Card title="Expiry dates" note={feesApply ? `Account Fee and ${brand.clubName} are paid once a year` : 'No fees for this package'} flush>
               <ExpiryRow label="Lesson Expiry" date={student.lessonExpiryDate} meta={status.lessonExpiry} />
               {feesApply ? (
                 <>
                   <ExpiryRow label="Account Fee Expiry" date={student.accountFeeExpiryDate} meta={status.accountFeeExpiry} />
-                  <ExpiryRow label="Mirai Club Expiry" date={student.miraiClubExpiryDate} meta={status.miraiClubExpiry} />
+                  <ExpiryRow label={`${brand.clubName} Expiry`} date={student.miraiClubExpiryDate} meta={status.miraiClubExpiry} />
                 </>
               ) : (
                 <>
                   <NoFeeRow label="Account Fee Expiry" />
-                  <NoFeeRow label="Mirai Club Expiry" />
+                  <NoFeeRow label={`${brand.clubName} Expiry`} />
                 </>
               )}
             </Card>

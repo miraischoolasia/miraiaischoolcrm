@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { brand } from '../../lib/brand'
 import { Eye, EyeSlash, Plus, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { cn } from '../../lib/cn'
@@ -41,7 +42,7 @@ export function PackagesModal({ packages, onClose, onAdd, onSave, onSetActive }:
             <h2 className="mt-1 text-2xl font-semibold text-slate-900">Packages</h2>
             <p className="mt-2 text-sm text-slate-500">
               Picking a package on sign-up or renewal fills in the classes and expiry dates.
-              Packages with fees also set the yearly Account Fee and Mirai Club dates.
+              Packages with fees also set the yearly Account Fee and {brand.clubName} dates.
             </p>
           </div>
           <button
@@ -144,7 +145,7 @@ function DraftFields({
           onChange={(event) => onChange({ ...draft, includesFees: event.target.checked })}
           className="h-4 w-4 accent-[#fc0c97]"
         />
-        <span className="sm:hidden">Account Fee &amp; Mirai Club</span>
+        <span className="sm:hidden">Account Fee &amp; {brand.clubName}</span>
       </label>
     </>
   )

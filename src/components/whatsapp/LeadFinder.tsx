@@ -3,6 +3,8 @@ import { searchLeads } from '../../lib/leadSearch'
 import type { Lead } from '../../types/domain'
 
 type Props = {
+  // What is typed in the phone number field: leads with that number (or that name) are offered.
+  query: string
   leads: Lead[]
   // The lead being edited, who cannot be joined with themself; null while the parent is not a lead yet.
   currentLeadId: number | null
@@ -14,10 +16,10 @@ function titleOf(lead: Lead) {
   return lead.fullName || lead.children[0]?.name || 'Unnamed lead'
 }
 
-// "Already a lead? Find them": sits under the phone number. For a parent who is not a lead yet it ties the
-// chat to the lead found; for a lead it joins the two leads (the one with a phone number stays).
-export function LeadFinder({ leads, currentLeadId, onPick }: Props) {
-  const [query, setQuery] = useState('')
+// The phone number field finds leads as it is typed in: a lead that already has the number (or the name) is
+// offered right under it. For a parent who is not a lead yet it ties the chat to the lead found; for a lead
+// it joins the two leads (the one with a phone number stays).
+export function LeadMatches({ query, leads, currentLeadId, onPick }: Props) {
   const [picked, setPicked] = useState<Lead | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -36,7 +38,6 @@ export function LeadFinder({ leads, currentLeadId, onPick }: Props) {
       return
     }
     setPicked(null)
-    setQuery('')
   }
 
   function choose(lead: Lead) {
@@ -50,21 +51,11 @@ export function LeadFinder({ leads, currentLeadId, onPick }: Props) {
 
   return (
     <div className="mt-1.5 text-xs">
-      <label className="block">
-        <span className="font-semibold text-slate-700">Already a lead? Find them</span>
-        <input
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value)
-            setPicked(null)
-          }}
-          placeholder="Name or phone number"
-          className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-[#fc0c97]"
-        />
-      </label>
-      {query.trim() && found.length === 0 && <p className="mt-1 text-slate-500">No lead found.</p>}
       {found.length > 0 && !picked && (
-        <ul className="mt-1 space-y-1">
+        <p className="font-semibold text-slate-700">Already a lead? Pick them</p>
+      )}
+      {found.length > 0 && !picked && (
+        <ul aria-label="Leads that match" className="mt-1 space-y-1">
           {found.map((entry) => (
             <li key={entry.id}>
               <button

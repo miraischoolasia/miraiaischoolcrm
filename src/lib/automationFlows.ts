@@ -1,5 +1,7 @@
 import { supabase } from './supabase'
+import { brand } from './brand'
 import { leadStatusOptions } from './constants'
+import { isSettableStage } from './leadStages'
 import type { LeadStatus } from '../types/domain'
 
 // Automation flows: the drag-and-drop canvas on the Automations page. A flow is one trigger and a
@@ -65,8 +67,8 @@ export const TRIGGERS: TriggerInfo[] = [
   },
   {
     key: 'club_fee_expiry',
-    label: "A child's Mirai Club fee ends",
-    phrase: "a child's Mirai Club fee ends",
+    label: `A child's ${brand.clubName} fee ends`,
+    phrase: `a child's ${brand.clubName} fee ends`,
     classroomCategory: 'regular',
   },
   {
@@ -181,8 +183,8 @@ export type ActionNode = Placed & {
   mins: number
   after?: boolean
 }
-// The stages a step can move a lead to.
-export const SETTABLE_STAGES: LeadStatus[] = ['new', 'contacted', 'trial_scheduled', 'trial_completed', 'lost']
+// The stages a step can move a lead to: any stage that is on, except Converted (see leadStages.ts).
+export { isSettableStage } from './leadStages'
 export const MIN_ACTION_MINUTES = 0
 
 export type ConditionNode =
@@ -874,7 +876,7 @@ export function validateDraft(draft: FlowDraft): string | null {
       if (node.action === 'assign_pic' && !/^[0-9]{1,12}$/.test(node.value)) {
         return 'A step that assigns a PIC needs a person picked.'
       }
-      if (node.action === 'set_stage' && !SETTABLE_STAGES.includes(node.value as LeadStatus)) {
+      if (node.action === 'set_stage' && !isSettableStage(node.value)) {
         return 'A step that changes the stage needs a stage picked (a lead is converted by a person).'
       }
     } else if (node.kind === 'wait') {
@@ -1032,9 +1034,8 @@ export function parseGraph(raw: unknown): FlowGraph {
     } else if (node.type === 'condition' && node.kind === 'hours') {
       nodes.push({ ...base, type: 'condition', kind: 'hours', max: numberOr(node.max, 2) })
     } else if (node.type === 'condition' && node.kind === 'stage') {
-      const known = new Set<string>(leadStatusOptions.map((option) => option.key))
       const stages = Array.isArray(node.stages)
-        ? node.stages.filter((stage): stage is LeadStatus => typeof stage === 'string' && known.has(stage))
+        ? node.stages.filter((stage): stage is LeadStatus => typeof stage === 'string' && stage !== '')
         : []
       nodes.push({ ...base, type: 'condition', kind: 'stage', stages })
     } else if (node.type === 'condition' && (CHOICE_KINDS as unknown[]).includes(node.kind)) {
@@ -1068,9 +1069,8 @@ export function parseGraph(raw: unknown): FlowGraph {
   const rawSettings = source.settings
   if (rawSettings && typeof rawSettings === 'object' && !Array.isArray(rawSettings)) {
     const settings = rawSettings as Record<string, unknown>
-    const known = new Set<string>(leadStatusOptions.map((option) => option.key))
     const stopStages = Array.isArray(settings.stopStages)
-      ? settings.stopStages.filter((stage): stage is LeadStatus => typeof stage === 'string' && known.has(stage))
+      ? settings.stopStages.filter((stage): stage is LeadStatus => typeof stage === 'string' && stage !== '')
       : []
     const days = typeof settings.cooldownDays === 'number' && Number.isInteger(settings.cooldownDays) ? settings.cooldownDays : 0
     const channels = Array.isArray(settings.channels)

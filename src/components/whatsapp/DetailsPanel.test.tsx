@@ -168,7 +168,8 @@ describe('DetailsPanel', () => {
     const onLinkLead = renderPanel(crm)
 
     expect(screen.queryByText('Could this parent be one of your leads?')).not.toBeInTheDocument()
-    await userEvent.type(screen.getByLabelText('Already a lead? Find them'), 'Mei')
+    await userEvent.clear(screen.getByLabelText('Phone number'))
+    await userEvent.type(screen.getByLabelText('Phone number'), 'Mei')
     await userEvent.click(screen.getByRole('button', { name: /Mei Ling Tan/ }))
 
     expect(onLinkLead).toHaveBeenCalledWith(21)

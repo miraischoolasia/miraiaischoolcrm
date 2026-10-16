@@ -7,6 +7,16 @@ import { brand } from './lib/brand'
 // form. Adding &preview=1 shows the builder's unsaved draft of it instead.
 // The tab title is the brand's name (index.html holds Mirai's as the fallback).
 document.title = brand.name
+// index.html carries Mirai's tab icon; another brand shows its own, or none.
+if (brand.usesMiraiArt === false) {
+  document.querySelectorAll('link[rel="icon"]').forEach((link) => link.remove())
+  if (brand.favicon) {
+    const icon = document.createElement('link')
+    icon.rel = 'icon'
+    icon.href = brand.favicon
+    document.head.appendChild(icon)
+  }
+}
 
 const params = new URLSearchParams(window.location.search)
 const publicFormKey = params.get('form')

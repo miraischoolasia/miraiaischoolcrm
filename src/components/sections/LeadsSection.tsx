@@ -13,6 +13,7 @@ import {
 import { cn } from '../../lib/cn'
 import { formatDate, getTodayString, parseLocalDate } from '../../domain/studentStatus'
 import { leadStatusOptions } from '../../lib/constants'
+import { stageLabel, stageStyle } from '../../lib/leadStages'
 import { getCheckColumns, type CheckFilter } from '../../lib/leadTags'
 import { SummaryBar } from '../SummaryBar'
 import { LeadTrendChart } from '../LeadTrendChart'
@@ -23,7 +24,7 @@ import { downloadCsv } from '../../lib/downloadFile'
 import { buildLeadsExportCsv } from '../../lib/leadExport'
 import { WhatsAppLink } from '../WhatsAppLink'
 import { buildChildRows, CHILD_AGE_GROUPS } from '../../lib/leadChildren'
-import mascotGordo from '../../assets/mascot-gordo.png'
+import { BrandMascot } from '../BrandMascot'
 import {
   CaretLeft,
   CaretRight,
@@ -47,23 +48,6 @@ import type {
   LeadStatus,
 } from '../../types/domain'
 
-const stageToneClass: Record<LeadStatus, string> = {
-  new: 'bg-slate-100 text-slate-700',
-  contacted: 'bg-sky-50 text-sky-700',
-  trial_scheduled: 'bg-amber-50 text-amber-700',
-  trial_completed: 'bg-violet-50 text-violet-700',
-  converted: 'bg-emerald-50 text-emerald-700',
-  lost: 'bg-red-50 text-red-700',
-}
-
-const stageChartColor: Record<LeadStatus, string> = {
-  new: '#94a3b8',
-  contacted: '#0ea5e9',
-  trial_scheduled: '#f59e0b',
-  trial_completed: '#8b5cf6',
-  converted: '#10b981',
-  lost: '#ef4444',
-}
 
 export const LEADS_PAGE_SIZE = 25
 
@@ -115,6 +99,8 @@ type LeadsSectionProps = {
   deletingLeadId: number | null
   leadOptions: LeadOption[]
   onOpenLeadOptions: () => void
+  // Opens the stages manager (an admin sets up the stages leads go through).
+  onOpenStages?: () => void
   // The leads that came with form answers get a small "Form" tag that opens them.
   leadIdsWithForms?: Set<number>
   onOpenFormAnswers?: (leadId: number) => void
@@ -146,6 +132,7 @@ export function LeadsSection({
   deletingLeadId,
   leadOptions,
   onOpenLeadOptions,
+  onOpenStages,
   leadIdsWithForms,
   onOpenFormAnswers,
   onToggleCheck,
@@ -343,7 +330,7 @@ export function LeadsSection({
   const stageChartData = leadStatusOptions.map((option) => ({
     label: option.label,
     value: leads.filter((lead) => lead.status === option.key).length,
-    color: stageChartColor[option.key],
+    color: stageStyle(option.key).chart,
   }))
 
   // Hidden names still count for leads that use them.
@@ -410,6 +397,16 @@ export function LeadsSection({
                 <GearSix size={16} aria-hidden="true" />
                 Sources, PIC &amp; Tags
               </button>
+              {onOpenStages && (
+                <button
+                  type="button"
+                  onClick={onOpenStages}
+                  className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  <ListChecks size={16} aria-hidden="true" />
+                  Manage stages
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onOpenBulkImportLeads}
@@ -774,10 +771,10 @@ export function LeadsSection({
                           <span
                             className={cn(
                               'rounded-full px-2.5 py-0.5 text-xs font-semibold',
-                              stageToneClass[lead.status],
+                              stageStyle(lead.status).badge,
                             )}
                           >
-                            {leadStatusOptions.find((option) => option.key === lead.status)?.label ?? lead.status}
+                            {stageLabel(lead.status)}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-600">{sourceLabel(lead)}</td>
@@ -827,7 +824,7 @@ export function LeadsSection({
 
         {view === 'pipeline' && !isLoading && filteredLeads.length === 0 && (
           <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
-            <img src={mascotGordo} alt="" aria-hidden="true" className="h-24 w-auto" />
+            <BrandMascot name="gordo" className="h-24 w-auto" />
             <p className="text-sm text-slate-500">
               {leads.length === 0
                 ? 'No leads yet. Add the first inquiry to get started.'
@@ -878,10 +875,10 @@ export function LeadsSection({
                     <span
                       className={cn(
                         'inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold',
-                        stageToneClass[lead.status],
+                        stageStyle(lead.status).badge,
                       )}
                     >
-                      {leadStatusOptions.find((option) => option.key === lead.status)?.label}
+                      {stageLabel(lead.status)}
                     </span>
                   </div>
 
@@ -1129,7 +1126,7 @@ export function LeadsSection({
                           disabled={!canEdit || lead.status === 'converted'}
                           className={cn(
                             'rounded-full border-0 px-2.5 py-0.5 text-xs font-semibold outline-none disabled:cursor-not-allowed',
-                            stageToneClass[lead.status],
+                            stageStyle(lead.status).badge,
                           )}
                         >
                           {leadStatusOptions.map((option) => (

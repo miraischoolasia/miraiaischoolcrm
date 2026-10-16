@@ -8,7 +8,7 @@ import {
   type TeacherAgenda,
 } from '../../lib/teacherAgenda'
 import { parseLocalDate } from '../../domain/studentStatus'
-import mascotGordo from '../../assets/mascot-gordo.png'
+import { BrandMascot } from '../BrandMascot'
 
 export type TeacherHomeClass = {
   id: number
@@ -213,7 +213,7 @@ export function TeacherHomeSection({
         </div>
         {today.length === 0 ? (
           <div className="flex flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-white px-6 py-8 text-center">
-            <img src={mascotGordo} alt="" aria-hidden="true" className="h-20 w-auto" />
+            <BrandMascot name="gordo" className="h-20 w-auto" />
             <p className="text-sm text-slate-500">
               No classes today.
               {nextDay ? ` Next class: ${dayLabel(nextDay)}.` : ''}

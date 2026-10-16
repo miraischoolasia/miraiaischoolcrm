@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { brand } from '../../lib/brand'
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { formatDate } from '../../domain/studentStatus'
@@ -182,7 +183,7 @@ export function ChangePackageModal({
                 />
               </label>
               <label className="space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Mirai Club Expiry Date</span>
+                <span className="text-sm font-semibold text-slate-700">{brand.clubName} Expiry Date</span>
                 <input
                   type="date"
                   value={form.miraiClubExpiryDate}

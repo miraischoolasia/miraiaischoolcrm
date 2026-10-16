@@ -457,6 +457,24 @@ export type Database = {
         }
         Relationships: []
       }
+      channel_avatars: {
+        Row: {
+          channel_key: string
+          avatar: string
+          updated_at: string
+        }
+        Insert: {
+          channel_key: string
+          avatar: string
+          updated_at?: string
+        }
+        Update: {
+          channel_key?: string
+          avatar?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       lead_channels: {
         Row: {
           id: number
@@ -760,6 +778,36 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_stages: {
+        Row: {
+          key: string
+          label: string
+          color: string
+          sort_order: number
+          is_active: boolean
+          is_system: boolean
+          created_at: string
+        }
+        Insert: {
+          key?: string
+          label: string
+          color?: string
+          sort_order?: number
+          is_active?: boolean
+          is_system?: boolean
+          created_at?: string
+        }
+        Update: {
+          key?: string
+          label?: string
+          color?: string
+          sort_order?: number
+          is_active?: boolean
+          is_system?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
       people: {
         Row: {
           id: number
@@ -1036,13 +1084,7 @@ export type Database = {
           state: string | null
           tag_ids: number[]
           checks: Record<string, { at: string | null; by: number | null }>
-          status:
-            | 'new'
-            | 'contacted'
-            | 'trial_scheduled'
-            | 'trial_completed'
-            | 'converted'
-            | 'lost'
+          status: string
           children: { name: string; age: number; phone: string | null }[]
           notes: string | null
           follow_ups: { date: string; note: string }[]
@@ -1063,13 +1105,7 @@ export type Database = {
           state?: string | null
           tag_ids?: number[]
           checks?: Record<string, boolean | { at: string | null; by: number | null }>
-          status?:
-            | 'new'
-            | 'contacted'
-            | 'trial_scheduled'
-            | 'trial_completed'
-            | 'converted'
-            | 'lost'
+          status?: string
           children?: { name: string; age: number; phone: string | null }[]
           notes?: string | null
           follow_ups?: { date: string; note: string }[]
@@ -1090,13 +1126,7 @@ export type Database = {
           state?: string | null
           tag_ids?: number[]
           checks?: Record<string, boolean | { at: string | null; by: number | null }>
-          status?:
-            | 'new'
-            | 'contacted'
-            | 'trial_scheduled'
-            | 'trial_completed'
-            | 'converted'
-            | 'lost'
+          status?: string
           children?: { name: string; age: number; phone: string | null }[]
           notes?: string | null
           follow_ups?: { date: string; note: string }[]
@@ -1799,6 +1829,12 @@ export type Database = {
           failed: number
           replied: number
         }[]
+      }
+      reorder_lead_stages: {
+        Args: {
+          p_keys: string[]
+        }
+        Returns: undefined
       }
       reorder_programmes: {
         Args: {

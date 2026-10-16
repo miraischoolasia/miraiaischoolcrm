@@ -5,6 +5,7 @@ import { BrandLogo } from './BrandLogo'
 import { brand } from '../lib/brand'
 import miraiSeal from '../assets/mirai-seal-logo.png'
 import mascotEggy from '../assets/mascot-eggy.png'
+import { BrandMascot } from './BrandMascot'
 import {
   fetchPublicForm,
   notifyFormSubmission,
@@ -241,7 +242,9 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
       }
     })
     // The thank-you picture is only needed later; fetch it quietly meanwhile.
-    new Image().src = mascotEggy
+    if (brand.usesMiraiArt) {
+      new Image().src = mascotEggy
+    }
     return () => {
       cancelled = true
     }
@@ -465,7 +468,7 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
       )}
       {form && outcome?.kind === 'redirecting' && redirectStuck && (
         <div role="status" className="flex flex-col items-center gap-4 py-6 text-center">
-          <img src={mascotEggy} alt="" aria-hidden="true" className="h-28 w-auto" />
+          <BrandMascot name="eggy" className="h-28 w-auto" />
           <CheckCircle size={28} weight="fill" className="text-emerald-500" aria-hidden="true" />
           <p className="text-sm text-slate-800">{form.settings.successMessage || 'Thank you!'}</p>
           <a
@@ -510,7 +513,7 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
       )}
       {form && outcome?.kind === 'message' && (
         <div role="status" className="flex flex-col items-center gap-3 py-2 text-center">
-          <img src={mascotEggy} alt="" aria-hidden="true" className="h-32 w-auto" />
+          <BrandMascot name="eggy" className="h-32 w-auto" />
           <CheckCircle size={28} weight="fill" className="text-emerald-500" aria-hidden="true" />
           <p className="text-sm text-slate-800">{outcome.text}</p>
           {preview && (

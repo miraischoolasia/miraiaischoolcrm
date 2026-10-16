@@ -1,7 +1,6 @@
 import type {
   AgeGroup,
   FilterKey,
-  LeadStatus,
   PerformanceMetricKey,
   ProgramLevel,
   ReviewRemarkField,
@@ -84,14 +83,8 @@ export const programLevelOptions: ProgramLevel[] = [
   'Software Engineer',
 ]
 
-export const leadStatusOptions: Array<{ key: LeadStatus; label: string }> = [
-  { key: 'new', label: 'New' },
-  { key: 'contacted', label: 'Contacted' },
-  { key: 'trial_scheduled', label: 'Trial Scheduled' },
-  { key: 'trial_completed', label: 'Trial Completed' },
-  { key: 'converted', label: 'Converted' },
-  { key: 'lost', label: 'Lost' },
-]
+// The stages a lead can be in: the school's own (see leadStages.ts).
+export { leadStatusOptions } from './leadStages'
 
 export const leadChildAgeOptions = Array.from({ length: 15 }, (_, index) => index + 4)
 

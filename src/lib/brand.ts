@@ -6,6 +6,7 @@ const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
 
 const customName = text(import.meta.env.VITE_BRAND_NAME)
 const logoUrl = text(import.meta.env.VITE_BRAND_LOGO_URL)
+const faviconUrl = text(import.meta.env.VITE_BRAND_FAVICON_URL)
 
 export const brand = {
   // Shown on the sign-in page, the sidebar, forms, reports and the default messages.
@@ -16,4 +17,8 @@ export const brand = {
   logo: logoUrl || (customName ? null : miraiLogo),
   // The pink seal and mascot of the public form belong to Mirai only.
   usesMiraiArt: !customName,
+  // What the yearly membership fee next to the Account Fee is called (Mirai's is the Mirai Club).
+  clubName: text(import.meta.env.VITE_BRAND_CLUB_NAME) || (customName ? 'Membership' : 'Mirai Club'),
+  // The tab icon: another brand's own picture (VITE_BRAND_FAVICON_URL, else its logo), or none; null for Mirai's.
+  favicon: customName ? faviconUrl || logoUrl || null : null,
 }

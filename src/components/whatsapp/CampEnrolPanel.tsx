@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { brand } from '../../lib/brand'
 import { useLeadEnrolment } from '../../hooks/useLeadEnrolment'
 import { formatDate } from '../../domain/studentStatus'
 import { buildCampMessage } from '../../lib/enrolMessage'
@@ -304,7 +305,7 @@ export function CampEnrolPanel({ lead, crm, userName, onWriteMessage, forStudent
                 </label>
                 {plan && (
                   <p className="text-slate-500">
-                    {plan.classCount} classes, until {formatDate(plan.endDate)}. No Account Fee or Mirai Club.
+                    {plan.classCount} classes, until {formatDate(plan.endDate)}. No Account Fee or {brand.clubName}.
                   </p>
                 )}
                 <Problem text={problem} />

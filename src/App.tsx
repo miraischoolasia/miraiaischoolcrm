@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { brand } from './lib/brand'
 import type { Session } from '@supabase/supabase-js'
 import type {
   EventApi,
@@ -13,7 +14,7 @@ import listPlugin from '@fullcalendar/list'
 import rrulePlugin from '@fullcalendar/rrule'
 import timeGridPlugin from '@fullcalendar/timegrid'
 import { BrandLogo } from './components/BrandLogo'
-import mascotEggy from './assets/mascot-eggy.png'
+import { BrandMascot } from './components/BrandMascot'
 import { malaysiaHolidayEvents } from './lib/holidays'
 import {
   CalendarBlank,
@@ -185,6 +186,8 @@ import { TeacherModal } from './components/modals/TeacherModal'
 import { DeleteTeacherModal } from './components/modals/DeleteTeacherModal'
 import { LeadModal } from './components/modals/LeadModal'
 import { LeadOptionsModal } from './components/modals/LeadOptionsModal'
+import { LeadStagesModal } from './components/modals/LeadStagesModal'
+import { useLeadStages } from './hooks/useLeadStages'
 import { PackagesModal, type PackageDraft } from './components/modals/PackagesModal'
 import { ChangePackageModal, type PackageChange } from './components/modals/ChangePackageModal'
 import {
@@ -298,6 +301,7 @@ function App() {
   // Lead Source and PIC names the admin manages.
   const [leadOptions, setLeadOptions] = useState<LeadOption[]>([])
   const [isLeadOptionsOpen, setIsLeadOptionsOpen] = useState(false)
+  const [isLeadStagesOpen, setIsLeadStagesOpen] = useState(false)
   const [packages, setPackages] = useState<Package[]>([])
   const [isPackagesOpen, setIsPackagesOpen] = useState(false)
   const [isAssignPackagesOpen, setIsAssignPackagesOpen] = useState(false)
@@ -671,6 +675,8 @@ function App() {
   const leadChannels = useLeadChannels(Boolean(authUserId) && can('leads'))
   // The courses the school signs parents up for (Programmes page); the Inbox and the class form read them.
   const programmes = useProgrammes({ enabled: Boolean(authUserId) && can('leads') })
+  // The stages leads go through (Leads page: Manage stages). Loading them fills the list every stage picker reads.
+  const leadStages = useLeadStages({ enabled: Boolean(authUserId) && can('leads') })
   // Same rule as can_view_classes(): any class module shows every class.
   // Without one, a teacher sees only their own classes.
   const seesAllClasses = can('calendar') || can('classrooms') || can('students')
@@ -1856,8 +1862,8 @@ function App() {
       return null
     }
     return pkg.includesFees
-      ? `Account Fee and Mirai Club run for a year, to ${formatDate(createStudentFormState.accountFeeExpiryDate)}.`
-      : 'No Account Fee or Mirai Club for this package.'
+      ? `Account Fee and ${brand.clubName} run for a year, to ${formatDate(createStudentFormState.accountFeeExpiryDate)}.`
+      : `No Account Fee or ${brand.clubName} for this package.`
   }
 
   // A renewal: the package sets the classes and lesson dates. Fee changes
@@ -1893,7 +1899,7 @@ function App() {
       planFeeChange(pkg, studentFormState.startDate, studentFormState.lessonExpiryDate, current, history)
     return [
       { label: 'Account Fee', change: plan(selectedStudent.accountFeeExpiryDate) },
-      { label: 'Mirai Club', change: plan(selectedStudent.miraiClubExpiryDate) },
+      { label: brand.clubName, change: plan(selectedStudent.miraiClubExpiryDate) },
     ].filter((entry): entry is { label: string; change: FeeChange } => entry.change !== null)
   }
 
@@ -1913,15 +1919,15 @@ function App() {
       return null
     }
     if (!pkg.includesFees) {
-      return 'No Account Fee or Mirai Club for this package; their dates stay as they are.'
+      return `No Account Fee or ${brand.clubName} for this package; their dates stay as they are.`
     }
     const changes = getRenewalFeeChanges()
     if (changes.length === 0) {
-      return 'Account Fee and Mirai Club already cover this package.'
+      return `Account Fee and ${brand.clubName} already cover this package.`
     }
     return changes.some(({ change }) => change.kind === 'new')
-      ? 'Account Fee / Mirai Club have run out. You will be asked on save whether to start a new year.'
-      : 'This package goes past the Account Fee / Mirai Club year. You will be asked on save whether to extend them.'
+      ? `Account Fee / ${brand.clubName} have run out. You will be asked on save whether to start a new year.`
+      : `This package goes past the Account Fee / ${brand.clubName} year. You will be asked on save whether to extend them.`
   }
 
   function openStudentRenewal(studentId: number) {
@@ -3011,7 +3017,7 @@ function App() {
     }
 
     if (!isPreviewStudent && !createStudentFormState.miraiClubExpiryDate) {
-      setCreateStudentSaveError('Please select the Mirai Club expiry date.')
+      setCreateStudentSaveError(`Please select the ${brand.clubName} expiry date.`)
       return
     }
 
@@ -5678,7 +5684,7 @@ function App() {
               .map((item) => renderDesktopNavButton(item))}
           </nav>
 
-          {!isSidebarCollapsed && (
+          {!isSidebarCollapsed && brand.usesMiraiArt && (
             <div className="border-t border-white/10 px-6 py-5 text-xs text-white/50">
               Phase 4 attendance flow - mobile ready
             </div>
@@ -5837,15 +5843,10 @@ function App() {
           <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-4 lg:px-5">
             {loadError && (
               <section className="flex items-center gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
-                <img
-                  src={mascotEggy}
-                  alt=""
-                  aria-hidden="true"
-                  className="h-16 w-auto shrink-0"
-                />
+                <BrandMascot name="eggy" className="h-16 w-auto shrink-0" />
                 <div>
                   <div className="font-heading text-sm font-bold text-amber-900">
-                    Eggy hit a snag
+                    {brand.usesMiraiArt ? 'Eggy hit a snag' : 'Something went wrong'}
                   </div>
                   <div className="mt-0.5">{loadError}</div>
                 </div>
@@ -6345,6 +6346,7 @@ function App() {
                 deletingLeadId={deletingLeadId}
                 leadOptions={leadOptions}
                 onOpenLeadOptions={() => setIsLeadOptionsOpen(true)}
+                onOpenStages={isAdmin ? () => setIsLeadStagesOpen(true) : undefined}
                 leadIdsWithForms={leadIdsWithForms}
                 onOpenFormAnswers={openLeadFormAnswers}
                 onToggleCheck={handleToggleLeadCheck}
@@ -6555,6 +6557,8 @@ function App() {
           onSetActive={(pkg, isActive) => void handleSetPackageActive(pkg, isActive)}
         />
       )}
+
+      {isLeadStagesOpen && <LeadStagesModal state={leadStages} onClose={() => setIsLeadStagesOpen(false)} />}
 
       {isLeadOptionsOpen && (
         <LeadOptionsModal

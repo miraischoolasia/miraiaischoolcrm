@@ -2,9 +2,6 @@ import { DownloadSimple, Trash, X } from '@phosphor-icons/react'
 import { leadStatusOptions } from '../lib/constants'
 import type { LeadBulkAction, LeadOption, LeadStatus } from '../types/domain'
 
-// Converting needs a student record made, so it is never done in bulk.
-const bulkStageOptions = leadStatusOptions.filter((option) => option.key !== 'converted')
-
 const selectClass =
   'rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#fc0c97]'
 
@@ -91,7 +88,8 @@ export function LeadBulkBar({
               className={selectClass}
             >
               <option value="">Change stage...</option>
-              {bulkStageOptions.map((option) => (
+              {/* Converting needs a student record made, so it is never done in bulk. */}
+              {leadStatusOptions.filter((option) => option.key !== 'converted').map((option) => (
                 <option key={option.key} value={option.key}>
                   {option.label}
                 </option>

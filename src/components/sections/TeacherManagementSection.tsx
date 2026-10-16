@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { cn } from '../../lib/cn'
 import { SummaryBar } from '../SummaryBar'
-import mascotGordo from '../../assets/mascot-gordo.png'
+import { BrandMascot } from '../BrandMascot'
 import { describePermissions } from '../../lib/permissions'
 import type { Teacher } from '../../types/domain'
 import {
@@ -130,7 +130,7 @@ export function TeacherManagementSection({
 
         {!isLoading && filteredTeachers.length === 0 && (
           <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
-            <img src={mascotGordo} alt="" aria-hidden="true" className="h-24 w-auto" />
+            <BrandMascot name="gordo" className="h-24 w-auto" />
             <p className="text-sm text-slate-500">
               {teachers.length === 0
                 ? 'No accounts yet.'

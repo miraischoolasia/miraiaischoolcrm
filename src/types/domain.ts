@@ -44,13 +44,8 @@ export type LeadBulkAction =
   | { type: 'tag-remove'; tagId: number }
   | { type: 'delete' }
 
-export type LeadStatus =
-  | 'new'
-  | 'contacted'
-  | 'trial_scheduled'
-  | 'trial_completed'
-  | 'converted'
-  | 'lost'
+// The key of one of the school's lead stages ('new', 'converted' and 'lost' always exist; the school adds its own).
+export type LeadStatus = string
 export type AgeGroup =
   | '6-8 Years Old'
   | '9-11 Years Old'

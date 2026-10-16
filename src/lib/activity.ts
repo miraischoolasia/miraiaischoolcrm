@@ -1,4 +1,5 @@
 import { formatDate } from '../domain/studentStatus'
+import { brand } from './brand'
 import { leadStatusOptions } from './constants'
 import { describePermissions, parseAccountPermissions } from './permissions'
 import type { AdminActivity } from '../types/domain'
@@ -136,7 +137,7 @@ export function describeActivity(activity: AdminActivity, names: ActivityNames):
       note(Number(d.classes_added) > 0 ? `+${text(d.classes_added)} classes` : '')
       note(d.lesson_expiry ? `Lessons until ${date(d.lesson_expiry)}` : '')
       note(d.account_fee_expiry ? `Account Fee until ${date(d.account_fee_expiry)}` : '')
-      note(d.mirai_club_expiry ? `Mirai Club until ${date(d.mirai_club_expiry)}` : '')
+      note(d.mirai_club_expiry ? `${brand.clubName} until ${date(d.mirai_club_expiry)}` : '')
       return { title: `Renewed ${label}`, changes, notes }
     case 'student_package_corrected':
       change('Package', text(d.previous_package), text(d.new_package))

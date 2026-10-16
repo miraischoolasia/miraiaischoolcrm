@@ -4,6 +4,7 @@ import { CaretLeft, CaretRight, PencilSimple, Phone } from '@phosphor-icons/reac
 import { cn } from '../lib/cn'
 import { getTodayString } from '../domain/studentStatus'
 import { leadStatusOptions } from '../lib/constants'
+import { stageStyle } from '../lib/leadStages'
 import type { Lead, LeadChild, LeadStatus } from '../types/domain'
 
 function formatChildren(children: LeadChild[]) {
@@ -17,15 +18,6 @@ function formatChildren(children: LeadChild[]) {
 
 // Each column shows this many leads at a time, with its own pager.
 export const BOARD_PAGE_SIZE = 15
-
-const columnAccentClass: Record<LeadStatus, string> = {
-  new: 'border-t-slate-400',
-  contacted: 'border-t-sky-400',
-  trial_scheduled: 'border-t-amber-400',
-  trial_completed: 'border-t-violet-400',
-  converted: 'border-t-emerald-400',
-  lost: 'border-t-red-400',
-}
 
 function getReminderBadge(lead: Lead, todayString: string) {
   const soonCutoff = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10)
@@ -163,7 +155,7 @@ export function LeadKanbanBoard({
             }}
             className={cn(
               'flex w-72 shrink-0 flex-col rounded-2xl border-t-4 bg-slate-50 transition',
-              columnAccentClass[stage.key],
+              stageStyle(stage.key).accent,
               dragOverStage === stage.key && 'bg-[#fff1f8] ring-2 ring-[#fc0c97]',
             )}
           >

@@ -1,4 +1,5 @@
 import { X } from '@phosphor-icons/react'
+import { brand } from '../../lib/brand'
 import { ModalShell } from '../ModalShell'
 import { PackagePicker } from '../PackagePicker'
 import { formatDate } from '../../domain/studentStatus'
@@ -147,7 +148,7 @@ export function StudentRenewalModal({
 
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">
-              New Mirai Club Expiry Date
+              New {brand.clubName} Expiry Date
             </span>
             <input
               type="date"

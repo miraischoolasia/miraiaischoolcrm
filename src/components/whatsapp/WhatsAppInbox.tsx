@@ -31,6 +31,10 @@ import {
 import { hoaSlotLinesForAi } from '../../lib/hoaSlots'
 import { ChatPanel } from './ChatPanel'
 import { ConversationList } from './ConversationList'
+import { ChannelPicturesDialog, type ChannelPictureRow } from './ChannelPicturesDialog'
+import type { ChannelInfo } from './ChannelBadge'
+import { useChannelAvatars } from '../../hooks/useChannelAvatars'
+import { channelKeyOf, facebookPictureUrl } from '../../lib/channelAvatars'
 import { useQuickReplies } from '../../hooks/useQuickReplies'
 import { useAutomationQueue } from '../../hooks/useAutomationQueue'
 import { needsApproval, type QueueItem } from '../../lib/automationQueue'
@@ -119,7 +123,12 @@ export function WhatsAppInbox({
   // opens on Messenger. After that, or after anybody picked a part, it is left alone.
   const categoryDecided = useRef(false)
   const [socialInboxNames, setSocialInboxNames] = useState<Map<number, string>>(new Map())
+  // The Facebook Page id of an inbox that has one, to fetch the Page's picture.
+  const [inboxPageIds, setInboxPageIds] = useState<Map<number, string>>(new Map())
   const askedInboxNames = useRef(false)
+  // The pictures an admin uploaded for the Pages; the Pages window sets them.
+  const channelAvatars = useChannelAvatars(active)
+  const [managingChannels, setManagingChannels] = useState(false)
   const [managingNumbers, setManagingNumbers] = useState(false)
   const [inboxList, setInboxList] = useState<{ id: number; name: string }[]>([])
   const [search, setSearch] = useState('')
@@ -696,7 +705,12 @@ export function WhatsAppInbox({
     askedInboxNames.current = true
     client
       .listInboxes()
-      .then((list) => setSocialInboxNames(new Map(list.map((entry) => [entry.id, entry.name]))))
+      .then((list) => {
+        setSocialInboxNames(new Map(list.map((entry) => [entry.id, entry.name])))
+        setInboxPageIds(
+          new Map(list.flatMap((entry) => (entry.pageId ? [[entry.id, entry.pageId] as [number, string]] : []))),
+        )
+      })
       .catch(() => undefined)
   }, [category, client])
   const channelChoices = useMemo(() => {
@@ -709,6 +723,54 @@ export function WhatsAppInbox({
     const word = category === 'instagram' ? 'Instagram' : 'Messenger'
     return ids.map((id, index) => ({ inboxId: id, label: socialInboxNames.get(id) ?? `${word} ${index + 1}` }))
   }, [category, numberChoices, categoryChats, socialInboxNames])
+  // The channel a chat came through: WhatsApp, or a Messenger Page / Instagram account with its picture (the one an
+  // admin uploaded, else the Page's own from Facebook).
+  const channelKeyFor = useCallback((conversation: ChatwootConversation) => {
+    const page = conversation.meta.sender.additional_attributes?.ghl_page_name
+    return channelKeyOf(conversation.inbox_id, typeof page === 'string' ? page : null)
+  }, [])
+  const channelOf = useCallback(
+    (conversation: ChatwootConversation): ChannelInfo | null => {
+      const social = socialKindOf(conversation.meta.channel, conversation.meta.sender)
+      if (!social) {
+        return { kind: 'whatsapp', name: null, avatar: null }
+      }
+      const page = conversation.meta.sender.additional_attributes?.ghl_page_name
+      const pageId = conversation.inbox_id === undefined ? undefined : inboxPageIds.get(conversation.inbox_id)
+      return {
+        kind: social,
+        name: (typeof page === 'string' ? page : null) ?? (conversation.inbox_id === undefined ? null : (socialInboxNames.get(conversation.inbox_id) ?? null)),
+        avatar:
+          channelAvatars.avatars.get(channelKeyFor(conversation)) ??
+          channelAvatars.avatars.get(channelKeyOf(conversation.inbox_id)) ??
+          (pageId ? facebookPictureUrl(pageId) : null),
+      }
+    },
+    [channelAvatars.avatars, channelKeyFor, inboxPageIds, socialInboxNames],
+  )
+  const channelRows = useMemo<ChannelPictureRow[]>(() => {
+    const rows = new Map<string, ChannelPictureRow>()
+    for (const conversation of inbox.conversations) {
+      const social = socialKindOf(conversation.meta.channel, conversation.meta.sender)
+      if (!social) {
+        continue
+      }
+      const key = channelKeyFor(conversation)
+      if (rows.has(key)) {
+        continue
+      }
+      const info = channelOf(conversation)
+      const uploaded = channelAvatars.avatars.get(key) ?? null
+      rows.set(key, {
+        key,
+        kind: social,
+        name: info?.name ?? `${social === 'instagram' ? 'Instagram' : 'Messenger'} ${rows.size + 1}`,
+        auto: uploaded ? null : (info?.avatar ?? null),
+        uploaded,
+      })
+    }
+    return [...rows.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }, [inbox.conversations, channelAvatars.avatars, channelKeyFor, channelOf])
   const changeCategory = useCallback(
     (next: InboxCategory) => {
       categoryDecided.current = true
@@ -966,6 +1028,8 @@ export function WhatsAppInbox({
         numberChoices={channelChoices}
         onInbox={setInboxFilter}
         onManageNumbers={numbersView?.isAdmin ? openNumbers : undefined}
+        channelOf={channelOf}
+        onManageChannels={numbersView?.isAdmin ? () => setManagingChannels(true) : undefined}
       />
 
       {inbox.selected ? (
@@ -1130,6 +1194,14 @@ export function WhatsAppInbox({
             }
             return null
           }}
+        />
+      )}
+      {managingChannels && (
+        <ChannelPicturesDialog
+          channels={channelRows}
+          onSave={channelAvatars.save}
+          onRemove={channelAvatars.remove}
+          onClose={() => setManagingChannels(false)}
         />
       )}
       {managingNumbers && numbersView && (

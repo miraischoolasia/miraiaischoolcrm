@@ -12,7 +12,7 @@ import {
 } from '../../lib/studentRows'
 import type { StudentParent } from '../../lib/studentParents'
 import { RowActionsMenu, type RowAction } from '../RowActionsMenu'
-import mascotGordo from '../../assets/mascot-gordo.png'
+import { BrandMascot } from '../BrandMascot'
 import type {
   Classroom,
   FilterKey,
@@ -332,7 +332,7 @@ export function StudentDashboardSection({
 
         {!isLoading && visibleRows.length === 0 && (
           <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
-            <img src={mascotGordo} alt="" aria-hidden="true" className="h-24 w-auto" />
+            <BrandMascot name="gordo" className="h-24 w-auto" />
             <p className="max-w-sm text-sm text-slate-500">
               {isFiltered
                 ? 'No students match. Try clearing the search or the filters.'

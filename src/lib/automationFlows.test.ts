@@ -414,21 +414,21 @@ describe('after-the-event messages and the new triggers', () => {
     expect(stage).toMatchObject({ type: 'condition', kind: 'stage', stages: ['new'] })
   })
 
-  it('reads the new blocks and the after flag back, dropping unknown stages', () => {
+  it('reads the new blocks and the after flag back, keeping the stages the school made and dropping what is not a stage', () => {
     const graph = parseGraph({
       trigger: { x: 0, y: 0 },
       nodes: [
         { id: 'm1', type: 'message', mins: 5, text: 'Hi', after: true },
         { id: 'm2', type: 'message', mins: 5, text: 'Hi', after: 'yes' },
         { id: 'h', type: 'condition', kind: 'hours', max: 3 },
-        { id: 's', type: 'condition', kind: 'stage', stages: ['new', 'bogus', 7] },
+        { id: 's', type: 'condition', kind: 'stage', stages: ['new', 'stage_ab12cd34ef', 7, ''] },
       ],
       edges: [],
     })
     expect(graph.nodes[0]).toMatchObject({ id: 'm1', after: true })
     expect('after' in graph.nodes[1]).toBe(false)
     expect(graph.nodes[2]).toMatchObject({ kind: 'hours', max: 3 })
-    expect(graph.nodes[3]).toMatchObject({ kind: 'stage', stages: ['new'] })
+    expect(graph.nodes[3]).toMatchObject({ kind: 'stage', stages: ['new', 'stage_ab12cd34ef'] })
   })
 })
 
@@ -521,9 +521,9 @@ describe('settings of the whole flow', () => {
       trigger: { x: 0, y: 0 },
       nodes: [],
       edges: [],
-      settings: { stopStages: ['lost', 'bogus', 3], cooldownDays: 30 },
+      settings: { stopStages: ['lost', 'stage_ab12cd34ef', 3, ''], cooldownDays: 30 },
     })
-    expect(graph.settings).toEqual({ stopStages: ['lost'], cooldownDays: 30 })
+    expect(graph.settings).toEqual({ stopStages: ['lost', 'stage_ab12cd34ef'], cooldownDays: 30 })
     expect('settings' in parseGraph({ trigger: {}, nodes: [], edges: [], settings: { cooldownDays: -2 } })).toBe(false)
     expect('settings' in parseGraph({ trigger: {}, nodes: [], edges: [], settings: 'x' })).toBe(false)
   })

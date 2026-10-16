@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Bell, BellSlash, CaretDown, ChatCircleDots, CheckCircle, EnvelopeSimple, FunnelSimple, Lightning, MagnifyingGlass, Phone, Plus, SpeakerHigh, SpeakerSlash, PushPin } from '@phosphor-icons/react'
+import { Bell, BellSlash, CaretDown, ChatCircleDots, CheckCircle, EnvelopeSimple, FunnelSimple, ImageSquare, Lightning, MagnifyingGlass, Phone, Plus, SpeakerHigh, SpeakerSlash, PushPin } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { LeadTagChip } from '../LeadTagChip'
+import { ChannelBadge, type ChannelInfo } from './ChannelBadge'
 import { formatReactionLine, isCheckingReaction, type ReactionPreview } from '../../lib/reactionPreview'
 import { waIdOf } from '../../lib/waActions'
 import type { LeadOption } from '../../types/domain'
@@ -94,11 +95,16 @@ type ConversationListProps = {
   allChannelsLabel?: string
   // WhatsApp numbers: shown on each chat, and a filter when the person sees more than one.
   numberOf?: (conversation: ChatwootConversation) => string | null
+  // Which channel a chat came through (WhatsApp, a Messenger Page, Instagram) and that Page's picture: shown as a
+  // small badge on the chat's picture.
+  channelOf?: (conversation: ChatwootConversation) => ChannelInfo | null
   inboxId?: number | null
   numberChoices?: { inboxId: number; label: string }[]
   onInbox?: (inboxId: number | null) => void
   // Admin: opens the window where numbers are added and given to staff.
   onManageNumbers?: () => void
+  // Admin: opens the window where the Pages' pictures are set.
+  onManageChannels?: () => void
   onSearch: (value: string) => void
   onSelect: (id: number) => void
   onLoadMore: () => void
@@ -168,10 +174,12 @@ export function ConversationList({
   category = 'whatsapp',
   allChannelsLabel = 'All numbers',
   numberOf,
+  channelOf,
   inboxId = null,
   numberChoices = [],
   onInbox,
   onManageNumbers,
+  onManageChannels,
   selectedId,
   nowSeconds,
   overdueCount,
@@ -277,6 +285,18 @@ export function ConversationList({
           >
             <Phone size={20} aria-hidden="true" />
             Numbers
+          </button>
+        )}
+        {onManageChannels && category !== 'whatsapp' && (
+          <button
+            type="button"
+            onClick={onManageChannels}
+            aria-label="Pages"
+            title="The pictures of the Pages your chats come through"
+            className={cn(railButton, 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white')}
+          >
+            <ImageSquare size={20} aria-hidden="true" />
+            Pages
           </button>
         )}
       </nav>
@@ -456,6 +476,7 @@ export function ConversationList({
         )}
         {conversations.map((conversation) => {
           const identity = getChatIdentity(conversation.meta.sender, leadNameOf?.(conversation), conversation.meta.channel)
+          const channel = channelOf?.(conversation) ?? null
           const pic = picOf?.(conversation) ?? null
           const lastMessage = conversation.last_non_activity_message
           const preview = getPreview(conversation)
@@ -483,22 +504,25 @@ export function ConversationList({
                 selected ? 'bg-pink-50' : redRow ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-slate-50',
               )}
             >
-              <span
-                aria-hidden="true"
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700"
-              >
-                {identity.initials}
+              <span className="relative h-9 w-9">
+                <span
+                  aria-hidden="true"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700"
+                >
+                  {identity.initials}
+                </span>
+                {channel && <ChannelBadge info={channel} className="absolute -bottom-1 -right-1" />}
               </span>
               <span className="min-w-0">
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className="truncate text-sm font-semibold text-slate-900">{identity.title}</span>
-                    {socialKindOf(conversation.meta.channel, conversation.meta.sender) === 'messenger' && (
+                    {!channel && socialKindOf(conversation.meta.channel, conversation.meta.sender) === 'messenger' && (
                       <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
                         Messenger
                       </span>
                     )}
-                    {socialKindOf(conversation.meta.channel, conversation.meta.sender) === 'instagram' && (
+                    {!channel && socialKindOf(conversation.meta.channel, conversation.meta.sender) === 'instagram' && (
                       <span className="shrink-0 rounded bg-fuchsia-50 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-700">
                         Instagram
                       </span>

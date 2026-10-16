@@ -1,3 +1,4 @@
+import { brand } from '../lib/brand'
 const warningWindowDays = 14
 
 export type StatusTag = {
@@ -131,7 +132,7 @@ export function getStudentStatus(
   }
 
   if (miraiClubExpiry.expired || miraiClubExpiry.dueSoon) {
-    tags.push({ label: 'Renew Mirai Club', tone: 'critical' })
+    tags.push({ label: `Renew ${brand.clubName}`, tone: 'critical' })
   }
 
   if (tags.length === 0) {
@@ -167,7 +168,7 @@ type StudentStatus = ReturnType<typeof getStudentStatus>
 export function getWorstFee(status: StudentStatus) {
   const fees = [
     { name: 'Account Fee', meta: status.accountFeeExpiry, needsAttention: status.accountFeeNeedsAttention },
-    { name: 'Mirai Club', meta: status.miraiClubExpiry, needsAttention: status.miraiClubNeedsAttention },
+    { name: brand.clubName, meta: status.miraiClubExpiry, needsAttention: status.miraiClubNeedsAttention },
   ].filter((fee) => fee.needsAttention)
 
   if (fees.length === 0) {
