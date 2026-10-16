@@ -122,3 +122,27 @@ describe('MessageBubble reactions, quotes, edits and deletes', () => {
     expect(screen.getByRole('button', { name: 'Remove the star from this message' })).toBeInTheDocument()
   })
 })
+
+describe('MessageBubble links to files', () => {
+  const voiceUrl = 'https://www.rearmcrm.com/conversations-assets/location/L/conversations/C/8dc394a5.mp4'
+
+  it('shows a link to a voice message or video as a player, not as the address', () => {
+    const { container } = show({}, {}, { ...ours, message_type: 0, content: voiceUrl })
+
+    expect(container.querySelector('video')).toHaveAttribute('src', voiceUrl)
+    expect(screen.queryByText(voiceUrl)).not.toBeInTheDocument()
+  })
+
+  it('shows a link to a photo as the photo, and keeps the words beside it', () => {
+    const { container } = show({}, {}, { ...ours, message_type: 0, content: 'Here it is\nhttps://x.test/p.png' })
+
+    expect(container.querySelector('img[src="https://x.test/p.png"]')).not.toBeNull()
+    expect(screen.getByText('Here it is')).toBeInTheDocument()
+  })
+
+  it('leaves an ordinary web address as text', () => {
+    show({}, {}, { ...ours, message_type: 0, content: 'https://x.test/page' })
+
+    expect(screen.getByText('https://x.test/page')).toBeInTheDocument()
+  })
+})

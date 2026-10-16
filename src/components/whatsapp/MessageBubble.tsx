@@ -12,6 +12,8 @@ import { isSticker, parseSpecialMessage, type ContactCard, type LocationCard, ty
 import type { Reaction } from '../../lib/waActions'
 import { Avatar } from './Avatar'
 import { WaveformPlayer } from './WaveformPlayer'
+import { LinkedMediaView } from './LinkedMediaView'
+import { splitLinkedMedia } from '../../lib/linkedMedia'
 
 function fileName(attachment: ChatwootAttachment) {
   const last = attachment.data_url.split('/').pop() ?? 'file'
@@ -195,6 +197,8 @@ export function MessageBubble({
   const text = (extras.editedText ?? message.content ?? '').trim()
   const deletedForEveryone = extras.deletedForEveryone === true
   const special = parseSpecialMessage(text)
+  // A photo / voice message / video that came as a link in the text is shown as the file, not as the address.
+  const linked = !special && text ? splitLinkedMedia(text) : { media: [], rest: text }
   // A sticker stands alone, without a bubble behind it.
   const stickerOnly = !text && message.attachments?.length === 1 && isSticker(message.attachments[0])
 
@@ -339,7 +343,14 @@ export function MessageBubble({
         {!deletedForEveryone && editing === null && special?.kind === 'location' && <LocationView card={special} />}
         {!deletedForEveryone && editing === null && special?.kind === 'contact' && <ContactView card={special} />}
         {!deletedForEveryone && editing === null && special?.kind === 'poll' && <PollView card={special} />}
-        {!deletedForEveryone && editing === null && text && !special && <div className="whitespace-pre-wrap break-words">{text}</div>}
+        {!deletedForEveryone && editing === null && linked.media.length > 0 && (
+          <div className="mb-1 space-y-1">
+            {linked.media.map((item) => (
+              <LinkedMediaView key={item.url} item={item} />
+            ))}
+          </div>
+        )}
+        {!deletedForEveryone && editing === null && linked.rest && !special && <div className="whitespace-pre-wrap break-words">{linked.rest}</div>}
         {!deletedForEveryone && editing !== null && (
           <div className="space-y-1.5">
             <textarea

@@ -1,5 +1,6 @@
 import type { StudentKind } from './studentLink'
 import { withoutEditHeading } from './editCopy'
+import { linkedMediaLabel } from './linkedMedia'
 
 // What the WhatsApp inbox knows about a chat, kept apart from the screens so the
 // rules (which tab a chat sits in, whose number to show) are easy to test.
@@ -386,7 +387,8 @@ export function getPreview(conversation: Pick<ChatwootConversation, 'last_non_ac
   }
   const text = withoutEditHeading(message.content).trim()
   if (text) {
-    return text
+    // A message that is only a link to a photo, voice message or video says what it is.
+    return linkedMediaLabel(text) ?? text
   }
   const attachment = message.attachments?.[0]
   return attachment ? attachmentLabel(attachment) : ''
