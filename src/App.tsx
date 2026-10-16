@@ -28,6 +28,7 @@ import {
   GraduationCap,
   IdentificationBadge,
   Brain,
+  BookBookmark,
   Lightning,
   Megaphone,
   WarningCircle,
@@ -159,6 +160,7 @@ import { TeacherManagementSection } from './components/sections/TeacherManagemen
 import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
 import { AiKnowledgeSection } from './components/sections/AiKnowledgeSection'
+import { ProgrammesSection } from './components/sections/ProgrammesSection'
 import { AutomationsSection } from './components/sections/AutomationsSection'
 import { WhatsAppOpenProvider, type WhatsAppTarget } from './components/WhatsAppLink'
 import type { LeadFormValues, WhatsAppCrm } from './components/whatsapp/crm'
@@ -684,6 +686,8 @@ function App() {
     if (can('forms')) sections.push('forms')
     if (isTeacherAccount || can('calendar')) sections.push('calendar')
     if (isTeacherAccount || can('classrooms')) sections.push('classrooms')
+    // The courses the school signs parents up for: an admin makes them, so the page is the admin's.
+    if (isAdmin) sections.push('programmes')
     if (can('students')) sections.push('students')
     if (isAdmin) sections.push('teachers')
     if (can('activity')) sections.push('activity')
@@ -1620,6 +1624,7 @@ function App() {
       { key: 'forms', label: 'Forms', icon: ClipboardText, group: 'marketing' },
       { key: 'calendar', label: 'Calendar', icon: CalendarBlank },
       { key: 'classrooms', label: 'My Classroom', icon: Chalkboard },
+      { key: 'programmes', label: 'Programmes', icon: BookBookmark },
       { key: 'students', label: 'Students', icon: GraduationCap },
       { key: 'teachers', label: 'My Team', icon: IdentificationBadge },
       { key: 'activity', label: 'Activity Log', icon: ClockCounterClockwise },
@@ -5665,6 +5670,8 @@ function App() {
                     ? 'Calendar Board'
                     : activeSection === 'classrooms'
                       ? 'Classroom Board'
+                      : activeSection === 'programmes'
+                        ? 'Settings'
                       : activeSection === 'teachers'
                         ? 'Team Board'
                         : activeSection === 'leads'
@@ -5686,6 +5693,8 @@ function App() {
                     ? 'Classes, Attendance & Timetable'
                     : activeSection === 'classrooms'
                       ? 'My Classroom'
+                      : activeSection === 'programmes'
+                        ? 'Programmes'
                       : activeSection === 'teachers'
                         ? 'My Team'
                         : activeSection === 'leads'
@@ -6350,6 +6359,8 @@ function App() {
             )}
 
             {visibleSection === 'ai-knowledge' && <AiKnowledgeSection canEdit={isAdmin} />}
+
+            {visibleSection === 'programmes' && <ProgrammesSection canEdit={isAdmin} />}
 
             {visibleSection === 'forms' && (
               <FormsSection

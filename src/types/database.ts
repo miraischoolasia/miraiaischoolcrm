@@ -31,6 +31,7 @@ export type Database = {
           notes: string | null
           archived_at: string | null
           zoom_link: string | null
+          programme_id: number | null
           created_at: string
           updated_at: string
         }
@@ -55,6 +56,7 @@ export type Database = {
           notes?: string | null
           archived_at?: string | null
           zoom_link?: string | null
+          programme_id?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -79,6 +81,7 @@ export type Database = {
           notes?: string | null
           archived_at?: string | null
           zoom_link?: string | null
+          programme_id?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -658,6 +661,102 @@ export type Database = {
           link?: string
           added_by?: string | null
           created_at?: string
+        }
+        Relationships: []
+      }
+      programmes: {
+        Row: {
+          id: number
+          name: string
+          legacy_key: 'hoa' | 'camp' | null
+          outcome: 'booking' | 'enrol'
+          message_template: string
+          is_active: boolean
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          legacy_key?: 'hoa' | 'camp' | null
+          outcome?: 'booking' | 'enrol'
+          message_template?: string
+          is_active?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          legacy_key?: 'hoa' | 'camp' | null
+          outcome?: 'booking' | 'enrol'
+          message_template?: string
+          is_active?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      programme_steps: {
+        Row: {
+          id: number
+          programme_id: number
+          sort_order: number
+          kind: 'form' | 'class' | 'receipt' | 'zoom' | 'custom'
+          title: string
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          programme_id: number
+          sort_order?: number
+          kind: 'form' | 'class' | 'receipt' | 'zoom' | 'custom'
+          title: string
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          programme_id?: number
+          sort_order?: number
+          kind?: 'form' | 'class' | 'receipt' | 'zoom' | 'custom'
+          title?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      lead_programme_steps: {
+        Row: {
+          id: number
+          lead_id: number
+          step_id: number
+          done: boolean
+          note: string | null
+          step_date: string | null
+          updated_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          lead_id: number
+          step_id: number
+          done?: boolean
+          note?: string | null
+          step_date?: string | null
+          updated_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          lead_id?: number
+          step_id?: number
+          done?: boolean
+          note?: string | null
+          step_date?: string | null
+          updated_by?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1700,6 +1799,19 @@ export type Database = {
           failed: number
           replied: number
         }[]
+      }
+      reorder_programmes: {
+        Args: {
+          p_ids: number[]
+        }
+        Returns: undefined
+      }
+      reorder_programme_steps: {
+        Args: {
+          p_programme_id: number
+          p_ids: number[]
+        }
+        Returns: undefined
       }
       reorder_ai_knowledge_notes: {
         Args: {

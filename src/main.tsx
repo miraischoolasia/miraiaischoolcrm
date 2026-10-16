@@ -69,6 +69,17 @@ async function start() {
     return
   }
 
+  // Dev server only: /?demo=programmes shows the Programmes page on made-up programmes held in the page.
+  if (import.meta.env.DEV && params.get('demo') === 'programmes') {
+    const { ProgrammesDemo } = await import('./dev/ProgrammesDemo.tsx')
+    root.render(
+      <StrictMode>
+        <ProgrammesDemo />
+      </StrictMode>,
+    )
+    return
+  }
+
   const { default: App } = await import('./App.tsx')
   root.render(
     <StrictMode>
