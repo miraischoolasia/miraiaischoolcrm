@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { ClassSettingsModal } from './ClassSettingsModal'
 import { defaultReviewCriteria } from '../../lib/reviewCriteria'
 import { defaultZoomMeetingOptions } from '../../lib/api'
+import { defaultAttendanceStatuses } from '../../lib/attendanceStatuses'
 import type { ReviewCriterion } from '../../types/domain'
 
 const teamwork: ReviewCriterion = {
@@ -26,6 +27,9 @@ function renderModal(overrides: Partial<Parameters<typeof ClassSettingsModal>[0]
     onSaveCriterion: vi.fn(async () => null),
     onSetCriterionActive: vi.fn(async () => null),
     onMoveCriterion: vi.fn(async () => null),
+    statuses: defaultAttendanceStatuses,
+    onAddStatus: vi.fn(async () => null),
+    onSaveStatus: vi.fn(async () => null),
     onSaveZoomOptions: vi.fn(async () => null),
     ...overrides,
   }
@@ -116,5 +120,29 @@ describe('ClassSettingsModal', () => {
       auto_recording: 'none',
     })
     expect(await screen.findByText('Saved')).toBeInTheDocument()
+  })
+
+  it('adds an attendance status that counts as attended and takes a lesson', async () => {
+    const props = renderModal()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Attendance' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'New status label' }), ' Late ')
+    await userEvent.click(screen.getByRole('checkbox', { name: 'New status attended' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'New status takes a lesson' }))
+    await userEvent.click(screen.getAllByRole('radio', { name: 'violet' }).at(-1)!)
+    await userEvent.click(screen.getByRole('button', { name: 'Add status' }))
+
+    expect(props.onAddStatus).toHaveBeenCalledWith({ label: 'Late', attended: true, deductsLesson: true, color: 'violet' })
+  })
+
+  it('keeps Present on and fixed, and hides another status', async () => {
+    const props = renderModal()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Attendance' }))
+    expect(screen.getByRole('button', { name: 'Hide Present' })).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: 'Present takes a lesson' })).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Hide Leave' }))
+    expect(props.onSaveStatus).toHaveBeenCalledWith(defaultAttendanceStatuses[2], { isActive: false })
   })
 })

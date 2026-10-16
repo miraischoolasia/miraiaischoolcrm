@@ -4,6 +4,13 @@ import { ModalShell } from '../ModalShell'
 import { cn } from '../../lib/cn'
 import { formatDate } from '../../domain/studentStatus'
 import { needsRemark, type ReviewMetric } from '../../lib/reviewCriteria'
+import {
+  attendanceColorStyles,
+  defaultAttendanceStatuses,
+  isAttendedStatus,
+  PRESENT,
+  statusChoices,
+} from '../../lib/attendanceStatuses'
 import { countRatedMetrics, getReviewProgress, isReviewComplete, lowScoreText } from '../../lib/attendance'
 import { createEmptyAttendanceReviewForm } from '../../lib/mappers'
 import { StarRatingInput } from '../StarRatingInput'
@@ -11,6 +18,7 @@ import type {
   AttendanceModalState,
   AttendanceReviewFormState,
   AttendanceStatus,
+  AttendanceStatusOption,
   LessonLogSummary,
   Student,
 } from '../../types/domain'
@@ -39,6 +47,8 @@ type AttendanceModalProps = {
   attendanceReviews: Record<number, AttendanceReviewFormState>
   // The criteria each present student is rated on, in order.
   reviewMetrics: ReviewMetric[]
+  // The school's attendance statuses (Present, Absent, Leave, Late, ...).
+  statusOptions?: AttendanceStatusOption[]
   // A class-wide note from before each student had their own: shown as
   // read-only history and carried along unchanged on an edit.
   attendanceRemark: string
@@ -66,6 +76,7 @@ export function AttendanceModal({
   attendanceStatuses,
   attendanceReviews,
   reviewMetrics,
+  statusOptions = defaultAttendanceStatuses,
   attendanceRemark,
   attendanceSaveError,
   isSavingAttendance,
@@ -81,7 +92,8 @@ export function AttendanceModal({
   const isRosterOnly = isUpcoming || (isViewOnly && !attendanceExistingLog)
 
   const rosterIds = attendanceRoster.map((student) => student.id)
-  const progress = getReviewProgress(rosterIds, attendanceStatuses, attendanceReviews, reviewMetrics)
+  const progress = getReviewProgress(rosterIds, attendanceStatuses, attendanceReviews, reviewMetrics, statusOptions)
+  const choices = statusChoices(statusOptions, Object.values(attendanceStatuses))
   // A new submission opens one student's review at a time, starting with the
   // first one still to review. A submitted report opens every review, as it
   // is there to be read, and each can be closed on its own.
@@ -213,7 +225,7 @@ export function AttendanceModal({
                   type="button"
                   onClick={() => {
                     for (const student of attendanceRoster) {
-                      onSetStatus(student.id, 'present')
+                      onSetStatus(student.id, PRESENT)
                     }
                   }}
                   className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
@@ -226,11 +238,12 @@ export function AttendanceModal({
             <div className="space-y-3">
               {attendanceRoster.map((student) => {
                 const currentStatus =
-                  attendanceStatuses[student.id] ?? 'present'
+                  attendanceStatuses[student.id] ?? PRESENT
+                const attended = isAttendedStatus(statusOptions, currentStatus)
                 const reviewForm =
                   attendanceReviews[student.id] ??
                   createEmptyAttendanceReviewForm()
-                const isOpen = !isRosterOnly && currentStatus === 'present' && openIds.includes(student.id)
+                const isOpen = !isRosterOnly && attended && openIds.includes(student.id)
                 const ratedCount = countRatedMetrics(reviewForm, reviewMetrics)
                 const complete = isReviewComplete(reviewForm, reviewMetrics)
                 const nextPendingId = progress.pendingIds.find((id) => id !== student.id) ?? null
@@ -271,11 +284,9 @@ export function AttendanceModal({
                           aria-label={`Attendance for ${student.name}`}
                           className="ml-auto inline-flex overflow-hidden rounded-xl border border-slate-200"
                         >
-                          {([
-                            ['present', 'Present'],
-                            ['absent', 'Absent'],
-                            ['leave', 'Leave'],
-                          ] as const).map(([value, label]) => {
+                          {choices.map((option) => {
+                            const value = option.key
+                            const label = option.label
                             const active = currentStatus === value
 
                             return (
@@ -286,15 +297,13 @@ export function AttendanceModal({
                                 aria-pressed={active}
                                 onClick={() => {
                                   onSetStatus(student.id, value)
-                                  if (value !== 'present' && openIds.includes(student.id)) {
+                                  if (!option.attended && openIds.includes(student.id)) {
                                     setChosenOpenIds(openIds.filter((id) => id !== student.id))
                                   }
                                 }}
                                 className={cn(
                                   'border-r border-slate-200 px-4 py-1.5 text-sm font-semibold transition last:border-r-0',
-                                  active && value === 'present' && 'bg-emerald-50 text-emerald-700',
-                                  active && value === 'absent' && 'bg-slate-100 text-slate-800',
-                                  active && value === 'leave' && 'bg-amber-50 text-amber-700',
+                                  active && attendanceColorStyles[option.color].button,
                                   !active && 'bg-white text-slate-500 hover:bg-slate-50',
                                   attendanceLocked && 'cursor-not-allowed opacity-70',
                                 )}
@@ -307,7 +316,7 @@ export function AttendanceModal({
                       )}
                     </div>
 
-                    {!isRosterOnly && currentStatus === 'present' && (
+                    {!isRosterOnly && attended && (
                       <button
                         type="button"
                         aria-expanded={isOpen}

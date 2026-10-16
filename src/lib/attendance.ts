@@ -1,6 +1,7 @@
 import { createEmptyAttendanceReviewForm } from './mappers'
 import { needsRemark, type ReviewMetric } from './reviewCriteria'
-import type { AttendanceReviewFormState, AttendanceStatus } from '../types/domain'
+import { defaultAttendanceStatuses, isAttendedStatus, PRESENT } from './attendanceStatuses'
+import type { AttendanceReviewFormState, AttendanceStatus, AttendanceStatusOption } from '../types/domain'
 
 export type AttendanceStatusPayload = {
   student_id: number
@@ -32,16 +33,18 @@ export function buildAttendanceSubmission(
   attendanceReviews: Record<number, AttendanceReviewFormState>,
   studentNameById: Map<number, string>,
   metrics: ReviewMetric[],
+  // The school's statuses: a student needs a review when theirs is attended.
+  statuses: AttendanceStatusOption[] = defaultAttendanceStatuses,
 ): AttendanceSubmissionResult {
   const payload: AttendanceStatusPayload[] = rosterIds.map((studentId) => ({
     student_id: studentId,
-    status: attendanceStatuses[studentId] ?? 'present',
+    status: attendanceStatuses[studentId] ?? PRESENT,
   }))
   const reviewPayload: AttendanceReviewPayload[] = []
 
   for (const studentId of rosterIds) {
-    const status = attendanceStatuses[studentId] ?? 'present'
-    if (status !== 'present') {
+    const status = attendanceStatuses[studentId] ?? PRESENT
+    if (!isAttendedStatus(statuses, status)) {
       continue
     }
 
@@ -102,14 +105,16 @@ export function countRatedMetrics(reviewForm: AttendanceReviewFormState | undefi
   return metrics.filter((metric) => (form.scores[metric.id] ?? null) !== null).length
 }
 
-// Who is present, who has a finished review, and who still needs one.
+// Who was in class (any attended status), who has a finished review, and who
+// still needs one.
 export function getReviewProgress(
   rosterIds: number[],
   attendanceStatuses: Record<number, AttendanceStatus>,
   attendanceReviews: Record<number, AttendanceReviewFormState>,
   metrics: ReviewMetric[],
+  statuses: AttendanceStatusOption[] = defaultAttendanceStatuses,
 ) {
-  const presentIds = rosterIds.filter((id) => (attendanceStatuses[id] ?? 'present') === 'present')
+  const presentIds = rosterIds.filter((id) => isAttendedStatus(statuses, attendanceStatuses[id] ?? PRESENT))
   const doneIds = presentIds.filter((id) => isReviewComplete(attendanceReviews[id], metrics))
   const pendingIds = presentIds.filter((id) => !doneIds.includes(id))
   return { presentIds, doneIds, pendingIds, awayCount: rosterIds.length - presentIds.length }

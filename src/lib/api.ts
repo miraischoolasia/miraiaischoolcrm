@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { defaultReviewCriteria } from './reviewCriteria'
+import { defaultAttendanceStatuses } from './attendanceStatuses'
 import { mapFormRow, mapPublicForm, mapSubmissionRow, suggestSlug } from './forms'
 import {
   mapAdminActivityRow,
@@ -10,6 +11,7 @@ import {
   mapPackageRow,
   mapLessonLogStudentReviewRow,
   mapReviewCriterionRow,
+  mapAttendanceStatusRow,
   mapLessonLogStudentRow,
   mapLessonLogSummaryRow,
   mapScheduleExceptionRow,
@@ -465,7 +467,7 @@ export async function fetchStudentAttendanceRows(studentId: number) {
 
   return data.map((row) => ({
     lessonLogId: row.lesson_log_id,
-    status: row.attendance_status as 'present' | 'absent' | 'leave',
+    status: row.attendance_status,
   }))
 }
 
@@ -564,6 +566,24 @@ export async function fetchReviewCriteriaFromSupabase() {
   }
 
   return data.map(mapReviewCriterionRow)
+}
+
+export async function fetchAttendanceStatusesFromSupabase() {
+  if (!supabase) {
+    return defaultAttendanceStatuses
+  }
+
+  const { data, error } = await supabase
+    .from('attendance_statuses')
+    .select('*')
+    .order('sort_order')
+    .order('key')
+
+  if (error) {
+    throw error
+  }
+
+  return data.map(mapAttendanceStatusRow)
 }
 
 export type ZoomMeetingOptions = {

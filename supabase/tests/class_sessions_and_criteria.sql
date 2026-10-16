@@ -326,5 +326,68 @@ select pg_temp.fails($$select * from public.submit_lesson_attendance(9201, '2026
   '[{"student_id": 9301, "logicalThinkingScore": 3, "codingCreativityScore": 3, "problemSolvingScore": 1, "expressivenessScore": 3, "sustainedFocusScore": 3}]')$$,
   'remark is required', 'old page: a 1-star score still needs its remark');
 
+-- Attendance statuses each school sets (20261021140000) ----------------------
+-- Ali has 5 lessons left here (three present lessons so far).
+reset role;
+select pg_temp.ok((select remaining_hours from public.students where id = 9301) = 5, 'start: 5 lessons left');
+select pg_temp.ok((select string_agg(key, ',' order by sort_order) from public.attendance_statuses) = 'present,absent,leave',
+  'the three usual statuses are there');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select pg_temp.ok((select count(*) from public.attendance_statuses) = 3, 'teacher reads the statuses');
+select pg_temp.fails($$select public.save_attendance_status(null, 'Late', true, true, 'sky', null, true)$$,
+  'only admin', 'teacher cannot add a status');
+select pg_temp.fails($$update public.attendance_statuses set label = 'x'$$, 'permission denied', 'no direct status edit');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select pg_temp.ok((public.save_attendance_status(null, 'Late', true, true, 'sky', null, true)).key = 'late', 'admin adds Late');
+select pg_temp.ok((public.save_attendance_status(null, 'No-show!', false, true, 'rose', null, true)).key = 'no_show', 'admin adds No-show (key from the label)');
+select pg_temp.fails($$select public.save_attendance_status(null, 'late', true, true, 'sky', null, true)$$,
+  'duplicate key', 'two shown statuses cannot share a label');
+select pg_temp.fails($$select public.save_attendance_status('present', 'Present', true, true, 'emerald', null, false)$$,
+  'always stays on', 'Present cannot be hidden');
+select pg_temp.fails($$select public.save_attendance_status('present', 'Present', true, false, 'emerald', null, true)$$,
+  'always stays on', 'Present always takes a lesson');
+
+create function pg_temp.full_review(p_student bigint) returns jsonb language sql as $$
+  select jsonb_build_array(jsonb_build_object('student_id', p_student, 'scores', (
+    select jsonb_agg(jsonb_build_object('criterion_id', id, 'score', 4)) from public.review_criteria where is_active)));
+$$;
+grant execute on function pg_temp.full_review(bigint) to authenticated;
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select pg_temp.fails($$select * from public.submit_lesson_attendance(9201, '2026-09-02', null, '[{"student_id": 9301, "status": "late"}]', '[]')$$,
+  'missing student review', 'Late counts as attended, so it needs a review');
+select * from public.submit_lesson_attendance(9201, '2026-09-02', null, '[{"student_id": 9301, "status": "late"}]', pg_temp.full_review(9301));
+select pg_temp.ok((select remaining_hours from public.students where id = 9301) = 4, 'Late takes one lesson');
+
+select * from public.submit_lesson_attendance(9201, '2026-09-02', null, '[{"student_id": 9301, "status": "absent"}]', '[]');
+select pg_temp.ok((select remaining_hours from public.students where id = 9301) = 5, 'correcting Late to Absent gives the lesson back');
+
+select * from public.submit_lesson_attendance(9201, '2026-09-09', null, '[{"student_id": 9301, "status": "no_show"}]', '[]');
+select pg_temp.ok((select remaining_hours from public.students where id = 9301) = 4
+  and not exists (select 1 from public.lesson_log_student_reviews r join public.lesson_logs l on l.id = r.lesson_log_id
+                  where l.schedule_id = 9201 and l.lesson_date = '2026-09-09'),
+  'No-show takes a lesson without a review');
+select pg_temp.fails($$select * from public.submit_lesson_attendance(9201, '2026-09-23', null, '[{"student_id": 9301, "status": "sick"}]', '[]')$$,
+  'invalid attendance status', 'an unknown status is refused');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select pg_temp.fails($$select public.save_attendance_status('late', 'Late', true, false, 'sky', null, true)$$,
+  'already use this status', 'a used status keeps whether it takes a lesson');
+select pg_temp.ok((public.save_attendance_status('late', 'Came late', null, null, null, null, null)).label = 'Came late',
+  'a used status can be renamed');
+select public.save_attendance_status('no_show', 'No-show', null, null, null, null, false);
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select pg_temp.fails($$select * from public.submit_lesson_attendance(9202, '2026-10-14', null, '[{"student_id": 9302, "status": "no_show"}]', '[]')$$,
+  'invalid attendance status', 'a hidden status is refused on a new lesson');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select * from public.submit_lesson_attendance(9201, '2026-09-09', 'note', '[{"student_id": 9301, "status": "no_show"}]', '[]');
+select pg_temp.ok((select remaining_hours from public.students where id = 9301) = 4,
+  'a correction may keep a hidden status the student already had, without a second deduction');
+
 reset role;
 rollback;

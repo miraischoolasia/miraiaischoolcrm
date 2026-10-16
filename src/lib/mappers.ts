@@ -21,6 +21,8 @@ import type {
   LessonReviewScoreRow,
   ReviewCriterion,
   ReviewCriterionRow,
+  AttendanceStatusOption,
+  AttendanceStatusRow,
   LessonLogSummary,
   LessonLogSummaryRow,
   MakeupPlan,
@@ -309,6 +311,18 @@ export function mapReviewCriterionRow(row: ReviewCriterionRow): ReviewCriterion 
     sortOrder: row.sort_order,
     isActive: row.is_active,
     legacyKey: row.legacy_key,
+  }
+}
+
+export function mapAttendanceStatusRow(row: AttendanceStatusRow): AttendanceStatusOption {
+  return {
+    key: row.key,
+    label: row.label,
+    attended: row.attended,
+    deductsLesson: row.deducts_lesson,
+    color: row.color,
+    sortOrder: row.sort_order,
+    isActive: row.is_active,
   }
 }
 

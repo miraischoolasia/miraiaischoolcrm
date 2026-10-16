@@ -3,14 +3,19 @@ import { Eye, EyeSlash, Plus, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { cn } from '../../lib/cn'
 import type { ZoomMeetingOptions } from '../../lib/api'
-import type { ReviewCriterion } from '../../types/domain'
+import { attendanceColorNames, attendanceColorStyles, PRESENT, sortStatuses } from '../../lib/attendanceStatuses'
+import type { AttendanceStatusOption, ReviewCriterion } from '../../types/domain'
 
 export type ReviewCriterionDraft = Pick<
   ReviewCriterion,
   'name' | 'description' | 'maxScore' | 'remarkRequiredAtOrBelow'
 >
 
-type Tab = 'criteria' | 'zoom'
+export type AttendanceStatusDraft = Pick<AttendanceStatusOption, 'label' | 'attended' | 'deductsLesson' | 'color'>
+
+type StatusChanges = Partial<AttendanceStatusDraft & Pick<AttendanceStatusOption, 'isActive'>>
+
+type Tab = 'criteria' | 'attendance' | 'zoom'
 
 type ClassSettingsModalProps = {
   criteria: ReviewCriterion[]
@@ -21,6 +26,9 @@ type ClassSettingsModalProps = {
   onSaveCriterion: (criterion: ReviewCriterion, draft: ReviewCriterionDraft) => Promise<string | null>
   onSetCriterionActive: (criterion: ReviewCriterion, isActive: boolean) => Promise<string | null>
   onMoveCriterion: (criterion: ReviewCriterion, direction: -1 | 1) => Promise<string | null>
+  statuses: AttendanceStatusOption[]
+  onAddStatus: (draft: AttendanceStatusDraft) => Promise<string | null>
+  onSaveStatus: (status: AttendanceStatusOption, changes: StatusChanges) => Promise<string | null>
   onSaveZoomOptions: (options: ZoomMeetingOptions) => Promise<string | null>
 }
 
@@ -44,6 +52,9 @@ export function ClassSettingsModal({
   onSaveCriterion,
   onSetCriterionActive,
   onMoveCriterion,
+  statuses,
+  onAddStatus,
+  onSaveStatus,
   onSaveZoomOptions,
 }: ClassSettingsModalProps) {
   const [tab, setTab] = useState<Tab>('criteria')
@@ -80,6 +91,7 @@ export function ClassSettingsModal({
           {(
             [
               ['criteria', 'Review criteria'],
+              ['attendance', 'Attendance'],
               ['zoom', 'Zoom'],
             ] as const
           ).map(([key, label]) => (
@@ -164,6 +176,14 @@ export function ClassSettingsModal({
               </div>
             )}
           </>
+        )}
+
+        {tab === 'attendance' && (
+          <AttendanceStatusesForm
+            statuses={statuses}
+            onAdd={(draft) => run(onAddStatus(draft))}
+            onSave={(status, changes) => run(onSaveStatus(status, changes))}
+          />
         )}
 
         {tab === 'zoom' && (
@@ -422,6 +442,185 @@ function ZoomOptionsForm({
         >
           Save Zoom settings
         </button>
+      </div>
+    </div>
+  )
+}
+
+const emptyStatusDraft: AttendanceStatusDraft = { label: '', attended: false, deductsLesson: false, color: 'sky' }
+
+// The statuses a teacher picks from when taking attendance. Present is always
+// there; whether a status counts as attended or takes a lesson cannot change
+// once a lesson used it (the server says so).
+function AttendanceStatusesForm({
+  statuses,
+  onAdd,
+  onSave,
+}: {
+  statuses: AttendanceStatusOption[]
+  onAdd: (draft: AttendanceStatusDraft) => Promise<boolean>
+  onSave: (status: AttendanceStatusOption, changes: StatusChanges) => Promise<boolean>
+}) {
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-slate-500">
+        What a teacher can mark each student as. Attended: the student was in class, so they are rated. Takes a
+        lesson: one class comes off their package.
+      </p>
+      <ul className="space-y-2">
+        {sortStatuses(statuses).map((status) => (
+          <StatusRow
+            key={`${status.key}-${status.label}-${status.attended}-${status.deductsLesson}-${status.color}-${status.isActive}`}
+            status={status}
+            onSave={(changes) => onSave(status, changes)}
+          />
+        ))}
+      </ul>
+      <NewStatusRow onAdd={onAdd} />
+    </div>
+  )
+}
+
+function StatusFields({
+  draft,
+  onChange,
+  label,
+  locked = false,
+}: {
+  draft: AttendanceStatusDraft
+  onChange: (next: AttendanceStatusDraft) => void
+  label: string
+  // Present: its flags never change.
+  locked?: boolean
+}) {
+  return (
+    <>
+      <input
+        type="text"
+        value={draft.label}
+        maxLength={30}
+        placeholder="e.g. Late"
+        aria-label={`${label} label`}
+        onChange={(event) => onChange({ ...draft, label: event.target.value })}
+        className={inputClass}
+      />
+      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+        <input
+          type="checkbox"
+          checked={draft.attended}
+          disabled={locked}
+          aria-label={`${label} attended`}
+          onChange={(event) => onChange({ ...draft, attended: event.target.checked })}
+          className="h-4 w-4 accent-[#fc0c97]"
+        />
+        Attended
+      </label>
+      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+        <input
+          type="checkbox"
+          checked={draft.deductsLesson}
+          disabled={locked}
+          aria-label={`${label} takes a lesson`}
+          onChange={(event) => onChange({ ...draft, deductsLesson: event.target.checked })}
+          className="h-4 w-4 accent-[#fc0c97]"
+        />
+        Takes a lesson
+      </label>
+      <div role="radiogroup" aria-label={`${label} colour`} className="flex items-center gap-1">
+        {attendanceColorNames.map((color) => (
+          <button
+            key={color}
+            type="button"
+            role="radio"
+            aria-checked={draft.color === color}
+            aria-label={color}
+            onClick={() => onChange({ ...draft, color })}
+            className={cn(
+              'h-5 w-5 rounded-full border-2',
+              attendanceColorStyles[color].swatch,
+              draft.color === color ? 'border-slate-900' : 'border-white',
+            )}
+          />
+        ))}
+      </div>
+    </>
+  )
+}
+
+const statusGrid = 'grid grid-cols-2 items-center gap-2 sm:grid-cols-[1fr_6rem_8rem_9rem_6rem]'
+
+function StatusRow({
+  status,
+  onSave,
+}: {
+  status: AttendanceStatusOption
+  onSave: (changes: StatusChanges) => Promise<boolean>
+}) {
+  const initial: AttendanceStatusDraft = {
+    label: status.label,
+    attended: status.attended,
+    deductsLesson: status.deductsLesson,
+    color: status.color,
+  }
+  const [draft, setDraft] = useState(initial)
+  const isDirty = JSON.stringify(draft) !== JSON.stringify(initial)
+  const isPresent = status.key === PRESENT
+
+  return (
+    <li className={cn(statusGrid, 'rounded-xl border border-slate-200 p-2', !status.isActive && 'opacity-60')}>
+      <StatusFields draft={draft} onChange={setDraft} label={status.label} locked={isPresent} />
+      <div className="flex items-center justify-end gap-1">
+        {isDirty && (
+          <button
+            type="button"
+            disabled={draft.label.trim().length === 0}
+            onClick={() => void onSave({ ...draft, label: draft.label.trim() })}
+            className="rounded-xl bg-[#fc0c97] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#de0a84] disabled:opacity-50"
+          >
+            Save
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={isPresent}
+          onClick={() => void onSave({ isActive: !status.isActive })}
+          aria-label={status.isActive ? `Hide ${status.label}` : `Show ${status.label}`}
+          title={isPresent ? 'Present is always there' : status.isActive ? 'Hide' : 'Show'}
+          className="rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 disabled:opacity-30"
+        >
+          {status.isActive ? <Eye size={16} aria-hidden="true" /> : <EyeSlash size={16} aria-hidden="true" />}
+        </button>
+      </div>
+    </li>
+  )
+}
+
+function NewStatusRow({ onAdd }: { onAdd: (draft: AttendanceStatusDraft) => Promise<boolean> }) {
+  const [draft, setDraft] = useState(emptyStatusDraft)
+
+  async function add() {
+    if (await onAdd({ ...draft, label: draft.label.trim() })) {
+      setDraft(emptyStatusDraft)
+    }
+  }
+
+  return (
+    <div className="space-y-2 border-t border-slate-200 pt-4">
+      <div className="text-sm font-semibold text-slate-700">Add a status</div>
+      <div className={statusGrid}>
+        <StatusFields draft={draft} onChange={setDraft} label="New status" />
+        <div className="flex justify-end">
+          <button
+            type="button"
+            disabled={draft.label.trim().length === 0}
+            onClick={() => void add()}
+            aria-label="Add status"
+            className="inline-flex items-center gap-1 rounded-xl bg-[#fc0c97] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#de0a84] disabled:opacity-50"
+          >
+            <Plus size={14} aria-hidden="true" />
+            Add
+          </button>
+        </div>
       </div>
     </div>
   )

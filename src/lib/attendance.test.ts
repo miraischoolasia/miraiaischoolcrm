@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildAttendanceSubmission, countRatedMetrics, getReviewProgress, isReviewComplete } from './attendance'
 import { defaultReviewCriteria, getReviewMetrics } from './reviewCriteria'
+import { defaultAttendanceStatuses } from './attendanceStatuses'
 import type { AttendanceReviewFormState } from '../types/domain'
 
 // The five starting criteria: ids 1-5.
@@ -238,3 +239,27 @@ describe('review progress', () => {
     expect(progress.awayCount).toBe(1)
   })
 })
+
+describe("a school's own attendance statuses", () => {
+  const statuses = [
+    ...defaultAttendanceStatuses,
+    { key: 'late', label: 'Late', attended: true, deductsLesson: true, color: 'sky' as const, sortOrder: 40, isActive: true },
+    { key: 'no_show', label: 'No-show', attended: false, deductsLesson: true, color: 'rose' as const, sortOrder: 50, isActive: true },
+  ]
+
+  it('asks for a review of an attended status, not of one the student missed', () => {
+    const late = buildAttendanceSubmission([1], { 1: 'late' }, {}, new Map(), metrics, statuses)
+    expect(late.ok).toBe(false)
+
+    const noShow = buildAttendanceSubmission([1], { 1: 'no_show' }, {}, new Map(), metrics, statuses)
+    expect(noShow).toEqual({ ok: true, payload: [{ student_id: 1, status: 'no_show' }], reviewPayload: [] })
+  })
+
+  it('counts an attended status as there in the progress', () => {
+    const progress = getReviewProgress([1, 2], { 1: 'late', 2: 'no_show' }, { 1: fullReview() }, metrics, statuses)
+    expect(progress.presentIds).toEqual([1])
+    expect(progress.doneIds).toEqual([1])
+    expect(progress.awayCount).toBe(1)
+  })
+})
+

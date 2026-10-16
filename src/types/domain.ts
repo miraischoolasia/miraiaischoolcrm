@@ -14,7 +14,23 @@ export type AppSection =
   | 'forms'
   | 'activity'
 export type FilterKey = 'all' | 'hoa' | 'trial' | 'regular' | 'camp'
-export type AttendanceStatus = 'present' | 'absent' | 'leave'
+// The key of one of the school's attendance statuses ('present', 'absent',
+// 'leave', or one an admin added such as 'late').
+export type AttendanceStatus = string
+
+export type AttendanceStatusColor = 'emerald' | 'slate' | 'amber' | 'sky' | 'rose' | 'violet'
+
+export type AttendanceStatusOption = {
+  key: AttendanceStatus
+  label: string
+  // In class: needs a review and counts as there.
+  attended: boolean
+  // Takes one lesson from the package.
+  deductsLesson: boolean
+  color: AttendanceStatusColor
+  sortOrder: number
+  isActive: boolean
+}
 export type StudentType = 'trial' | 'preview' | 'regular'
 export type LeadOptionKind = 'source' | 'pic' | 'tag' | 'check'
 
@@ -619,6 +635,8 @@ export type LessonReviewScoreRow = Pick<
 >
 
 export type ReviewCriterionRow = Database['public']['Tables']['review_criteria']['Row']
+
+export type AttendanceStatusRow = Database['public']['Tables']['attendance_statuses']['Row']
 
 export type PackageRow = Pick<
   Database['public']['Tables']['packages']['Row'],

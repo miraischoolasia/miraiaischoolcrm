@@ -1490,21 +1490,21 @@ export type Database = {
           id: number
           lesson_log_id: number
           student_id: number
-          attendance_status: 'present' | 'absent' | 'leave'
+          attendance_status: string
           created_at: string
         }
         Insert: {
           id?: number
           lesson_log_id: number
           student_id: number
-          attendance_status: 'present' | 'absent' | 'leave'
+          attendance_status: string
           created_at?: string
         }
         Update: {
           id?: number
           lesson_log_id?: number
           student_id?: number
-          attendance_status?: 'present' | 'absent' | 'leave'
+          attendance_status?: string
           created_at?: string
         }
         Relationships: [
@@ -1592,6 +1592,42 @@ export type Database = {
             referencedColumns: ['id']
           },
         ]
+      }
+      attendance_statuses: {
+        Row: {
+          key: string
+          label: string
+          attended: boolean
+          deducts_lesson: boolean
+          color: 'emerald' | 'slate' | 'amber' | 'sky' | 'rose' | 'violet'
+          sort_order: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          key: string
+          label: string
+          attended: boolean
+          deducts_lesson: boolean
+          color?: 'emerald' | 'slate' | 'amber' | 'sky' | 'rose' | 'violet'
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          key?: string
+          label?: string
+          attended?: boolean
+          deducts_lesson?: boolean
+          color?: 'emerald' | 'slate' | 'amber' | 'sky' | 'rose' | 'violet'
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       review_criteria: {
         Row: {
@@ -1997,6 +2033,18 @@ export type Database = {
         }
         Returns: undefined
       }
+      save_attendance_status: {
+        Args: {
+          p_key: string | null
+          p_label: string | null
+          p_attended: boolean | null
+          p_deducts_lesson: boolean | null
+          p_color: string | null
+          p_sort_order: number | null
+          p_is_active: boolean | null
+        }
+        Returns: Database['public']['Tables']['attendance_statuses']['Row']
+      }
       save_review_criterion: {
         Args: {
           p_id: number | null
@@ -2271,7 +2319,7 @@ export type Database = {
           p_lesson_remark: string | null
           p_attendance: {
             student_id: number
-            status: 'present' | 'absent' | 'leave'
+            status: string
           }[]
           p_student_reviews: {
             student_id: number

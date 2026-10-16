@@ -10,6 +10,12 @@ import {
 } from '../domain/studentStatus'
 import { cn } from '../lib/cn'
 import { defaultReviewCriteria, getReviewMetrics, labelWithScale, type ReviewMetric } from '../lib/reviewCriteria'
+import {
+  attendanceColorStyles,
+  defaultAttendanceStatuses,
+  getStatusOption,
+  sortStatuses,
+} from '../lib/attendanceStatuses'
 import { buildPathway } from '../lib/pathway'
 import { getCurrentClassPeriod } from '../lib/roster'
 import { weekdayLabels } from '../lib/schedule'
@@ -21,6 +27,7 @@ import { PerformanceRadarChart } from './PerformanceRadarChart'
 import { WhatsAppLink } from './WhatsAppLink'
 import type {
   AttendanceStatus,
+  AttendanceStatusOption,
   Classroom,
   LessonLogStudentReview,
   LessonLogSummary,
@@ -43,6 +50,8 @@ type StudentDetailModalProps = {
   // The school's review criteria (switched-off ones still show where a
   // lesson was scored on them).
   reviewCriteria?: ReviewCriterion[]
+  // The school's attendance statuses, for their names and colours.
+  statusOptions?: AttendanceStatusOption[]
   onClose: () => void
   schedules: Schedule[]
   teacherMap: Map<number, Teacher>
@@ -77,16 +86,6 @@ const NO_PLANS: MakeupPlan[] = []
 const NO_ENROLLMENTS: StudentEnrollment[] = []
 const NO_PACKAGES: Package[] = []
 
-const attendanceStyle: Record<AttendanceStatus, { label: string; chip: string; square: string }> = {
-  present: {
-    label: 'Present',
-    chip: 'bg-emerald-50 text-emerald-700',
-    square: 'border-emerald-500 bg-emerald-100',
-  },
-  absent: { label: 'Absent', chip: 'bg-red-50 text-red-700', square: 'border-red-500 bg-red-100' },
-  leave: { label: 'Leave', chip: 'bg-amber-50 text-amber-700', square: 'border-amber-500 bg-amber-100' },
-}
-
 function initials(name: string) {
   return name
     .split(/\s+/)
@@ -110,6 +109,7 @@ export function StudentDetailModal({
   lessonLogs,
   lessonReviews,
   reviewCriteria = defaultReviewCriteria,
+  statusOptions = defaultAttendanceStatuses,
   onClose,
   schedules,
   teacherMap,
@@ -500,7 +500,7 @@ export function StudentDetailModal({
                         </div>
                         <div className="text-xs text-slate-500">{lesson.schedule?.title ?? 'Class'}</div>
                       </div>
-                      <AttendanceChip status={lesson.status} />
+                      <AttendanceChip option={getStatusOption(statusOptions, lesson.status)} />
                       <div className="w-10 text-right text-sm font-bold text-slate-900">
                         {lesson.average === null ? '-' : lesson.average.toFixed(1)}
                       </div>
@@ -554,17 +554,24 @@ export function StudentDetailModal({
                       .map((lesson) => (
                         <li
                           key={lesson.log.id}
-                          title={`${formatDate(lesson.log.lessonDate)} - ${attendanceStyle[lesson.status].label}`}
-                          aria-label={`${formatDate(lesson.log.lessonDate)}: ${attendanceStyle[lesson.status].label}`}
-                          className={cn('h-5 w-5 rounded-md border', attendanceStyle[lesson.status].square)}
+                          title={`${formatDate(lesson.log.lessonDate)} - ${getStatusOption(statusOptions, lesson.status).label}`}
+                          aria-label={`${formatDate(lesson.log.lessonDate)}: ${getStatusOption(statusOptions, lesson.status).label}`}
+                          className={cn(
+                            'h-5 w-5 rounded-md border',
+                            attendanceColorStyles[getStatusOption(statusOptions, lesson.status).color].square,
+                          )}
                         />
                       ))}
                   </ul>
                   <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-500">
-                    {(['present', 'absent', 'leave'] as const).map((key) => (
-                      <span key={key} className="inline-flex items-center gap-1.5">
-                        <i className={cn('inline-block h-3 w-3 rounded border', attendanceStyle[key].square)} />
-                        {attendanceStyle[key].label}
+                    {sortStatuses(
+                      statusOptions.filter(
+                        (option) => option.isActive || lessons.some((lesson) => lesson.status === option.key),
+                      ),
+                    ).map((option) => (
+                      <span key={option.key} className="inline-flex items-center gap-1.5">
+                        <i className={cn('inline-block h-3 w-3 rounded border', attendanceColorStyles[option.color].square)} />
+                        {option.label}
                       </span>
                     ))}
                   </div>
@@ -579,7 +586,13 @@ export function StudentDetailModal({
                 </div>
               )}
               {lessons.map((lesson) => (
-                <LessonRow key={lesson.log.id} lesson={lesson} teacherMap={teacherMap} metrics={metrics} />
+                <LessonRow
+                  key={lesson.log.id}
+                  lesson={lesson}
+                  teacherMap={teacherMap}
+                  metrics={metrics}
+                  statusOption={getStatusOption(statusOptions, lesson.status)}
+                />
               ))}
             </Card>
 
@@ -759,10 +772,10 @@ function Stat({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-function AttendanceChip({ status }: { status: AttendanceStatus }) {
+function AttendanceChip({ option }: { option: AttendanceStatusOption }) {
   return (
-    <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-bold', attendanceStyle[status].chip)}>
-      {attendanceStyle[status].label}
+    <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-bold', attendanceColorStyles[option.color].chip)}>
+      {option.label}
     </span>
   )
 }
@@ -800,12 +813,14 @@ function LessonRow({
   lesson,
   teacherMap,
   metrics,
+  statusOption,
 }: {
   lesson: StudentLesson
   teacherMap: Map<number, Teacher>
   metrics: ReviewMetric[]
+  statusOption: AttendanceStatusOption
 }) {
-  const { log, review, schedule, status, isTrial, average } = lesson
+  const { log, review, schedule, isTrial, average } = lesson
   return (
     <details className="group border-b border-slate-200 last:border-b-0">
       <summary className="grid cursor-pointer list-none grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-3 transition hover:bg-[#fff8fc] group-open:bg-slate-50 [&::-webkit-details-marker]:hidden">
@@ -823,7 +838,7 @@ function LessonRow({
             {log.revisionNumber > 1 ? ` · Revision ${log.revisionNumber}` : ''}
           </div>
         </div>
-        <AttendanceChip status={status} />
+        <AttendanceChip option={statusOption} />
         <span className="w-10 text-right text-sm font-bold text-slate-900">
           {average === null ? '-' : average.toFixed(1)}
         </span>
@@ -847,7 +862,7 @@ function LessonRow({
           })
         ) : (
           <div className="text-sm text-slate-500">
-            {status === 'absent' ? 'Absent: no review for this lesson.' : 'On leave: no review for this lesson.'}
+            {statusOption.label}: no review for this lesson.
           </div>
         )}
         {review?.lessonRemark && (

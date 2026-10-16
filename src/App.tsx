@@ -48,6 +48,7 @@ import type {
   AttendanceModalState,
   AttendanceReviewFormState,
   AttendanceStatus,
+  AttendanceStatusOption,
   Classroom,
   ClassroomFormState,
   CreateStudentFormState,
@@ -83,6 +84,7 @@ import type {
 import {
   createEmptyAttendanceReviewForm,
   getLatestLessonLogMap,
+  mapAttendanceStatusRow,
   mapReviewCriterionRow,
   mapReviewToFormState,
   mapScheduleParticipantRow,
@@ -92,6 +94,7 @@ import {
 } from './lib/mappers'
 import { buildAttendanceSubmission } from './lib/attendance'
 import { defaultReviewCriteria, getReviewMetrics, type ReviewMetric } from './lib/reviewCriteria'
+import { defaultAttendanceStatuses, getStatusOption, isAttendedStatus } from './lib/attendanceStatuses'
 import type { BulkLeadRow } from './lib/leadCsv'
 import type { BulkPreviewStudentRow } from './lib/studentCsv'
 import { provisionTeacherLogin, resetTeacherPassword } from './lib/teacherAuth'
@@ -109,6 +112,7 @@ import {
   fetchStudentAttendanceRows,
   fetchLessonLogStudentReviewsFromSupabase,
   fetchReviewCriteriaFromSupabase,
+  fetchAttendanceStatusesFromSupabase,
   fetchZoomMeetingOptions,
   type ZoomMeetingOptions,
   fetchLessonLogSummariesFromSupabase,
@@ -304,6 +308,17 @@ async function loadReviewCriteria() {
   }
 }
 
+// Same for attendance statuses: on a failed read the form keeps Present,
+// Absent and Leave.
+async function loadAttendanceStatuses() {
+  try {
+    return await fetchAttendanceStatusesFromSupabase()
+  } catch (error) {
+    console.error('Could not load the attendance statuses.', error)
+    return null
+  }
+}
+
 function App() {
   const isMobile = useIsMobile()
   const todayString = getTodayString()
@@ -370,6 +385,9 @@ function App() {
   const [lessonReviews, setLessonReviews] = useState<LessonLogStudentReview[]>([])
   // The school's own review criteria (Settings > Review criteria).
   const [reviewCriteria, setReviewCriteria] = useState<ReviewCriterion[]>(defaultReviewCriteria)
+  // The school's attendance statuses (Settings > Attendance).
+  const [attendanceStatusOptions, setAttendanceStatusOptions] =
+    useState<AttendanceStatusOption[]>(defaultAttendanceStatuses)
   const [isClassSettingsOpen, setIsClassSettingsOpen] = useState(false)
   // Loaded when Class Settings opens.
   const [zoomOptions, setZoomOptions] = useState<ZoomMeetingOptions | null>(null)
@@ -1391,6 +1409,7 @@ function App() {
           nextLeadOptions,
           nextPackages,
           nextReviewCriteria,
+          nextAttendanceStatuses,
         ] = await Promise.all([
           fetchClassroomsFromSupabase(),
           fetchTeachersFromSupabase(),
@@ -1406,6 +1425,7 @@ function App() {
           fetchLeadOptionsFromSupabase(),
           fetchPackagesFromSupabase(),
           loadReviewCriteria(),
+          loadAttendanceStatuses(),
         ])
 
         if (!cancelled) {
@@ -1424,6 +1444,9 @@ function App() {
           setPackages(nextPackages)
           if (nextReviewCriteria) {
             setReviewCriteria(nextReviewCriteria)
+          }
+          if (nextAttendanceStatuses) {
+            setAttendanceStatusOptions(nextAttendanceStatuses)
           }
           setLoadedUserId(authUserId)
         }
@@ -1463,6 +1486,7 @@ function App() {
       nextLeadOptions,
       nextPackages,
       nextReviewCriteria,
+      nextAttendanceStatuses,
     ] = await Promise.all([
       fetchClassroomsFromSupabase(),
       fetchTeachersFromSupabase(),
@@ -1478,6 +1502,7 @@ function App() {
       fetchLeadOptionsFromSupabase(),
       fetchPackagesFromSupabase(),
       loadReviewCriteria(),
+      loadAttendanceStatuses(),
     ])
     setClassrooms((current) => (sameData(current, nextClassrooms) ? current : nextClassrooms))
     setTeachers((current) => (sameData(current, nextTeachers) ? current : nextTeachers))
@@ -1494,6 +1519,11 @@ function App() {
     setPackages((current) => (sameData(current, nextPackages) ? current : nextPackages))
     if (nextReviewCriteria) {
       setReviewCriteria((current) => (sameData(current, nextReviewCriteria) ? current : nextReviewCriteria))
+    }
+    if (nextAttendanceStatuses) {
+      setAttendanceStatusOptions((current) =>
+        sameData(current, nextAttendanceStatuses) ? current : nextAttendanceStatuses,
+      )
     }
   }
   useLiveSync(Boolean(authUserId) && loadedUserId === authUserId && !isLoading && !loadError, syncCoreQuietly)
@@ -2357,6 +2387,41 @@ function App() {
     )
   }
 
+  // Adds (status null) or changes an attendance status; null when saved,
+  // else the reason.
+  async function saveAttendanceStatus(
+    status: AttendanceStatusOption | null,
+    changes: Partial<Pick<AttendanceStatusOption, 'label' | 'attended' | 'deductsLesson' | 'color' | 'sortOrder' | 'isActive'>>,
+  ) {
+    if (!supabase) {
+      return 'Supabase is not configured.'
+    }
+
+    const { data, error } = await supabase.rpc('save_attendance_status', {
+      p_key: status?.key ?? null,
+      p_label: changes.label ?? status?.label ?? null,
+      p_attended: changes.attended ?? null,
+      p_deducts_lesson: changes.deductsLesson ?? null,
+      p_color: changes.color ?? null,
+      p_sort_order: changes.sortOrder ?? null,
+      p_is_active: changes.isActive ?? null,
+    })
+
+    if (error) {
+      return error.code === '23505'
+        ? `"${changes.label ?? status?.label}" is already a status.`
+        : getErrorMessage(error, 'Failed to save this status.')
+    }
+
+    const saved = mapAttendanceStatusRow(data)
+    setAttendanceStatusOptions((current) =>
+      current.some((entry) => entry.key === saved.key)
+        ? current.map((entry) => (entry.key === saved.key ? saved : entry))
+        : [...current, saved],
+    )
+    return null
+  }
+
   async function saveZoomOptions(options: ZoomMeetingOptions) {
     if (!supabase) {
       return 'Supabase is not configured.'
@@ -2642,7 +2707,7 @@ function App() {
       const seen = new Set<string>()
 
       missedOptions = rows
-        .filter((row) => row.status !== 'present' && latestLogs.has(row.lessonLogId))
+        .filter((row) => !isAttendedStatus(attendanceStatusOptions, row.status) && latestLogs.has(row.lessonLogId))
         .map((row) => ({ date: latestLogs.get(row.lessonLogId)!.lessonDate, status: row.status }))
         .filter((entry) => !plannedDates.has(entry.date))
         .sort((left, right) => right.date.localeCompare(left.date))
@@ -2650,7 +2715,7 @@ function App() {
         .slice(0, 6)
         .map((entry) => ({
           date: entry.date,
-          label: `${formatDate(entry.date)} · ${entry.status === 'leave' ? 'Leave' : 'Absent'}`,
+          label: `${formatDate(entry.date)} · ${getStatusOption(attendanceStatusOptions, entry.status).label}`,
         }))
     } catch {
       // Suggestions are a convenience; the date can still be picked by hand.
@@ -5306,6 +5371,7 @@ function App() {
       attendanceReviews,
       studentNameById,
       attendanceReviewMetrics,
+      attendanceStatusOptions,
     )
 
     if (!submission.ok) {
@@ -6665,6 +6731,9 @@ function App() {
           onSaveCriterion={(criterion, draft) => saveReviewCriterion(criterion, draft)}
           onSetCriterionActive={(criterion, isActive) => saveReviewCriterion(criterion, { isActive })}
           onMoveCriterion={moveReviewCriterion}
+          statuses={attendanceStatusOptions}
+          onAddStatus={(draft) => saveAttendanceStatus(null, draft)}
+          onSaveStatus={(status, changes) => saveAttendanceStatus(status, changes)}
           onSaveZoomOptions={saveZoomOptions}
         />
       )}
@@ -6726,6 +6795,7 @@ function App() {
           lessonLogs={lessonLogs}
           lessonReviews={lessonReviews}
           reviewCriteria={reviewCriteria}
+          statusOptions={attendanceStatusOptions}
           onClose={closeStudentDetail}
           schedules={schedules}
           teacherMap={teacherMap}
@@ -6980,6 +7050,7 @@ function App() {
           attendanceStatuses={attendanceStatuses}
           attendanceReviews={attendanceReviews}
           reviewMetrics={attendanceReviewMetrics}
+          statusOptions={attendanceStatusOptions}
           attendanceRemark={attendanceRemark}
           attendanceSaveError={attendanceSaveError}
           isSavingAttendance={isSavingAttendance}
