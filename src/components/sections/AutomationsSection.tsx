@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Plus } from '@phosphor-icons/react'
+import { GearSix, Plus } from '@phosphor-icons/react'
 import { FlowEditor } from '../automations/FlowEditor'
 import { ChatActivityCard } from '../automations/ChatActivityCard'
 import { ContactsCard } from '../automations/ContactsCard'
@@ -21,6 +21,7 @@ import { useConfirm } from '../../hooks/useConfirm'
 import { cn } from '../../lib/cn'
 import { EMPTY_FILTER_OPTIONS, describeFlow, type FilterOptions, type FlowDraft } from '../../lib/automationFlows'
 import { describeStats } from '../../lib/automationStats'
+import { senderState } from '../../lib/autoSend'
 import type { FlowRecipe } from '../../lib/flowSteps'
 import type { Classroom, LeadOption } from '../../types/domain'
 
@@ -75,6 +76,7 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
   const [dirty, setDirty] = useState(false)
   const [notice, setNotice] = useState<{ text: string; isError: boolean } | null>(null)
   const [isRunning, setIsRunning] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const { flows } = automation
   const openFlow = typeof open === 'number' ? (flows.find((flow) => flow.id === open) ?? null) : null
@@ -176,6 +178,14 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
     )
   }
 
+  // What needs a look inside Settings, shown on its button so it is not missed while the panel is closed.
+  const autoFlowCount = flows.filter((entry) => entry.enabled && entry.graph.settings?.autoSend === true).length
+  const settingsAlert = autoSend.settings.paused
+    ? 'Paused'
+    : autoFlowCount > 0 && senderState(autoSend.settings.senderSeenAt) !== 'online'
+      ? 'Sender offline'
+      : null
+
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -184,6 +194,22 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
           WhatsApp, unless the flow is set to send by itself.
         </p>
         <div className="flex gap-2">
+          <button
+            type="button"
+            aria-expanded={settingsOpen}
+            aria-controls="automation-settings"
+            onClick={() => setSettingsOpen((value) => !value)}
+            className={cn(
+              'flex items-center gap-1.5 rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-slate-50',
+              settingsOpen ? 'border-slate-300 bg-slate-100 text-slate-900' : 'border-slate-200 bg-white text-slate-700',
+            )}
+          >
+            <GearSix size={16} aria-hidden="true" />
+            Settings
+            {settingsAlert && (
+              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-bold text-amber-800">{settingsAlert}</span>
+            )}
+          </button>
           {canEdit && (
             <button
               type="button"
@@ -212,29 +238,37 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
           {automation.error}
         </p>
       )}
-      <ContactsCard
-        contacts={contactList.contacts}
-        loadError={contactList.error}
-        canEdit={canEdit}
-        onAdd={contactList.add}
-        onUpdate={contactList.update}
-        onRemove={contactList.remove}
-      />
-      <AutoSendCard
-        settings={autoSend.settings}
-        autoFlows={flows.filter((entry) => entry.enabled && entry.graph.settings?.autoSend === true).length}
-        canEdit={canEdit}
-        loadError={autoSend.error}
-        onSave={autoSend.save}
-      />
-      <OptoutsCard optouts={optouts.optouts} loadError={optouts.error} onAllowAgain={optouts.allowAgain} />
-      {canEdit && (
-        <ChatActivityCard
-          info={chatWebhook.info}
-          loadError={chatWebhook.error}
-          isLoading={chatWebhook.isLoading}
-          onReload={() => void chatWebhook.reload()}
-        />
+      {settingsOpen && (
+        <div id="automation-settings" className="space-y-3 rounded-2xl bg-slate-50 p-3">
+          <p className="px-1 text-xs text-slate-500">
+            These hold for every flow: who a message can go to, the limits for sending by itself, who asked to stop,
+            and whether parents’ replies reach the CRM.
+          </p>
+          <ContactsCard
+            contacts={contactList.contacts}
+            loadError={contactList.error}
+            canEdit={canEdit}
+            onAdd={contactList.add}
+            onUpdate={contactList.update}
+            onRemove={contactList.remove}
+          />
+          <AutoSendCard
+            settings={autoSend.settings}
+            autoFlows={autoFlowCount}
+            canEdit={canEdit}
+            loadError={autoSend.error}
+            onSave={autoSend.save}
+          />
+          <OptoutsCard optouts={optouts.optouts} loadError={optouts.error} onAllowAgain={optouts.allowAgain} />
+          {canEdit && (
+            <ChatActivityCard
+              info={chatWebhook.info}
+              loadError={chatWebhook.error}
+              isLoading={chatWebhook.isLoading}
+              onReload={() => void chatWebhook.reload()}
+            />
+          )}
+        </div>
       )}
       {notice && (
         <p

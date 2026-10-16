@@ -168,6 +168,11 @@ async function openFirst() {
   await userEvent.click(screen.getByRole('button', { name: 'Advanced' }))
 }
 
+// The four settings cards (contacts, sending by itself, asked to stop, parent replies) sit behind one button.
+async function openSettings() {
+  await userEvent.click(screen.getByRole('button', { name: /^Settings/ }))
+}
+
 // A new flow starts on the recipe list; this takes the blank one and shows the canvas.
 async function newBlankFlow() {
   await userEvent.click(screen.getByRole('button', { name: 'New flow' }))
@@ -528,6 +533,7 @@ describe('AutomationsSection', () => {
     it('lists the numbers that wrote STOP and allows one again after asking', async () => {
       extras.optouts = [{ phone: '60122552285', reason: 'The parent wrote STOP', createdAt: '2026-10-13T05:00:00Z' }]
       setup()
+      await openSettings()
       await userEvent.click(screen.getByRole('button', { name: /Asked to stop/ }))
       expect(screen.getByText('+60 12-255 2285')).toBeInTheDocument()
       await userEvent.click(screen.getByRole('button', { name: 'Allow +60 12-255 2285 again' }))
@@ -536,9 +542,35 @@ describe('AutomationsSection', () => {
     })
   })
 
+  describe('settings', () => {
+    it('keeps the four cards behind one button, closed until it is clicked', async () => {
+      setup()
+      expect(screen.queryByRole('button', { name: /Sending by itself/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Asked to stop/ })).not.toBeInTheDocument()
+      await openSettings()
+      for (const name of [/Contacts/, /Sending by itself/, /Asked to stop/, /Parent replies/]) {
+        expect(screen.getByRole('button', { name })).toBeInTheDocument()
+      }
+      await openSettings()
+      expect(screen.queryByRole('button', { name: /Contacts/ })).not.toBeInTheDocument()
+    })
+
+    it('says on the button when everything is paused or the sender is offline', () => {
+      extras.autoSend = { ...extras.autoSend, paused: true }
+      setup()
+      expect(screen.getByRole('button', { name: /^Settings/ })).toHaveTextContent('Paused')
+    })
+
+    it('shows no warning when nothing is wrong', () => {
+      setup()
+      expect(screen.getByRole('button', { name: /^Settings/ })).not.toHaveTextContent(/Paused|offline/)
+    })
+  })
+
   describe('parent replies', () => {
     it('says it is not connected until a message has arrived, and shows the address to paste', async () => {
       setup()
+      await openSettings()
       expect(screen.getByRole('button', { name: /Parent replies/ })).toHaveTextContent('Not connected yet')
       await userEvent.click(screen.getByRole('button', { name: /Parent replies/ }))
       expect((screen.getByLabelText('Webhook address') as HTMLInputElement).value).toContain(
@@ -550,6 +582,7 @@ describe('AutomationsSection', () => {
     it('shows when the last message arrived and checks again on request', async () => {
       chatHook.state.info = { key: 'abcdef0123456789abcdef', lastReceivedAt: new Date(Date.now() - 5 * 60000), chats: 12 }
       setup()
+      await openSettings()
       expect(screen.getByRole('button', { name: /Parent replies/ })).toHaveTextContent('Last message 5 minutes ago')
       await userEvent.click(screen.getByRole('button', { name: /Parent replies/ }))
       expect(screen.getByText(/Connected: 12 chats known/)).toBeInTheDocument()
@@ -561,12 +594,14 @@ describe('AutomationsSection', () => {
       chatHook.state.info = null
       chatHook.state.error = 'Parent replies are not set up in the database yet.'
       setup()
+      await openSettings()
       await userEvent.click(screen.getByRole('button', { name: /Parent replies/ }))
       expect(screen.getByRole('alert')).toHaveTextContent('not set up in the database yet')
     })
 
-    it('is hidden from someone who is not an admin', () => {
+    it('is hidden from someone who is not an admin', async () => {
       setup(false)
+      await openSettings()
       expect(screen.queryByRole('button', { name: /Parent replies/ })).not.toBeInTheDocument()
     })
   })
@@ -656,6 +691,7 @@ describe('AutomationsSection', () => {
   describe('contacts', () => {
     it('lists the contacts, and adds one with a name and a number', async () => {
       setup()
+      await openSettings()
       await userEvent.click(screen.getByRole('button', { name: /Contacts/ }))
       expect(screen.getByText('Lex')).toBeInTheDocument()
       expect(screen.getByText('+60 12-345 6789')).toBeInTheDocument()
@@ -669,6 +705,7 @@ describe('AutomationsSection', () => {
     it('shows why a contact was not saved', async () => {
       contactHook.state.add.mockResolvedValue('Type the WhatsApp number, like 012-345 6789 or +60 12 345 6789.')
       setup()
+      await openSettings()
       await userEvent.click(screen.getByRole('button', { name: /Contacts/ }))
       await userEvent.type(screen.getByLabelText('Contact name'), 'Mei')
       await userEvent.click(screen.getByRole('button', { name: 'Add contact' }))
@@ -677,6 +714,7 @@ describe('AutomationsSection', () => {
 
     it('changes and removes a contact, asking before removing', async () => {
       setup()
+      await openSettings()
       await userEvent.click(screen.getByRole('button', { name: /Contacts/ }))
       await userEvent.click(screen.getByRole('button', { name: 'Change Lex' }))
       expect(screen.getByLabelText('Contact name')).toHaveValue('Lex')
@@ -695,6 +733,7 @@ describe('AutomationsSection', () => {
 
     it('is read-only for someone who is not an admin', async () => {
       setup(false)
+      await openSettings()
       await userEvent.click(screen.getByRole('button', { name: /Contacts/ }))
       expect(screen.getByText('Lex')).toBeInTheDocument()
       expect(screen.queryByLabelText('Contact name')).not.toBeInTheDocument()
@@ -938,6 +977,7 @@ describe('AutomationsSection', () => {
       hook.state.flows = [{ ...autoFlow(), enabled: true }]
       extras.autoSend.senderSeenAt = null
       setup()
+      await openSettings()
       expect(screen.getByText('1 flow sends by itself')).toBeInTheDocument()
       await userEvent.click(screen.getByRole('button', { name: /Sending by itself/ }))
       expect(screen.getByRole('alert')).toHaveTextContent(/has not connected yet/)
@@ -951,10 +991,18 @@ describe('AutomationsSection', () => {
       await waitFor(() => expect(extras.saveAutoSend).toHaveBeenCalledWith({ dailyCap: 25 }))
     })
 
+    it('warns that the sender is offline when a flow sends by itself', () => {
+      hook.state.flows = [{ ...autoFlow(), enabled: true }]
+      extras.autoSend.senderSeenAt = null
+      setup()
+      expect(screen.getByRole('button', { name: /^Settings/ })).toHaveTextContent('Sender offline')
+    })
+
     it('says when the sender program is running', async () => {
       hook.state.flows = [{ ...autoFlow(), enabled: true }]
       extras.autoSend.senderSeenAt = new Date().toISOString()
       setup()
+      await openSettings()
       await userEvent.click(screen.getByRole('button', { name: /Sending by itself/ }))
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       expect(screen.getByText(/Sender program: running/)).toBeInTheDocument()
@@ -962,6 +1010,7 @@ describe('AutomationsSection', () => {
 
     it('does not let someone who cannot edit change the rules', async () => {
       setup(false)
+      await openSettings()
       await userEvent.click(screen.getByRole('button', { name: /Sending by itself/ }))
       expect(screen.getByRole('checkbox', { name: /Pause everything/ })).toBeDisabled()
       expect(screen.getByLabelText('Most messages a day')).toBeDisabled()
