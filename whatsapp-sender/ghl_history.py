@@ -88,7 +88,7 @@ def ghl_get(path, version="2021-04-15"):
     for attempt in range(4):
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
-                time.sleep(0.12)  # GoHighLevel allows about 100 calls per 10 seconds
+                time.sleep(0.05)  # GoHighLevel allows about 100 calls per 10 seconds
                 return json.loads(response.read().decode())
         except urllib.error.HTTPError as error:
             if error.code == 429 and attempt < 3:
@@ -139,10 +139,10 @@ def message_text(message):
     return ((body + "\n" if body and urls else body) + "\n".join(urls))[:MAX_TEXT]
 
 
-def ghl_messages(conversation_id, max_pages=200):
+def ghl_messages(conversation_id, max_pages=200, page_size=100):
     found, last = [], None
     for _ in range(max_pages):
-        query = "?limit=100" + ("&lastMessageId=" + urllib.parse.quote(last) if last else "")
+        query = "?limit=%d" % page_size + ("&lastMessageId=" + urllib.parse.quote(last) if last else "")
         data = (ghl_get("/conversations/%s/messages%s" % (conversation_id, query)).get("messages")) or {}
         batch = data.get("messages") or []
         found += batch
@@ -164,12 +164,15 @@ def load_chats():
     return by_contact
 
 
-def collect(by_contact, location, since=None, newest_page_only=False, settle=0):
+def collect(by_contact, location, since=None, newest_page_only=False, settle=0, known=None):
     """What GoHighLevel has for these contacts that the CRM does not: (plan, report, types, unsettled contacts).
 
     plan: (conversation, chatwoot contact, direction, text, when, ghl message id, failed, error).
     since: only contacts whose last message is newer than this moment.
-    newest_page_only: read only the newest 100 messages of a chat (enough to follow a chat that is already caught up).
+    newest_page_only: read only the newest 20 messages of a chat, and compare them with the CRM's newest 100 (enough to
+    follow a chat that is already caught up, and quicker).
+    known: GoHighLevel contact id -> its conversation ids, when the caller already knows them (the watcher does): the
+    search for them is skipped.
     settle: a message FROM the person this young (seconds) is left for the bridge, which gets it by webhook a moment
     later; taking it here too would add it twice. Those contacts come back in the last item to be looked at again.
     """
@@ -180,20 +183,24 @@ def collect(by_contact, location, since=None, newest_page_only=False, settle=0):
         try:
             if not location:
                 location = (ghl_get("/contacts/" + ghl_contact, "2021-07-28").get("contact") or {}).get("locationId") or ""
-            found = ghl_get("/conversations/search?" + urllib.parse.urlencode({"locationId": location, "contactId": ghl_contact})).get("conversations") or []
+            if known and known.get(ghl_contact):
+                found = [{"id": conversation_id} for conversation_id in known[ghl_contact]]
+            else:
+                found = ghl_get("/conversations/search?" + urllib.parse.urlencode({"locationId": location, "contactId": ghl_contact})).get("conversations") or []
             if since and not any(
                 isinstance(f.get("lastMessageDate"), (int, float))
                 and datetime.datetime.utcfromtimestamp(f["lastMessageDate"] / 1000) >= since
                 for f in found
             ):
                 continue
-            theirs = [m for f in found for m in ghl_messages(f["id"], 1 if newest_page_only else 200)]
+            theirs = [m for f in found for m in ghl_messages(f["id"], 1 if newest_page_only else 200, 20 if newest_page_only else 100)]
         except Exception as error:  # noqa: BLE001 - one contact failing must not stop the rest
             report.append((name, "GoHighLevel error: %s %s" % (type(error).__name__, str(error)[:80])))
             continue
 
+        newest_only = " order by id desc limit 100" if newest_page_only else ""
         existing = {c["conv"]: rows(
-            "select id, message_type, content, created_at, source_id from messages where conversation_id = %d and private = false" % c["conv"]
+            "select id, message_type, content, created_at, source_id from messages where conversation_id = %d and private = false%s" % (c["conv"], newest_only)
         ) for c in convs}
         taken = set()  # existing message ids already matched to one of theirs
         have_ids = {m["source_id"] for ms in existing.values() for m in ms if m["source_id"]}
@@ -258,12 +265,13 @@ def write(plan):
     psql("\n".join(statements))
 
 
-def watch(interval, catch_up_minutes=30, full_pass_seconds=300, settle=30):
+def watch(interval, catch_up_minutes=30, settle=30):
     """Follow GoHighLevel closely: one call every few seconds asks which conversations changed last, and only those are read.
 
     One location-wide search (the 40 conversations with the newest message) costs one API call per tick, far inside
     GoHighLevel's limits (100 calls per 10 seconds, 200,000 per day). A chat whose newest message moved is read and
-    its new messages are added. A full pass over every chat runs now and then in case a tick was missed.
+    its new messages are added. As a safety net, each tick also looks at one more chat in turn (so every chat is
+    looked at again every few minutes) without holding up the fast path for long.
     """
     by_contact = load_chats()
     location = LOCATION_ID
@@ -278,19 +286,29 @@ def watch(interval, catch_up_minutes=30, full_pass_seconds=300, settle=30):
         sys.exit("GoHighLevel location is not known")
 
     def follow(subset, **options):
+        began = time.time()
         plan, _report, _types, unsettled = collect(subset, location, **options)
+        read_seconds = time.time() - began
         if plan:
             write(plan)
             age = max((datetime.datetime.utcnow() - p[4]).total_seconds() for p in plan)
-            log("Added", len(plan), "messages (from the person %d, from us %d); the oldest was sent %.0f s ago" % (
-                sum(1 for p in plan if p[2] == 0), sum(1 for p in plan if p[2] == 1), age))
+            log("Added", len(plan), "messages (from the person %d, from us %d); the oldest was sent %.1f s ago; read %.1f s, wrote %.1f s" % (
+                sum(1 for p in plan if p[2] == 0), sum(1 for p in plan if p[2] == 1), age, read_seconds, time.time() - began - read_seconds))
         return unsettled
 
     log("Watching GoHighLevel every", interval, "s; catching up the last", catch_up_minutes, "minutes first")
-    follow(by_contact, since=datetime.datetime.utcnow() - datetime.timedelta(minutes=catch_up_minutes))
+    # Catch up on what came while the watcher was not running: the chats whose newest message is recent, found with one call.
+    since_ms = (time.time() - catch_up_minutes * 60) * 1000
+    recent: dict[str, list[str]] = {}
+    for chat in ghl_get("/conversations/search?" + urllib.parse.urlencode(
+        {"locationId": location, "sortBy": "last_message_date", "sort": "desc", "limit": 100}
+    )).get("conversations") or []:
+        if isinstance(chat.get("lastMessageDate"), (int, float)) and chat["lastMessageDate"] >= since_ms and chat.get("lastMessageType") in KINDS:
+            recent.setdefault(chat.get("contactId"), []).append(chat["id"])
+    follow({c: by_contact[c] for c in recent if c in by_contact}, known=recent)
     last_seen: dict[str, float] = {}
     retry: dict[str, float] = {}
-    last_full = time.time()
+    sweep: list[str] = []
     last_reload = time.time()
     first = True
     while True:
@@ -300,12 +318,14 @@ def watch(interval, catch_up_minutes=30, full_pass_seconds=300, settle=30):
                 {"locationId": location, "sortBy": "last_message_date", "sort": "desc", "limit": 40}
             )).get("conversations") or []
             changed = set()
+            conversations: dict[str, list[str]] = {}
             for chat in found:
                 moved = chat.get("lastMessageDate")
                 if not isinstance(moved, (int, float)):
                     continue
                 if not first and moved > last_seen.get(chat["id"], 0) and chat.get("lastMessageType") in KINDS:
                     changed.add(chat.get("contactId"))
+                    conversations.setdefault(chat.get("contactId"), []).append(chat["id"])
                 last_seen[chat["id"]] = max(moved, last_seen.get(chat["id"], 0))
             first = False
             # A person the CRM has not met yet (the bridge is still making the chat), or a refresh now and then.
@@ -317,12 +337,13 @@ def watch(interval, catch_up_minutes=30, full_pass_seconds=300, settle=30):
                 del retry[contact]
             subset = {c: by_contact[c] for c in changed if c in by_contact}
             if subset:
-                for contact in follow(subset, newest_page_only=True, settle=settle):
+                for contact in follow(subset, newest_page_only=True, settle=settle, known=conversations):
                     retry[contact] = started + settle + 5
-            if started - last_full > full_pass_seconds:
-                last_full = started
-                since = datetime.datetime.utcnow() - datetime.timedelta(minutes=catch_up_minutes)
-                for contact in follow(by_contact, since=since, settle=settle):
+            if not sweep:
+                sweep = list(by_contact)
+            next_contact = sweep.pop()
+            if next_contact in by_contact and next_contact not in subset:
+                for contact in follow({next_contact: by_contact[next_contact]}, newest_page_only=True, settle=settle):
                     retry[contact] = started + settle + 5
         except Exception as error:  # noqa: BLE001 - keep following; the next tick tries again
             log("Tick failed:", type(error).__name__, str(error)[:200])
