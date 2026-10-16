@@ -186,8 +186,11 @@ export async function fetchClassroomsFromSupabase() {
       .order('program_level')
       .order('name')) as unknown as { data: ClassroomRow[] | null; error: { code?: string } | null }
 
-  let { data, error } = await select(`${base}, zoom_link, programme_id`)
-  // Before the Zoom link / programmes migrations those columns do not exist yet.
+  let { data, error } = await select(`${base}, zoom_link, programme_id, subject_id`)
+  // Before the Zoom link / programmes / subjects migrations those columns do not exist yet.
+  if (error?.code === '42703') {
+    ;({ data, error } = await select(`${base}, zoom_link, programme_id`))
+  }
   if (error?.code === '42703') {
     ;({ data, error } = await select(`${base}, zoom_link`))
   }

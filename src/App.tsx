@@ -206,6 +206,15 @@ import { LeadStagesModal } from './components/modals/LeadStagesModal'
 import { useLeadStages } from './hooks/useLeadStages'
 import { PackagesModal, type PackageDraft } from './components/modals/PackagesModal'
 import { QuestionBankSection } from './components/sections/QuestionBankSection'
+import { fetchSubjects, saveSubject, type Subject } from './lib/subjects'
+import {
+  AgeGroupsContext,
+  ageGroupNames,
+  defaultAgeGroups,
+  fetchAgeGroups,
+  saveAgeGroup,
+  type AgeGroupOption,
+} from './lib/ageGroups'
 import { ClassSettingsModal, type ReviewCriterionDraft } from './components/modals/ClassSettingsModal'
 import { ChangePackageModal, type PackageChange } from './components/modals/ChangePackageModal'
 import {
@@ -239,8 +248,8 @@ import {
 } from './components/modals/MoveClassModal'
 import { getDragBlockReason, getTimeFromDate, getTrialSlotsOnDate } from './lib/move'
 import { describeClashes, findTeacherClashes, type ClashCandidate } from './lib/clash'
-import { hasPermission } from './lib/permissions'
 import { closeCalendarMorePopover } from './lib/calendarPopover'
+import { hasPermission } from './lib/permissions'
 import { getClassroomRosterOn } from './lib/roster'
 import {
   getOfferedPackages,
@@ -314,6 +323,26 @@ async function loadReviewCriteria() {
     return await fetchReviewCriteriaFromSupabase()
   } catch (error) {
     console.error('Could not load the review criteria.', error)
+    return null
+  }
+}
+
+// Subjects too: without them questions and classes simply have none.
+async function loadSubjects() {
+  try {
+    return await fetchSubjects()
+  } catch (error) {
+    console.error('Could not load the subjects.', error)
+    return null
+  }
+}
+
+// Age groups: on a failed read the four usual ones stay.
+async function loadAgeGroups() {
+  try {
+    return await fetchAgeGroups()
+  } catch (error) {
+    console.error('Could not load the age groups.', error)
     return null
   }
 }
@@ -412,6 +441,11 @@ function App() {
   // Rewards teachers give in class, and the level names (Settings > Rewards).
   const [rewardPresets, setRewardPresets] = useState<RewardPreset[]>([])
   const [rewardLevels, setRewardLevels] = useState<RewardLevel[]>([])
+  // The school's subjects (Class Settings > Subjects).
+  const [subjects, setSubjects] = useState<Subject[]>([])
+  // The school's age groups (Class Settings > Subjects & ages).
+  const [ageGroups, setAgeGroups] = useState<AgeGroupOption[]>(defaultAgeGroups)
+  const schoolAgeGroupNames = useMemo(() => ageGroupNames(ageGroups), [ageGroups])
   const [isClassSettingsOpen, setIsClassSettingsOpen] = useState(false)
   // Loaded when Class Settings opens.
   const [zoomOptions, setZoomOptions] = useState<ZoomMeetingOptions | null>(null)
@@ -559,6 +593,7 @@ function App() {
     notes: '',
     zoomLink: '',
     programmeId: '',
+    subjectId: '',
   })
   const [createTeacherFormState, setCreateTeacherFormState] =
     useState<CreateTeacherFormState>({
@@ -1367,6 +1402,7 @@ function App() {
       notes: editingClassroom?.notes ?? '',
       zoomLink: editingClassroom?.zoomLink ?? '',
       programmeId: editingClassroom?.programmeId ? String(editingClassroom.programmeId) : '',
+      subjectId: editingClassroom?.subjectId ? String(editingClassroom.subjectId) : '',
     })
   }, [editingClassroom, isCreatingClassroom, selectedAgeGroup, todayString])
 
@@ -1437,6 +1473,8 @@ function App() {
           nextReviewCriteria,
           nextAttendanceStatuses,
           nextRewards,
+          nextSubjects,
+          nextAgeGroups,
         ] = await Promise.all([
           fetchClassroomsFromSupabase(),
           fetchTeachersFromSupabase(),
@@ -1454,6 +1492,8 @@ function App() {
           loadReviewCriteria(),
           loadAttendanceStatuses(),
           loadRewards(),
+          loadSubjects(),
+          loadAgeGroups(),
         ])
 
         if (!cancelled) {
@@ -1479,6 +1519,12 @@ function App() {
           if (nextRewards) {
             setRewardPresets(nextRewards.presets)
             setRewardLevels(nextRewards.levels)
+          }
+          if (nextSubjects) {
+            setSubjects(nextSubjects)
+          }
+          if (nextAgeGroups) {
+            setAgeGroups(nextAgeGroups)
           }
           setLoadedUserId(authUserId)
         }
@@ -1520,6 +1566,8 @@ function App() {
       nextReviewCriteria,
       nextAttendanceStatuses,
       nextRewards,
+      nextSubjects,
+      nextAgeGroups,
     ] = await Promise.all([
       fetchClassroomsFromSupabase(),
       fetchTeachersFromSupabase(),
@@ -1537,6 +1585,8 @@ function App() {
       loadReviewCriteria(),
       loadAttendanceStatuses(),
       loadRewards(),
+      loadSubjects(),
+      loadAgeGroups(),
     ])
     setClassrooms((current) => (sameData(current, nextClassrooms) ? current : nextClassrooms))
     setTeachers((current) => (sameData(current, nextTeachers) ? current : nextTeachers))
@@ -1562,6 +1612,12 @@ function App() {
     if (nextRewards) {
       setRewardPresets((current) => (sameData(current, nextRewards.presets) ? current : nextRewards.presets))
       setRewardLevels((current) => (sameData(current, nextRewards.levels) ? current : nextRewards.levels))
+    }
+    if (nextSubjects) {
+      setSubjects((current) => (sameData(current, nextSubjects) ? current : nextSubjects))
+    }
+    if (nextAgeGroups) {
+      setAgeGroups((current) => (sameData(current, nextAgeGroups) ? current : nextAgeGroups))
     }
   }
   useLiveSync(Boolean(authUserId) && loadedUserId === authUserId && !isLoading && !loadError, syncCoreQuietly)
@@ -2655,6 +2711,7 @@ function App() {
       notes: '',
       zoomLink: '',
       programmeId: '',
+      subjectId: '',
     })
   }
 
@@ -4354,6 +4411,10 @@ function App() {
     if (classroomFormState.programmeId || editingClassroom?.programmeId !== undefined) {
       payload.programme_id = classroomFormState.programmeId ? Number(classroomFormState.programmeId) : null
     }
+    // And the subject.
+    if (classroomFormState.subjectId || editingClassroom?.subjectId !== undefined) {
+      payload.subject_id = classroomFormState.subjectId ? Number(classroomFormState.subjectId) : null
+    }
 
     try {
       setIsSavingClassroom(true)
@@ -5791,6 +5852,7 @@ function App() {
   }
 
   return (
+    <AgeGroupsContext.Provider value={schoolAgeGroupNames}>
     <WhatsAppOpenProvider value={canOpenWhatsAppChat ? openWhatsAppChat : null}>
     <main className="compact-admin min-h-screen bg-white pb-20 text-slate-900 lg:pb-0">
       {confirmDialog}
@@ -6359,6 +6421,8 @@ function App() {
                         }
                       }}
                       eventClick={(arg: EventClickArg) => {
+                        closeCalendarMorePopover()
+
                         if (arg.event.extendedProps.isHoliday) {
                           return
                         }
@@ -6389,8 +6453,6 @@ function App() {
                           ) {
                             void openAttendanceForEvent(
                               scheduleId,
-                        closeCalendarMorePopover()
-
                               occurrenceDate,
                               arg.event.title,
                             )
@@ -6633,6 +6695,8 @@ function App() {
                 currentTeacherId={currentSession?.teacherId ?? null}
                 isAdmin={isAdmin}
                 teacherNames={new Map(Array.from(teacherMap.entries()).map(([id, teacher]) => [id, teacher.fullName]))}
+                subjects={subjects}
+                classrooms={visibleClassrooms}
               />
             )}
 
@@ -6708,6 +6772,7 @@ function App() {
           assignableTeachers={assignableTeachers}
           formState={classroomFormState}
           programmes={programmes.programmes}
+          subjects={subjects}
           saveError={classroomSaveError}
           isSaving={isSavingClassroom}
           onClose={closeClassroomModal}
@@ -6810,6 +6875,26 @@ function App() {
           rewardPresets={rewardPresets}
           rewardLevels={rewardLevels}
           onRewardsChanged={() => void reloadRewards()}
+          subjects={subjects}
+          onSaveSubject={async (subject, changes) => {
+            const failure = await saveSubject(subject, changes)
+            if (!failure) {
+              const next = await loadSubjects()
+              if (next) setSubjects(next)
+            }
+            return failure
+          }}
+          ageGroups={ageGroups}
+          onSaveAgeGroup={async (group, changes) => {
+            const failure = await saveAgeGroup(group, changes)
+            if (!failure) {
+              const next = await loadAgeGroups()
+              if (next) setAgeGroups(next)
+              // A rename changes the classes too.
+              if (group && changes.name && changes.name !== group.name) void syncCoreQuietly()
+            }
+            return failure
+          }}
           onSaveZoomOptions={saveZoomOptions}
         />
       )}
@@ -7248,6 +7333,7 @@ function App() {
       </nav>
     </main>
     </WhatsAppOpenProvider>
+    </AgeGroupsContext.Provider>
   )
 }
 

@@ -521,5 +521,74 @@ select pg_temp.fails($$select public.set_ai_report_settings('{"sources": {"revie
 select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
 select pg_temp.ok((select count(*) from public.student_ai_reports) = 0, 'a student login reads no analyses yet');
 
+-- Subjects and age groups (20261021180000) ----------------------------------
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select pg_temp.fails($$select public.save_subject(null, 'Coding', null, true)$$, 'only admin', 'a teacher cannot add a subject');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select pg_temp.ok((public.save_subject(null, 'Coding', null, true)).name = 'Coding', 'admin adds a subject');
+select public.save_subject(null, 'Maths', null, true);
+select pg_temp.fails($$select public.save_subject(null, ' coding ', null, true)$$, 'duplicate key', 'two shown subjects cannot share a name');
+
+reset role;
+update public.classrooms set subject_id = (select id from public.subjects where name = 'Coding') where id = 9101;
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+
+create function pg_temp.q(p_prompt text, p_subject text, p_ages text) returns bigint language sql as $$
+  select (public.save_question(null, jsonb_build_object(
+    'kind', 'short', 'prompt', p_prompt,
+    'subject_id', (select id from public.subjects where name = p_subject),
+    'age_groups', p_ages::jsonb))).id;
+$$;
+grant execute on function pg_temp.q(text, text, text) to authenticated;
+
+select pg_temp.q('Loop for 9-11', 'Coding', '["9-11 Years Old", "9-11 Years Old"]');
+select pg_temp.ok((select subject_id is not null and age_groups = '{9-11 Years Old}'
+  from public.questions where prompt = 'Loop for 9-11'),
+  'a question keeps its subject and age groups (no repeats)');
+select pg_temp.fails($$select pg_temp.q('Bad age', 'Coding', '["7 Years Old"]')$$, 'unknown age group', 'unknown age groups are refused');
+select pg_temp.fails($$select public.save_question(null, '{"kind": "short", "prompt": "x", "subject_id": 999999}')$$, 'subject not found', 'unknown subjects are refused');
+
+select pg_temp.q('Teen loop', 'Coding', '["15-17 Years Old"]');
+select pg_temp.q('Fractions', 'Maths', '[]');
+select pg_temp.q('Any class', null, '[]');
+select pg_temp.ok(public.question_fits_classroom((select id from public.questions where prompt = 'Loop for 9-11'), 9101),
+  'a Coding 9-11 question fits the Coding 9-11 class');
+select pg_temp.ok(not public.question_fits_classroom((select id from public.questions where prompt = 'Teen loop'), 9101),
+  'a 15-17 question does not fit a 9-11 class');
+select pg_temp.ok(not public.question_fits_classroom((select id from public.questions where prompt = 'Fractions'), 9101),
+  'a Maths question does not fit a Coding class');
+select pg_temp.ok(public.question_fits_classroom((select id from public.questions where prompt = 'Any class'), 9101),
+  'a question with no subject or age fits every class');
+select pg_temp.ok((public.copy_question((select id from public.questions where prompt = 'Loop for 9-11'))).age_groups = '{9-11 Years Old}',
+  'a copy keeps subject and age groups');
+
+-- Age groups the school keeps itself
+select pg_temp.ok((select string_agg(name, ',' order by sort_order) from public.age_groups) = '6-8 Years Old,9-11 Years Old,12-14 Years Old,15-17 Years Old',
+  'the four usual age groups are there');
+select pg_temp.fails($$select public.save_age_group(null, 'Primary 1-3', null, true)$$, 'only admin', 'a teacher cannot add an age group');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select pg_temp.ok((public.save_age_group(null, 'Primary 1-3', null, true)).sort_order = 50, 'admin adds an age group');
+reset role;
+select pg_temp.ok((select count(*) from public.questions where prompt = 'Loop for 9-11' and age_groups = '{9-11 Years Old}') >= 1, 'before the rename');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+set local role authenticated;
+select public.save_age_group('9-11 Years Old', 'Kids 9-11', null, null);
+reset role;
+select pg_temp.ok((select age_group from public.classrooms where id = 9101) = 'Kids 9-11', 'a renamed age group follows on the class');
+select pg_temp.ok(not exists (select 1 from public.questions where '9-11 Years Old' = any (age_groups))
+  and exists (select 1 from public.questions where 'Kids 9-11' = any (age_groups)), 'and on the questions');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+set local role authenticated;
+select pg_temp.fails($$select public.save_age_group('Kids 9-11', '6-8 Years Old', null, null)$$, 'already an age group', 'two age groups cannot share a name');
+select pg_temp.ok(not (public.save_age_group('Primary 1-3', null, null, false)).is_active, 'admin hides an age group');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select pg_temp.fails($$select pg_temp.q('Gone age', null, '["9-11 Years Old"]')$$, 'unknown age group', 'the old name is no longer an age group');
+reset role;
+select pg_temp.fails($$update public.classrooms set age_group = 'Nursery' where id = 9101$$, 'foreign key', 'a class must use an age group from the list');
+
 reset role;
 rollback;

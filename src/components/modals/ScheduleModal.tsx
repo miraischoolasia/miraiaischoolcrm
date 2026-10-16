@@ -3,7 +3,8 @@ import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { cn } from '../../lib/cn'
 import { getStudentStatus } from '../../domain/studentStatus'
-import { ageGroupOptions, programLevelOptions } from '../../lib/constants'
+import { programLevelOptions } from '../../lib/constants'
+import { useAgeGroups } from '../../lib/ageGroups'
 import { weekdayLabels } from '../../lib/schedule'
 import type { TeacherClash } from '../../lib/clash'
 import type { Classroom, Schedule, ScheduleFormState, Student, Teacher } from '../../types/domain'
@@ -61,6 +62,14 @@ export function ScheduleModal({
   clashes = [],
   clashTeacherName = 'This teacher',
 }: ScheduleModalProps) {
+  // Classes are listed by the school's age groups; one a class still uses stays listed.
+  const schoolAgeGroups = useAgeGroups()
+  const ageGroupOptions = [
+    ...schoolAgeGroups,
+    ...Array.from(new Set(activeVisibleClassrooms.map((classroom) => classroom.ageGroup))).filter(
+      (group) => !schoolAgeGroups.includes(group),
+    ),
+  ]
   const [occurrenceReason, setOccurrenceReason] = useState('')
   const canCancelOccurrence =
     !isCreatingSchedule &&

@@ -34,6 +34,10 @@ function renderModal(overrides: Partial<Parameters<typeof ClassSettingsModal>[0]
     rewardPresets: [],
     rewardLevels: [],
     onRewardsChanged: vi.fn(),
+    subjects: [],
+    onSaveSubject: vi.fn(async () => null),
+    ageGroups: [],
+    onSaveAgeGroup: vi.fn(async () => null),
     onSaveZoomOptions: vi.fn(async () => null),
     ...overrides,
   }

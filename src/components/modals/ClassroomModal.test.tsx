@@ -40,6 +40,7 @@ function renderWithTeacher(teacherId: string) {
     notes: '',
     zoomLink: '',
     programmeId: '',
+    subjectId: '',
   }
 
   render(
@@ -88,6 +89,7 @@ describe('ClassroomModal zoom link', () => {
           notes: '',
           zoomLink: 'https://zoom.us/j/1',
           programmeId: '',
+          subjectId: '',
         }}
         saveError={null}
         isSaving={false}
@@ -133,6 +135,7 @@ describe('ClassroomModal programme', () => {
           notes: '',
           zoomLink: '',
           programmeId,
+          subjectId: '',
         }}
         programmes={programmes}
         saveError={null}

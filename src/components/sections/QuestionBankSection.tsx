@@ -10,7 +10,12 @@ import {
   setQuestionArchived,
   type Question,
   type QuestionDraft,
+  fitsClassroom,
+  shortAgeGroup,
 } from '../../lib/questions'
+import { useAgeGroups } from '../../lib/ageGroups'
+import type { Subject } from '../../lib/subjects'
+import type { AgeGroup, Classroom } from '../../types/domain'
 import { ImportQuestionsModal } from '../questions/ImportQuestionsModal'
 import { QuestionEditorModal } from '../questions/QuestionEditorModal'
 
@@ -23,16 +28,25 @@ export function QuestionBankSection({
   currentTeacherId,
   isAdmin,
   teacherNames,
+  subjects,
+  classrooms,
 }: {
   currentTeacherId: number | null
   isAdmin: boolean
   teacherNames: Map<number, string>
+  subjects: Subject[]
+  // The classes this account can see, to find the questions that fit one.
+  classrooms: Classroom[]
 }) {
   const [questions, setQuestions] = useState<Question[] | null>(null)
+  const ageGroupOptions = useAgeGroups()
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('mine')
   const [search, setSearch] = useState('')
   const [topic, setTopic] = useState('')
+  const [subjectFilter, setSubjectFilter] = useState('')
+  const [ageFilter, setAgeFilter] = useState<AgeGroup | ''>('')
+  const [classroomFilter, setClassroomFilter] = useState('')
   const [editing, setEditing] = useState<Question | 'new' | null>(null)
   const [importing, setImporting] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -49,6 +63,9 @@ export function QuestionBankSection({
   useEffect(load, [load])
 
   const canEdit = (question: Question) => isAdmin || question.ownerId === currentTeacherId
+  const subjectName = new Map(subjects.map((subject) => [subject.id, subject.name]))
+  const activeClassrooms = classrooms.filter((classroom) => classroom.status === 'active')
+  const fitClassroom = activeClassrooms.find((classroom) => String(classroom.id) === classroomFilter) ?? null
   const topics = useMemo(
     () => Array.from(new Set((questions ?? []).flatMap((question) => (question.topic ? [question.topic] : [])))).sort(),
     [questions],
@@ -58,6 +75,9 @@ export function QuestionBankSection({
     if (tab === 'mine' && question.ownerId !== currentTeacherId) return false
     if (tab === 'school' && !question.isShared) return false
     if (topic && question.topic !== topic) return false
+    if (subjectFilter && String(question.subjectId ?? '') !== subjectFilter) return false
+    if (ageFilter && !(question.ageGroups.length === 0 || question.ageGroups.includes(ageFilter))) return false
+    if (fitClassroom && !fitsClassroom(question, fitClassroom)) return false
     const needle = search.trim().toLowerCase()
     return !needle || question.prompt.toLowerCase().includes(needle) || (question.topic ?? '').toLowerCase().includes(needle)
   })
@@ -145,6 +165,51 @@ export function QuestionBankSection({
               className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm"
             />
           </label>
+          {subjects.some((subject) => subject.isActive) && (
+            <select
+              value={subjectFilter}
+              aria-label="Subject"
+              onChange={(event) => setSubjectFilter(event.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+            >
+              <option value="">All subjects</option>
+              {subjects
+                .filter((subject) => subject.isActive)
+                .map((subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.name}
+                  </option>
+                ))}
+            </select>
+          )}
+          <select
+            value={ageFilter}
+            aria-label="Age"
+            onChange={(event) => setAgeFilter(event.target.value as AgeGroup | '')}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+          >
+            <option value="">All ages</option>
+            {ageGroupOptions.map((group) => (
+              <option key={group} value={group}>
+                {shortAgeGroup(group)}
+              </option>
+            ))}
+          </select>
+          {activeClassrooms.length > 0 && (
+            <select
+              value={classroomFilter}
+              aria-label="Fits class"
+              onChange={(event) => setClassroomFilter(event.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+            >
+              <option value="">Any class</option>
+              {activeClassrooms.map((classroom) => (
+                <option key={classroom.id} value={classroom.id}>
+                  For {classroom.name}
+                </option>
+              ))}
+            </select>
+          )}
           {topics.length > 0 && (
             <select
               value={topic}
@@ -191,6 +256,12 @@ export function QuestionBankSection({
                   <span className="rounded-full bg-[#fff1f8] px-2 py-0.5 text-[#be185d]">{questionKindLabels[question.kind]}</span>
                   <span className="text-slate-500">
                     {question.points} pts · {question.timeLimitSeconds}s
+                  </span>
+                  {question.subjectId !== null && subjectName.has(question.subjectId) && (
+                    <span className="rounded-full bg-violet-50 px-2 py-0.5 text-violet-700">{subjectName.get(question.subjectId)}</span>
+                  )}
+                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">
+                    {question.ageGroups.length === 0 ? 'All ages' : question.ageGroups.map(shortAgeGroup).join(', ')}
                   </span>
                   {question.topic && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">{question.topic}</span>}
                   {question.isShared && <span className="rounded-full bg-sky-50 px-2 py-0.5 text-sky-700">Shared</span>}
@@ -262,6 +333,7 @@ export function QuestionBankSection({
 
       {editing && (
         <QuestionEditorModal
+          subjects={subjects}
           title={editing === 'new' ? 'New question' : 'Edit question'}
           initial={editing === 'new' ? null : toDraft(editing)}
           onClose={() => setEditing(null)}
@@ -273,6 +345,7 @@ export function QuestionBankSection({
 
       {importing && (
         <ImportQuestionsModal
+          subjects={subjects}
           onClose={() => setImporting(false)}
           onImport={(drafts, share) =>
             act(importQuestions(drafts, share), `Imported ${drafts.length} ${drafts.length === 1 ? 'question' : 'questions'}.`)
@@ -295,5 +368,7 @@ function toDraft(question: Question): QuestionDraft {
     topic: question.topic,
     explanation: question.explanation,
     isShared: question.isShared,
+    subjectId: question.subjectId,
+    ageGroups: question.ageGroups,
   }
 }

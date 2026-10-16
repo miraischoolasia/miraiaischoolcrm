@@ -65,11 +65,8 @@ export type LeadBulkAction =
 
 // The key of one of the school's lead stages ('new', 'converted' and 'lost' always exist; the school adds its own).
 export type LeadStatus = string
-export type AgeGroup =
-  | '6-8 Years Old'
-  | '9-11 Years Old'
-  | '12-14 Years Old'
-  | '15-17 Years Old'
+// The name of one of the school's age groups (Class Settings > Subjects & ages).
+export type AgeGroup = string
 export type ProgramLevel =
   | 'Coder Foundation'
   | 'Coder Pro'
@@ -170,6 +167,8 @@ export type Classroom = {
   zoomLink?: string | null
   // The programme (course) the class belongs to, or null. Undefined before the migration.
   programmeId?: number | null
+  // What the class studies (Coding, Maths, ...), or null. Undefined before the migration.
+  subjectId?: number | null
 }
 
 export type Teacher = {
@@ -459,6 +458,8 @@ export type ClassroomFormState = {
   zoomLink: string
   // The programme the class belongs to, as a programme id, or empty for none.
   programmeId: string
+  // The class's subject, as a subject id, or empty for none.
+  subjectId: string
 }
 
 export type AttendanceModalState = {
@@ -508,7 +509,7 @@ export type ClassroomRow = Pick<
   | 'status'
   | 'notes'
   | 'archived_at'
-> & { zoom_link?: string | null; programme_id?: number | null }
+> & { zoom_link?: string | null; programme_id?: number | null; subject_id?: number | null }
 
 export type TeacherRow = Pick<
   Database['public']['Tables']['teachers']['Row'],

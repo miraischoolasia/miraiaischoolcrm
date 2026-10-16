@@ -14,11 +14,7 @@ export type Database = {
           category: 'regular' | 'trial' | 'camp'
           id: number
           name: string
-          age_group:
-            | '6-8 Years Old'
-            | '9-11 Years Old'
-            | '12-14 Years Old'
-            | '15-17 Years Old'
+          age_group: string
           program_level:
             | 'Coder Foundation'
             | 'Coder Pro'
@@ -32,6 +28,7 @@ export type Database = {
           archived_at: string | null
           zoom_link: string | null
           programme_id: number | null
+          subject_id: number | null
           created_at: string
           updated_at: string
         }
@@ -39,11 +36,7 @@ export type Database = {
           category?: 'regular' | 'trial' | 'camp'
           id?: number
           name: string
-          age_group:
-            | '6-8 Years Old'
-            | '9-11 Years Old'
-            | '12-14 Years Old'
-            | '15-17 Years Old'
+          age_group: string
           program_level:
             | 'Coder Foundation'
             | 'Coder Pro'
@@ -57,6 +50,7 @@ export type Database = {
           archived_at?: string | null
           zoom_link?: string | null
           programme_id?: number | null
+          subject_id?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -64,11 +58,7 @@ export type Database = {
           category?: 'regular' | 'trial' | 'camp'
           id?: number
           name?: string
-          age_group?:
-            | '6-8 Years Old'
-            | '9-11 Years Old'
-            | '12-14 Years Old'
-            | '15-17 Years Old'
+          age_group?: string
           program_level?:
             | 'Coder Foundation'
             | 'Coder Pro'
@@ -82,6 +72,7 @@ export type Database = {
           archived_at?: string | null
           zoom_link?: string | null
           programme_id?: number | null
+          subject_id?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -1743,6 +1734,8 @@ export type Database = {
           is_archived: boolean
           created_at: string
           updated_at: string
+          subject_id: number | null
+          age_groups: string[]
         }
         Insert: {
           id?: never
@@ -1760,6 +1753,8 @@ export type Database = {
           is_archived?: boolean
           created_at?: string
           updated_at?: string
+          subject_id?: number | null
+          age_groups?: string[]
         }
         Update: {
           id?: never
@@ -1816,6 +1811,57 @@ export type Database = {
           model?: string | null
           created_by?: number | null
           created_at?: string
+        }
+        Relationships: []
+      }
+      age_groups: {
+        Row: {
+          name: string
+          sort_order: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          name: string
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          name?: string
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      subjects: {
+        Row: {
+          id: number
+          name: string
+          sort_order: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: never
+          name: string
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: never
+          name?: string
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -2316,6 +2362,24 @@ export type Database = {
           p_settings: Json
         }
         Returns: undefined
+      }
+      save_age_group: {
+        Args: {
+          p_name: string | null
+          p_new_name: string
+          p_sort_order: number | null
+          p_is_active: boolean | null
+        }
+        Returns: Database['public']['Tables']['age_groups']['Row']
+      }
+      save_subject: {
+        Args: {
+          p_id: number | null
+          p_name: string
+          p_sort_order: number | null
+          p_is_active: boolean | null
+        }
+        Returns: Database['public']['Tables']['subjects']['Row']
       }
       save_review_criterion: {
         Args: {

@@ -1,8 +1,10 @@
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
-import { ageGroupOptions, programLevelOptions } from '../../lib/constants'
+import { programLevelOptions } from '../../lib/constants'
+import { useAgeGroups } from '../../lib/ageGroups'
 import type { AgeGroup, ClassroomCategory, Classroom, ClassroomFormState, ProgramLevel, Teacher } from '../../types/domain'
 import type { Programme } from '../../lib/programmes'
+import type { Subject } from '../../lib/subjects'
 
 type ClassroomModalProps = {
   isCreating: boolean
@@ -11,6 +13,8 @@ type ClassroomModalProps = {
   formState: ClassroomFormState
   // The school's programmes (courses); a class can belong to one.
   programmes?: Programme[]
+  // The school's subjects; the class's one picks the questions that fit it.
+  subjects?: Subject[]
   saveError: string | null
   isSaving: boolean
   onClose: () => void
@@ -27,12 +31,16 @@ export function ClassroomModal({
   assignableTeachers,
   formState,
   programmes = [],
+  subjects = [],
   saveError,
   isSaving,
   onClose,
   onSubmit,
   onFieldChange,
 }: ClassroomModalProps) {
+  // The school's age groups, plus this class's own if it is hidden now.
+  const schoolAgeGroups = useAgeGroups()
+  const ageGroupOptions = schoolAgeGroups.includes(formState.ageGroup) ? schoolAgeGroups : [...schoolAgeGroups, formState.ageGroup]
   const isTeacherChanging =
     !isCreating &&
     editingClassroom !== null &&
@@ -231,6 +239,27 @@ export function ClassroomModal({
                 calendar and in attendance history. From this date on, the class
                 and its students move to the new teacher.
               </p>
+            </label>
+          )}
+
+          {subjects.some((subject) => subject.isActive || String(subject.id) === formState.subjectId) && (
+            <label className="space-y-2 sm:col-span-2">
+              <span className="text-sm font-semibold text-slate-700">Subject</span>
+              <select
+                value={formState.subjectId}
+                onChange={(event) => onFieldChange('subjectId', event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900"
+              >
+                <option value="">No subject</option>
+                {subjects
+                  .filter((subject) => subject.isActive || String(subject.id) === formState.subjectId)
+                  .map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </option>
+                  ))}
+              </select>
+              <p className="text-xs text-slate-500">The Question Bank shows this class the questions of its subject and age group.</p>
             </label>
           )}
 

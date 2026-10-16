@@ -5,8 +5,10 @@ import {
   draftProblem,
   editDistance,
   emptyQuestionDraft,
+  fitsClassroom,
   matchesAnswer,
   parseQuestionImport,
+  readAgeGroup,
 } from './questions'
 
 describe('matching an answer', () => {
@@ -122,3 +124,35 @@ describe('parseQuestionImport', () => {
     expect(parseQuestionImport('choice,Pick')[0].error).toContain('The first row must name the columns')
   })
 })
+
+describe('subjects and ages', () => {
+  const coding = { id: 1, name: 'Coding', sortOrder: 10, isActive: true }
+  const maths = { id: 2, name: 'Maths', sortOrder: 20, isActive: true }
+  const codingClass = { subjectId: 1, ageGroup: '9-11 Years Old' as const }
+
+  it('fits a class by subject and age group', () => {
+    expect(fitsClassroom({ subjectId: 1, ageGroups: ['9-11 Years Old'] }, codingClass)).toBe(true)
+    expect(fitsClassroom({ subjectId: 1, ageGroups: ['15-17 Years Old'] }, codingClass)).toBe(false)
+    expect(fitsClassroom({ subjectId: 2, ageGroups: [] }, codingClass)).toBe(false)
+    expect(fitsClassroom({ subjectId: null, ageGroups: [] }, codingClass)).toBe(true)
+    expect(fitsClassroom({ subjectId: 2, ageGroups: [] }, { subjectId: null, ageGroup: '6-8 Years Old' })).toBe(true)
+  })
+
+  it('reads age groups written short or long', () => {
+    expect(readAgeGroup('9-11')).toBe('9-11 Years Old')
+    expect(readAgeGroup(' 12 - 14 years old ')).toBe('12-14 Years Old')
+    expect(readAgeGroup('7')).toBeNull()
+  })
+
+  it('imports the subject by name and the ages', () => {
+    const rows = parseQuestionImport('type,question,answers,subject,ages\nfill,6 x 7?,42,maths,6-8 | 9-11 | 6-8', [coding, maths])
+    expect(rows[0].draft).toMatchObject({ subjectId: 2, ageGroups: ['6-8 Years Old', '9-11 Years Old'] })
+  })
+
+  it('names an unknown subject or age', () => {
+    const rows = parseQuestionImport('type,question,answers,subject,ages\nfill,A?,a,Art,\nfill,B?,b,,10', [coding])
+    expect(rows[0].error).toContain('Unknown subject "Art"')
+    expect(rows[1].error).toContain('Unknown age group "10"')
+  })
+})
+

@@ -1,6 +1,10 @@
 import { supabase } from './supabase'
 import { csvCell, parseCsvTable } from './leadCsv'
+import { ageGroupOptions } from './constants'
+import { shortAgeGroup } from './ageGroups'
+import type { Subject } from './subjects'
 import type { Database } from '../types/database'
+import type { AgeGroup } from '../types/domain'
 
 export type QuestionKind = 'choice' | 'fill' | 'short' | 'screenshot' | 'link'
 export type MatchRule = 'exact' | 'contains' | 'close'
@@ -21,6 +25,10 @@ export type Question = {
   timeLimitSeconds: number
   topic: string | null
   explanation: string | null
+  // Empty: any subject.
+  subjectId: number | null
+  // Empty: every age.
+  ageGroups: AgeGroup[]
   isArchived: boolean
   updatedAt: string
 }
@@ -38,6 +46,8 @@ export type QuestionDraft = Pick<
   | 'topic'
   | 'explanation'
   | 'isShared'
+  | 'subjectId'
+  | 'ageGroups'
 >
 
 export const questionKindLabels: Record<QuestionKind, string> = {
@@ -69,6 +79,8 @@ export function emptyQuestionDraft(kind: QuestionKind = 'choice'): QuestionDraft
     topic: null,
     explanation: null,
     isShared: false,
+    subjectId: null,
+    ageGroups: [],
   }
 }
 
@@ -88,6 +100,8 @@ function mapQuestionRow(row: QuestionRow): Question {
     timeLimitSeconds: row.time_limit_seconds,
     topic: row.topic,
     explanation: row.explanation,
+    subjectId: row.subject_id ?? null,
+    ageGroups: (row.age_groups ?? []) as AgeGroup[],
     isArchived: row.is_archived,
     updatedAt: row.updated_at,
   }
@@ -110,8 +124,31 @@ function toPayload(draft: QuestionDraft) {
     topic: draft.topic?.trim() || null,
     explanation: draft.explanation?.trim() || null,
     is_shared: draft.isShared,
+    subject_id: draft.subjectId,
+    age_groups: draft.ageGroups,
   }
 }
+
+// Does a question suit a class: the same subject (or either has none) and
+// the class's age group (or the question is for every age). Same rule as
+// question_fits_classroom() in the database.
+export function fitsClassroom(
+  question: Pick<Question, 'subjectId' | 'ageGroups'>,
+  classroom: { subjectId?: number | null; ageGroup: AgeGroup },
+) {
+  const subjectOk = question.subjectId === null || !classroom.subjectId || question.subjectId === classroom.subjectId
+  const ageOk = question.ageGroups.length === 0 || question.ageGroups.includes(classroom.ageGroup)
+  return subjectOk && ageOk
+}
+
+// "9-11" or "9-11 Years Old" -> the school's age group of that name, or null.
+export function readAgeGroup(text: string, names: AgeGroup[] = ageGroupOptions): AgeGroup | null {
+  const key = (value: string) => shortAgeGroup(value.trim()).toLowerCase().replace(/\s+/g, '')
+  const wanted = key(text)
+  return names.find((name) => key(name) === wanted) ?? null
+}
+
+export { shortAgeGroup }
 
 // The problem with a draft, or null. Same rules as question_problem() in the
 // database, so the form can say it before saving.
@@ -199,6 +236,8 @@ export const importColumns = [
   'seconds',
   'topic',
   'explanation',
+  'subject',
+  'ages',
 ] as const
 
 const kindByWord: Record<string, QuestionKind> = {
@@ -216,12 +255,12 @@ const kindByWord: Record<string, QuestionKind> = {
 export function buildImportTemplate() {
   const rows = [
     [...importColumns],
-    ['choice', 'What does a loop do?', '*Repeats steps | Stops the game | Draws a picture', '', '', '10', '30', 'Coding basics', ''],
-    ['fill', 'What is 6 x 7?', '', '42', 'exact', '5', '20', 'Maths', ''],
-    ['fill', 'Capital of Malaysia?', '', 'Kuala Lumpur | KL', 'close', '5', '30', '', ''],
-    ['short', 'Why do we test our code?', '', 'find bugs | mistakes', 'contains', '10', '120', '', 'Testing finds mistakes early.'],
-    ['screenshot', 'Show the start screen of your game', '', '', '', '10', '300', 'Project', ''],
-    ['link', 'Send the link to your website', '', '', '', '10', '300', 'Project', ''],
+    ['choice', 'What does a loop do?', '*Repeats steps | Stops the game | Draws a picture', '', '', '10', '30', 'Coding basics', '', '', '9-11 | 12-14'],
+    ['fill', 'What is 6 x 7?', '', '42', 'exact', '5', '20', 'Times tables', '', '', '6-8'],
+    ['fill', 'Capital of Malaysia?', '', 'Kuala Lumpur | KL', 'close', '5', '30', '', '', '', ''],
+    ['short', 'Why do we test our code?', '', 'find bugs | mistakes', 'contains', '10', '120', '', 'Testing finds mistakes early.', '', '12-14 | 15-17'],
+    ['screenshot', 'Show the start screen of your game', '', '', '', '10', '300', 'Project', '', '', ''],
+    ['link', 'Send the link to your website', '', '', '', '10', '300', 'Project', '', '', ''],
   ]
   return rows.map((row) => row.map(csvCell).join(',')).join('\n')
 }
@@ -240,8 +279,9 @@ function splitTable(text: string): string[][] {
 export type ImportRow = { row: number; draft: QuestionDraft | null; error: string | null }
 
 // One draft (or the reason it cannot be one) per data row. Options are split
-// by "|", a "*" in front marks a correct one; answers are split by "|".
-export function parseQuestionImport(text: string): ImportRow[] {
+// by "|", a "*" in front marks a correct one; answers and ages are split by
+// "|"; a subject is named as the school wrote it (empty = any).
+export function parseQuestionImport(text: string, subjects: Subject[] = [], ageGroupsAllowed: AgeGroup[] = ageGroupOptions): ImportRow[] {
   const table = splitTable(text)
   if (table.length === 0) return []
   const header = table[0].map((cell) => cell.trim().toLowerCase())
@@ -269,6 +309,19 @@ export function parseQuestionImport(text: string): ImportRow[] {
     if (!['exact', 'contains', 'close'].includes(match)) {
       return { row, draft: null, error: `Unknown match "${cell(cells, 'match')}" (use exact, contains or close).` }
     }
+    const subjectName = cell(cells, 'subject')
+    const subject = subjectName
+      ? subjects.find((entry) => entry.isActive && entry.name.trim().toLowerCase() === subjectName.toLowerCase())
+      : null
+    if (subjectName && !subject) {
+      return { row, draft: null, error: `Unknown subject "${subjectName}" (an admin adds subjects in Class Settings).` }
+    }
+    const ageTexts = parts(cell(cells, 'ages'))
+    const ageGroups = ageTexts.map((ageText) => readAgeGroup(ageText, ageGroupsAllowed))
+    const badAge = ageTexts.find((_, at) => ageGroups[at] === null)
+    if (badAge !== undefined) {
+      return { row, draft: null, error: `Unknown age group "${badAge}" (use ${ageGroupsAllowed.map(shortAgeGroup).join(', ')}).` }
+    }
     const pointsText = cell(cells, 'points')
     const secondsText = cell(cells, 'seconds')
     const draft: QuestionDraft = {
@@ -285,6 +338,8 @@ export function parseQuestionImport(text: string): ImportRow[] {
       topic: cell(cells, 'topic') || null,
       explanation: cell(cells, 'explanation') || null,
       isShared: false,
+      subjectId: subject?.id ?? null,
+      ageGroups: Array.from(new Set(ageGroups.filter((group): group is AgeGroup => group !== null))),
     }
     const problem = draftProblem(draft)
     return { row, draft: problem ? null : draft, error: problem }

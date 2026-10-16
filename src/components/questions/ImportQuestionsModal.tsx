@@ -2,13 +2,18 @@ import { useMemo, useState } from 'react'
 import { DownloadSimple, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { buildImportTemplate, parseQuestionImport, questionKindLabels, type QuestionDraft } from '../../lib/questions'
+import type { Subject } from '../../lib/subjects'
+import { shortAgeGroup, useAgeGroups } from '../../lib/ageGroups'
 
 // Many questions at once: paste rows from Excel / Google Sheets, or pick a CSV.
 // Every row is checked first; nothing is saved while one is wrong.
 export function ImportQuestionsModal({
+  subjects,
   onClose,
   onImport,
 }: {
+  // Subjects are named in the file as the school wrote them.
+  subjects: Subject[]
   onClose: () => void
   // Resolves to an error message, or null when saved.
   onImport: (drafts: QuestionDraft[], share: boolean) => Promise<string | null>
@@ -17,7 +22,8 @@ export function ImportQuestionsModal({
   const [share, setShare] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const rows = useMemo(() => (text.trim() ? parseQuestionImport(text) : []), [text])
+  const ageGroups = useAgeGroups()
+  const rows = useMemo(() => (text.trim() ? parseQuestionImport(text, subjects, ageGroups) : []), [ageGroups, subjects, text])
   const bad = rows.filter((row) => row.error)
   const drafts = rows.flatMap((row) => (row.draft ? [row.draft] : []))
 
@@ -55,7 +61,7 @@ export function ImportQuestionsModal({
           <h2 className="mt-1 text-2xl font-semibold text-slate-900">Import questions</h2>
           <p className="mt-2 text-sm text-slate-500">
             Paste rows from Excel or Google Sheets (with the column names on top), or pick a CSV file. Options are split
-            by | and a * marks a correct one.
+            by | and a * marks a correct one. Subject: as named in Class Settings; ages: {ageGroups.map(shortAgeGroup).join(', ')} (split by |).
           </p>
         </div>
         <button

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { brand } from '../../lib/brand'
 import { cn } from '../../lib/cn'
 import { formatDate, getStudentStatus } from '../../domain/studentStatus'
-import { ageGroupOptions } from '../../lib/constants'
+import { useAgeGroups } from '../../lib/ageGroups'
 import { weekdayLabels } from '../../lib/schedule'
 import { ExpiryCell } from '../ExpiryCell'
 import { StatusChip } from '../StatusChip'
@@ -78,6 +78,14 @@ export function ClassListingSection({
   teacherMap,
   todayString,
 }: ClassListingSectionProps) {
+  // The school's age groups; one a class still uses stays as a tab.
+  const schoolAgeGroups = useAgeGroups()
+  const ageGroupOptions = [
+    ...schoolAgeGroups,
+    ...Array.from(new Set(classrooms.map((classroom) => classroom.ageGroup))).filter(
+      (group) => !schoolAgeGroups.includes(group),
+    ),
+  ]
   const [category, setCategory] = useState<'all' | 'regular' | 'trial' | 'camp'>('all')
   const activeClassrooms = classrooms.filter(
     (classroom) => classroom.status === 'active',

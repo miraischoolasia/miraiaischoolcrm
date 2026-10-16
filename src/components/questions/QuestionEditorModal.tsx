@@ -11,7 +11,10 @@ import {
   type MatchRule,
   type QuestionDraft,
   type QuestionKind,
+  shortAgeGroup,
 } from '../../lib/questions'
+import { useAgeGroups } from '../../lib/ageGroups'
+import type { Subject } from '../../lib/subjects'
 
 const inputClass =
   'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#fc0c97]'
@@ -26,11 +29,14 @@ const resultText = {
 export function QuestionEditorModal({
   initial,
   title,
+  subjects,
   onClose,
   onSave,
 }: {
   initial: QuestionDraft | null
   title: string
+  // The school's subjects; hidden ones only show when the question has one.
+  subjects: Subject[]
   onClose: () => void
   // Resolves to an error message, or null when saved.
   onSave: (draft: QuestionDraft) => Promise<string | null>
@@ -41,6 +47,7 @@ export function QuestionEditorModal({
   const [tryText, setTryText] = useState('')
   const [tryPicked, setTryPicked] = useState<number[]>([])
   const problem = draftProblem(draft)
+  const ageGroupOptions = useAgeGroups()
 
   function set<K extends keyof QuestionDraft>(key: K, value: QuestionDraft[K]) {
     setDraft((current) => ({ ...current, [key]: value }))
@@ -102,6 +109,50 @@ export function QuestionEditorModal({
               {questionKindLabels[kind]}
             </button>
           ))}
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1.5">
+            <span className="text-sm font-semibold text-slate-900">Subject</span>
+            <select
+              value={draft.subjectId ?? ''}
+              onChange={(event) => set('subjectId', event.target.value ? Number(event.target.value) : null)}
+              className={inputClass}
+            >
+              <option value="">Any subject</option>
+              {subjects
+                .filter((subject) => subject.isActive || subject.id === draft.subjectId)
+                .map((subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <fieldset className="space-y-1.5">
+            <legend className="text-sm font-semibold text-slate-900">Ages (none ticked = every age)</legend>
+            <div className="flex flex-wrap gap-1.5">
+              {ageGroupOptions.map((group) => {
+                const on = draft.ageGroups.includes(group)
+                return (
+                  <button
+                    key={group}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() =>
+                      set('ageGroups', on ? draft.ageGroups.filter((entry) => entry !== group) : [...draft.ageGroups, group])
+                    }
+                    className={cn(
+                      'rounded-lg border px-2.5 py-1.5 text-sm font-semibold transition',
+                      on ? 'border-[#fc0c97] bg-[#fff1f8] text-[#be185d]' : 'border-slate-200 text-slate-600 hover:bg-slate-50',
+                    )}
+                  >
+                    {shortAgeGroup(group)}
+                  </button>
+                )
+              })}
+            </div>
+          </fieldset>
         </div>
 
         <label className="block space-y-1.5">

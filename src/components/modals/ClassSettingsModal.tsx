@@ -5,6 +5,10 @@ import { cn } from '../../lib/cn'
 import type { ZoomMeetingOptions } from '../../lib/api'
 import { RewardsSettings } from '../RewardsSettings'
 import { AiReportSettings } from '../AiReportSettings'
+import { SubjectsSettings } from '../SubjectsSettings'
+import { AgeGroupsSettings } from '../AgeGroupsSettings'
+import type { AgeGroupOption } from '../../lib/ageGroups'
+import type { Subject } from '../../lib/subjects'
 import type { RewardLevel, RewardPreset } from '../../lib/rewards'
 import { attendanceColorNames, attendanceColorStyles, PRESENT, sortStatuses } from '../../lib/attendanceStatuses'
 import type { AttendanceStatusOption, ReviewCriterion } from '../../types/domain'
@@ -18,7 +22,7 @@ export type AttendanceStatusDraft = Pick<AttendanceStatusOption, 'label' | 'atte
 
 type StatusChanges = Partial<AttendanceStatusDraft & Pick<AttendanceStatusOption, 'isActive'>>
 
-type Tab = 'criteria' | 'attendance' | 'rewards' | 'ai' | 'zoom'
+type Tab = 'criteria' | 'attendance' | 'rewards' | 'subjects' | 'ai' | 'zoom'
 
 type ClassSettingsModalProps = {
   criteria: ReviewCriterion[]
@@ -37,6 +41,13 @@ type ClassSettingsModalProps = {
   rewardPresets: RewardPreset[]
   rewardLevels: RewardLevel[]
   onRewardsChanged: () => void
+  subjects: Subject[]
+  onSaveSubject: (
+    subject: Subject | null,
+    changes: Partial<Pick<Subject, 'name' | 'sortOrder' | 'isActive'>>,
+  ) => Promise<string | null>
+  ageGroups: AgeGroupOption[]
+  onSaveAgeGroup: (group: AgeGroupOption | null, changes: Partial<AgeGroupOption>) => Promise<string | null>
   onSaveZoomOptions: (options: ZoomMeetingOptions) => Promise<string | null>
 }
 
@@ -67,6 +78,10 @@ export function ClassSettingsModal({
   rewardPresets,
   rewardLevels,
   onRewardsChanged,
+  subjects,
+  onSaveSubject,
+  ageGroups,
+  onSaveAgeGroup,
   onSaveZoomOptions,
 }: ClassSettingsModalProps) {
   const [tab, setTab] = useState<Tab>('criteria')
@@ -105,6 +120,7 @@ export function ClassSettingsModal({
               ['criteria', 'Review criteria'],
               ['attendance', 'Attendance'],
               ['rewards', 'Rewards'],
+              ['subjects', 'Subjects & ages'],
               ['ai', 'AI analysis'],
               ['zoom', 'Zoom'],
             ] as const
@@ -203,6 +219,13 @@ export function ClassSettingsModal({
 
         {tab === 'rewards' && (
           <RewardsSettings presets={rewardPresets} levels={rewardLevels} onChanged={onRewardsChanged} />
+        )}
+
+        {tab === 'subjects' && (
+          <>
+            <SubjectsSettings subjects={subjects} onSave={onSaveSubject} />
+            <AgeGroupsSettings groups={ageGroups} onSave={onSaveAgeGroup} />
+          </>
         )}
 
         {tab === 'ai' && <AiReportSettings />}
