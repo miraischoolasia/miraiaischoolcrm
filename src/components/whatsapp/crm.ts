@@ -1,4 +1,5 @@
 import type { HoaSlot } from '../../lib/hoaSlots'
+import type { Programme } from '../../lib/programmes'
 import type { StudentClassLine } from '../../lib/studentClasses'
 import type { LeadChannel } from '../../lib/leadChannels'
 import type { ZoomSlot } from '../../lib/zoomSlots'
@@ -46,6 +47,12 @@ export type WhatsAppCrm = {
   canEditStudents: boolean
   // The HOA classes still open for booking, as the calendar shows them.
   listHoaSlots: () => HoaSlot[]
+  // The same for one programme the school made: the open classes that belong to it.
+  listProgrammeSlots?: (programmeId: number) => HoaSlot[]
+  // Which programme a booked class belongs to, or null.
+  bookingProgrammeId?: (booking: TrialBooking) => number | null
+  // The school's programmes. Left out, the Inbox offers Mirai's two (HOA class, Holiday Camp).
+  programmes?: Programme[]
   // Books the child into an HOA class on the calendar, tied to the lead.
   onBookHoa: (
     leadId: number,

@@ -161,6 +161,7 @@ import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
 import { AiKnowledgeSection } from './components/sections/AiKnowledgeSection'
 import { ProgrammesSection } from './components/sections/ProgrammesSection'
+import { useProgrammes } from './hooks/useProgrammes'
 import { AutomationsSection } from './components/sections/AutomationsSection'
 import { WhatsAppOpenProvider, type WhatsAppTarget } from './components/WhatsAppLink'
 import type { LeadFormValues, WhatsAppCrm } from './components/whatsapp/crm'
@@ -490,6 +491,7 @@ function App() {
     teacherEffectiveDate: todayString,
     notes: '',
     zoomLink: '',
+    programmeId: '',
   })
   const [createTeacherFormState, setCreateTeacherFormState] =
     useState<CreateTeacherFormState>({
@@ -667,6 +669,8 @@ function App() {
   const [calendarItemEditor, setCalendarItemEditor] = useState<{ item: CalendarItem | null; date: string } | null>(null)
   // The chats each lead has: WhatsApp numbers, Messenger Pages, Instagram.
   const leadChannels = useLeadChannels(Boolean(authUserId) && can('leads'))
+  // The courses the school signs parents up for (Programmes page); the Inbox and the class form read them.
+  const programmes = useProgrammes({ enabled: Boolean(authUserId) && can('leads') })
   // Same rule as can_view_classes(): any class module shows every class.
   // Without one, a teacher sees only their own classes.
   const seesAllClasses = can('calendar') || can('classrooms') || can('students')
@@ -1291,6 +1295,7 @@ function App() {
       teacherEffectiveDate: todayString,
       notes: editingClassroom?.notes ?? '',
       zoomLink: editingClassroom?.zoomLink ?? '',
+      programmeId: editingClassroom?.programmeId ? String(editingClassroom.programmeId) : '',
     })
   }, [editingClassroom, isCreatingClassroom, selectedAgeGroup, todayString])
 
@@ -2411,6 +2416,7 @@ function App() {
       teacherEffectiveDate: todayString,
       notes: '',
       zoomLink: '',
+      programmeId: '',
     })
   }
 
@@ -3818,6 +3824,24 @@ function App() {
         nowTime: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
       })
     },
+    programmes: programmes.programmes,
+    listProgrammeSlots: (programmeId: number) => {
+      const now = new Date()
+      return upcomingHoaSlots({
+        schedules: schedules,
+        classroomMap,
+        teachers,
+        exceptions: scheduleExceptions,
+        bookings: trialBookings,
+        today: todayString,
+        nowTime: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+        programmeId,
+      })
+    },
+    bookingProgrammeId: (booking: TrialBooking) => {
+      const schedule = schedules.find((entry) => entry.id === booking.scheduleId)
+      return classroomMap.get(schedule?.classroomId ?? -1)?.programmeId ?? null
+    },
     classesOfStudent: (student: Student) =>
       classesOfStudent({ student, classrooms, schedules, teachers, trialBookings, today: todayString }),
     describeHoaBooking: (booking: TrialBooking) => {
@@ -4087,6 +4111,10 @@ function App() {
     // Only sent once the database has the column (or a link is being added, which then reports it).
     if (zoomLink || editingClassroom?.zoomLink !== undefined) {
       payload.zoom_link = zoomLink || null
+    }
+    // Likewise the programme: sent once the database has the column, or when one is being chosen.
+    if (classroomFormState.programmeId || editingClassroom?.programmeId !== undefined) {
+      payload.programme_id = classroomFormState.programmeId ? Number(classroomFormState.programmeId) : null
     }
 
     try {
@@ -6360,7 +6388,7 @@ function App() {
 
             {visibleSection === 'ai-knowledge' && <AiKnowledgeSection canEdit={isAdmin} />}
 
-            {visibleSection === 'programmes' && <ProgrammesSection canEdit={isAdmin} />}
+            {visibleSection === 'programmes' && <ProgrammesSection canEdit={isAdmin} state={programmes} />}
 
             {visibleSection === 'forms' && (
               <FormsSection
@@ -6431,6 +6459,7 @@ function App() {
           editingClassroom={editingClassroom}
           assignableTeachers={assignableTeachers}
           formState={classroomFormState}
+          programmes={programmes.programmes}
           saveError={classroomSaveError}
           isSaving={isSavingClassroom}
           onClose={closeClassroomModal}

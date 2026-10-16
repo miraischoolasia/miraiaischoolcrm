@@ -95,6 +95,7 @@ export function mapClassroomRow(row: ClassroomRow): Classroom {
     notes: row.notes,
     archivedAt: row.archived_at,
     zoomLink: row.zoom_link,
+    programmeId: row.programme_id,
   }
 }
 

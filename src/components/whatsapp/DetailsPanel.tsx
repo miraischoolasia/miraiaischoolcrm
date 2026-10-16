@@ -24,10 +24,12 @@ import { LeadForm } from './LeadForm'
 import { LeadHeader } from './LeadCard'
 import { EnrolPanel } from './EnrolPanel'
 import { CampEnrolPanel } from './CampEnrolPanel'
+import { ProgrammePanel } from './ProgrammePanel'
+import { activeProgrammes, type Programme } from '../../lib/programmes'
 import { StudentCard } from './StudentCard'
 import { StudentLinker } from './StudentLinker'
 import { ChatRolePicker } from './ChatRolePicker'
-import type { Student } from '../../types/domain'
+import type { Lead, Student } from '../../types/domain'
 import { PanelSection } from './PanelSection'
 import type { WaLabel } from '../../lib/waActions'
 
@@ -69,29 +71,63 @@ type DetailsPanelProps = {
 
 // The side panel: who the parent is, and what the school already knows about
 // them (a lead, a student), or a way to add them.
-// Which sign-up the steps below are for.
-function ProgramSwitch({ program, onChange }: { program: 'hoa' | 'camp'; onChange: (program: 'hoa' | 'camp') => void }) {
-  const options: { key: 'hoa' | 'camp'; label: string }[] = [
-    { key: 'hoa', label: 'HOA class' },
-    { key: 'camp', label: 'Holiday Camp' },
-  ]
+// Which sign-up the steps below are for: one of the school's programmes.
+type Offer = { key: string; label: string; legacy: 'hoa' | 'camp' | null; programme: Programme | null }
+
+function ProgrammeSwitch({ offers, current, onChange }: { offers: Offer[]; current: string; onChange: (key: string) => void }) {
+  if (offers.length < 2) {
+    return null
+  }
+  if (offers.length > 3) {
+    return (
+      <label className="block">
+        <span className="sr-only">What are they signing up for</span>
+        <select
+          value={current}
+          onChange={(event) => onChange(event.target.value)}
+          className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-900"
+        >
+          {offers.map((offer) => (
+            <option key={offer.key} value={offer.key}>
+              {offer.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    )
+  }
   return (
-    <div role="group" aria-label="What are they signing up for" className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
-      {options.map((option) => (
+    <div
+      role="group"
+      aria-label="What are they signing up for"
+      className="grid gap-1 rounded-lg bg-slate-100 p-1"
+      style={{ gridTemplateColumns: `repeat(${offers.length}, minmax(0, 1fr))` }}
+    >
+      {offers.map((offer) => (
         <button
-          key={option.key}
+          key={offer.key}
           type="button"
-          aria-pressed={program === option.key}
-          onClick={() => onChange(option.key)}
+          aria-pressed={current === offer.key}
+          onClick={() => onChange(offer.key)}
           className={`rounded-md px-2 py-1.5 text-xs font-semibold ${
-            program === option.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+            current === offer.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          {option.label}
+          {offer.label}
         </button>
       ))}
     </div>
   )
+}
+
+// What the "sign up for another" line says: the one programme there is, or all of them.
+function enrolAnotherLabel(offers: Offer[], forStudent: boolean) {
+  const names = offers.map((entry) => (entry.legacy === 'hoa' ? 'HOA' : entry.label))
+  if (names.length === 1) {
+    return forStudent ? `Sign up for another ${offers[0].legacy === 'hoa' ? 'HOA class' : names[0]}` : `Enrol another child in ${names[0]}`
+  }
+  const start = forStudent ? 'Sign up for another course' : 'Enrol another child'
+  return names.length === 0 ? start : `${start} (${names.join(' or ')})`
 }
 
 export function DetailsPanel({
@@ -188,10 +224,47 @@ export function DetailsPanel({
 
   // A parent who already has a student is not a new lead: the add-lead form stays out of the way.
   const [leadFormFor, setLeadFormFor] = useState<number | null>(null)
-  // What the parent is signing up for: an HOA class, or the Holiday Camp (when there is a camp package).
-  const [program, setProgram] = useState<'hoa' | 'camp'>('hoa')
-  const hasCamp = crm.packages.some((pkg) => pkg.kind === 'camp' && pkg.isActive)
+  // What the parent can sign up for: the school's programmes that are on. A crm without programmes (the
+  // tests) offers Mirai's two, the HOA class and the Holiday Camp (when there is a camp package).
+  const offers: Offer[] = useMemo(() => {
+    if (crm.programmes) {
+      return activeProgrammes(crm.programmes).map((programme) => ({
+        key: String(programme.id),
+        label: programme.name,
+        legacy: programme.legacyKey,
+        programme,
+      }))
+    }
+    const hasCamp = crm.packages.some((pkg) => pkg.kind === 'camp' && pkg.isActive)
+    return [
+      { key: 'hoa', label: 'HOA class', legacy: 'hoa' as const, programme: null },
+      ...(hasCamp ? [{ key: 'camp', label: 'Holiday Camp', legacy: 'camp' as const, programme: null }] : []),
+    ]
+  }, [crm.programmes, crm.packages])
+  const [offerKey, setOfferKey] = useState<string | null>(null)
+  const offer = offers.find((entry) => entry.key === offerKey) ?? offers[0] ?? null
   const showLeadPart = lead !== null || students.length === 0 || leadFormFor === conversation.id
+
+  // The steps of the programme the team picked, for the lead of this chat.
+  function enrolBlock(forLead: Lead, write: (text: string) => void) {
+    const shared = { lead: forLead, crm, userName, onWriteMessage: write, forStudent: role === 'student' }
+    return (
+      <>
+        <ProgrammeSwitch offers={offers} current={offer?.key ?? ''} onChange={setOfferKey} />
+        {offer === null ? (
+          <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+            No programme to sign up for yet. An admin makes one in Programmes.
+          </p>
+        ) : offer.legacy === 'camp' ? (
+          <CampEnrolPanel key={offer.key} {...shared} />
+        ) : offer.legacy === 'hoa' ? (
+          <EnrolPanel key={offer.key} {...shared} />
+        ) : offer.programme ? (
+          <ProgrammePanel key={offer.key} programme={offer.programme} {...shared} />
+        ) : null}
+      </>
+    )
+  }
 
   // A student who writes themself cannot pay or sign the registration form alone: remind the team
   // while the parent's name or number is still missing.
@@ -482,32 +555,12 @@ export function DetailsPanel({
           isEnrolled ? (
             <details className="border-t border-pink-100 pt-4 text-xs">
               <summary className="cursor-pointer font-semibold text-[#be185d]">
-                {role === 'student'
-                  ? hasCamp
-                    ? 'Sign up for another course (HOA or Holiday Camp)'
-                    : 'Sign up for another HOA class'
-                  : hasCamp
-                    ? 'Enrol another child (HOA or Holiday Camp)'
-                    : 'Enrol another child in HOA'}
+                {enrolAnotherLabel(offers, role === 'student')}
               </summary>
-              <div className="mt-3 space-y-3">
-                {hasCamp && <ProgramSwitch program={program} onChange={setProgram} />}
-                {program === 'camp' && hasCamp ? (
-                  <CampEnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} forStudent={role === 'student'} />
-                ) : (
-                  <EnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} forStudent={role === 'student'} />
-                )}
-              </div>
+              <div className="mt-3 space-y-3">{enrolBlock(lead, onWriteMessage)}</div>
             </details>
           ) : (
-            <div className="space-y-3">
-              {hasCamp && <ProgramSwitch program={program} onChange={setProgram} />}
-              {program === 'camp' && hasCamp ? (
-                <CampEnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} forStudent={role === 'student'} />
-              ) : (
-                <EnrolPanel lead={lead} crm={crm} userName={userName} onWriteMessage={onWriteMessage} forStudent={role === 'student'} />
-              )}
-            </div>
+            <div className="space-y-3">{enrolBlock(lead, onWriteMessage)}</div>
           )
         ) : null}
       </div>

@@ -54,6 +54,27 @@ describe('upcomingHoaSlots', () => {
     expect(slots[0]).toMatchObject({ scheduleId: 1, startTime: '10:00', endTime: '12:00', title: 'HOA Saturday', teacherName: 'Amy Lim' })
   })
 
+  it('lists only the trial classes of one programme when asked', () => {
+    const programmed = new Map<number, Classroom>([
+      [1, { id: 1, name: 'Maths trial', category: 'trial', programmeId: 5 } as Classroom],
+      [3, { id: 3, name: 'English trial', category: 'trial', programmeId: 6 } as Classroom],
+      [4, { id: 4, name: 'Loose trial', category: 'trial', programmeId: null } as Classroom],
+    ])
+    const input = {
+      ...base,
+      classroomMap: programmed,
+      schedules: [weekly(1, 1, 6), weekly(2, 3, 6), weekly(3, 4, 6)],
+      today: '2026-10-09',
+      nowTime: '09:00',
+      days: 3,
+    }
+
+    expect(upcomingHoaSlots({ ...input, programmeId: 5 }).map((slot) => slot.title)).toEqual(['Maths trial'])
+    expect(upcomingHoaSlots({ ...input, programmeId: 6 }).map((slot) => slot.title)).toEqual(['English trial'])
+    // Without a programme every trial class is listed, as before.
+    expect(upcomingHoaSlots(input)).toHaveLength(3)
+  })
+
   it('skips a cancelled day, a cancelled class and a class that has already started today', () => {
     const slots = upcomingHoaSlots({
       ...base,

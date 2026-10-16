@@ -5,11 +5,15 @@ import type { Lead, LeadOption, Package, Student, TrialBooking } from '../../typ
 import type { Person } from '../../lib/peopleApi'
 import type { ChatwootConversation, ChatwootMessage } from '../../lib/whatsappInbox'
 import type { SourceRule } from '../../lib/sourceRules'
+import type { Programme } from '../../lib/programmes'
 import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
 
 // The enrolment steps have their own tests; here only where they are placed matters.
 vi.mock('./EnrolPanel', () => ({ EnrolPanel: () => <div>Enrol steps</div> }))
+vi.mock('./ProgrammePanel', () => ({
+  ProgrammePanel: ({ programme }: { programme: { name: string } }) => <div>Steps of {programme.name}</div>,
+}))
 
 const conversation = (attributes: ChatwootConversation['custom_attributes'] = {}): ChatwootConversation => ({
   id: 7,
@@ -987,5 +991,68 @@ describe('a chat whose number WhatsApp hides', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Add a child' }))
     expect(screen.getByLabelText('Child 2 age')).toBeInTheDocument()
+  })
+})
+
+describe('DetailsPanel programmes', () => {
+  const programme = (id: number, name: string, patch: Partial<Programme> = {}): Programme => ({
+    id,
+    name,
+    legacyKey: null,
+    outcome: 'booking',
+    messageTemplate: '',
+    isActive: true,
+    sortOrder: id * 10,
+    steps: [],
+    ...patch,
+  })
+
+  function renderEnrol(programmes: Programme[]) {
+    render(
+      <DetailsPanel
+        conversation={conversation({ crm_lead_id: 11 })}
+        messages={[firstMessage]}
+        hasOlder={false}
+        crm={makeCrm({ leads: [lead], programmes })}
+        sourceRules={[]}
+        onLoadOlder={vi.fn()}
+        onLinkLead={vi.fn()}
+        onLinkStudents={vi.fn()}
+        onWriteMessage={vi.fn()}
+      />,
+    )
+  }
+
+  it("offers the school's own programme and nothing of Mirai's", () => {
+    renderEnrol([programme(5, 'Maths tuition')])
+
+    expect(screen.getByText('Steps of Maths tuition')).toBeInTheDocument()
+    expect(screen.queryByText('Enrol steps')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'HOA class' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Holiday Camp' })).not.toBeInTheDocument()
+  })
+
+  it('switches between the programmes that are on, and skips one that is off', async () => {
+    renderEnrol([programme(5, 'Maths tuition'), programme(6, 'English tuition'), programme(7, 'Old course', { isActive: false })])
+
+    expect(screen.getByText('Steps of Maths tuition')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Old course' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'English tuition' }))
+    expect(screen.getByText('Steps of English tuition')).toBeInTheDocument()
+    expect(screen.queryByText('Steps of Maths tuition')).not.toBeInTheDocument()
+  })
+
+  it("keeps Mirai's HOA class on its own screen", () => {
+    renderEnrol([programme(1, 'HOA class', { legacyKey: 'hoa' })])
+
+    expect(screen.getByText('Enrol steps')).toBeInTheDocument()
+    expect(screen.queryByText(/Steps of/)).not.toBeInTheDocument()
+  })
+
+  it('says there is no programme yet when the school has made none', () => {
+    renderEnrol([])
+
+    expect(screen.getByText(/No programme to sign up for yet/)).toBeInTheDocument()
+    expect(screen.queryByText('Enrol steps')).not.toBeInTheDocument()
   })
 })

@@ -2,12 +2,15 @@ import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { ageGroupOptions, programLevelOptions } from '../../lib/constants'
 import type { AgeGroup, ClassroomCategory, Classroom, ClassroomFormState, ProgramLevel, Teacher } from '../../types/domain'
+import type { Programme } from '../../lib/programmes'
 
 type ClassroomModalProps = {
   isCreating: boolean
   editingClassroom: Classroom | null
   assignableTeachers: Teacher[]
   formState: ClassroomFormState
+  // The school's programmes (courses); a class can belong to one.
+  programmes?: Programme[]
   saveError: string | null
   isSaving: boolean
   onClose: () => void
@@ -23,6 +26,7 @@ export function ClassroomModal({
   editingClassroom,
   assignableTeachers,
   formState,
+  programmes = [],
   saveError,
   isSaving,
   onClose,
@@ -34,6 +38,18 @@ export function ClassroomModal({
     editingClassroom !== null &&
     formState.teacherId !== '' &&
     formState.teacherId !== String(editingClassroom.teacherId ?? '')
+  const programme = programmes.find((entry) => String(entry.id) === formState.programmeId) ?? null
+  // A programme the school made has no use for the age group and level written for Mirai's own courses.
+  const ownProgramme = programme !== null && programme.legacyKey === null
+
+  function chooseProgramme(value: string) {
+    onFieldChange('programmeId', value)
+    const chosen = programmes.find((entry) => String(entry.id) === value)
+    // A programme that keeps a place for the lead needs a trial class; one that enrols the lead, a regular class.
+    if (chosen && chosen.legacyKey === null) {
+      onFieldChange('category', chosen.outcome === 'booking' ? 'trial' : 'regular')
+    }
+  }
 
   return (
     <ModalShell maxWidth="2xl" onClose={onClose}>
@@ -74,6 +90,31 @@ export function ClassroomModal({
         )}
 
         <div className="grid gap-5 sm:grid-cols-2">
+          {programmes.length > 0 && (
+            <label className="space-y-2 sm:col-span-2">
+              <span className="text-sm font-semibold text-slate-700">Programme</span>
+              <select
+                value={formState.programmeId}
+                onChange={(event) => chooseProgramme(event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900"
+              >
+                <option value="">No programme</option>
+                {programmes.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.name}
+                    {entry.isActive ? '' : ' (off)'}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-500">
+                {programme && ownProgramme
+                  ? programme.outcome === 'booking'
+                    ? 'The Inbox offers this class to parents of this programme to keep a place (a Trial Class).'
+                    : 'The Inbox offers this class to parents of this programme to join as a student (a Regular Class).'
+                  : 'The programme this class is offered in when a parent is signed up in the Inbox.'}
+              </p>
+            </label>
+          )}
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-slate-700">Classroom Category</span>
             <select value={formState.category} onChange={(event) => onFieldChange('category', event.target.value as ClassroomCategory)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900">
@@ -97,6 +138,8 @@ export function ClassroomModal({
             />
           </label>
 
+          {!ownProgramme && (
+            <>
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">
               Age Group
@@ -140,6 +183,8 @@ export function ClassroomModal({
               ))}
             </select>
           </label>
+            </>
+          )}
 
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-slate-700">

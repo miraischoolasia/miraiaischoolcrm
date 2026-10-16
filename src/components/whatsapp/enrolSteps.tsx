@@ -45,7 +45,18 @@ export function Problem({ text }: { text: string | null }) {
 type Enrolment = ReturnType<typeof useLeadEnrolment>
 
 // The payment receipt: kept with the lead as one PDF (a photo is turned into a PDF here).
-export function ReceiptStep({ number, enrolment, canEdit }: { number: number; enrolment: Enrolment; canEdit: boolean }) {
+export function ReceiptStep({
+  number,
+  enrolment,
+  canEdit,
+  title = 'Payment receipt',
+}: {
+  number: number
+  enrolment: Enrolment
+  canEdit: boolean
+  // The programme's own name for the step.
+  title?: string
+}) {
   const [problem, setProblem] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -73,7 +84,7 @@ export function ReceiptStep({ number, enrolment, canEdit }: { number: number; en
   }
 
   return (
-    <Step number={number} done={enrolment.receipts.length > 0} title="Payment receipt">
+    <Step number={number} done={enrolment.receipts.length > 0} title={title}>
       {enrolment.receipts.map((receipt) => (
         <div key={receipt.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5">
           <button
@@ -126,10 +137,13 @@ export function ZoomStep({
   canEdit,
   hint,
   slots = [],
+  title = 'Zoom with the parent',
 }: {
   number: number
   enrolment: Enrolment
   canEdit: boolean
+  // The programme's own name for the step.
+  title?: string
   // A line shown above the meetings, such as "usually set after the form is filled in".
   hint?: string | null
   // The Zoom meetings already on the calendar: pick a time, like an HOA class, instead of typing one.
@@ -192,7 +206,7 @@ export function ZoomStep({
   }
 
   return (
-    <Step number={number} done={enrolment.meetings.length > 0} title="Zoom with the parent">
+    <Step number={number} done={enrolment.meetings.length > 0} title={title}>
       {hint && <p className="text-slate-500">{hint}</p>}
       {enrolment.meetings.map((meeting) => (
         <div key={meeting.id} className="flex items-start justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5">

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { ArrowLeft, CaretDown, CaretUp, Plus, Trash } from '@phosphor-icons/react'
 import { FlowSwitch } from '../automations/FlowSwitch'
 import { useConfirm } from '../../hooks/useConfirm'
-import { useProgrammes, type ProgrammesState } from '../../hooks/useProgrammes'
+import type { ProgrammesState } from '../../hooks/useProgrammes'
 import { cn } from '../../lib/cn'
 import {
   DEFAULT_MESSAGE_TEMPLATE,
@@ -36,8 +36,7 @@ type ProgrammesSectionProps = {
 
 // The courses the school signs parents up for: each with its own steps, the message to the parent and what
 // picking a class does. What an admin saves here is what the team sees in the Inbox, with nothing to deploy.
-export function ProgrammesSection({ canEdit }: ProgrammesSectionProps) {
-  const state = useProgrammes({ enabled: true })
+export function ProgrammesSection({ canEdit, state }: ProgrammesSectionProps & { state: ProgrammesState }) {
   return <ProgrammesView canEdit={canEdit} state={state} />
 }
 

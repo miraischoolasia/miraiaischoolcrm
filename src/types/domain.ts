@@ -154,6 +154,8 @@ export type Classroom = {
   archivedAt: string | null
   // Where the class meets on Zoom. Undefined before the migration.
   zoomLink?: string | null
+  // The programme (course) the class belongs to, or null. Undefined before the migration.
+  programmeId?: number | null
 }
 
 export type Teacher = {
@@ -456,6 +458,8 @@ export type ClassroomFormState = {
   notes: string
   // The class's Zoom address, or empty.
   zoomLink: string
+  // The programme the class belongs to, as a programme id, or empty for none.
+  programmeId: string
 }
 
 export type AttendanceModalState = {
@@ -505,7 +509,7 @@ export type ClassroomRow = Pick<
   | 'status'
   | 'notes'
   | 'archived_at'
-> & { zoom_link?: string | null }
+> & { zoom_link?: string | null; programme_id?: number | null }
 
 export type TeacherRow = Pick<
   Database['public']['Tables']['teachers']['Row'],

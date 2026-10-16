@@ -25,6 +25,8 @@ type Input = {
   today: string
   nowTime: string
   days?: number
+  // Only the classes of this programme (a class's programme_id); every trial class when left out.
+  programmeId?: number
 }
 
 // The HOA classes of the next few weeks, taken from the same trial slots the calendar shows:
@@ -38,9 +40,13 @@ export function upcomingHoaSlots({
   today,
   nowTime,
   days = 35,
+  programmeId,
 }: Input): HoaSlot[] {
   const trialSchedules = schedules.filter(
-    (schedule) => schedule.status === 'active' && getScheduleClassKind(schedule, classroomMap) === 'trial',
+    (schedule) =>
+      schedule.status === 'active' &&
+      getScheduleClassKind(schedule, classroomMap) === 'trial' &&
+      (programmeId === undefined || classroomMap.get(schedule.classroomId ?? -1)?.programmeId === programmeId),
   )
   const teacherNames = new Map(teachers.map((teacher) => [teacher.id, teacher.fullName]))
   const bookingMap = buildTrialBookingMap(bookings)
