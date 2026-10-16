@@ -4,6 +4,7 @@ import { formatDay, formatTime, todayInMalaysia } from '@/lib/format'
 import type { UpcomingClass } from '@/lib/portal'
 import { useSession } from '@/lib/session'
 import { Body, Button, Card, colors, Empty, Heading, Loading, Muted, Pill, Screen, Title } from '@/ui/kit'
+import { LiveQuestionCard } from '@/ui/LiveQuestionCard'
 
 // Home: the next class with its Zoom button, the classes after it, and the
 // points so far (each part only when the school shows it to this login).
@@ -30,6 +31,8 @@ export default function Home() {
         {home.student.class && <Muted>{home.student.class}</Muted>}
         {home.viewer === 'parent' && children.length > 1 && <Muted>Switch child on the Me tab.</Muted>}
       </View>
+
+      <LiveQuestionCard color={branding.accentColor} />
 
       {home.sees.schedule && (
         <Card>

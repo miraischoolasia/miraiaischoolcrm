@@ -31,6 +31,8 @@ type TeacherHomeSectionProps = {
   // For tests; otherwise the time moves on by itself.
   now?: Date
   onTakeAttendance: (item: AgendaItem) => void
+  // Opens the lesson's live questions (pop questions, see the answers).
+  onRunLive?: (item: AgendaItem) => void
   onOpenCalendar: () => void
   onOpenClass: (classroomId: number) => void
 }
@@ -113,6 +115,7 @@ export function TeacherHomeSection({
   lateEditOpen = false,
   now: nowProp,
   onTakeAttendance,
+  onRunLive,
   onOpenCalendar,
   onOpenClass,
 }: TeacherHomeSectionProps) {
@@ -228,6 +231,7 @@ export function TeacherHomeSection({
                 now={now}
                 lateEditOpen={lateEditOpen}
                 onTakeAttendance={onTakeAttendance}
+                onRunLive={onRunLive}
               />
             ))}
           </ul>
@@ -309,11 +313,13 @@ function TodayRow({
   now,
   lateEditOpen,
   onTakeAttendance,
+  onRunLive,
 }: {
   item: AgendaItem
   now: Date
   lateEditOpen: boolean
   onTakeAttendance: (item: AgendaItem) => void
+  onRunLive?: (item: AgendaItem) => void
 }) {
   const timing = describeClassTiming(item, now)
   const submitted = item.state === 'submitted'
@@ -342,6 +348,11 @@ function TodayRow({
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+        {onRunLive && (
+          <button type="button" onClick={() => onRunLive(item)} className={secondaryButton}>
+            Live questions
+          </button>
+        )}
         {submitted ? (
           <>
             <Chip tone="ok">✓ Submitted</Chip>

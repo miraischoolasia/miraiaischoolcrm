@@ -1666,7 +1666,7 @@ export type Database = {
           id: number
           student_id: number
           points: number
-          kind: 'attendance' | 'award' | 'redeem' | 'adjust'
+          kind: 'attendance' | 'award' | 'redeem' | 'adjust' | 'question'
           reason: string
           schedule_id: number | null
           lesson_date: string | null
@@ -1679,7 +1679,7 @@ export type Database = {
           id?: never
           student_id: number
           points: number
-          kind: 'attendance' | 'award' | 'redeem' | 'adjust'
+          kind: 'attendance' | 'award' | 'redeem' | 'adjust' | 'question'
           reason: string
           schedule_id?: number | null
           lesson_date?: string | null
@@ -1692,7 +1692,7 @@ export type Database = {
           id?: never
           student_id?: number
           points?: number
-          kind?: 'attendance' | 'award' | 'redeem' | 'adjust'
+          kind?: 'attendance' | 'award' | 'redeem' | 'adjust' | 'question'
           reason?: string
           schedule_id?: number | null
           lesson_date?: string | null
@@ -1758,6 +1758,213 @@ export type Database = {
           is_archived?: boolean
           created_at?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      class_sessions: {
+        Row: {
+          id: number
+          schedule_id: number
+          lesson_date: string
+          classroom_id: number | null
+          teacher_id: number
+          starts_at: string
+          ends_at: string
+          status: 'scheduled' | 'live' | 'ended'
+          started_at: string | null
+          ended_at: string | null
+          recording_url: string | null
+          lesson_log_id: number | null
+          created_by: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: never
+          schedule_id: number
+          lesson_date: string
+          classroom_id?: number | null
+          teacher_id: number
+          starts_at: string
+          ends_at: string
+          status?: 'scheduled' | 'live' | 'ended'
+          started_at?: string | null
+          ended_at?: string | null
+          recording_url?: string | null
+          lesson_log_id?: number | null
+          created_by?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: never
+          schedule_id?: number
+          lesson_date?: string
+          classroom_id?: number | null
+          teacher_id?: number
+          starts_at?: string
+          ends_at?: string
+          status?: 'scheduled' | 'live' | 'ended'
+          started_at?: string | null
+          ended_at?: string | null
+          recording_url?: string | null
+          lesson_log_id?: number | null
+          created_by?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      live_questions: {
+        Row: {
+          id: number
+          session_id: number
+          question_id: number | null
+          position: number
+          kind: 'choice' | 'fill' | 'short' | 'screenshot' | 'link'
+          prompt: string
+          options: Json
+          points: number
+          time_limit_seconds: number
+          scoring: 'speed' | 'fixed'
+          status: 'live' | 'closed'
+          opened_at: string
+          closes_at: string
+          closed_at: string | null
+          revealed_at: string | null
+          created_by: number | null
+        }
+        Insert: {
+          id?: never
+          session_id: number
+          question_id?: number | null
+          position: number
+          kind: 'choice' | 'fill' | 'short' | 'screenshot' | 'link'
+          prompt: string
+          options?: Json
+          points: number
+          time_limit_seconds: number
+          scoring: 'speed' | 'fixed'
+          status?: 'live' | 'closed'
+          opened_at?: string
+          closes_at: string
+          closed_at?: string | null
+          revealed_at?: string | null
+          created_by?: number | null
+        }
+        Update: {
+          id?: never
+          session_id?: number
+          question_id?: number | null
+          position?: number
+          kind?: 'choice' | 'fill' | 'short' | 'screenshot' | 'link'
+          prompt?: string
+          options?: Json
+          points?: number
+          time_limit_seconds?: number
+          scoring?: 'speed' | 'fixed'
+          status?: 'live' | 'closed'
+          opened_at?: string
+          closes_at?: string
+          closed_at?: string | null
+          revealed_at?: string | null
+          created_by?: number | null
+        }
+        Relationships: []
+      }
+      live_question_keys: {
+        Row: {
+          live_question_id: number
+          correct_options: number[]
+          accepted_answers: Json
+          case_sensitive: boolean
+          explanation: string | null
+        }
+        Insert: {
+          live_question_id: number
+          correct_options?: number[]
+          accepted_answers?: Json
+          case_sensitive?: boolean
+          explanation?: string | null
+        }
+        Update: {
+          live_question_id?: number
+          correct_options?: number[]
+          accepted_answers?: Json
+          case_sensitive?: boolean
+          explanation?: string | null
+        }
+        Relationships: []
+      }
+      live_answers: {
+        Row: {
+          id: number
+          live_question_id: number
+          session_id: number
+          student_id: number
+          answered_by: 'student' | 'parent'
+          answer_text: string | null
+          answer_choices: number[] | null
+          file_path: string | null
+          submitted_at: string
+          seconds_taken: number
+          points_if_correct: number
+          result: 'correct' | 'wrong' | 'pending'
+          points: number
+          marked_by: 'auto' | 'teacher' | null
+          marked_at: string | null
+          ai_suggestion: 'right' | 'wrong' | 'unsure' | null
+          ai_feedback: string | null
+          ai_note: string | null
+          ai_checked_at: string | null
+          feedback: string | null
+          points_entry_id: number | null
+        }
+        Insert: {
+          id?: never
+          live_question_id: number
+          session_id: number
+          student_id: number
+          answered_by: 'student' | 'parent'
+          answer_text?: string | null
+          answer_choices?: number[] | null
+          file_path?: string | null
+          submitted_at?: string
+          seconds_taken: number
+          points_if_correct: number
+          result: 'correct' | 'wrong' | 'pending'
+          points?: number
+          marked_by?: 'auto' | 'teacher' | null
+          marked_at?: string | null
+          ai_suggestion?: 'right' | 'wrong' | 'unsure' | null
+          ai_feedback?: string | null
+          ai_note?: string | null
+          ai_checked_at?: string | null
+          feedback?: string | null
+          points_entry_id?: number | null
+        }
+        Update: {
+          id?: never
+          live_question_id?: number
+          session_id?: number
+          student_id?: number
+          answered_by?: 'student' | 'parent'
+          answer_text?: string | null
+          answer_choices?: number[] | null
+          file_path?: string | null
+          submitted_at?: string
+          seconds_taken?: number
+          points_if_correct?: number
+          result?: 'correct' | 'wrong' | 'pending'
+          points?: number
+          marked_by?: 'auto' | 'teacher' | null
+          marked_at?: string | null
+          ai_suggestion?: 'right' | 'wrong' | 'unsure' | null
+          ai_feedback?: string | null
+          ai_note?: string | null
+          ai_checked_at?: string | null
+          feedback?: string | null
+          points_entry_id?: number | null
         }
         Relationships: []
       }
@@ -2440,6 +2647,61 @@ export type Database = {
       portal_children: {
         Args: Record<PropertyKey, never>
         Returns: { student_id: number; full_name: string }[]
+      }
+      open_class_session: {
+        Args: {
+          p_schedule_id: number
+          p_lesson_date: string
+        }
+        Returns: Database['public']['Tables']['class_sessions']['Row']
+      }
+      push_live_question: {
+        Args: {
+          p_session_id: number
+          p_question_id: number
+          p_time_limit_seconds?: number | null
+        }
+        Returns: Database['public']['Tables']['live_questions']['Row']
+      }
+      close_live_question: {
+        Args: {
+          p_live_question_id: number
+        }
+        Returns: Database['public']['Tables']['live_questions']['Row']
+      }
+      reveal_live_question: {
+        Args: {
+          p_live_question_id: number
+        }
+        Returns: Database['public']['Tables']['live_questions']['Row']
+      }
+      mark_live_answer: {
+        Args: {
+          p_answer_id: number
+          p_correct: boolean
+          p_feedback?: string | null
+        }
+        Returns: Database['public']['Tables']['live_answers']['Row']
+      }
+      set_live_question_settings: {
+        Args: {
+          p_settings: Json
+        }
+        Returns: undefined
+      }
+      submit_live_answer: {
+        Args: {
+          p_live_question_id: number
+          p_student_id: number
+          p_answer: Json
+        }
+        Returns: Json
+      }
+      portal_live_state: {
+        Args: {
+          p_student_id: number
+        }
+        Returns: Json
       }
       portal_home: {
         Args: {

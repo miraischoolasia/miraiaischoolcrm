@@ -6,6 +6,7 @@ import type { ZoomMeetingOptions } from '../../lib/api'
 import { RewardsSettings } from '../RewardsSettings'
 import { AiReportSettings } from '../AiReportSettings'
 import { StudentAppSettings } from '../StudentAppSettings'
+import { LiveQuestionSettingsForm } from '../LiveQuestionSettingsForm'
 import { SubjectsSettings } from '../SubjectsSettings'
 import { AgeGroupsSettings } from '../AgeGroupsSettings'
 import type { AgeGroupOption } from '../../lib/ageGroups'
@@ -23,7 +24,7 @@ export type AttendanceStatusDraft = Pick<AttendanceStatusOption, 'label' | 'atte
 
 type StatusChanges = Partial<AttendanceStatusDraft & Pick<AttendanceStatusOption, 'isActive'>>
 
-type Tab = 'criteria' | 'attendance' | 'rewards' | 'subjects' | 'ai' | 'app' | 'zoom'
+type Tab = 'criteria' | 'attendance' | 'rewards' | 'subjects' | 'ai' | 'live' | 'app' | 'zoom'
 
 type ClassSettingsModalProps = {
   criteria: ReviewCriterion[]
@@ -127,6 +128,7 @@ export function ClassSettingsModal({
               ['rewards', 'Rewards'],
               ['subjects', 'Class options'],
               ['ai', 'AI analysis'],
+              ['live', 'Live questions'],
               ['app', 'Student app'],
               ['zoom', 'Zoom'],
             ] as const
@@ -243,6 +245,8 @@ export function ClassSettingsModal({
         )}
 
         {tab === 'ai' && <AiReportSettings />}
+
+        {tab === 'live' && <LiveQuestionSettingsForm />}
 
         {tab === 'app' && <StudentAppSettings />}
 

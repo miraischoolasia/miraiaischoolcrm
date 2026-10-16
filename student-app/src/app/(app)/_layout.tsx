@@ -1,16 +1,29 @@
+import { usePathname, useRouter } from 'expo-router'
 import { TabList, Tabs, TabSlot, TabTrigger, type TabTriggerSlotProps } from 'expo-router/ui'
-import { Pressable, StyleSheet, Text } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { LiveProvider } from '@/lib/live'
 import { useSession } from '@/lib/session'
 import { colors } from '@/ui/kit'
+import { LiveQuestionBanner } from '@/ui/LiveQuestionCard'
 
-// The three tabs, as one bar at the bottom on phones and on the web.
+// The three tabs, as one bar at the bottom on phones and on the web. A
+// question the teacher pops shows on Home; the other tabs get a bar for it.
 export default function AppLayout() {
   const insets = useSafeAreaInsets()
+  const pathname = usePathname()
+  const router = useRouter()
+  const { branding } = useSession()
   return (
-    <Tabs>
-      <TabSlot style={{ flex: 1 }} />
+    <LiveProvider>
+      <Tabs>
+        {pathname !== '/' && (
+          <View style={{ paddingTop: insets.top }}>
+            <LiveQuestionBanner color={branding.accentColor} onOpen={() => router.navigate('/')} />
+          </View>
+        )}
+        <TabSlot style={{ flex: 1 }} />
       <TabList style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
         <TabTrigger name="home" href="/" asChild>
           <TabButton label="Home" icon="🏠" />
@@ -22,7 +35,8 @@ export default function AppLayout() {
           <TabButton label="Me" icon="🙂" />
         </TabTrigger>
       </TabList>
-    </Tabs>
+      </Tabs>
+    </LiveProvider>
   )
 }
 

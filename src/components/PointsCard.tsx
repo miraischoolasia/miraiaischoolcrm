@@ -19,6 +19,7 @@ const kindLabels: Record<PointsEntry['kind'], string> = {
   award: 'Reward',
   redeem: 'Redeemed',
   adjust: 'Adjustment',
+  question: 'Class question',
 }
 
 // A student's points: total, level and the way to the next one, and the

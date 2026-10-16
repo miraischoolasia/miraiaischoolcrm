@@ -676,5 +676,183 @@ select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
 set local role authenticated;
 select pg_temp.ok((select count(*) from public.portal_children()) = 0, 'a switched-off parent login sees nothing');
 
+-- Live questions in class (20261022030000) -----------------------------------
+reset role;
+update public.portal_accounts set is_active = true where username = 'mdm.lim';
+-- A class A lesson today, whatever day the checks run.
+insert into public.schedules (id, teacher_id, title, event_type, recurrence_type, day_of_week, start_time, end_time, start_recur, classroom_id)
+  overriding system value
+  select 9203, 9002, 'Class A today', 'regular', 'weekly', extract(dow from timezone('Asia/Kuala_Lumpur', now()))::int, '08:00', '23:00', '2026-09-01', 9101;
+
+select pg_temp.ok(public.answer_matches('  kuala   lumpor ', '[{"text": "Kuala Lumpur", "match": "close"}]', false), 'close answers allow a spelling slip');
+select pg_temp.ok(not public.answer_matches('KL', '[{"text": "kl", "match": "exact"}]', true), 'case counts when the question says so');
+select pg_temp.ok(public.answer_matches('it repeats the steps', '[{"text": "repeat", "match": "contains"}]', false), 'contains answers');
+select pg_temp.ok(public.text_edit_distance('kitten', 'sitting') = 3, 'edit distance');
+select pg_temp.ok(public.live_question_points(10, 0, 60, 'speed') = 10 and public.live_question_points(10, 30, 60, 'speed') = 8
+  and public.live_question_points(10, 60, 60, 'speed') = 5 and public.live_question_points(10, 59, 60, 'fixed') = 10, 'speed and fixed points');
+
+create temp table lq_ids (name text primary key, id bigint);
+grant all on lq_ids to authenticated, service_role;
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+insert into lq_ids
+select 'session', (public.open_class_session(9203, (timezone('Asia/Kuala_Lumpur', now()))::date)).id;
+insert into lq_ids values
+  ('q_choice', (public.save_question(null, '{"kind": "choice", "prompt": "Which loop repeats forever?", "options": [{"text": "repeat 10", "correct": false}, {"text": "forever", "correct": true}, {"text": "if", "correct": false}], "points": 10, "time_limit_seconds": 60, "explanation": "forever never stops"}')).id),
+  ('q_fill', (public.save_question(null, '{"kind": "fill", "prompt": "Capital?", "accepted_answers": [{"text": "Kuala Lumpur", "match": "close"}], "points": 10}')).id),
+  ('q_short', (public.save_question(null, '{"kind": "short", "prompt": "What does a loop do?", "accepted_answers": [{"text": "repeat", "match": "contains"}], "points": 20}')).id),
+  ('q_shot', (public.save_question(null, '{"kind": "screenshot", "prompt": "Show your sprite"}')).id),
+  ('q_link', (public.save_question(null, '{"kind": "link", "prompt": "Send your project"}')).id);
+
+-- Pop the choice question
+insert into lq_ids select 'live1', (public.push_live_question((select id from lq_ids where name = 'session'), (select id from lq_ids where name = 'q_choice'))).id;
+select pg_temp.ok((select status from public.class_sessions where id = (select id from lq_ids where name = 'session')) = 'live', 'popping a question starts the lesson');
+select pg_temp.ok((select options from public.live_questions where id = (select id from lq_ids where name = 'live1'))::text not like '%correct%', 'the popped question carries no answers');
+select pg_temp.ok((select correct_options from public.live_question_keys where live_question_id = (select id from lq_ids where name = 'live1')) = '{1}', 'its key is kept apart');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select pg_temp.fails(format('select public.push_live_question(%s, %s)', (select id from lq_ids where name = 'session'), (select id from lq_ids where name = 'q_choice')),
+  'only this class', 'another teacher cannot pop questions in this lesson');
+select pg_temp.ok((select count(*) from public.live_questions) = 0, 'another teacher does not see this lesson''s questions');
+
+-- The child answers
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok((select count(*) from public.live_questions) = 1, 'the child sees the popped question (for real time)');
+select pg_temp.ok((select count(*) from public.live_question_keys) = 0 and (select count(*) from public.live_answers) = 0, 'but never the key or the answers');
+select pg_temp.ok((public.portal_live_state(9301) ->> 'active')::boolean and (public.portal_live_state(9301) -> 'question' ->> 'open')::boolean,
+  'the app shows the open question');
+select pg_temp.ok(public.portal_live_state(9301) -> 'key' = 'null'::jsonb, 'no answer key before the reveal');
+select pg_temp.fails(format('select public.submit_live_answer(%s, 9301, %L)', (select id from lq_ids where name = 'live1'), '{"choices": [7]}'), 'pick an answer', 'an option that does not exist is refused');
+select pg_temp.fails(format('select public.submit_live_answer(%s, 9301, %L)', (select id from lq_ids where name = 'live1'), '{}'), 'pick an answer', 'an empty answer is refused');
+select pg_temp.ok((public.submit_live_answer((select id from lq_ids where name = 'live1'), 9301, '{"choices": [1]}') ->> 'status') = 'received', 'the child answers');
+select pg_temp.fails(format('select public.submit_live_answer(%s, 9301, %L)', (select id from lq_ids where name = 'live1'), '{"choices": [0]}'), 'already answered', 'one answer per question');
+select pg_temp.ok((public.portal_live_state(9301) -> 'answer' -> 'result') = 'null'::jsonb, 'right or wrong stays hidden until the reveal');
+select pg_temp.fails(format('select public.submit_live_answer(%s, 9302, %L)', (select id from lq_ids where name = 'live1'), '{"choices": [1]}'), 'not found', 'a child cannot answer for another child');
+select pg_temp.fails($$select public.portal_live_state(9302)$$, 'not found', 'nor see another child''s question');
+select pg_temp.fails(format('select public.reveal_live_question(%s)', (select id from lq_ids where name = 'live1')), 'not found', 'a child cannot reveal');
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000a2');
+select pg_temp.ok((select count(*) from public.live_questions) = 0, 'a child in another class does not see the question');
+
+reset role;
+select pg_temp.ok((select result = 'correct' and points = 10 and marked_by = 'auto' and answered_by = 'student' from public.live_answers where student_id = 9301),
+  'a right choice is marked at once with full points');
+select pg_temp.ok((select points from public.student_points where kind = 'question' and student_id = 9301) = 10, 'the points go into the ledger');
+insert into lq_ids select 'pts_other', coalesce(sum(points), 0) from public.student_points where student_id = 9301 and kind <> 'question';
+insert into lq_ids select 'pts_all', coalesce(sum(points), 0) from public.student_points where student_id = 9301;
+select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
+set local role authenticated;
+select pg_temp.ok((public.portal_home(9301) -> 'points' ->> 'total')::int = (select id from lq_ids where name = 'pts_other')
+  and public.portal_home(9301)::text not like '%Question: Which loop%', 'question points stay out of the app until the answer is shown');
+
+-- The teacher reveals
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select pg_temp.ok((select count(*) from public.live_answers) = 1, 'the teacher sees the answers');
+select pg_temp.ok((public.reveal_live_question((select id from lq_ids where name = 'live1'))).status = 'closed', 'revealing closes the question');
+select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
+select pg_temp.ok((public.portal_live_state(9301) -> 'answer' ->> 'result') = 'correct'
+  and (public.portal_live_state(9301) -> 'key' -> 'correct_options') = '[1]'::jsonb
+  and (public.portal_live_state(9301) -> 'key' ->> 'explanation') = 'forever never stops', 'after the reveal the parent sees the result and the right answer');
+select pg_temp.ok((public.portal_live_state(9301) -> 'leaderboard' -> 0 ->> 'name') = 'Ali' and (public.portal_live_state(9301) ->> 'my_place')::int = 1, 'the top places show');
+select pg_temp.ok((public.portal_home(9301) -> 'points' ->> 'total')::int = (select id from lq_ids where name = 'pts_all'), 'and count once it is shown');
+select pg_temp.fails(format('select public.submit_live_answer(%s, 9301, %L)', (select id from lq_ids where name = 'live1'), '{"choices": [1]}'), 'time is up', 'a closed question takes no answers');
+
+-- Fill-in, from the parent's phone, half way through the time
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+insert into lq_ids select 'live2', (public.push_live_question((select id from lq_ids where name = 'session'), (select id from lq_ids where name = 'q_fill'), 60)).id;
+reset role;
+update public.live_questions set opened_at = timezone('utc', now()) - interval '30 seconds', closes_at = timezone('utc', now()) + interval '30 seconds'
+where id = (select id from lq_ids where name = 'live2');
+select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
+set local role authenticated;
+select public.submit_live_answer((select id from lq_ids where name = 'live2'), 9301, '{"text": "kuala lumpor"}');
+reset role;
+select pg_temp.ok((select result = 'correct' and points = 8 and answered_by = 'parent' from public.live_answers where live_question_id = (select id from lq_ids where name = 'live2')),
+  'speed scoring: half way through the time gives 80%');
+
+-- The timer ran out
+update public.live_questions set opened_at = timezone('utc', now()) - interval '2 minutes', closes_at = timezone('utc', now()) - interval '1 minute'
+where id = (select id from lq_ids where name = 'live2');
+update public.live_answers set result = 'wrong' where live_question_id = (select id from lq_ids where name = 'live2');
+select public.sync_live_answer_points(id) from public.live_answers where live_question_id = (select id from lq_ids where name = 'live2');
+delete from public.live_answers where live_question_id = (select id from lq_ids where name = 'live2');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+set local role authenticated;
+select pg_temp.fails(format('select public.submit_live_answer(%s, 9301, %L)', (select id from lq_ids where name = 'live2'), '{"text": "KL"}'), 'time is up', 'no answers after the timer');
+
+-- Short answer: no match waits for the teacher; the AI only suggests
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+insert into lq_ids select 'live3', (public.push_live_question((select id from lq_ids where name = 'session'), (select id from lq_ids where name = 'q_short'))).id;
+select pg_temp.ok((select count(*) from public.live_questions where session_id = (select id from lq_ids where name = 'session') and status = 'live') = 1, 'popping closes the last question');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select public.submit_live_answer((select id from lq_ids where name = 'live3'), 9301, '{"text": "It does the same thing again and again"}');
+reset role;
+select pg_temp.ok((select result = 'pending' and points = 0 from public.live_answers where live_question_id = (select id from lq_ids where name = 'live3')), 'an unmatched short answer waits for the teacher');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select pg_temp.fails(format('select public.apply_live_ai_mark(%s, %L, %L, %L)', (select id from public.live_answers where live_question_id = (select id from lq_ids where name = 'live3')), 'right', 'x', 'y'),
+  'permission denied', 'only the server records AI suggestions');
+reset role;
+set local role service_role;
+select public.apply_live_ai_mark((select id from public.live_answers where live_question_id = (select id from lq_ids where name = 'live3')), 'right', 'Yes, a loop repeats.', 'Means repeat.');
+reset role;
+select pg_temp.ok((select result = 'pending' and ai_suggestion = 'right' from public.live_answers where live_question_id = (select id from lq_ids where name = 'live3')), 'the AI suggestion does not mark by itself');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select public.mark_live_answer((select id from public.live_answers where live_question_id = (select id from lq_ids where name = 'live3')), true, 'Yes, a loop repeats.');
+reset role;
+select pg_temp.ok((select points from public.live_answers where live_question_id = (select id from lq_ids where name = 'live3')) = 20
+  and (select count(*) from public.student_points where kind = 'question' and student_id = 9301) = 2, 'the teacher marks it right and the points follow');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select public.mark_live_answer((select id from public.live_answers where live_question_id = (select id from lq_ids where name = 'live3')), false);
+reset role;
+select pg_temp.ok((select points from public.live_answers where live_question_id = (select id from lq_ids where name = 'live3')) = 0
+  and (select count(*) from public.student_points where kind = 'question' and student_id = 9301) = 1, 'marking it wrong takes the points back');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select pg_temp.fails(format('select public.undo_points(%s)', (select min(id) from public.student_points where kind = 'question')), 'marked again', 'question points are not undone by hand');
+reset role;
+insert into lq_ids select 'ans3', id from public.live_answers where live_question_id = (select id from lq_ids where name = 'live3');
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+set local role authenticated;
+select pg_temp.fails(format('select public.mark_live_answer(%s, true)', (select id from lq_ids where name = 'ans3')),
+  'not found', 'another teacher cannot mark');
+
+-- Link and screenshot
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+insert into lq_ids select 'live4', (public.push_live_question((select id from lq_ids where name = 'session'), (select id from lq_ids where name = 'q_link'))).id;
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.fails(format('select public.submit_live_answer(%s, 9301, %L)', (select id from lq_ids where name = 'live4'), '{"text": "my game"}'), 'link', 'a link must be a link');
+select pg_temp.ok((public.submit_live_answer((select id from lq_ids where name = 'live4'), 9301, '{"text": "https://scratch.mit.edu/projects/1"}') ->> 'status') = 'received', 'a link answer');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+insert into lq_ids select 'live5', (public.push_live_question((select id from lq_ids where name = 'session'), (select id from lq_ids where name = 'q_shot'))).id;
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok(public.portal_may_upload_live_answer((select id from lq_ids where name = 'session') || '/9301/a.jpg'), 'the child may add a picture for this question');
+select pg_temp.ok(not public.portal_may_upload_live_answer((select id from lq_ids where name = 'session') || '/9302/a.jpg'), 'but not into another child''s folder');
+select pg_temp.fails(format('select public.submit_live_answer(%s, 9301, %L)', (select id from lq_ids where name = 'live5'), jsonb_build_object('file', (select id from lq_ids where name = 'session') || '/9301/missing.jpg')),
+  'picture', 'the picture must be uploaded first');
+reset role;
+insert into storage.objects (bucket_id, name) values ('live-answers', (select id from lq_ids where name = 'session') || '/9301/a.jpg');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+set local role authenticated;
+select pg_temp.ok((public.submit_live_answer((select id from lq_ids where name = 'live5'), 9301, jsonb_build_object('file', (select id from lq_ids where name = 'session') || '/9301/a.jpg')) ->> 'status') = 'received', 'a screenshot answer');
+select pg_temp.ok(public.may_read_live_answer_file((select id from lq_ids where name = 'session') || '/9301/a.jpg'), 'the family reads its own picture');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a2');
+select pg_temp.ok(not public.may_read_live_answer_file((select id from lq_ids where name = 'session') || '/9301/a.jpg'), 'another child cannot');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select pg_temp.ok(public.may_read_live_answer_file((select id from lq_ids where name = 'session') || '/9301/a.jpg'), 'the teacher reads it');
+
+-- Settings
+select pg_temp.fails($$select public.set_live_question_settings('{"scoring": "fixed", "leaderboard_top": 3, "ai_marking": true}')$$, 'only an admin', 'a teacher cannot change the settings');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select pg_temp.fails($$select public.set_live_question_settings('{"scoring": "fixed", "leaderboard_top": 3}')$$, 'ai marking', 'every setting is needed');
+select pg_temp.fails($$select public.set_live_question_settings('{"scoring": "slow", "leaderboard_top": 3, "ai_marking": true}')$$, 'speed or fixed', 'scoring is speed or fixed');
+select public.set_live_question_settings('{"scoring": "fixed", "leaderboard_top": 0, "ai_marking": false}');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok(jsonb_array_length(public.portal_live_state(9301) -> 'leaderboard') = 0, 'a school can hide the leaderboard');
+
 reset role;
 rollback;
