@@ -14,6 +14,9 @@ Nothing here is sent to GoHighLevel or to anyone.
   python3 ghl_history.py --apply --recent 30    only chats whose last GoHighLevel message is from the last 30 minutes
                                                 (this is what the timer runs, so new messages follow within minutes)
   python3 ghl_history.py --contact <ghl id>     one contact only
+  python3 ghl_history.py --watch 3              keep running: every 3 seconds one call asks GoHighLevel which chats
+                                                changed, and only those are read and added (the service
+                                                eduhero-ghl-watch runs this)
 
 Every added message has source_id "ghl:<GoHighLevel message id>" and content_attributes {"ghl_import": true}
 (stored as a JSON *string*, which is how Chatwoot's own store coder keeps it - an object makes its API answer 500), so a
@@ -36,6 +39,9 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import warnings
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)  # utcnow() / utcfromtimestamp() on the VPS's newer Python
 
 GHL_TOKEN = os.environ.get("GHL_TOKEN", "")
 GHL_API_URL = os.environ.get("GHL_API_URL", "https://services.leadconnectorhq.com").rstrip("/")
@@ -133,9 +139,9 @@ def message_text(message):
     return ((body + "\n" if body and urls else body) + "\n".join(urls))[:MAX_TEXT]
 
 
-def ghl_messages(conversation_id):
+def ghl_messages(conversation_id, max_pages=200):
     found, last = [], None
-    for _ in range(200):
+    for _ in range(max_pages):
         query = "?limit=100" + ("&lastMessageId=" + urllib.parse.quote(last) if last else "")
         data = (ghl_get("/conversations/%s/messages%s" % (conversation_id, query)).get("messages")) or {}
         batch = data.get("messages") or []
@@ -146,16 +152,8 @@ def ghl_messages(conversation_id):
     return found
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--apply", action="store_true")
-    parser.add_argument("--recent", type=int, default=0, help="only chats whose last message is newer than this many minutes")
-    parser.add_argument("--contact", default="")
-    parser.add_argument("--show", type=int, default=12, help="how many chats to list in the summary")
-    args = parser.parse_args()
-    if not (GHL_TOKEN and PG_USER and PG_DB):
-        sys.exit("GHL_TOKEN, POSTGRES_USERNAME and POSTGRES_DATABASE must be set")
-
+def load_chats():
+    """The CRM's chats of GoHighLevel people, by GoHighLevel contact id."""
     chats = rows(
         "select ct.id as contact, ct.name, ct.identifier, c.id as conv, c.inbox_id from conversations c "
         "join contacts ct on ct.id = c.contact_id where c.account_id = %d and ct.identifier like 'ghl:%%' order by c.id" % ACCOUNT_ID
@@ -163,13 +161,20 @@ def main():
     by_contact = collections.defaultdict(list)
     for chat in chats:
         by_contact[chat["identifier"][len(PREFIX):]].append(chat)
-    if args.contact:
-        by_contact = {k: v for k, v in by_contact.items() if k == args.contact}
+    return by_contact
 
-    location = LOCATION_ID
-    plan, report = [], []  # plan: (conv, contact id, direction, text, when, ghl message id)
-    types = collections.Counter()
-    since = datetime.datetime.utcnow() - datetime.timedelta(minutes=args.recent) if args.recent else None
+
+def collect(by_contact, location, since=None, newest_page_only=False, settle=0):
+    """What GoHighLevel has for these contacts that the CRM does not: (plan, report, types, unsettled contacts).
+
+    plan: (conversation, chatwoot contact, direction, text, when, ghl message id, failed, error).
+    since: only contacts whose last message is newer than this moment.
+    newest_page_only: read only the newest 100 messages of a chat (enough to follow a chat that is already caught up).
+    settle: a message FROM the person this young (seconds) is left for the bridge, which gets it by webhook a moment
+    later; taking it here too would add it twice. Those contacts come back in the last item to be looked at again.
+    """
+    plan, report, types, unsettled = [], [], collections.Counter(), set()
+    now = datetime.datetime.utcnow()
     for ghl_contact, convs in by_contact.items():
         name = convs[0]["name"]
         try:
@@ -182,7 +187,7 @@ def main():
                 for f in found
             ):
                 continue
-            theirs = [m for f in found for m in ghl_messages(f["id"])]
+            theirs = [m for f in found for m in ghl_messages(f["id"], 1 if newest_page_only else 200)]
         except Exception as error:  # noqa: BLE001 - one contact failing must not stop the rest
             report.append((name, "GoHighLevel error: %s %s" % (type(error).__name__, str(error)[:80])))
             continue
@@ -208,6 +213,9 @@ def main():
             target = next((c for c in convs if c["inbox_id"] == inbox), None) or max(convs, key=lambda c: c["conv"])
             direction = 0 if message.get("direction") == "inbound" else 1
             when = stamp(message["dateAdded"])
+            if settle and direction == 0 and (now - when).total_seconds() < settle:
+                unsettled.add(ghl_contact)
+                continue
             twin = None
             for old in existing[target["conv"]]:
                 if old["id"] in taken or old["message_type"] != direction:
@@ -224,20 +232,10 @@ def main():
             added[direction] += 1
         if added:
             report.append((name, "adds %d from them, %d from us (GoHighLevel has %d messages)" % (added[0], added[1], len(theirs))))
+    return plan, report, types, unsettled
 
-    inbound = sum(1 for p in plan if p[2] == 0)
-    log("chats checked:", len(by_contact), "| to add:", len(plan), "(from the person %d, from us %d)" % (inbound, len(plan) - inbound), "| of those failed to send:", sum(1 for p in plan if p[6]))
-    log("GoHighLevel message types seen:", dict(types))
-    for name, line in report[: args.show]:
-        log(" ", name, "-", line)
-    if len(report) > args.show:
-        log("  ... and", len(report) - args.show, "more chats")
-    if not args.apply:
-        log("Dry run: nothing was written. Run again with --apply to add them.")
-        return
-    if not plan:
-        return
 
+def write(plan):
     statements = ["begin;"]
     for conv, contact, direction, text, when, ghl_id, failed, error in plan:
         attributes = {"ghl_import": True, **({"external_error": error or "GoHighLevel could not send this message"} if failed else {})}
@@ -258,6 +256,112 @@ def main():
         )
     statements.append("commit;")
     psql("\n".join(statements))
+
+
+def watch(interval, catch_up_minutes=30, full_pass_seconds=300, settle=30):
+    """Follow GoHighLevel closely: one call every few seconds asks which conversations changed last, and only those are read.
+
+    One location-wide search (the 40 conversations with the newest message) costs one API call per tick, far inside
+    GoHighLevel's limits (100 calls per 10 seconds, 200,000 per day). A chat whose newest message moved is read and
+    its new messages are added. A full pass over every chat runs now and then in case a tick was missed.
+    """
+    by_contact = load_chats()
+    location = LOCATION_ID
+    for contact in by_contact:  # a contact GoHighLevel no longer has (a test one) answers 400: ask the next
+        if location:
+            break
+        try:
+            location = (ghl_get("/contacts/" + contact, "2021-07-28").get("contact") or {}).get("locationId") or ""
+        except urllib.error.HTTPError:
+            continue
+    if not location:
+        sys.exit("GoHighLevel location is not known")
+
+    def follow(subset, **options):
+        plan, _report, _types, unsettled = collect(subset, location, **options)
+        if plan:
+            write(plan)
+            age = max((datetime.datetime.utcnow() - p[4]).total_seconds() for p in plan)
+            log("Added", len(plan), "messages (from the person %d, from us %d); the oldest was sent %.0f s ago" % (
+                sum(1 for p in plan if p[2] == 0), sum(1 for p in plan if p[2] == 1), age))
+        return unsettled
+
+    log("Watching GoHighLevel every", interval, "s; catching up the last", catch_up_minutes, "minutes first")
+    follow(by_contact, since=datetime.datetime.utcnow() - datetime.timedelta(minutes=catch_up_minutes))
+    last_seen: dict[str, float] = {}
+    retry: dict[str, float] = {}
+    last_full = time.time()
+    last_reload = time.time()
+    first = True
+    while True:
+        started = time.time()
+        try:
+            found = ghl_get("/conversations/search?" + urllib.parse.urlencode(
+                {"locationId": location, "sortBy": "last_message_date", "sort": "desc", "limit": 40}
+            )).get("conversations") or []
+            changed = set()
+            for chat in found:
+                moved = chat.get("lastMessageDate")
+                if not isinstance(moved, (int, float)):
+                    continue
+                if not first and moved > last_seen.get(chat["id"], 0) and chat.get("lastMessageType") in KINDS:
+                    changed.add(chat.get("contactId"))
+                last_seen[chat["id"]] = max(moved, last_seen.get(chat["id"], 0))
+            first = False
+            # A person the CRM has not met yet (the bridge is still making the chat), or a refresh now and then.
+            if any(c not in by_contact for c in changed) or started - last_reload > 60:
+                by_contact = load_chats()
+                last_reload = started
+            for contact in [c for c, due in retry.items() if due <= started]:
+                changed.add(contact)
+                del retry[contact]
+            subset = {c: by_contact[c] for c in changed if c in by_contact}
+            if subset:
+                for contact in follow(subset, newest_page_only=True, settle=settle):
+                    retry[contact] = started + settle + 5
+            if started - last_full > full_pass_seconds:
+                last_full = started
+                since = datetime.datetime.utcnow() - datetime.timedelta(minutes=catch_up_minutes)
+                for contact in follow(by_contact, since=since, settle=settle):
+                    retry[contact] = started + settle + 5
+        except Exception as error:  # noqa: BLE001 - keep following; the next tick tries again
+            log("Tick failed:", type(error).__name__, str(error)[:200])
+        time.sleep(max(0.5, interval - (time.time() - started)))
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--recent", type=int, default=0, help="only chats whose last message is newer than this many minutes")
+    parser.add_argument("--contact", default="")
+    parser.add_argument("--show", type=int, default=12, help="how many chats to list in the summary")
+    parser.add_argument("--watch", type=float, default=0, help="keep running and follow GoHighLevel every this many seconds")
+    args = parser.parse_args()
+    if not (GHL_TOKEN and PG_USER and PG_DB):
+        sys.exit("GHL_TOKEN, POSTGRES_USERNAME and POSTGRES_DATABASE must be set")
+    if args.watch:
+        watch(args.watch)
+        return
+
+    by_contact = load_chats()
+    if args.contact:
+        by_contact = {k: v for k, v in by_contact.items() if k == args.contact}
+    since = datetime.datetime.utcnow() - datetime.timedelta(minutes=args.recent) if args.recent else None
+    plan, report, types, _unsettled = collect(by_contact, LOCATION_ID, since=since)
+
+    inbound = sum(1 for p in plan if p[2] == 0)
+    log("chats checked:", len(by_contact), "| to add:", len(plan), "(from the person %d, from us %d)" % (inbound, len(plan) - inbound), "| of those failed to send:", sum(1 for p in plan if p[6]))
+    log("GoHighLevel message types seen:", dict(types))
+    for name, line in report[: args.show]:
+        log(" ", name, "-", line)
+    if len(report) > args.show:
+        log("  ... and", len(report) - args.show, "more chats")
+    if not args.apply:
+        log("Dry run: nothing was written. Run again with --apply to add them.")
+        return
+    if not plan:
+        return
+    write(plan)
     log("Added", len(plan), "messages.")
 
 
