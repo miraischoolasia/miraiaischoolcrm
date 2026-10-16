@@ -25,6 +25,7 @@ import { ModalShell } from './ModalShell'
 import { PathwaySection } from './PathwaySection'
 import { PointsCard } from './PointsCard'
 import { AiReportCard } from './AiReportCard'
+import { AppLoginsCard } from './AppLoginsCard'
 import type { RewardLevel } from '../lib/rewards'
 import { PerformanceRadarChart } from './PerformanceRadarChart'
 import { WhatsAppLink } from './WhatsAppLink'
@@ -61,6 +62,8 @@ type StudentDetailModalProps = {
   canManagePoints?: boolean
   // Shows the AI analysis card on the Progress tab.
   showAiReport?: boolean
+  // Shows the student app logins on the Overview tab (managed with Students edit).
+  showAppLogins?: boolean
   onClose: () => void
   schedules: Schedule[]
   teacherMap: Map<number, Teacher>
@@ -122,6 +125,7 @@ export function StudentDetailModal({
   rewardLevels,
   canManagePoints = false,
   showAiReport = false,
+  showAppLogins = false,
   onClose,
   schedules,
   teacherMap,
@@ -520,6 +524,9 @@ export function StudentDetailModal({
                   ))}
                 </ul>
               </Card>
+            )}
+            {showAppLogins && !isPreview && (
+              <AppLoginsCard studentId={student.id} studentName={student.name} canManage={canManagePoints} />
             )}
           </>
         )}

@@ -605,5 +605,76 @@ select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 set local role authenticated;
 select pg_temp.fails($$select public.save_program_level('Foundation', 'Coder Pro', null, null)$$, 'already a class level', 'two levels cannot share a name');
 
+-- Student app (20261021200000) ---------------------------------------------
+reset role;
+insert into auth.users (id) values ('00000000-0000-0000-0000-0000000000b1');  -- parent Mdm Lim
+insert into public.people (id, kind, full_name) overriding system value values (9501, 'parent', 'Mdm Lim');
+-- Ali's own person row (made by the students trigger, or here) points at his parent.
+insert into public.people (kind, full_name, student_id)
+select 'student', 'Ali', 9301 where not exists (select 1 from public.people where student_id = 9301);
+update public.people set parent_id = 9501 where student_id = 9301;
+update public.people set auth_user_id = '00000000-0000-0000-0000-0000000000b1' where id = 9501;
+insert into public.portal_accounts (auth_user_id, username, kind, student_id, parent_person_id) values
+  ('00000000-0000-0000-0000-0000000000a1', 'ali.tan', 'student', 9301, null),
+  ('00000000-0000-0000-0000-0000000000b1', 'mdm.lim', 'parent', null, 9501);
+
+select pg_temp.fails($$insert into public.portal_accounts (auth_user_id, username, kind, student_id) values ('00000000-0000-0000-0000-0000000000a2', 'Bad Name', 'student', 9302)$$,
+  'check constraint', 'login names are lower-case letters, numbers, dots');
+select pg_temp.fails($$update public.people set auth_user_id = '00000000-0000-0000-0000-0000000000a2' where id = 9501$$,
+  'belongs to staff or a student', 'a parent login cannot be a student login');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select pg_temp.ok((select count(*) from public.portal_accounts) >= 1, 'class staff see login names');
+select pg_temp.login('00000000-0000-0000-0000-00000000000d');
+select pg_temp.fails($$update public.people set auth_user_id = null where id = 9501$$, 'only an admin', 'staff who may edit students still cannot change a parent login');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select pg_temp.fails($$select public.set_portal_settings('{"school_name": "X", "accent_color": "#000000", "student_sees": {}, "parent_sees": {}}')$$,
+  'only admin', 'a teacher cannot change the app settings');
+
+-- The child
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok((select string_agg(full_name, ',') from public.portal_children()) = 'Ali', 'a child sees only themselves');
+select pg_temp.ok((public.portal_home(9301) ->> 'viewer') = 'student', 'the home knows a child is looking');
+select pg_temp.ok(jsonb_array_length(public.portal_home(9301) -> 'schedule') >= 2, 'the child sees the coming classes');
+select pg_temp.ok((public.portal_home(9301) -> 'schedule' -> 0 ->> 'class') = 'Test Class A', 'with the class name');
+select pg_temp.ok(jsonb_array_length(public.portal_home(9301) -> 'lessons') >= 3, 'and past lessons');
+select pg_temp.ok(jsonb_array_length(public.portal_home(9301) -> 'lessons' -> 0 -> 'scores') >= 1
+  or jsonb_array_length(public.portal_home(9301) -> 'lessons' -> 1 -> 'scores') >= 1, 'with the teacher''s ratings');
+select pg_temp.ok(public.portal_home(9301)::text not like '%Built the menu screen%'
+  and public.portal_home(9301)::text not like '%Shy today%'
+  and public.portal_home(9301)::text not like '%remark%', 'never the teacher''s remarks');
+select pg_temp.ok((public.portal_home(9301) -> 'points' ->> 'total')::int = 9, 'the points total');
+select pg_temp.ok(not (public.portal_home(9301) ? 'package'), 'no package for a child by default');
+select pg_temp.fails($$select public.portal_home(9302)$$, 'not found', 'a child cannot open another child');
+select pg_temp.ok((select count(*) from public.students) = 0 and (select count(*) from public.people) = 0, 'a child still reads no CRM tables');
+
+-- The parent
+select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
+select pg_temp.ok(public.current_parent_person_id() = 9501, 'the parent login resolves');
+select pg_temp.ok((select string_agg(full_name, ',') from public.portal_children()) = 'Ali', 'a parent sees their children');
+select pg_temp.ok((public.portal_home(9301) ->> 'viewer') = 'parent' and (public.portal_home(9301) -> 'package' ->> 'lessons_left')::int = 4,
+  'a parent sees lessons left');
+select pg_temp.fails($$select public.portal_home(9302)$$, 'not found', 'a parent cannot open a child that is not theirs');
+select pg_temp.ok((select count(*) from public.students) = 0 and (select count(*) from public.leads) = 0, 'a parent reads no CRM tables');
+
+-- Settings, branding, switching a login off
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select public.set_portal_settings('{"school_name": "Mirai AI School", "accent_color": "#123abc",
+  "student_sees": {"schedule": true, "points": false, "scores": true, "package": true},
+  "parent_sees": {"schedule": true, "points": true, "scores": true, "package": true}}');
+select pg_temp.fails($$select public.set_portal_settings('{"school_name": "X", "accent_color": "pink", "student_sees": {}, "parent_sees": {}}')$$,
+  'not valid', 'the colour must be #rrggbb');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok(not (public.portal_home(9301) ? 'points') and (public.portal_home(9301) ? 'package'), 'the school decides what a child sees');
+reset role;
+set local role anon;
+select pg_temp.ok((public.portal_branding() ->> 'school_name') = 'Mirai AI School', 'the sign-in screen gets the school name without a login');
+reset role;
+update public.portal_accounts set is_active = false where username = 'mdm.lim';
+select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
+set local role authenticated;
+select pg_temp.ok((select count(*) from public.portal_children()) = 0, 'a switched-off parent login sees nothing');
+
 reset role;
 rollback;

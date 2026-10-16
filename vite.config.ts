@@ -30,5 +30,7 @@ export default defineConfig({
     // test files running together, a few take longer than the 5 s default.
     testTimeout: 20000,
     setupFiles: ['./src/test/setup.ts'],
+    // The student app (student-app/, Expo) has its own packages and checks.
+    exclude: ['**/node_modules/**', 'student-app/**'],
   },
 })

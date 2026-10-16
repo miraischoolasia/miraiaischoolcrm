@@ -5,6 +5,7 @@ import { cn } from '../../lib/cn'
 import type { ZoomMeetingOptions } from '../../lib/api'
 import { RewardsSettings } from '../RewardsSettings'
 import { AiReportSettings } from '../AiReportSettings'
+import { StudentAppSettings } from '../StudentAppSettings'
 import { SubjectsSettings } from '../SubjectsSettings'
 import { AgeGroupsSettings } from '../AgeGroupsSettings'
 import type { AgeGroupOption } from '../../lib/ageGroups'
@@ -22,7 +23,7 @@ export type AttendanceStatusDraft = Pick<AttendanceStatusOption, 'label' | 'atte
 
 type StatusChanges = Partial<AttendanceStatusDraft & Pick<AttendanceStatusOption, 'isActive'>>
 
-type Tab = 'criteria' | 'attendance' | 'rewards' | 'subjects' | 'ai' | 'zoom'
+type Tab = 'criteria' | 'attendance' | 'rewards' | 'subjects' | 'ai' | 'app' | 'zoom'
 
 type ClassSettingsModalProps = {
   criteria: ReviewCriterion[]
@@ -118,7 +119,7 @@ export function ClassSettingsModal({
             <X size={18} aria-hidden="true" />
           </button>
         </div>
-        <div role="tablist" className="mt-4 flex gap-2">
+        <div role="tablist" className="mt-4 flex flex-wrap gap-2">
           {(
             [
               ['criteria', 'Review criteria'],
@@ -126,6 +127,7 @@ export function ClassSettingsModal({
               ['rewards', 'Rewards'],
               ['subjects', 'Class options'],
               ['ai', 'AI analysis'],
+              ['app', 'Student app'],
               ['zoom', 'Zoom'],
             ] as const
           ).map(([key, label]) => (
@@ -241,6 +243,8 @@ export function ClassSettingsModal({
         )}
 
         {tab === 'ai' && <AiReportSettings />}
+
+        {tab === 'app' && <StudentAppSettings />}
 
         {tab === 'zoom' && (
           <ZoomOptionsForm

@@ -7001,6 +7001,7 @@ function App() {
           rewardLevels={rewardLevels.length > 0 ? rewardLevels : undefined}
           canManagePoints={can('students', 'edit')}
           showAiReport={Boolean(supabase)}
+          showAppLogins={Boolean(supabase)}
           onClose={closeStudentDetail}
           schedules={schedules}
           teacherMap={teacherMap}
