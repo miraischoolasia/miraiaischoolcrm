@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { Lead, LeadOption, Package, Student, TrialBooking } from '../../types/domain'
@@ -538,7 +538,7 @@ describe('DetailsPanel', () => {
       expect(onLinkStudents).toHaveBeenCalledWith([])
     })
 
-    it('puts the HOA steps away for a parent who already has a student in a class', () => {
+    it('puts the HOA steps away for a parent who already has a student in a class', async () => {
       const crm = makeCrm({ leads: [{ ...lead, convertedStudentId: 1 }], students: [ethan], packages })
       render(
         <DetailsPanel
@@ -554,11 +554,12 @@ describe('DetailsPanel', () => {
         />,
       )
 
+      await userEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
       const summary = screen.getByText('Enrol another child in HOA')
       expect(summary.closest('details')).not.toHaveAttribute('open')
     })
 
-    it('keeps the HOA steps open for a lead nobody has enrolled yet', () => {
+    it('keeps the HOA steps open for a lead nobody has enrolled yet', async () => {
       render(
         <DetailsPanel
           conversation={conversation({ crm_lead_id: 11 })}
@@ -573,6 +574,7 @@ describe('DetailsPanel', () => {
         />,
       )
 
+      await userEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
       expect(screen.getByText('Enrol steps')).toBeInTheDocument()
       expect(screen.queryByText('Enrol another child in HOA')).not.toBeInTheDocument()
     })
@@ -817,8 +819,9 @@ describe('DetailsPanel', () => {
       )
     }
 
-    it('does not offer to link another child, and does not call the sign-up "another child"', () => {
+    it('does not offer to link another child, and does not call the sign-up "another child"', async () => {
       renderTied('student')
+      await userEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
 
       expect(screen.queryByRole('button', { name: 'Link another child' })).not.toBeInTheDocument()
       expect(screen.queryByText(/Enrol another child/)).not.toBeInTheDocument()
@@ -841,10 +844,11 @@ describe('DetailsPanel', () => {
       expect(screen.queryByText('Lead · the student themself')).not.toBeInTheDocument()
     })
 
-    it('still offers both to a parent', () => {
+    it('still offers both to a parent', async () => {
       renderTied('parent')
 
       expect(screen.getByRole('button', { name: 'Link another child' })).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
       expect(screen.getByText('Enrol another child in HOA')).toBeInTheDocument()
     })
 
@@ -1024,8 +1028,9 @@ describe('DetailsPanel programmes', () => {
     )
   }
 
-  it("offers the school's own programme and nothing of Mirai's", () => {
+  it("offers the school's own programme and nothing of Mirai's", async () => {
     renderEnrol([programme(5, 'Maths tuition')])
+    await userEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
 
     expect(screen.getByText('Steps of Maths tuition')).toBeInTheDocument()
     expect(screen.queryByText('Enrol steps')).not.toBeInTheDocument()
@@ -1035,6 +1040,7 @@ describe('DetailsPanel programmes', () => {
 
   it('switches between the programmes that are on, and skips one that is off', async () => {
     renderEnrol([programme(5, 'Maths tuition'), programme(6, 'English tuition'), programme(7, 'Old course', { isActive: false })])
+    await userEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
 
     expect(screen.getByText('Steps of Maths tuition')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Old course' })).not.toBeInTheDocument()
@@ -1043,17 +1049,66 @@ describe('DetailsPanel programmes', () => {
     expect(screen.queryByText('Steps of Maths tuition')).not.toBeInTheDocument()
   })
 
-  it("keeps Mirai's HOA class on its own screen", () => {
+  it("keeps Mirai's HOA class on its own screen", async () => {
     renderEnrol([programme(1, 'HOA class', { legacyKey: 'hoa' })])
+    await userEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
 
     expect(screen.getByText('Enrol steps')).toBeInTheDocument()
     expect(screen.queryByText(/Steps of/)).not.toBeInTheDocument()
   })
 
-  it('says there is no programme yet when the school has made none', () => {
+  it('says there is no programme yet when the school has made none', async () => {
     renderEnrol([])
+    await userEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
 
     expect(screen.getByText(/No programme to sign up for yet/)).toBeInTheDocument()
     expect(screen.queryByText('Enrol steps')).not.toBeInTheDocument()
+  })
+
+  it('finds one of many programmes by searching, grouped by category, and opens its steps', async () => {
+    renderEnrol([
+      programme(5, 'Maths F1', { category: 'Form 1' }),
+      programme(6, 'English F1', { category: 'Form 1' }),
+      programme(7, 'Maths F2', { category: 'Form 2' }),
+      programme(8, 'Starter kit', { category: 'Products' }),
+      programme(9, 'Holiday talk'),
+    ])
+    await userEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
+
+    await userEvent.click(screen.getByRole('button', { name: /Add programme/ }))
+    expect(screen.getByText('Form 1')).toBeInTheDocument()
+    expect(screen.getByText('Products')).toBeInTheDocument()
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search programmes' }), 'form 2')
+    expect(screen.queryByRole('button', { name: 'Starter kit' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Maths F2' }))
+
+    expect(screen.getByText('Steps of Maths F2')).toBeInTheDocument()
+    // The picked programme is now one of this lead's tabs.
+    expect(screen.getByRole('button', { name: 'Maths F2', pressed: true })).toBeInTheDocument()
+  })
+
+  it('has icons for Contact and Sign-up for a lead, and Chat notes only when there is something in them', async () => {
+    const crm = makeCrm({ leads: [lead] })
+    render(
+      <DetailsPanel
+        conversation={conversation({ crm_lead_id: 11 })}
+        messages={[firstMessage]}
+        hasOlder={false}
+        crm={crm}
+        sourceRules={[]}
+        onLoadOlder={vi.fn()}
+        onLinkLead={vi.fn()}
+        onLinkStudents={vi.fn()}
+        onWriteMessage={vi.fn()}
+        starredMessages={[{ id: 3, text: 'Fee is RM300', at: 1_800_000_000 }]}
+      />,
+    )
+
+    const rail = screen.getByRole('navigation', { name: 'Panel sections' })
+    expect(within(rail).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Contact', 'Sign-up', 'Chat notes'])
+    // The contact part is on show first; the starred message is on its own icon.
+    expect(screen.queryByText('Fee is RM300')).not.toBeInTheDocument()
+    await userEvent.click(within(rail).getByRole('button', { name: 'Chat notes' }))
+    expect(screen.getByText('Fee is RM300')).toBeInTheDocument()
   })
 })

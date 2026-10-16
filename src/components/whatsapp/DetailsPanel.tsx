@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { CaretLeft } from '@phosphor-icons/react'
+import { CaretLeft, GraduationCap, Star, UserCircle } from '@phosphor-icons/react'
+import { cn } from '../../lib/cn'
 import { getFirstMessage, guessSourceAndTags, parentNumberUpdate, resolveChatLead } from '../../lib/chatLink'
 import { parentPhoneOf } from '../../lib/studentContact'
 import { familyOf } from '../../lib/family'
@@ -25,6 +26,8 @@ import { LeadHeader } from './LeadCard'
 import { EnrolPanel } from './EnrolPanel'
 import { CampEnrolPanel } from './CampEnrolPanel'
 import { ProgrammePanel } from './ProgrammePanel'
+import { ProgrammePicker } from './ProgrammePicker'
+import { useFollowedProgrammes } from '../../hooks/useFollowedProgrammes'
 import { activeProgrammes, type Programme } from '../../lib/programmes'
 import { StudentCard } from './StudentCard'
 import { StudentLinker } from './StudentLinker'
@@ -72,28 +75,39 @@ type DetailsPanelProps = {
 // The side panel: who the parent is, and what the school already knows about
 // them (a lead, a student), or a way to add them.
 // Which sign-up the steps below are for: one of the school's programmes.
+type PanelTab = 'contact' | 'enrol' | 'chat'
+
+const TAB_ICONS: Record<PanelTab, { label: string; Icon: typeof UserCircle }> = {
+  contact: { label: 'Contact', Icon: UserCircle },
+  enrol: { label: 'Sign-up', Icon: GraduationCap },
+  chat: { label: 'Chat notes', Icon: Star },
+}
+
 type Offer = { key: string; label: string; legacy: 'hoa' | 'camp' | null; programme: Programme | null }
 
-function ProgrammeSwitch({ offers, current, onChange }: { offers: Offer[]; current: string; onChange: (key: string) => void }) {
+function ProgrammeSwitch({
+  offers,
+  current,
+  followed,
+  onChange,
+}: {
+  offers: Offer[]
+  current: string
+  followed: ReadonlySet<string>
+  onChange: (key: string) => void
+}) {
   if (offers.length < 2) {
     return null
   }
+  // Many programmes: the ones the lead is on are tabs, and the rest are found by searching, grouped by category.
   if (offers.length > 3) {
     return (
-      <label className="block">
-        <span className="sr-only">What are they signing up for</span>
-        <select
-          value={current}
-          onChange={(event) => onChange(event.target.value)}
-          className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-900"
-        >
-          {offers.map((offer) => (
-            <option key={offer.key} value={offer.key}>
-              {offer.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <ProgrammePicker
+        offers={offers.map((offer) => ({ key: offer.key, name: offer.label, category: offer.programme?.category ?? null }))}
+        current={current}
+        followed={followed}
+        onChange={onChange}
+      />
     )
   }
   return (
@@ -224,6 +238,8 @@ export function DetailsPanel({
 
   // A parent who already has a student is not a new lead: the add-lead form stays out of the way.
   const [leadFormFor, setLeadFormFor] = useState<number | null>(null)
+  // The part of the panel on show, chosen on the icons at its right edge.
+  const [tab, setTab] = useState<PanelTab>('contact')
   // What the parent can sign up for: the school's programmes that are on. A crm without programmes (the
   // tests) offers Mirai's two, the HOA class and the Holiday Camp (when there is a camp package).
   const offers: Offer[] = useMemo(() => {
@@ -242,6 +258,12 @@ export function DetailsPanel({
     ]
   }, [crm.programmes, crm.packages])
   const [offerKey, setOfferKey] = useState<string | null>(null)
+  const followedProgrammes = useFollowedProgrammes({
+    leadId: lead?.id ?? null,
+    programmes: crm.programmes,
+    bookings: crm.trialBookings,
+    bookingProgrammeId: crm.bookingProgrammeId,
+  })
   const offer = offers.find((entry) => entry.key === offerKey) ?? offers[0] ?? null
   const showLeadPart = lead !== null || students.length === 0 || leadFormFor === conversation.id
 
@@ -250,7 +272,7 @@ export function DetailsPanel({
     const shared = { lead: forLead, crm, userName, onWriteMessage: write, forStudent: role === 'student' }
     return (
       <>
-        <ProgrammeSwitch offers={offers} current={offer?.key ?? ''} onChange={setOfferKey} />
+        <ProgrammeSwitch offers={offers} current={offer?.key ?? ''} followed={followedProgrammes} onChange={setOfferKey} />
         {offer === null ? (
           <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
             No programme to sign up for yet. An admin makes one in Programmes.
@@ -362,6 +384,11 @@ export function DetailsPanel({
     )
   }
 
+  const hasChatNotes = starredMessages.length > 0 || whatsappLabels.length > 0
+  const canEnrol = Boolean(lead && onWriteMessage)
+  const tabs: PanelTab[] = ['contact', ...(canEnrol ? (['enrol'] as const) : []), ...(hasChatNotes ? (['chat'] as const) : [])]
+  const shownTab: PanelTab = tabs.includes(tab) ? tab : 'contact'
+
   return (
     <aside className={className}>
       {onBack && (
@@ -375,7 +402,10 @@ export function DetailsPanel({
         </button>
       )}
       {/* The name, the number and who handles the chat are in the chat's own header already. */}
-      <div className="space-y-5">
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          {shownTab === 'contact' && (
+            <div className="space-y-5">
         {/* The slots below keep their place whether or not the chat is a lead yet, so the
             form is the same one before and after saving and only says "Saved". */}
         {lead ? (
@@ -504,6 +534,16 @@ export function DetailsPanel({
             This parent is not a lead yet. You can look but not add leads.
           </p>
         )}
+        {lead && onWriteMessage && missingParent.length > 0 ? (
+          <p role="note" className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            The parent's {missingParent.join(' and ')} {missingParent.length > 1 ? 'are' : 'is'} not saved yet. Payment and the
+            registration form need the parent.
+          </p>
+        ) : null}
+            </div>
+          )}
+          {shownTab === 'chat' && (
+            <div className="space-y-5">
         {starredMessages.length > 0 && (
           <PanelSection title="Starred messages" aside={<span className="text-slate-500">{starredMessages.length}</span>}>
             <ul className="space-y-1.5">
@@ -545,12 +585,11 @@ export function DetailsPanel({
             </ul>
           </PanelSection>
         )}
-        {lead && onWriteMessage && missingParent.length > 0 ? (
-          <p role="note" className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            The parent's {missingParent.join(' and ')} {missingParent.length > 1 ? 'are' : 'is'} not saved yet. Payment and the
-            registration form need the parent.
-          </p>
-        ) : null}
+              {!hasChatNotes && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">No starred messages or phone labels on this chat.</p>}
+            </div>
+          )}
+          {shownTab === 'enrol' && (
+            <div className="space-y-5">
         {lead && onWriteMessage ? (
           isEnrolled ? (
             <details className="border-t border-pink-100 pt-4 text-xs">
@@ -563,6 +602,39 @@ export function DetailsPanel({
             <div className="space-y-3">{enrolBlock(lead, onWriteMessage)}</div>
           )
         ) : null}
+            </div>
+          )}
+        </div>
+        {tabs.length > 1 && (
+          <nav aria-label="Panel sections" className="sticky top-0 flex shrink-0 flex-col gap-1">
+            {tabs.map((entry) => {
+              const { label, Icon } = TAB_ICONS[entry]
+              return (
+                <button
+                  key={entry}
+                  type="button"
+                  aria-label={label}
+                  aria-pressed={shownTab === entry}
+                  title={label}
+                  onClick={() => setTab(entry)}
+                  className={cn(
+                    'relative flex h-10 w-10 items-center justify-center rounded-xl border transition',
+                    shownTab === entry
+                      ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]'
+                      : 'border-transparent text-slate-500 hover:border-slate-200 hover:bg-white',
+                  )}
+                >
+                  <Icon size={20} weight={shownTab === entry ? 'fill' : 'regular'} aria-hidden="true" />
+                  {entry === 'chat' && starredMessages.length > 0 && (
+                    <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-amber-500 px-1 text-center text-[10px] font-bold leading-4 text-white">
+                      {starredMessages.length}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </nav>
+        )}
       </div>
     </aside>
   )

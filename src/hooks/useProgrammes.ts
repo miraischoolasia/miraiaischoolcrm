@@ -85,6 +85,7 @@ export function useProgrammes({ enabled }: { enabled: boolean }) {
                   outcome: draft.outcome,
                   messageTemplate: draft.messageTemplate,
                   isActive: draft.isActive,
+                  category: draft.category.trim() || null,
                 }
               : entry,
           ),

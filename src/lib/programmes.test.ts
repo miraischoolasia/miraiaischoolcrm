@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
   activeProgrammes,
+  categoriesOf,
   DEFAULT_MESSAGE_TEMPLATE,
   fillTemplate,
+  groupProgrammes,
   programmeOf,
   sampleValues,
+  searchProgrammes,
+  type Programme,
   unknownPlaceholders,
   validateProgramme,
   validateStepTitle,
@@ -87,5 +91,37 @@ describe('programmeOf', () => {
       [],
     )
     expect(activeProgrammes([on, off]).map((entry) => entry.id)).toEqual([1])
+  })
+})
+
+describe('programme categories', () => {
+  const make = (id: number, name: string, category: string | null = null) =>
+    ({ id, name, category, legacyKey: null, outcome: 'booking', messageTemplate: '', isActive: true, sortOrder: id * 10, steps: [] }) as Programme
+
+  it('groups by category in the order the school put them, with the rest last under Other', () => {
+    const groups = groupProgrammes([make(1, 'A', 'Form 1'), make(2, 'B'), make(3, 'C', 'Form 2'), make(4, 'D', 'form 1 ')])
+
+    expect(groups.map((group) => group.label)).toEqual(['Form 1', 'Form 2', 'Other'])
+    expect(groups[0].programmes.map((entry) => entry.name)).toEqual(['A', 'D'])
+  })
+
+  it('shows one plain list when no programme has a category', () => {
+    expect(groupProgrammes([make(1, 'A'), make(2, 'B')])).toEqual([expect.objectContaining({ label: '' })])
+  })
+
+  it('searches the name and the category, every word having to match', () => {
+    const list = [make(1, 'Maths', 'Form 1'), make(2, 'Maths', 'Form 2'), make(3, 'Starter kit', 'Products')]
+
+    expect(searchProgrammes(list, 'maths form 2').map((entry) => entry.id)).toEqual([2])
+    expect(searchProgrammes(list, 'PRODUCTS').map((entry) => entry.id)).toEqual([3])
+    expect(searchProgrammes(list, '')).toHaveLength(3)
+  })
+
+  it('lists the categories in use once each, for suggestions', () => {
+    expect(categoriesOf([make(1, 'A', 'Form 2'), make(2, 'B', 'form 2'), make(3, 'C', 'Form 1'), make(4, 'D')])).toEqual(['Form 1', 'Form 2'])
+  })
+
+  it('limits the length of a category', () => {
+    expect(validateProgramme({ name: 'Maths', messageTemplate: '', category: 'x'.repeat(41) })).toMatch(/category can be up to 40/)
   })
 })

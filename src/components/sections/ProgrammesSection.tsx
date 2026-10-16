@@ -1,17 +1,21 @@
 import { useRef, useState } from 'react'
-import { ArrowLeft, CaretDown, CaretUp, Plus, Trash } from '@phosphor-icons/react'
+import { ArrowLeft, CaretDown, CaretUp, MagnifyingGlass, Plus, Trash } from '@phosphor-icons/react'
 import { FlowSwitch } from '../automations/FlowSwitch'
 import { useConfirm } from '../../hooks/useConfirm'
 import type { ProgrammesState } from '../../hooks/useProgrammes'
 import { cn } from '../../lib/cn'
 import {
+  categoriesOf,
   DEFAULT_MESSAGE_TEMPLATE,
   fillTemplate,
+  groupProgrammes,
+  MAX_CATEGORY,
   MAX_MESSAGE,
   MAX_NAME,
   MAX_PROGRAMMES,
   MAX_STEPS,
   sampleValues,
+  searchProgrammes,
   STEP_KINDS,
   stepKindLabel,
   TEMPLATE_PLACEHOLDERS,
@@ -44,7 +48,9 @@ export function ProgrammesSection({ canEdit, state }: ProgrammesSectionProps & {
 export function ProgrammesView({ canEdit, state }: ProgrammesSectionProps & { state: ProgrammesState }) {
   const [openId, setOpenId] = useState<number | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
+  const [search, setSearch] = useState('')
   const open = state.programmes.find((entry) => entry.id === openId) ?? null
+  const groups = groupProgrammes(searchProgrammes(state.programmes, search))
 
   if (open) {
     return (
@@ -106,8 +112,30 @@ export function ProgrammesView({ canEdit, state }: ProgrammesSectionProps & { st
           </p>
         </div>
       )) : (
+        <>
+        {state.programmes.length > 6 && (
+          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500 focus-within:border-[#fc0c97]">
+            <MagnifyingGlass size={16} aria-hidden="true" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search a programme or category"
+              aria-label="Search programmes"
+              className="min-w-0 flex-1 bg-transparent text-slate-900 outline-none placeholder:text-slate-400"
+            />
+          </label>
+        )}
+        {groups.length === 0 && <p className="py-6 text-center text-sm text-slate-500">No programme matches.</p>}
+        {groups.map((group) => (
+        <div key={group.label || 'all'} className="space-y-2">
+          {group.label && (
+            <h3 className="pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              {group.label} <span className="font-normal normal-case">({group.programmes.length})</span>
+            </h3>
+          )}
         <ul className="space-y-2">
-          {state.programmes.map((programme, index) => (
+          {group.programmes.map((programme) => { const index = state.programmes.indexOf(programme); return (
             <li key={programme.id} className="flex items-stretch gap-2">
               <button
                 type="button"
@@ -150,8 +178,11 @@ export function ProgrammesView({ canEdit, state }: ProgrammesSectionProps & { st
                 </div>
               )}
             </li>
-          ))}
+          ) })}
         </ul>
+        </div>
+        ))}
+        </>
       )}
     </section>
   )
@@ -224,6 +255,7 @@ function ProgrammeEditor({
   const locked = !canEdit || programme.legacyKey !== null
   const [name, setName] = useState(programme.name)
   const [isActive, setIsActive] = useState(programme.isActive)
+  const [category, setCategory] = useState(programme.category ?? '')
   const [outcome, setOutcome] = useState<ProgrammeOutcome>(programme.outcome)
   const [message, setMessage] = useState(programme.messageTemplate)
   const [notice, setNotice] = useState<Notice | null>(null)
@@ -233,13 +265,14 @@ function ProgrammeEditor({
   const changed =
     name !== programme.name ||
     isActive !== programme.isActive ||
+    category.trim() !== (programme.category ?? '') ||
     outcome !== programme.outcome ||
     message !== programme.messageTemplate
 
   async function save() {
     setSaving(true)
     setNotice(null)
-    const problem = await state.save(programme.id, { name, outcome, messageTemplate: message, isActive })
+    const problem = await state.save(programme.id, { name, outcome, messageTemplate: message, isActive, category })
     setSaving(false)
     setNotice(problem ? { text: problem, isError: true } : { text: 'Saved. The team sees it in the Inbox now.', isError: false })
   }
@@ -316,6 +349,29 @@ function ProgrammeEditor({
             }}
             className={`${fieldClass} mt-1`}
           />
+        </label>
+
+        <label className="block">
+          <span className="text-sm font-semibold text-slate-800">Category</span>
+          <span className="block text-xs text-slate-500">
+            Groups the programmes in the Inbox, for example &quot;Form 1&quot; or &quot;Products&quot;. Leave it empty for none.
+          </span>
+          <input
+            value={category}
+            maxLength={MAX_CATEGORY}
+            list={`categories-${programme.id}`}
+            disabled={!canEdit}
+            onChange={(event) => {
+              setCategory(event.target.value)
+              setNotice(null)
+            }}
+            className={`${fieldClass} mt-1`}
+          />
+          <datalist id={`categories-${programme.id}`}>
+            {categoriesOf(state.programmes).map((entry) => (
+              <option key={entry} value={entry} />
+            ))}
+          </datalist>
         </label>
 
         <div className="flex items-center justify-between gap-3">

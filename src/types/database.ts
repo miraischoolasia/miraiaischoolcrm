@@ -664,6 +664,7 @@ export type Database = {
           message_template: string
           is_active: boolean
           sort_order: number
+          category: string | null
           created_at: string
           updated_at: string
         }
@@ -675,6 +676,7 @@ export type Database = {
           message_template?: string
           is_active?: boolean
           sort_order?: number
+          category?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -686,6 +688,7 @@ export type Database = {
           message_template?: string
           is_active?: boolean
           sort_order?: number
+          category?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -1845,6 +1848,42 @@ export type Database = {
         }
         Relationships: []
       }
+      portal_accounts: {
+        Row: {
+          auth_user_id: string
+          username: string
+          kind: 'student' | 'parent'
+          student_id: number | null
+          parent_person_id: number | null
+          is_active: boolean
+          created_by: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          auth_user_id: string
+          username: string
+          kind: 'student' | 'parent'
+          student_id?: number | null
+          parent_person_id?: number | null
+          is_active?: boolean
+          created_by?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          auth_user_id?: string
+          username?: string
+          kind?: 'student' | 'parent'
+          student_id?: number | null
+          parent_person_id?: number | null
+          is_active?: boolean
+          created_by?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       subjects: {
         Row: {
           id: number
@@ -2387,6 +2426,26 @@ export type Database = {
           p_is_active: boolean | null
         }
         Returns: Database['public']['Tables']['program_levels']['Row']
+      }
+      set_portal_settings: {
+        Args: {
+          p_settings: Json
+        }
+        Returns: undefined
+      }
+      portal_branding: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      portal_children: {
+        Args: Record<PropertyKey, never>
+        Returns: { student_id: number; full_name: string }[]
+      }
+      portal_home: {
+        Args: {
+          p_student_id: number
+        }
+        Returns: Json
       }
       save_subject: {
         Args: {
