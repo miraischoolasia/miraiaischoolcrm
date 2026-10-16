@@ -10,8 +10,13 @@ export type QueueItem = {
   id: number
   ruleKey: string
   ruleName: string
-  // Digits with the country code.
-  phone: string
+  // Digits with the country code; null for a Messenger / Instagram chat, which has none.
+  phone: string | null
+  // The chat a Messenger / Instagram message goes into (the sender needs no number for it).
+  conversationId: number | null
+  channel: 'whatsapp' | 'messenger' | 'instagram'
+  // 'ghl_workflow': starts a GoHighLevel button workflow instead of sending the text (only by itself).
+  kind: 'message' | 'ghl_workflow'
   parentName: string | null
   childName: string | null
   leadId: number | null
@@ -42,6 +47,18 @@ export const DEFAULT_SETTINGS: AutomationSettings = { paused: false, dailyCap: 4
 // A message marked "sending" by a window that was closed before it finished.
 const STUCK_AFTER_MS = 10 * 60 * 1000
 
+const CHANNEL_NAMES = { whatsapp: 'WhatsApp', messenger: 'Messenger', instagram: 'Instagram' } as const
+
+// Who a queued message is for, and where it goes: the family's name or number, or "Messenger chat".
+export function queueWho(item: QueueItem) {
+  return item.parentName ?? (item.phone ? `+${item.phone}` : `${CHANNEL_NAMES[item.channel]} chat`)
+}
+
+// The line under the name: the number for WhatsApp, the channel for a chat without one.
+export function queueWhere(item: QueueItem) {
+  return item.phone ? `+${item.phone}` : CHANNEL_NAMES[item.channel]
+}
+
 export function isExpired(item: QueueItem, now: number) {
   return item.expiresAt !== null && Date.parse(item.expiresAt) < now
 }
@@ -52,7 +69,8 @@ export function isStuck(item: QueueItem, now: number) {
 
 // Whether the message can still be sent: waiting, one that failed, or one stuck while sending.
 export function canSend(item: QueueItem, now: number) {
-  if (isExpired(item, now)) {
+  // A button message starts a GoHighLevel workflow: only the sender program can do that, never this window.
+  if (item.kind === 'ghl_workflow' || isExpired(item, now)) {
     return false
   }
   return item.status === 'pending' || item.status === 'failed' || isStuck(item, now)
@@ -124,7 +142,7 @@ export function automationErrorMessage(problem: unknown, fallback: string) {
 }
 
 const COLUMNS =
-  'id, rule_key, rule_name, phone, parent_name, child_name, lead_id, student_id, message, status, due_at, expires_at, decided_at, sent_at, error, created_at, auto_blocked, media_url'
+  'id, rule_key, rule_name, phone, parent_name, child_name, lead_id, student_id, message, status, due_at, expires_at, decided_at, sent_at, error, created_at, auto_blocked, media_url, conversation_id, channel, kind'
 
 export async function fetchQueue(): Promise<QueueItem[]> {
   const { data, error } = await requireSupabase()
@@ -140,7 +158,10 @@ export async function fetchQueue(): Promise<QueueItem[]> {
     id: row.id,
     ruleKey: row.rule_key,
     ruleName: row.rule_name,
-    phone: row.phone,
+    phone: row.phone ?? null,
+    conversationId: row.conversation_id ?? null,
+    channel: row.channel ?? 'whatsapp',
+    kind: row.kind ?? 'message',
     parentName: row.parent_name,
     childName: row.child_name,
     leadId: row.lead_id,

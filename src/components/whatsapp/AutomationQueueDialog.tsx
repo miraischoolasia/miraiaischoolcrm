@@ -9,6 +9,8 @@ import {
   isStuck,
   DEFAULT_SEND_HOURS,
   autoSendTime,
+  queueWhere,
+  queueWho,
   roomLeft,
   willSendByItself,
   type AutomationSettings,
@@ -169,7 +171,7 @@ export function AutomationQueueDialog({
                       <div className="flex items-start gap-3">
                         <input
                           type="checkbox"
-                          aria-label={`Select ${item.parentName ?? item.phone}`}
+                          aria-label={`Select ${queueWho(item)}`}
                           checked={picked.has(item.id)}
                           disabled={!canEdit || isWorking || (!sendableNow && item.status !== 'sending')}
                           onChange={() => toggle(item.id)}
@@ -177,11 +179,16 @@ export function AutomationQueueDialog({
                         />
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-semibold text-slate-900">{item.parentName ?? `+${item.phone}`}</span>
+                            <span className="font-semibold text-slate-900">{queueWho(item)}</span>
                             {item.childName && <span className="text-sm text-slate-500">· {item.childName}</span>}
                             <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
                               {item.ruleName}
                             </span>
+                            {item.kind === 'ghl_workflow' && (
+                              <span className="rounded-md bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-800">
+                                Button message
+                              </span>
+                            )}
                             {item.status === 'failed' && (
                               <span className="rounded-md bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
                                 Failed
@@ -199,8 +206,13 @@ export function AutomationQueueDialog({
                             )}
                           </div>
                           <p className="mt-0.5 text-xs text-slate-500">
-                            +{item.phone} · for {formatDue(item.dueAt)}
+                            {queueWhere(item)} · for {formatDue(item.dueAt)}
                           </p>
+                          {item.kind === 'ghl_workflow' && (
+                            <p className="mt-1 text-xs text-violet-800">
+                              Starts a GoHighLevel button message. It goes out by itself, not from this window.
+                            </p>
+                          )}
                           {auto && (
                             <p className="mt-1 text-xs font-medium text-emerald-800">
                               {settings.paused
@@ -223,7 +235,7 @@ export function AutomationQueueDialog({
                           <textarea
                             value={textOf(item)}
                             disabled={!canEdit || isWorking || !sendableNow}
-                            aria-label={`Message to ${item.parentName ?? item.phone}`}
+                            aria-label={`Message to ${queueWho(item)}`}
                             rows={3}
                             onChange={(event) =>
                               setEdits((current) => new Map(current).set(item.id, event.target.value))

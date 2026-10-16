@@ -709,7 +709,8 @@ export type Database = {
           rule_key: string
           rule_name: string
           dedupe_key: string
-          phone: string
+          // Empty for a Messenger / Instagram chat, which is named by conversation_id instead.
+          phone: string | null
           parent_name: string | null
           child_name: string | null
           lead_id: number | null
@@ -726,6 +727,11 @@ export type Database = {
           sent_by_automation: boolean
           auto_blocked: string | null
           media_url: string | null
+          conversation_id: number | null
+          contact_id: number | null
+          channel: 'whatsapp' | 'messenger' | 'instagram'
+          kind: 'message' | 'ghl_workflow'
+          workflow_id: string | null
         }
         Insert: never
         Update: {
@@ -754,6 +760,9 @@ export type Database = {
             | 'replied'
             | 'no_reply'
             | 'reply_branch'
+            | 'action_done'
+            | 'action_skipped'
+            | 'channel_off'
           detail: string | null
           phone: string | null
           parent_name: string | null

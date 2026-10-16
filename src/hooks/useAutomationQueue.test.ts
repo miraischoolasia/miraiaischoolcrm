@@ -37,6 +37,9 @@ const item = (id: number, change: Partial<QueueItem> = {}): QueueItem => ({
   createdAt: new Date(Date.now() - 3_600_000).toISOString(),
   autoBlocked: null,
   mediaUrl: null,
+  conversationId: null,
+  channel: 'whatsapp',
+  kind: 'message',
   ...change,
 })
 

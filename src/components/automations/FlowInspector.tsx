@@ -359,6 +359,26 @@ export function FlowInspector({
           readOnly={readOnly}
           onChange={(url) => onChange({ imageUrl: url === null ? undefined : url })}
         />
+        <label className="mt-3 block text-sm text-slate-700">
+          <span className="font-semibold text-slate-900">Button message (GoHighLevel workflow id)</span>
+          <input
+            type="text"
+            aria-label="GoHighLevel workflow id"
+            value={node.ghlWorkflowId ?? ''}
+            disabled={readOnly}
+            placeholder="Leave empty to send the text above"
+            onChange={(event) => onChange({ ghlWorkflowId: event.target.value.trim() === '' ? undefined : event.target.value.trim() })}
+            className={cn(fieldClass, 'mt-1 w-full')}
+          />
+        </label>
+        {node.ghlWorkflowId !== undefined && (
+          <p className="mt-1 text-xs text-slate-500">
+            The text above is not sent. This starts that GoHighLevel workflow for the parent's Messenger or Instagram
+            chat; the buttons are written in the workflow. When the parent presses one, it comes back here as their
+            reply, so add a "wait for a reply" block and "reply has the word" blocks with the button titles to carry on.
+            The flow must send by itself on Messenger or Instagram.
+          </p>
+        )}
         <p className="mt-3 text-xs text-slate-500">Preview</p>
         <p className="mt-1 whitespace-pre-wrap rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
           {previewMessage(node.text) || ' '}

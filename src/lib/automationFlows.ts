@@ -136,6 +136,9 @@ type Placed = { id: string; x: number; y: number }
 // null means the parent of the child the event is about.
 // after: sent that long AFTER the event (left out or false: before it).
 // imageUrl: a picture (an https address in the public storage) sent with the text as its caption.
+// ghlWorkflowId: a GoHighLevel workflow (its id, the long code in the workflow address) that is started instead of
+//   sending the text. The Facebook buttons are written in that workflow; the text is only a note for the team.
+//   Only for a flow that sends by itself on Messenger or Instagram.
 // After a wait or a reply block, "mins" counts from the reply (or from the moment the waiting ran out).
 export type MessageNode = Placed & {
   type: 'message'
@@ -144,6 +147,7 @@ export type MessageNode = Placed & {
   contactId?: number | null
   after?: boolean
   imageUrl?: string
+  ghlWorkflowId?: string
 }
 export type AgeCondition = Placed & { type: 'condition'; kind: 'age'; min: number | null; max: number | null }
 export type ClassroomCondition = Placed & { type: 'condition'; kind: 'classroom'; ids: number[] }
@@ -212,7 +216,22 @@ export type FlowEdge = { from: string; port: FlowPort; to: string }
 //   cooldownDays  the same person gets nothing from this flow again within this many days
 //   autoSend      true: the messages of this flow are sent by themselves (without a person approving
 //                 each one), inside the limits of the Automations page; absent: they wait for approval
-export type FlowSettings = { stopStages?: LeadStatus[]; cooldownDays?: number; autoSend?: boolean }
+//   channels      where the flow sends: WhatsApp (when absent), Messenger, Instagram. A lead is reached on the
+//                 channel it writes on; a flow only messages the channels ticked
+export type FlowChannel = 'whatsapp' | 'messenger' | 'instagram'
+export const FLOW_CHANNELS: { key: FlowChannel; label: string }[] = [
+  { key: 'whatsapp', label: 'WhatsApp' },
+  { key: 'messenger', label: 'Messenger' },
+  { key: 'instagram', label: 'Instagram' },
+]
+export type FlowSettings = {
+  stopStages?: LeadStatus[]
+  cooldownDays?: number
+  autoSend?: boolean
+  channels?: FlowChannel[]
+}
+
+export const GHL_WORKFLOW_ID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
 export type FlowGraph = {
   trigger: { x: number; y: number }
@@ -564,6 +583,15 @@ export function updateSettings(graph: FlowGraph, change: FlowSettings): FlowGrap
   if (next.autoSend !== true) {
     delete next.autoSend
   }
+  // WhatsApp alone is what a flow without the setting does, so it is not written down.
+  if (next.channels) {
+    const order = FLOW_CHANNELS.map((entry) => entry.key).filter((key) => next.channels!.includes(key))
+    if (order.length === 0 || (order.length === 1 && order[0] === 'whatsapp')) {
+      delete next.channels
+    } else {
+      next.channels = order
+    }
+  }
   const rest: FlowGraph = { ...graph }
   delete rest.settings
   return Object.keys(next).length === 0 ? rest : { ...rest, settings: next }
@@ -824,6 +852,15 @@ export function validateDraft(draft: FlowDraft): string | null {
       if (node.imageUrl !== undefined && !/^https:\/\/\S+$/.test(node.imageUrl)) {
         return 'A message picture must be an https address.'
       }
+      if (node.ghlWorkflowId !== undefined) {
+        if (!GHL_WORKFLOW_ID.test(node.ghlWorkflowId)) {
+          return 'A button message needs the GoHighLevel workflow id (the long code in the workflow address).'
+        }
+        const channels = draft.graph.settings?.channels ?? []
+        if (draft.graph.settings?.autoSend !== true || !(channels.includes('messenger') || channels.includes('instagram'))) {
+          return 'A button message needs the flow to send by itself on Messenger or Instagram (see "For the whole flow").'
+        }
+      }
     } else if (isAction(node)) {
       if (!Number.isInteger(node.mins) || node.mins < MIN_ACTION_MINUTES || node.mins > MAX_OFFSET_MINUTES) {
         return 'A step that changes the lead can be set 0 minutes to 60 days before or after.'
@@ -968,6 +1005,7 @@ export function parseGraph(raw: unknown): FlowGraph {
         ...(typeof node.contactId === 'number' ? { contactId: node.contactId } : {}),
         ...(node.after === true ? { after: true } : {}),
         ...(typeof node.imageUrl === 'string' && node.imageUrl !== '' ? { imageUrl: node.imageUrl } : {}),
+        ...(typeof node.ghlWorkflowId === 'string' && node.ghlWorkflowId !== '' ? { ghlWorkflowId: node.ghlWorkflowId } : {}),
       })
     } else if (
       node.type === 'action' &&
@@ -1035,10 +1073,14 @@ export function parseGraph(raw: unknown): FlowGraph {
       ? settings.stopStages.filter((stage): stage is LeadStatus => typeof stage === 'string' && known.has(stage))
       : []
     const days = typeof settings.cooldownDays === 'number' && Number.isInteger(settings.cooldownDays) ? settings.cooldownDays : 0
+    const channels = Array.isArray(settings.channels)
+      ? FLOW_CHANNELS.map((entry) => entry.key).filter((key) => (settings.channels as unknown[]).includes(key))
+      : []
     const next: FlowSettings = {
       ...(stopStages.length > 0 ? { stopStages } : {}),
       ...(days > 0 && days <= 365 ? { cooldownDays: days } : {}),
       ...(settings.autoSend === true ? { autoSend: true } : {}),
+      ...(channels.length > 0 && !(channels.length === 1 && channels[0] === 'whatsapp') ? { channels } : {}),
     }
     if (Object.keys(next).length > 0) {
       graph.settings = next

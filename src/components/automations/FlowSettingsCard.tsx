@@ -1,5 +1,5 @@
 import { cn } from '../../lib/cn'
-import type { FlowGraph, FlowSettings } from '../../lib/automationFlows'
+import { FLOW_CHANNELS, type FlowChannel, type FlowGraph, type FlowSettings } from '../../lib/automationFlows'
 import { leadStatusOptions } from '../../lib/constants'
 
 type FlowSettingsCardProps = {
@@ -15,6 +15,7 @@ const fieldClass =
 // messaged again too soon.
 export function FlowSettingsCard({ settings, readOnly, onChange }: FlowSettingsCardProps) {
   const stopped = settings?.stopStages ?? []
+  const channels: FlowChannel[] = settings?.channels ?? ['whatsapp']
   return (
     <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-3">
       <h3 className="text-sm font-semibold text-slate-900">For the whole flow</h3>
@@ -40,6 +41,32 @@ export function FlowSettingsCard({ settings, readOnly, onChange }: FlowSettingsC
             : 'Off: every message waits in the approval queue (the lightning button) until someone sends it.'}
         </p>
       </div>
+      <fieldset disabled={readOnly} className="space-y-1.5">
+        <legend className="text-xs font-semibold text-slate-600">Send on</legend>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {FLOW_CHANNELS.map((option) => (
+            <label key={option.key} className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={channels.includes(option.key)}
+                onChange={(event) =>
+                  onChange({
+                    channels: event.target.checked
+                      ? [...channels, option.key]
+                      : channels.filter((key) => key !== option.key),
+                  })
+                }
+                className="h-4 w-4 accent-[#fc0c97]"
+              />
+              <span>{option.label}</span>
+            </label>
+          ))}
+        </div>
+        <p className="text-xs text-slate-500">
+          A parent is messaged where they write: by number on WhatsApp, in their chat on Messenger or Instagram (only
+          within 24 hours of their last message). A flow messages only the ticked channels.
+        </p>
+      </fieldset>
       <fieldset disabled={readOnly} className="space-y-1.5">
         <legend className="text-xs font-semibold text-slate-600">Send nothing to leads who are</legend>
         <div className="grid gap-1 sm:grid-cols-2">

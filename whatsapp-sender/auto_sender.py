@@ -3,7 +3,12 @@
 
 Runs on the WhatsApp server next to Chatwoot. It does no deciding: it asks the CRM database (through
 the edge function auto-sender) for the next message that is allowed to go out, sends it into the
-parent's existing WhatsApp chat through the local Chatwoot, and reports what happened.
+parent's existing chat through the local Chatwoot, and reports what happened.
+
+A WhatsApp message is found by the parent's phone number. A Messenger / Instagram message has no number: the
+queue names the chat (conversation_id) and it goes straight into that chat (through the GoHighLevel bridge
+or the Facebook channel of Chatwoot). A queue row of kind "ghl_workflow" does not send text: it starts a
+GoHighLevel workflow for that chat's contact (the workflow holds the buttons), which needs GHL_TOKEN.
 
 It only writes into a chat where the person has written to the school before. Anyone else is handed
 back to the approval queue for a person to look at.
@@ -14,6 +19,9 @@ Settings (environment, from /opt/mirai-inbox/auto-sender.env):
   CHATWOOT_URL   default http://127.0.0.1:3000
   CHATWOOT_TOKEN an agent token of the Chatwoot account
   CHATWOOT_ACCOUNT default 1
+  GHL_TOKEN      optional, a GoHighLevel Private Integration token (scopes: contacts.write); only for button
+                 messages (queue kind "ghl_workflow")
+  GHL_API_URL    default https://services.leadconnectorhq.com
 
 Message texts are never written to the log.
 """
@@ -30,6 +38,9 @@ SENDER_KEY = os.environ["SENDER_KEY"]
 CHATWOOT_URL = os.environ.get("CHATWOOT_URL", "http://127.0.0.1:3000").rstrip("/")
 CHATWOOT_TOKEN = os.environ["CHATWOOT_TOKEN"]
 ACCOUNT = os.environ.get("CHATWOOT_ACCOUNT", "1")
+GHL_TOKEN = os.environ.get("GHL_TOKEN", "")
+GHL_API_URL = os.environ.get("GHL_API_URL", "https://services.leadconnectorhq.com").rstrip("/")
+GHL_PREFIX = "ghl:"
 
 IDLE_SECONDS = 15
 ERROR_SECONDS = 60
@@ -153,8 +164,11 @@ def pick_conversation(contact_id):
     return None
 
 
-def wait_until_accepted(conversation_id, message_id):
-    deadline = time.time() + CONFIRM_SECONDS
+def wait_until_accepted(conversation_id, message_id, quiet_is_sent=False):
+    """WhatsApp gives the message an id once it took it. Messenger / Instagram through GoHighLevel do not
+    always: there, a message that has not failed after a few seconds counts as sent."""
+    started = time.time()
+    deadline = started + CONFIRM_SECONDS
     while time.time() < deadline:
         time.sleep(2)
         for message in chatwoot("GET", f"/conversations/{conversation_id}/messages").get("payload", []):
@@ -164,11 +178,97 @@ def wait_until_accepted(conversation_id, message_id):
                 return "failed"
             if message.get("source_id"):
                 return "sent"
+            if quiet_is_sent and time.time() - started >= 12:
+                return "sent"
     return "timeout"
+
+
+def ghl_post(path, body):
+    request = urllib.request.Request(
+        GHL_API_URL + path,
+        data=json.dumps(body).encode(),
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {GHL_TOKEN}",
+            "Version": "2021-07-28",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            # GoHighLevel sits behind Cloudflare, which answers 403 to Python's own default User-Agent.
+            "User-Agent": "Mozilla/5.0 (compatible; MiraiCrmAutoSender/1.0)",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=25) as response:
+        return response.status
+
+
+def send_to_chat(item):
+    """A Messenger / Instagram message (or a GoHighLevel button workflow): the queue names the chat."""
+    conversation = chatwoot("GET", f"/conversations/{int(item['conversation_id'])}")
+    if not conversation or not conversation.get("id"):
+        return "blocked", "The chat was not found."
+    if not person_has_written(conversation["id"]):
+        return "blocked", "Has not written to us first."
+    sender = (conversation.get("meta") or {}).get("sender") or {}
+    identifier = sender.get("identifier") or ""
+
+    if item.get("kind") == "ghl_workflow":
+        if not GHL_TOKEN:
+            return "failed", "The sender has no GoHighLevel key, so it cannot start a button message."
+        if not identifier.startswith(GHL_PREFIX):
+            return "blocked", "This chat does not come from GoHighLevel, so a GoHighLevel workflow cannot start for it."
+        try:
+            ghl_post(f"/contacts/{identifier[len(GHL_PREFIX):]}/workflow/{item['workflow_id']}", {})
+        except urllib.error.HTTPError as problem:
+            return "failed", f"GoHighLevel refused to start the workflow (HTTP {problem.code})."
+        # A private note, so the team can see in the chat that a button message went out.
+        chatwoot(
+            "POST",
+            f"/conversations/{conversation['id']}/messages",
+            {"content": "Automation started a button message (GoHighLevel workflow).", "private": True, "message_type": "outgoing"},
+        )
+        return "sent", None
+
+    if conversation.get("status") == "resolved":
+        chatwoot("POST", f"/conversations/{conversation['id']}/toggle_status", {"status": "open"})
+    if item.get("media_url"):
+        try:
+            picture = fetch_picture(item["media_url"])
+        except Exception as problem:
+            return "failed", f"The picture could not be loaded ({type(problem).__name__})."
+        sent = post_with_picture(
+            f"/conversations/{conversation['id']}/messages",
+            {
+                "content": item["message"],
+                "private": "false",
+                "message_type": "outgoing",
+                "content_attributes[crm_sender][id]": "0",
+                "content_attributes[crm_sender][name]": "Automation",
+            },
+            picture,
+        )
+    else:
+        sent = chatwoot(
+            "POST",
+            f"/conversations/{conversation['id']}/messages",
+            {
+                "content": item["message"],
+                "private": False,
+                "message_type": "outgoing",
+                "content_attributes": {"crm_sender": {"id": 0, "name": "Automation"}},
+            },
+        )
+    outcome = wait_until_accepted(conversation["id"], sent["id"], quiet_is_sent=True)
+    if outcome == "sent":
+        return "sent", None
+    if outcome == "failed":
+        return "failed", "The channel did not accept the message."
+    return "failed", "The channel did not confirm the message in time. Check the chat before sending again."
 
 
 def send(item):
     """Returns (result, error): result is sent, failed or blocked."""
+    if item.get("conversation_id"):
+        return send_to_chat(item)
     phone = digits_of(item["phone"])
     contact_id = find_contact(phone)
     if contact_id is None:

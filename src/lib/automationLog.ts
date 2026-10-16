@@ -16,6 +16,7 @@ export type FlowLogKind =
   | 'reply_branch'
   | 'action_done'
   | 'action_skipped'
+  | 'channel_off'
 
 export type FlowLogRow = {
   id: number
@@ -33,7 +34,7 @@ export type FlowQueueRow = {
   id: number
   eventKey: string
   nodeId: string
-  phone: string
+  phone: string | null
   parentName: string | null
   childName: string | null
   message: string
@@ -161,6 +162,7 @@ const LOG_TITLES: Record<FlowLogKind, string> = {
   reply_branch: 'Reply checked',
   action_done: 'Changed the lead',
   action_skipped: 'Step not done',
+  channel_off: 'Not sent: wrong channel',
 }
 
 // What a log row of each kind means for the filter chips: the three about replies are steps in between; a
@@ -177,6 +179,7 @@ const LOG_GROUPS: Record<FlowLogKind, TimelineEntry['group']> = {
   reply_branch: 'other',
   action_done: 'sent',
   action_skipped: 'skipped',
+  channel_off: 'skipped',
 }
 
 export function personLabel(row: { childName: string | null; parentName: string | null; phone: string | null }) {
@@ -201,7 +204,7 @@ export function buildTimeline(activity: FlowActivity, now = Date.now()): Timelin
     entries.push({
       key: `log-${row.id}`,
       at: row.createdAt,
-      tone: row.kind === 'no_phone' || row.kind === 'action_skipped' ? 'warn' : row.kind === 'action_done' ? 'ok' : 'info',
+      tone: row.kind === 'no_phone' || row.kind === 'action_skipped' || row.kind === 'channel_off' ? 'warn' : row.kind === 'action_done' ? 'ok' : 'info',
       title: LOG_TITLES[row.kind],
       detail: row.detail,
       person: personLabel(row),
