@@ -389,18 +389,22 @@ export function FlowInspector({
     const anchor = graph ? (messageAnchors(graph).get(node.id) ?? null) : null
     const tags = filterOptions.tag
     const people = filterOptions.pic
+    const sources = filterOptions.source
     const known =
       node.action === 'add_tag'
         ? tags.some((choice) => choice.id === node.value)
         : node.action === 'assign_pic'
           ? people.some((choice) => choice.id === node.value)
-          : true
+          : node.action === 'set_source'
+            ? sources.some((choice) => choice.id === node.value)
+            : true
     body = (
       <>
         <h3 className="text-sm font-semibold text-slate-900">{actionLabel(node.action)}</h3>
         <p className="mt-1 text-xs text-slate-500">
-          Changes the lead of this family by itself: nothing is sent and nothing waits for approval. A family with
-          no lead is left as it is, and the Execution logs say so.
+          {node.action === 'make_lead'
+            ? 'Makes the person who wrote a lead, if they are not one yet (nothing is sent). Put it first, so the steps after it have a lead to change.'
+            : 'Changes the lead of this family by itself: nothing is sent and nothing waits for approval. A family with no lead is left as it is, and the Execution logs say so.'}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
           <span>Do it</span>
@@ -431,41 +435,63 @@ export function FlowInspector({
             </select>
           )}
         </div>
-        <label className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
-          <span>
-            {node.action === 'add_tag' ? 'Tag' : node.action === 'assign_pic' ? 'PIC' : 'Move the lead to'}
-          </span>
-          <select
-            aria-label={node.action === 'add_tag' ? 'Tag to add' : node.action === 'assign_pic' ? 'PIC to assign' : 'Stage'}
-            value={node.value}
-            disabled={readOnly}
-            onChange={(event) => onChange({ value: event.target.value })}
-            className={cn(fieldClass, 'min-w-0 flex-1')}
-          >
-            <option value="">Choose…</option>
-            {node.action === 'add_tag' &&
-              tags.map((choice) => (
-                <option key={choice.id} value={choice.id}>
-                  {choice.label}
-                </option>
-              ))}
-            {node.action === 'assign_pic' &&
-              people.map((choice) => (
-                <option key={choice.id} value={choice.id}>
-                  {choice.label}
-                </option>
-              ))}
-            {node.action === 'set_stage' &&
-              leadStatusOptions
-                .filter((option) => isSettableStage(option.key))
-                .map((option) => (
-                  <option key={option.key} value={option.key}>
-                    {option.label}
+        {node.action !== 'make_lead' && (
+          <label className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
+            <span>
+              {node.action === 'add_tag'
+                ? 'Tag'
+                : node.action === 'assign_pic'
+                  ? 'PIC'
+                  : node.action === 'set_source'
+                    ? 'Source'
+                    : 'Move the lead to'}
+            </span>
+            <select
+              aria-label={
+                node.action === 'add_tag'
+                  ? 'Tag to add'
+                  : node.action === 'assign_pic'
+                    ? 'PIC to assign'
+                    : node.action === 'set_source'
+                      ? 'Source to set'
+                      : 'Stage'
+              }
+              value={node.value}
+              disabled={readOnly}
+              onChange={(event) => onChange({ value: event.target.value })}
+              className={cn(fieldClass, 'min-w-0 flex-1')}
+            >
+              <option value="">Choose…</option>
+              {node.action === 'add_tag' &&
+                tags.map((choice) => (
+                  <option key={choice.id} value={choice.id}>
+                    {choice.label}
                   </option>
                 ))}
-            {!known && node.value !== '' && <option value={node.value}>A choice that was removed</option>}
-          </select>
-        </label>
+              {node.action === 'assign_pic' &&
+                people.map((choice) => (
+                  <option key={choice.id} value={choice.id}>
+                    {choice.label}
+                  </option>
+                ))}
+              {node.action === 'set_source' &&
+                sources.map((choice) => (
+                  <option key={choice.id} value={choice.id}>
+                    {choice.label}
+                  </option>
+                ))}
+              {node.action === 'set_stage' &&
+                leadStatusOptions
+                  .filter((option) => isSettableStage(option.key))
+                  .map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {option.label}
+                    </option>
+                  ))}
+              {!known && node.value !== '' && <option value={node.value}>A choice that was removed</option>}
+            </select>
+          </label>
+        )}
         {node.action === 'set_stage' && (
           <p className="mt-1 text-xs text-slate-500">
             “Converted” is not offered: a lead is converted by a person, because that makes the student.

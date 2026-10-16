@@ -30,3 +30,40 @@ describe('FlowSettingsCard channels', () => {
     expect(screen.getByRole('checkbox', { name: 'Messenger' })).toBeDisabled()
   })
 })
+
+describe('FlowSettingsCard keywords', () => {
+  it('asks for the keywords only in a flow that starts from a message', () => {
+    const { rerender } = render(<FlowSettingsCard settings={undefined} trigger="lead_created" readOnly={false} onChange={vi.fn()} />)
+    expect(screen.queryByRole('textbox', { name: 'Keywords' })).not.toBeInTheDocument()
+    rerender(<FlowSettingsCard settings={undefined} trigger="message_keyword" readOnly={false} onChange={vi.fn()} />)
+    expect(screen.getByRole('textbox', { name: 'Keywords' })).toBeInTheDocument()
+  })
+
+  it('shows the saved keywords one to a line and sends the lines as typed', async () => {
+    const onChange = vi.fn()
+    render(
+      <FlowSettingsCard
+        settings={{ keywords: ['HOA course'] }}
+        trigger="message_keyword"
+        readOnly={false}
+        onChange={onChange}
+      />,
+    )
+    const box = screen.getByRole('textbox', { name: 'Keywords' })
+    expect(box).toHaveValue('HOA course')
+    await userEvent.type(box, '{Enter}Camp')
+    expect(onChange).toHaveBeenLastCalledWith({ keywords: ['HOA course', 'Camp'] })
+  })
+
+  it('can start again every time', async () => {
+    const onChange = vi.fn()
+    render(<FlowSettingsCard settings={{ keywords: ['x'] }} trigger="message_keyword" readOnly={false} onChange={onChange} />)
+    await userEvent.click(screen.getByRole('checkbox', { name: /Start again every time/ }))
+    expect(onChange).toHaveBeenCalledWith({ everyTime: true })
+  })
+
+  it('cannot be changed when the flow is read only', () => {
+    render(<FlowSettingsCard settings={{ keywords: ['x'] }} trigger="message_keyword" readOnly onChange={vi.fn()} />)
+    expect(screen.getByRole('textbox', { name: 'Keywords' })).toBeDisabled()
+  })
+})

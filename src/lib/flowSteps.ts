@@ -7,6 +7,7 @@ import {
   isMessage,
   nextNodeId,
   triggerInfo,
+  type ActionNode,
   type ConditionNode,
   type FlowDraft,
   type FlowEdge,
@@ -62,7 +63,7 @@ export function analyzeFlow(graph: FlowGraph): FlowAnalysis {
   // A step that changes the lead (a tag, a PIC, a stage) sits anywhere in the graph; the list has no place
   // for it, so such a flow is read in the advanced editor.
   if (graph.nodes.some(isAction)) {
-    return { simple: false, reason: 'It has a step that changes the lead (a tag, a PIC or a stage).' }
+    return { simple: false, reason: 'It has a step that changes the lead (a tag, a source, a PIC or a stage, or making the lead).' }
   }
   const byId = new Map(graph.nodes.map((node) => [node.id, node]))
   const outs = (id: string, port: FlowEdge['port']) =>
@@ -456,7 +457,7 @@ export function removeBranchMessage(graph: FlowGraph, id: string): FlowGraph {
 
 export const TRIGGER_GROUPS: { label: string; keys: FlowTrigger[] }[] = [
   { label: 'Leads and forms', keys: ['lead_created', 'form_submitted', 'lead_idle', 'task_due'] },
-  { label: 'WhatsApp chats', keys: ['parent_no_reply', 'parent_waiting'] },
+  { label: 'Chats', keys: ['message_keyword', 'parent_no_reply', 'parent_waiting'] },
   { label: 'Classes', keys: ['class_start', 'replacement_start', 'trial_booked', 'trial_start', 'zoom_start'] },
   { label: 'Students and fees', keys: ['lesson_expiry', 'account_fee_expiry', 'club_fee_expiry', 'package_start'] },
 ]
@@ -497,7 +498,50 @@ const message = (id: string, mins: number, text: string, extra: Partial<MessageN
   ...extra,
 })
 
+// A flow that starts from a message with a keyword: make the lead, tag it, set its source, then say hello. The
+// steps that change the lead are drawn on the canvas, so it opens in the Advanced view. The tag, the source and
+// the keywords are for the person to fill in.
+function keywordLeadDraft(): FlowDraft {
+  const step = (id: string, action: ActionNode['action'], x: number): ActionNode => ({
+    id,
+    type: 'action',
+    x,
+    y: 140,
+    action,
+    value: '',
+    mins: 0,
+    after: true,
+  })
+  const hello = message('m1', 5, `Hi {parent}, thank you for writing to ${brand.name}! How can we help you today?`, {
+    after: true,
+  })
+  return {
+    id: null,
+    name: 'Keyword message to lead',
+    trigger: 'message_keyword',
+    enabled: false,
+    graph: {
+      trigger: { x: 24, y: 140 },
+      nodes: [step('a1', 'make_lead', 300), step('a2', 'add_tag', 580), step('a3', 'set_source', 860), { ...hello, x: 1140, y: 140 }],
+      edges: [
+        { from: TRIGGER_ID, port: 'out', to: 'a1' },
+        { from: 'a1', port: 'out', to: 'a2' },
+        { from: 'a2', port: 'out', to: 'a3' },
+        { from: 'a3', port: 'out', to: 'm1' },
+      ],
+      settings: { channels: ['whatsapp', 'messenger', 'instagram'], stopStages: ['converted', 'lost'] },
+    },
+  }
+}
+
 export const FLOW_RECIPES: FlowRecipe[] = [
+  {
+    key: 'keyword_to_lead',
+    title: 'Turn a message with a keyword into a lead',
+    summary:
+      'Someone writes one of your words on WhatsApp, Messenger or Instagram: they become a lead with the tag and the source you pick, then you say hello. Add more steps after it.',
+    build: () => keywordLeadDraft(),
+  },
   {
     key: 'lead_from_keyword',
     title: 'Message leads who came in with a source keyword',

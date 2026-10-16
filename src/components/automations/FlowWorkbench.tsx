@@ -86,7 +86,12 @@ export function FlowWorkbench({
           </p>
         </section>
 
-        <FlowSettingsCard settings={draft.graph.settings} readOnly={readOnly} onChange={onSettingsChange} />
+        <FlowSettingsCard
+          settings={draft.graph.settings}
+          trigger={draft.trigger}
+          readOnly={readOnly}
+          onChange={onSettingsChange}
+        />
       </div>
     )
   }

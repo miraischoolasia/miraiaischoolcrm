@@ -130,7 +130,7 @@ describe('flowSteps', () => {
   it('lists every trigger once in the picker groups', () => {
     const keys = TRIGGER_GROUPS.flatMap((group) => group.keys)
     expect(new Set(keys).size).toBe(keys.length)
-    expect(keys).toHaveLength(15)
+    expect(keys).toHaveLength(16)
   })
 
   describe('recipes', () => {
@@ -144,10 +144,14 @@ describe('flowSteps', () => {
         }
         expect(draft.enabled).toBe(false)
         expect(draft.id).toBeNull()
-        expect(analyzeFlow(draft.graph).simple).toBe(true)
+        // The recipe that changes the lead has steps the simple list cannot show: it opens in the advanced view.
+        expect(analyzeFlow(draft.graph).simple).toBe(recipe.key !== 'keyword_to_lead')
         // The source recipe is only finished once a source is ticked.
         if (recipe.key === 'lead_from_source' || recipe.key === 'lead_from_keyword') {
           expect(validateDraft(draft)).toMatch(/ticked/)
+        } else if (recipe.key === 'keyword_to_lead') {
+          // ... and this one once its keywords, tag and source are filled in.
+          expect(validateDraft(draft)).toMatch(/keyword/)
         } else {
           expect(validateDraft(draft)).toBeNull()
         }

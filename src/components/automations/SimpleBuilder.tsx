@@ -7,6 +7,7 @@ import {
   describeOffset,
   previewMessage,
   triggerInfo,
+  updateSettings,
   type ChoiceKind,
   type ConditionNode,
   type FilterOptions,
@@ -34,6 +35,7 @@ import {
 import type { AutomationContact } from '../../lib/automationContacts'
 import type { Classroom } from '../../types/domain'
 import { FlowInspector, OffsetField, WordsField } from './FlowInspector'
+import { KeywordsField } from './KeywordsField'
 
 type SimpleBuilderProps = {
   draft: FlowDraft
@@ -323,6 +325,20 @@ export function SimpleBuilder({
             {triggerValue === FROM_SOURCE && ' Tick the sources under "Who it is for".'}
             {triggerValue === FROM_KEYWORD && ' Tick the source keywords under "Who it is for".'}
           </p>
+          {draft.trigger === 'message_keyword' && (
+            <>
+              <KeywordsField
+                keywords={draft.graph.settings?.keywords}
+                everyTime={draft.graph.settings?.everyTime}
+                readOnly={readOnly}
+                onChange={(change) => onGraphChange(updateSettings(draft.graph, change))}
+              />
+              <p className="text-xs text-slate-500">
+                To make the person a lead, add a tag or change their source, use the Advanced view: those steps
+                are drawn there.
+              </p>
+            </>
+          )}
         </div>
       </section>
 

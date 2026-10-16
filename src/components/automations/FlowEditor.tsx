@@ -432,6 +432,7 @@ export function FlowEditor({
           <div className="mx-auto max-w-2xl space-y-4">
             <FlowSettingsCard
               settings={draft.graph.settings}
+              trigger={draft.trigger}
               readOnly={readOnly}
               onChange={(change: FlowSettings) => setGraph(updateSettings(draft.graph, change))}
             />

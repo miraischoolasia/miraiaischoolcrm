@@ -12,7 +12,9 @@ export const PICK_GROUPS: PickGroup[] = [
   {
     title: 'Change the lead',
     picks: [
+      { kind: 'make_lead', label: 'Make them a lead', hint: 'For a flow that starts from a message' },
       { kind: 'add_tag', label: 'Add a tag', hint: 'Put a tag on the lead' },
+      { kind: 'set_source', label: 'Set the source', hint: 'Change the lead’s source' },
       { kind: 'assign_pic', label: 'Assign a PIC', hint: 'Who handles the lead from now on' },
       { kind: 'set_stage', label: 'Change the lead stage', hint: 'Move the lead to another stage' },
     ],

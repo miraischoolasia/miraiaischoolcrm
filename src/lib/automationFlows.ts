@@ -24,6 +24,7 @@ export type FlowTrigger =
   | 'package_start'
   | 'lead_idle'
   | 'task_due'
+  | 'message_keyword'
 
 export type TriggerInfo = {
   key: FlowTrigger
@@ -126,6 +127,13 @@ export const TRIGGERS: TriggerInfo[] = [
     phrase: 'a lead task is due (the task is {class})',
     classroomCategory: null,
   },
+  {
+    key: 'message_keyword',
+    label: 'A message comes in with a keyword',
+    phrase: 'a message comes in with one of your keywords',
+    classroomCategory: null,
+    afterOnly: true,
+  },
 ]
 
 export function triggerInfo(key: FlowTrigger): TriggerInfo {
@@ -172,10 +180,13 @@ export type ReplyCondition = Placed & { type: 'condition'; kind: 'reply'; words:
 //   add_tag     value = the id of a tag, added to the lead
 //   assign_pic  value = the id of a person (PIC), who now handles the lead
 //   set_stage   value = a lead stage (never "converted": that needs a student, which only a person makes)
+//   set_source  value = the id of a source, which replaces the lead's source
+//   make_lead   no value; makes the lead of the chat when the person is not one yet (only in a flow that starts
+//               from a message with a keyword)
 // mins / after: when it happens, like a message ("0 minutes after" is right away). After a wait or a reply
 // block, mins counts from the reply (or from the moment the waiting ran out).
-export type ActionKind = 'add_tag' | 'assign_pic' | 'set_stage'
-export const ACTION_KINDS: ActionKind[] = ['add_tag', 'assign_pic', 'set_stage']
+export type ActionKind = 'add_tag' | 'assign_pic' | 'set_stage' | 'set_source' | 'make_lead'
+export const ACTION_KINDS: ActionKind[] = ['make_lead', 'add_tag', 'set_source', 'assign_pic', 'set_stage']
 export type ActionNode = Placed & {
   type: 'action'
   action: ActionKind
@@ -199,6 +210,8 @@ export type ConditionNode =
 export const MIN_WAIT_MINUTES = 1
 export const MAX_WAIT_MINUTES = 14 * 24 * 60
 export const MAX_REPLY_WORDS = 20
+export const MAX_KEYWORDS = 20
+export const MAX_KEYWORD_LENGTH = 100
 
 // What a person can tick in a choice block, by kind.
 export type FilterChoice = { id: string; label: string }
@@ -219,7 +232,11 @@ export type FlowEdge = { from: string; port: FlowPort; to: string }
 //   autoSend      true: the messages of this flow are sent by themselves (without a person approving
 //                 each one), inside the limits of the Automations page; absent: they wait for approval
 //   channels      where the flow sends: WhatsApp (when absent), Messenger, Instagram. A lead is reached on the
-//                 channel it writes on; a flow only messages the channels ticked
+//                 channel it writes on; a flow only messages the channels ticked. A flow that starts from a
+//                 message also only listens on these channels
+//   keywords      a flow that starts from a message: the words or phrases that start it (capitals and punctuation
+//                 do not matter)
+//   everyTime     true: it starts every time a keyword is written; absent: only the first time for each person
 export type FlowChannel = 'whatsapp' | 'messenger' | 'instagram'
 export const FLOW_CHANNELS: { key: FlowChannel; label: string }[] = [
   { key: 'whatsapp', label: 'WhatsApp' },
@@ -231,6 +248,8 @@ export type FlowSettings = {
   cooldownDays?: number
   autoSend?: boolean
   channels?: FlowChannel[]
+  keywords?: string[]
+  everyTime?: boolean
 }
 
 export const GHL_WORKFLOW_ID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
@@ -341,6 +360,8 @@ const ACTION_LABELS: Record<ActionKind, string> = {
   add_tag: 'Add a tag',
   assign_pic: 'Assign a PIC',
   set_stage: 'Change the lead stage',
+  set_source: 'Set the source',
+  make_lead: 'Make the lead',
 }
 
 export function actionLabel(action: ActionKind) {
@@ -357,6 +378,12 @@ export function describeAction(
   }
   if (node.action === 'assign_pic') {
     return node.value === '' ? 'Assign a PIC' : `Assign ${choiceName('pic', node.value)} as the PIC`
+  }
+  if (node.action === 'set_source') {
+    return node.value === '' ? 'Set the source' : `Set the source to “${choiceName('source', node.value)}”`
+  }
+  if (node.action === 'make_lead') {
+    return 'Make them a lead'
   }
   const label = leadStatusOptions.find((option) => option.key === node.value)?.label
   return label ? `Move the lead to ${label}` : 'Change the lead stage'
@@ -500,14 +527,14 @@ export function addNode(
     }
     return { graph: { ...graph, nodes: [...graph.nodes, node] }, id }
   }
-  if (kind === 'add_tag' || kind === 'assign_pic' || kind === 'set_stage') {
+  if ((ACTION_KINDS as string[]).includes(kind)) {
     const id = nextNodeId(graph, 'a')
     const node: ActionNode = {
       id,
       type: 'action',
       x,
       y,
-      action: kind,
+      action: kind as ActionKind,
       value: kind === 'set_stage' ? 'contacted' : '',
       mins: 0,
       after: true,
@@ -573,6 +600,20 @@ export function sendAfterOnly(graph: FlowGraph): FlowGraph {
   }
 }
 
+// The words as the database keeps them: trimmed, no empty ones, no repeats (capitals do not matter).
+export function cleanKeywords(words: string[]): string[] {
+  const seen = new Set<string>()
+  const kept: string[] = []
+  for (const word of words) {
+    const text = word.trim().replace(/\s+/g, ' ')
+    if (text !== '' && !seen.has(text.toLowerCase())) {
+      seen.add(text.toLowerCase())
+      kept.push(text)
+    }
+  }
+  return kept
+}
+
 // The settings of the whole flow; an empty setting is left out so an untouched flow stays as it was.
 export function updateSettings(graph: FlowGraph, change: FlowSettings): FlowGraph {
   const next: FlowSettings = { ...graph.settings, ...change }
@@ -584,6 +625,15 @@ export function updateSettings(graph: FlowGraph, change: FlowSettings): FlowGrap
   }
   if (next.autoSend !== true) {
     delete next.autoSend
+  }
+  if (next.everyTime !== true) {
+    delete next.everyTime
+  }
+  if (next.keywords) {
+    next.keywords = cleanKeywords(next.keywords)
+    if (next.keywords.length === 0) {
+      delete next.keywords
+    }
   }
   // WhatsApp alone is what a flow without the setting does, so it is not written down.
   if (next.channels) {
@@ -834,6 +884,16 @@ export function validateDraft(draft: FlowDraft): string | null {
   if (!draft.graph.nodes.some((node) => isMessage(node) || isAction(node))) {
     return 'Add at least one message or one step that changes the lead.'
   }
+  const settings = draft.graph.settings
+  if (draft.trigger === 'message_keyword' && cleanKeywords(settings?.keywords ?? []).length === 0) {
+    return 'A flow that starts from a message needs at least one keyword.'
+  }
+  if (
+    (settings?.keywords ?? []).length > MAX_KEYWORDS ||
+    (settings?.keywords ?? []).some((word) => word.trim().length > MAX_KEYWORD_LENGTH)
+  ) {
+    return `A flow can have up to ${MAX_KEYWORDS} keywords, each up to ${MAX_KEYWORD_LENGTH} characters.`
+  }
   for (const node of draft.graph.nodes) {
     if (isMessage(node)) {
       if (!Number.isInteger(node.mins) || node.mins < MIN_OFFSET_MINUTES) {
@@ -875,6 +935,12 @@ export function validateDraft(draft: FlowDraft): string | null {
       }
       if (node.action === 'assign_pic' && !/^[0-9]{1,12}$/.test(node.value)) {
         return 'A step that assigns a PIC needs a person picked.'
+      }
+      if (node.action === 'set_source' && !/^[0-9]{1,12}$/.test(node.value)) {
+        return 'A step that sets the source needs a source picked.'
+      }
+      if (node.action === 'make_lead' && draft.trigger !== 'message_keyword') {
+        return 'Making a lead only works in a flow that starts from a message with a keyword.'
       }
       if (node.action === 'set_stage' && !isSettableStage(node.value)) {
         return 'A step that changes the stage needs a stage picked (a lead is converted by a person).'
@@ -920,7 +986,6 @@ export function validateDraft(draft: FlowDraft): string | null {
       return 'A class block needs at least one class ticked.'
     }
   }
-  const settings = draft.graph.settings
   if (settings?.cooldownDays !== undefined && (!Number.isInteger(settings.cooldownDays) || settings.cooldownDays < 0 || settings.cooldownDays > 365)) {
     return 'The days before messaging the same person again must be 0 to 365.'
   }
@@ -1076,10 +1141,15 @@ export function parseGraph(raw: unknown): FlowGraph {
     const channels = Array.isArray(settings.channels)
       ? FLOW_CHANNELS.map((entry) => entry.key).filter((key) => (settings.channels as unknown[]).includes(key))
       : []
+    const keywords = Array.isArray(settings.keywords)
+      ? cleanKeywords(settings.keywords.filter((word): word is string => typeof word === 'string')).slice(0, MAX_KEYWORDS)
+      : []
     const next: FlowSettings = {
       ...(stopStages.length > 0 ? { stopStages } : {}),
       ...(days > 0 && days <= 365 ? { cooldownDays: days } : {}),
       ...(settings.autoSend === true ? { autoSend: true } : {}),
+      ...(keywords.length > 0 ? { keywords } : {}),
+      ...(settings.everyTime === true ? { everyTime: true } : {}),
       ...(channels.length > 0 && !(channels.length === 1 && channels[0] === 'whatsapp') ? { channels } : {}),
     }
     if (Object.keys(next).length > 0) {

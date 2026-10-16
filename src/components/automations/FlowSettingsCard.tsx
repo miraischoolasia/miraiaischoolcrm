@@ -1,9 +1,18 @@
 import { cn } from '../../lib/cn'
-import { FLOW_CHANNELS, type FlowChannel, type FlowGraph, type FlowSettings } from '../../lib/automationFlows'
+import {
+  FLOW_CHANNELS,
+  type FlowChannel,
+  type FlowGraph,
+  type FlowSettings,
+  type FlowTrigger,
+} from '../../lib/automationFlows'
 import { leadStatusOptions } from '../../lib/constants'
+import { KeywordsField } from './KeywordsField'
 
 type FlowSettingsCardProps = {
   settings: FlowGraph['settings']
+  // The flow's trigger: a flow that starts from a message also asks for its keywords here.
+  trigger?: FlowTrigger
   readOnly: boolean
   onChange: (change: FlowSettings) => void
 }
@@ -13,12 +22,20 @@ const fieldClass =
 
 // The rules that hold for the whole flow: leads in some stages get nothing, and the same person is not
 // messaged again too soon.
-export function FlowSettingsCard({ settings, readOnly, onChange }: FlowSettingsCardProps) {
+export function FlowSettingsCard({ settings, trigger, readOnly, onChange }: FlowSettingsCardProps) {
   const stopped = settings?.stopStages ?? []
   const channels: FlowChannel[] = settings?.channels ?? ['whatsapp']
   return (
     <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-3">
       <h3 className="text-sm font-semibold text-slate-900">For the whole flow</h3>
+      {trigger === 'message_keyword' && (
+        <KeywordsField
+          keywords={settings?.keywords}
+          everyTime={settings?.everyTime}
+          readOnly={readOnly}
+          onChange={onChange}
+        />
+      )}
       <div
         className={cn(
           'space-y-1 rounded-lg border p-3',
