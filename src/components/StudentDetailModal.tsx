@@ -23,6 +23,9 @@ import { buildStudentLessons, type StudentLesson } from '../lib/studentLessons'
 import { ExpiryCell } from './ExpiryCell'
 import { ModalShell } from './ModalShell'
 import { PathwaySection } from './PathwaySection'
+import { PointsCard } from './PointsCard'
+import { AiReportCard } from './AiReportCard'
+import type { RewardLevel } from '../lib/rewards'
 import { PerformanceRadarChart } from './PerformanceRadarChart'
 import { WhatsAppLink } from './WhatsAppLink'
 import type {
@@ -52,6 +55,12 @@ type StudentDetailModalProps = {
   reviewCriteria?: ReviewCriterion[]
   // The school's attendance statuses, for their names and colours.
   statusOptions?: AttendanceStatusOption[]
+  // Reward levels; with them the Progress tab shows the student's points.
+  rewardLevels?: RewardLevel[]
+  // Students edit: give and redeem points outside a lesson.
+  canManagePoints?: boolean
+  // Shows the AI analysis card on the Progress tab.
+  showAiReport?: boolean
   onClose: () => void
   schedules: Schedule[]
   teacherMap: Map<number, Teacher>
@@ -110,6 +119,9 @@ export function StudentDetailModal({
   lessonReviews,
   reviewCriteria = defaultReviewCriteria,
   statusOptions = defaultAttendanceStatuses,
+  rewardLevels,
+  canManagePoints = false,
+  showAiReport = false,
   onClose,
   schedules,
   teacherMap,
@@ -514,6 +526,7 @@ export function StudentDetailModal({
 
         {tab === 'progress' && !isPreview && (
           <>
+            {rewardLevels && <PointsCard studentId={student.id} levels={rewardLevels} canManage={canManagePoints} />}
             <Card title="Skills profile" note={`Average of ${reviewed.length} reviewed ${reviewed.length === 1 ? 'lesson' : 'lessons'}`}>
               {reviewed.length === 0 ? (
                 <div className="py-8 text-center text-sm text-slate-500">
@@ -537,6 +550,7 @@ export function StudentDetailModal({
               )}
             </Card>
             <PathwaySection studentName={student.name} stages={pathwayStages} metrics={metrics} />
+            {showAiReport && <AiReportCard studentId={student.id} />}
           </>
         )}
 

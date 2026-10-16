@@ -14,6 +14,8 @@ import {
 import { countRatedMetrics, getReviewProgress, isReviewComplete, lowScoreText } from '../../lib/attendance'
 import { createEmptyAttendanceReviewForm } from '../../lib/mappers'
 import { StarRatingInput } from '../StarRatingInput'
+import { GivePointsBar } from '../GivePointsBar'
+import type { RewardPreset } from '../../lib/rewards'
 import type {
   AttendanceModalState,
   AttendanceReviewFormState,
@@ -49,6 +51,8 @@ type AttendanceModalProps = {
   reviewMetrics: ReviewMetric[]
   // The school's attendance statuses (Present, Absent, Leave, Late, ...).
   statusOptions?: AttendanceStatusOption[]
+  // With them, the class teacher can give points in this lesson.
+  rewardPresets?: RewardPreset[]
   // A class-wide note from before each student had their own: shown as
   // read-only history and carried along unchanged on an edit.
   attendanceRemark: string
@@ -77,6 +81,7 @@ export function AttendanceModal({
   attendanceReviews,
   reviewMetrics,
   statusOptions = defaultAttendanceStatuses,
+  rewardPresets,
   attendanceRemark,
   attendanceSaveError,
   isSavingAttendance,
@@ -233,6 +238,17 @@ export function AttendanceModal({
                   Mark all present
                 </button>
               </div>
+            )}
+
+            {rewardPresets && !isRosterOnly && !isViewOnly && (
+              <GivePointsBar
+                scheduleId={attendanceModal.scheduleId}
+                lessonDate={attendanceModal.occurrenceDate}
+                students={attendanceRoster.filter((student) =>
+                  isAttendedStatus(statusOptions, attendanceStatuses[student.id] ?? PRESENT),
+                )}
+                presets={rewardPresets}
+              />
             )}
 
             <div className="space-y-3">

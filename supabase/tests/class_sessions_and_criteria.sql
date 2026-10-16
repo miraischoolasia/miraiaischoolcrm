@@ -389,5 +389,137 @@ select * from public.submit_lesson_attendance(9201, '2026-09-09', 'note', '[{"st
 select pg_temp.ok((select remaining_hours from public.students where id = 9301) = 4,
   'a correction may keep a hidden status the student already had, without a second deduction');
 
+-- Reward points (20261021150000) -----------------------------------------------
+-- Ali so far: Present on 10-14, 09-23 and 09-16 (+10 each); Late/Absent/No-show give 0.
+reset role;
+create function pg_temp.balance(p_student bigint) returns integer language sql security definer as $$
+  select coalesce(sum(points), 0)::int from public.student_points where student_id = p_student;
+$$;
+grant execute on function pg_temp.balance(bigint) to authenticated;
+create function pg_temp.last_award() returns bigint language sql security definer as $$
+  select max(id) from public.student_points where kind = 'award';
+$$;
+grant execute on function pg_temp.last_award() to authenticated;
+
+select pg_temp.ok(pg_temp.balance(9301) = 30, 'attendance gave Present points once per lesson (corrections did not double them)');
+select pg_temp.ok(pg_temp.balance(9302) = 0, 'no attendance, no points');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+set local role authenticated;
+select public.set_attendance_status_points('late', 5);
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select * from public.submit_lesson_attendance(9201, '2026-09-02', null, '[{"student_id": 9301, "status": "late"}]', pg_temp.full_review(9301));
+select pg_temp.ok(pg_temp.balance(9301) = 35, 'a status with points gives them');
+select * from public.submit_lesson_attendance(9201, '2026-09-02', null, '[{"student_id": 9301, "status": "absent"}]', '[]');
+select pg_temp.ok(pg_temp.balance(9301) = 30, 'a correction takes back the difference');
+
+select pg_temp.ok(public.award_points(array[9301], null, null, (select id from public.reward_presets where label = 'Great answer'), 9201, '2026-10-14') = 1,
+  'teacher gives a preset reward in her lesson');
+select pg_temp.ok(pg_temp.balance(9301) = 35, 'the preset gives its points');
+select pg_temp.fails($$select public.award_points(array[9302], 5, 'Nice', null, 9201, '2026-10-14')$$, 'not in this lesson', 'only students of that lesson');
+select pg_temp.fails($$select public.award_points(array[9301], 5, 'Nice')$$, 'students edit', 'a teacher cannot give points outside a lesson');
+select pg_temp.fails($$select public.award_points(array[9301], -5, 'Bad', null, 9201, '2026-10-14')$$, 'from 1 to 100', 'a teacher cannot take points away');
+select pg_temp.fails($$select public.award_points(array[9301], 500, 'Lots', null, 9201, '2026-10-14')$$, 'from 1 to 100', 'at most 100 at a time');
+select pg_temp.fails($$select public.award_points(array[9301], 5, '  ', null, 9201, '2026-10-14')$$, 'say what', 'a reason is needed');
+select pg_temp.fails($$insert into public.student_points (student_id, points, kind, reason) values (9301, 5, 'award', 'x')$$,
+  'permission denied', 'no direct points insert');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select pg_temp.fails($$select public.award_points(array[9301], 5, 'Nice', null, 9201, '2026-10-14')$$, 'only this class', 'another teacher cannot give points in her class');
+select pg_temp.ok((select count(*) from public.student_points where student_id = 9301) = 0, 'another teacher does not see her students'' points');
+select pg_temp.fails(format('select public.undo_points(%s)', pg_temp.last_award()), 'only who gave', 'another teacher cannot undo');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select public.undo_points((select id from public.student_points where kind = 'award' and student_id = 9301));
+select pg_temp.ok(pg_temp.balance(9301) = 30, 'the giver undoes her award');
+select pg_temp.fails(format('select public.undo_points(%s)', (select id from public.student_points where kind = 'award' and student_id = 9301)),
+  'already undone', 'an award is undone only once');
+select pg_temp.fails(format('select public.undo_points(%s)', (select min(id) from public.student_points where kind = 'attendance' and student_id = 9301)),
+  'change with the attendance', 'attendance points are not undone by hand');
+select pg_temp.fails($$select public.redeem_points(9301, 5, 'Sticker')$$, 'who may edit students', 'a teacher cannot redeem');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000d');
+select pg_temp.fails($$select public.redeem_points(9301, 40, 'Big prize')$$, 'not enough points', 'cannot spend more than the balance');
+select public.redeem_points(9301, 20, 'Sticker pack');
+select pg_temp.ok(pg_temp.balance(9301) = 10, 'staff with Students edit redeems points');
+select pg_temp.ok(public.award_points(array[9301, 9302], 3, 'Holiday bonus') = 2, 'Students edit can give points outside a lesson');
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok((select count(*) from public.student_points) = 0, 'a student login reads no points yet');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select pg_temp.fails($$select public.save_reward_preset(null, 'Kindness', 2, null, null, true)$$, 'only admin', 'teacher cannot add a reward');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select pg_temp.ok((public.save_reward_preset(null, 'Kindness', 2, '💛', null, true)).sort_order = 50, 'admin adds a reward');
+select pg_temp.fails($$select public.set_reward_levels('[{"name": "Gold", "min_points": 50}]')$$, 'start at 0', 'levels must start at 0');
+select public.set_reward_levels('[{"name": "Seed", "min_points": 0}, {"name": "Tree", "min_points": 50}]');
+select pg_temp.ok((select string_agg(name, ',' order by min_points) from public.reward_levels) = 'Seed,Tree', 'admin replaces the levels');
+select pg_temp.ok(public.award_points(array[9301], -4, 'Correction') = 1 and pg_temp.balance(9301) = 9, 'admin may correct downwards');
+
+-- Question bank (20261021160000) --------------------------------------------
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select pg_temp.ok((public.save_question(null, '{"kind": "choice", "prompt": "2 + 2?", "options": [{"text": "3", "correct": false}, {"text": "4", "correct": true}], "points": 5}')).owner_id = 9002,
+  'teacher adds a choice question');
+select pg_temp.ok((public.save_question(null, '{"kind": "fill", "prompt": "Capital of Malaysia?", "accepted_answers": [{"text": "Kuala Lumpur", "match": "close"}, {"text": "KL", "match": "exact"}], "topic": "Geography", "is_shared": true}')).is_shared,
+  'teacher adds and shares a fill-in question');
+select pg_temp.ok((public.save_question(null, '{"kind": "screenshot", "prompt": "Show your game", "options": [{"text": "ignored", "correct": true}]}')).options = '[]'::jsonb,
+  'a screenshot question keeps no options');
+select pg_temp.fails($$select public.save_question(null, '{"kind": "choice", "prompt": "Pick", "options": [{"text": "A", "correct": false}, {"text": "B", "correct": false}]}')$$,
+  'at least one option as correct', 'a choice question needs a correct option');
+select pg_temp.fails($$select public.save_question(null, '{"kind": "choice", "prompt": "Pick", "options": [{"text": "A", "correct": true}]}')$$,
+  '2 to 8 options', 'a choice question needs two options');
+select pg_temp.fails($$select public.save_question(null, '{"kind": "fill", "prompt": "Word?", "accepted_answers": []}')$$,
+  'at least one accepted answer', 'a fill-in question needs an answer');
+select pg_temp.fails($$select public.save_question(null, '{"kind": "fill", "prompt": "Word?", "accepted_answers": [{"text": "a", "match": "regex"}]}')$$,
+  'how it matches', 'unknown match rules are refused');
+select pg_temp.fails($$select public.save_question(null, '{"kind": "essay", "prompt": "x"}')$$, 'check constraint', 'unknown kinds are refused');
+select pg_temp.fails($$insert into public.questions (owner_id, kind, prompt) values (9002, 'short', 'x')$$, 'permission denied', 'no direct question insert');
+
+select pg_temp.fails($$select public.import_questions('[{"kind": "short", "prompt": "Why?"}, {"kind": "fill", "prompt": "Bad", "accepted_answers": []}]')$$,
+  'row 2', 'an import names the bad row');
+select pg_temp.ok((select count(*) from public.questions where prompt = 'Why?') = 0, 'a failed import saves nothing');
+select pg_temp.ok(public.import_questions('[{"kind": "short", "prompt": "Why?"}, {"kind": "link", "prompt": "Send your site"}]') = 2, 'an import saves every row');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select pg_temp.ok((select string_agg(prompt, ',') from public.questions) = 'Capital of Malaysia?', 'another teacher sees only shared questions');
+select pg_temp.fails(format('select public.save_question(%s, %L)', (select id from public.questions where prompt = 'Capital of Malaysia?'), '{"kind": "short", "prompt": "Mine now"}'),
+  'only the teacher who wrote', 'another teacher cannot change a shared question');
+select pg_temp.ok((public.copy_question((select id from public.questions where prompt = 'Capital of Malaysia?'))).owner_id = 9003,
+  'another teacher copies a shared question to change it');
+select pg_temp.fails($$select public.copy_question((select min(id) from public.questions where prompt = '2 + 2?'))$$, 'not found', 'a private question cannot be copied by others');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select pg_temp.ok((select count(*) from public.questions) = 6, 'admin sees every question');
+select public.set_question_archived((select id from public.questions where prompt = '2 + 2?'), true);
+select pg_temp.ok((select is_archived from public.questions where prompt = '2 + 2?'), 'admin archives a question');
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok((select count(*) from public.questions) = 0, 'a student login never reads questions (they hold the answers)');
+
+-- AI analysis (20261021170000) -----------------------------------------------
+reset role;
+insert into public.student_ai_reports (student_id, audience, report, language)
+values (9301, 'teacher', '{"summary": "Doing well."}', 'English'), (9302, 'parent', '{"summary": "Hello."}', 'English');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select pg_temp.ok((select count(*) from public.student_ai_reports) = 1
+  and (select student_id from public.student_ai_reports) = 9301, 'a teacher reads the analyses of her own students only');
+select pg_temp.fails($$insert into public.student_ai_reports (student_id, audience, report, language) values (9301, 'teacher', '{}', 'x')$$,
+  'permission denied', 'only the server writes analyses');
+select pg_temp.fails($$select public.set_ai_report_settings('{"sources": {"reviews": true}, "language": "English", "instructions": ""}')$$,
+  'only admin', 'a teacher cannot change the AI settings');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select public.set_ai_report_settings('{"sources": {"reviews": true, "remarks": false, "attendance": true, "points": false}, "language": "中文", "instructions": "Short."}');
+select pg_temp.ok((select value ->> 'language' from public.app_settings where key = 'ai_student_report') = '中文', 'admin sets the AI language and sources');
+select pg_temp.fails($$select public.set_ai_report_settings('{"sources": {"reviews": false, "remarks": false, "attendance": false, "points": false}, "language": "English", "instructions": ""}')$$,
+  'not valid', 'at least one source stays on');
+select pg_temp.fails($$select public.set_ai_report_settings('{"sources": {"reviews": true}, "language": "English", "instructions": "", "api_key": "x"}')$$,
+  'not valid', 'unknown settings are refused');
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok((select count(*) from public.student_ai_reports) = 0, 'a student login reads no analyses yet');
+
 reset role;
 rollback;

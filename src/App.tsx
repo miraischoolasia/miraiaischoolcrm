@@ -28,6 +28,7 @@ import {
   Funnel,
   GraduationCap,
   IdentificationBadge,
+  Exam,
   Brain,
   BookBookmark,
   Lightning,
@@ -95,6 +96,13 @@ import {
 import { buildAttendanceSubmission } from './lib/attendance'
 import { defaultReviewCriteria, getReviewMetrics, type ReviewMetric } from './lib/reviewCriteria'
 import { defaultAttendanceStatuses, getStatusOption, isAttendedStatus } from './lib/attendanceStatuses'
+import {
+  fetchRewardLevels,
+  fetchRewardPresets,
+  setAttendanceStatusPoints,
+  type RewardLevel,
+  type RewardPreset,
+} from './lib/rewards'
 import type { BulkLeadRow } from './lib/leadCsv'
 import type { BulkPreviewStudentRow } from './lib/studentCsv'
 import { provisionTeacherLogin, resetTeacherPassword } from './lib/teacherAuth'
@@ -197,6 +205,7 @@ import { LeadOptionsModal } from './components/modals/LeadOptionsModal'
 import { LeadStagesModal } from './components/modals/LeadStagesModal'
 import { useLeadStages } from './hooks/useLeadStages'
 import { PackagesModal, type PackageDraft } from './components/modals/PackagesModal'
+import { QuestionBankSection } from './components/sections/QuestionBankSection'
 import { ClassSettingsModal, type ReviewCriterionDraft } from './components/modals/ClassSettingsModal'
 import { ChangePackageModal, type PackageChange } from './components/modals/ChangePackageModal'
 import {
@@ -308,6 +317,17 @@ async function loadReviewCriteria() {
   }
 }
 
+// Rewards are optional too: without them the points bar and card stay hidden.
+async function loadRewards() {
+  try {
+    const [presets, levels] = await Promise.all([fetchRewardPresets(), fetchRewardLevels()])
+    return { presets, levels }
+  } catch (error) {
+    console.error('Could not load the rewards.', error)
+    return null
+  }
+}
+
 // Same for attendance statuses: on a failed read the form keeps Present,
 // Absent and Leave.
 async function loadAttendanceStatuses() {
@@ -388,6 +408,9 @@ function App() {
   // The school's attendance statuses (Settings > Attendance).
   const [attendanceStatusOptions, setAttendanceStatusOptions] =
     useState<AttendanceStatusOption[]>(defaultAttendanceStatuses)
+  // Rewards teachers give in class, and the level names (Settings > Rewards).
+  const [rewardPresets, setRewardPresets] = useState<RewardPreset[]>([])
+  const [rewardLevels, setRewardLevels] = useState<RewardLevel[]>([])
   const [isClassSettingsOpen, setIsClassSettingsOpen] = useState(false)
   // Loaded when Class Settings opens.
   const [zoomOptions, setZoomOptions] = useState<ZoomMeetingOptions | null>(null)
@@ -735,6 +758,8 @@ function App() {
     if (can('forms')) sections.push('forms')
     if (isTeacherAccount || can('calendar')) sections.push('calendar')
     if (isTeacherAccount || can('classrooms')) sections.push('classrooms')
+    // Every teacher keeps questions for class; an admin sees all of them.
+    if (isTeacherAccount || isAdmin) sections.push('questions')
     // The courses the school signs parents up for: an admin makes them, so the page is the admin's.
     if (isAdmin) sections.push('programmes')
     if (can('students')) sections.push('students')
@@ -1410,6 +1435,7 @@ function App() {
           nextPackages,
           nextReviewCriteria,
           nextAttendanceStatuses,
+          nextRewards,
         ] = await Promise.all([
           fetchClassroomsFromSupabase(),
           fetchTeachersFromSupabase(),
@@ -1426,6 +1452,7 @@ function App() {
           fetchPackagesFromSupabase(),
           loadReviewCriteria(),
           loadAttendanceStatuses(),
+          loadRewards(),
         ])
 
         if (!cancelled) {
@@ -1447,6 +1474,10 @@ function App() {
           }
           if (nextAttendanceStatuses) {
             setAttendanceStatusOptions(nextAttendanceStatuses)
+          }
+          if (nextRewards) {
+            setRewardPresets(nextRewards.presets)
+            setRewardLevels(nextRewards.levels)
           }
           setLoadedUserId(authUserId)
         }
@@ -1487,6 +1518,7 @@ function App() {
       nextPackages,
       nextReviewCriteria,
       nextAttendanceStatuses,
+      nextRewards,
     ] = await Promise.all([
       fetchClassroomsFromSupabase(),
       fetchTeachersFromSupabase(),
@@ -1503,6 +1535,7 @@ function App() {
       fetchPackagesFromSupabase(),
       loadReviewCriteria(),
       loadAttendanceStatuses(),
+      loadRewards(),
     ])
     setClassrooms((current) => (sameData(current, nextClassrooms) ? current : nextClassrooms))
     setTeachers((current) => (sameData(current, nextTeachers) ? current : nextTeachers))
@@ -1524,6 +1557,10 @@ function App() {
       setAttendanceStatusOptions((current) =>
         sameData(current, nextAttendanceStatuses) ? current : nextAttendanceStatuses,
       )
+    }
+    if (nextRewards) {
+      setRewardPresets((current) => (sameData(current, nextRewards.presets) ? current : nextRewards.presets))
+      setRewardLevels((current) => (sameData(current, nextRewards.levels) ? current : nextRewards.levels))
     }
   }
   useLiveSync(Boolean(authUserId) && loadedUserId === authUserId && !isLoading && !loadError, syncCoreQuietly)
@@ -1696,6 +1733,7 @@ function App() {
       { key: 'forms', label: 'Forms', icon: ClipboardText, group: 'marketing' },
       { key: 'calendar', label: 'Calendar', icon: CalendarBlank },
       { key: 'classrooms', label: 'My Classroom', icon: Chalkboard },
+      { key: 'questions', label: 'Question Bank', icon: Exam },
       { key: 'programmes', label: 'Programmes', icon: BookBookmark },
       { key: 'students', label: 'Students', icon: GraduationCap },
       { key: 'teachers', label: 'My Team', icon: IdentificationBadge },
@@ -2420,6 +2458,24 @@ function App() {
         : [...current, saved],
     )
     return null
+  }
+
+  async function reloadRewards() {
+    const next = await loadRewards()
+    if (next) {
+      setRewardPresets(next.presets)
+      setRewardLevels(next.levels)
+    }
+  }
+
+  async function saveAttendanceStatusPoints(status: AttendanceStatusOption, points: number) {
+    const failure = await setAttendanceStatusPoints(status.key, points)
+    if (!failure) {
+      setAttendanceStatusOptions((current) =>
+        current.map((entry) => (entry.key === status.key ? { ...entry, rewardPoints: points } : entry)),
+      )
+    }
+    return failure
   }
 
   async function saveZoomOptions(options: ZoomMeetingOptions) {
@@ -5877,6 +5933,8 @@ function App() {
                     ? 'Calendar Board'
                     : activeSection === 'classrooms'
                       ? 'Classroom Board'
+                      : activeSection === 'questions'
+                      ? 'Classroom Board'
                       : activeSection === 'programmes'
                         ? 'Settings'
                       : activeSection === 'teachers'
@@ -5900,6 +5958,8 @@ function App() {
                     ? 'Classes, Attendance & Timetable'
                     : activeSection === 'classrooms'
                       ? 'My Classroom'
+                      : activeSection === 'questions'
+                      ? 'Question Bank'
                       : activeSection === 'programmes'
                         ? 'Programmes'
                       : activeSection === 'teachers'
@@ -6563,6 +6623,13 @@ function App() {
             )}
 
             {visibleSection === 'ai-knowledge' && <AiKnowledgeSection canEdit={isAdmin} />}
+            {visibleSection === 'questions' && (
+              <QuestionBankSection
+                currentTeacherId={currentSession?.teacherId ?? null}
+                isAdmin={isAdmin}
+                teacherNames={new Map(Array.from(teacherMap.entries()).map(([id, teacher]) => [id, teacher.fullName]))}
+              />
+            )}
 
             {visibleSection === 'programmes' && <ProgrammesSection canEdit={isAdmin} state={programmes} />}
 
@@ -6734,6 +6801,10 @@ function App() {
           statuses={attendanceStatusOptions}
           onAddStatus={(draft) => saveAttendanceStatus(null, draft)}
           onSaveStatus={(status, changes) => saveAttendanceStatus(status, changes)}
+          onSaveStatusPoints={saveAttendanceStatusPoints}
+          rewardPresets={rewardPresets}
+          rewardLevels={rewardLevels}
+          onRewardsChanged={() => void reloadRewards()}
           onSaveZoomOptions={saveZoomOptions}
         />
       )}
@@ -6796,6 +6867,9 @@ function App() {
           lessonReviews={lessonReviews}
           reviewCriteria={reviewCriteria}
           statusOptions={attendanceStatusOptions}
+          rewardLevels={rewardLevels.length > 0 ? rewardLevels : undefined}
+          canManagePoints={can('students', 'edit')}
+          showAiReport={Boolean(supabase)}
           onClose={closeStudentDetail}
           schedules={schedules}
           teacherMap={teacherMap}
@@ -7051,6 +7125,7 @@ function App() {
           attendanceReviews={attendanceReviews}
           reviewMetrics={attendanceReviewMetrics}
           statusOptions={attendanceStatusOptions}
+          rewardPresets={rewardPresets.length > 0 ? rewardPresets : undefined}
           attendanceRemark={attendanceRemark}
           attendanceSaveError={attendanceSaveError}
           isSavingAttendance={isSavingAttendance}

@@ -1602,6 +1602,7 @@ export type Database = {
           color: 'emerald' | 'slate' | 'amber' | 'sky' | 'rose' | 'violet'
           sort_order: number
           is_active: boolean
+          reward_points: number
           created_at: string
           updated_at: string
         }
@@ -1626,6 +1627,195 @@ export type Database = {
           is_active?: boolean
           created_at?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      reward_presets: {
+        Row: {
+          id: number
+          label: string
+          points: number
+          emoji: string | null
+          sort_order: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: never
+          label: string
+          points: number
+          emoji?: string | null
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: never
+          label?: string
+          points?: number
+          emoji?: string | null
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      reward_levels: {
+        Row: {
+          id: number
+          name: string
+          min_points: number
+          created_at: string
+        }
+        Insert: {
+          id?: never
+          name: string
+          min_points: number
+          created_at?: string
+        }
+        Update: {
+          id?: never
+          name?: string
+          min_points?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
+      student_points: {
+        Row: {
+          id: number
+          student_id: number
+          points: number
+          kind: 'attendance' | 'award' | 'redeem' | 'adjust'
+          reason: string
+          schedule_id: number | null
+          lesson_date: string | null
+          preset_id: number | null
+          reverses_id: number | null
+          created_by: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: never
+          student_id: number
+          points: number
+          kind: 'attendance' | 'award' | 'redeem' | 'adjust'
+          reason: string
+          schedule_id?: number | null
+          lesson_date?: string | null
+          preset_id?: number | null
+          reverses_id?: number | null
+          created_by?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: never
+          student_id?: number
+          points?: number
+          kind?: 'attendance' | 'award' | 'redeem' | 'adjust'
+          reason?: string
+          schedule_id?: number | null
+          lesson_date?: string | null
+          preset_id?: number | null
+          reverses_id?: number | null
+          created_by?: number | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      questions: {
+        Row: {
+          id: number
+          owner_id: number
+          is_shared: boolean
+          kind: 'choice' | 'fill' | 'short' | 'screenshot' | 'link'
+          prompt: string
+          options: Json
+          accepted_answers: Json
+          case_sensitive: boolean
+          points: number
+          time_limit_seconds: number
+          topic: string | null
+          explanation: string | null
+          is_archived: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: never
+          owner_id: number
+          is_shared?: boolean
+          kind: 'choice' | 'fill' | 'short' | 'screenshot' | 'link'
+          prompt: string
+          options?: Json
+          accepted_answers?: Json
+          case_sensitive?: boolean
+          points?: number
+          time_limit_seconds?: number
+          topic?: string | null
+          explanation?: string | null
+          is_archived?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: never
+          owner_id?: number
+          is_shared?: boolean
+          kind?: 'choice' | 'fill' | 'short' | 'screenshot' | 'link'
+          prompt?: string
+          options?: Json
+          accepted_answers?: Json
+          case_sensitive?: boolean
+          points?: number
+          time_limit_seconds?: number
+          topic?: string | null
+          explanation?: string | null
+          is_archived?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      student_ai_reports: {
+        Row: {
+          id: number
+          student_id: number
+          audience: 'teacher' | 'parent'
+          report: Json
+          language: string
+          sources: Json
+          lesson_count: number
+          model: string | null
+          created_by: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: never
+          student_id: number
+          audience: 'teacher' | 'parent'
+          report: Json
+          language: string
+          sources?: Json
+          lesson_count?: number
+          model?: string | null
+          created_by?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: never
+          student_id?: number
+          audience?: 'teacher' | 'parent'
+          report?: Json
+          language?: string
+          sources?: Json
+          lesson_count?: number
+          model?: string | null
+          created_by?: number | null
+          created_at?: string
         }
         Relationships: []
       }
@@ -2044,6 +2234,88 @@ export type Database = {
           p_is_active: boolean | null
         }
         Returns: Database['public']['Tables']['attendance_statuses']['Row']
+      }
+      award_points: {
+        Args: {
+          p_student_ids: number[]
+          p_points: number | null
+          p_reason: string | null
+          p_preset_id: number | null
+          p_schedule_id: number | null
+          p_lesson_date: string | null
+        }
+        Returns: number
+      }
+      redeem_points: {
+        Args: {
+          p_student_id: number
+          p_points: number
+          p_reason: string
+        }
+        Returns: number
+      }
+      undo_points: {
+        Args: {
+          p_points_id: number
+        }
+        Returns: number
+      }
+      save_reward_preset: {
+        Args: {
+          p_id: number | null
+          p_label: string
+          p_points: number | null
+          p_emoji: string | null
+          p_sort_order: number | null
+          p_is_active: boolean | null
+        }
+        Returns: Database['public']['Tables']['reward_presets']['Row']
+      }
+      set_reward_levels: {
+        Args: {
+          p_levels: Json
+        }
+        Returns: undefined
+      }
+      set_attendance_status_points: {
+        Args: {
+          p_key: string
+          p_points: number
+        }
+        Returns: undefined
+      }
+      save_question: {
+        Args: {
+          p_id: number | null
+          p_question: Json
+        }
+        Returns: Database['public']['Tables']['questions']['Row']
+      }
+      import_questions: {
+        Args: {
+          p_questions: Json
+          p_share: boolean
+        }
+        Returns: number
+      }
+      set_question_archived: {
+        Args: {
+          p_id: number
+          p_archived: boolean
+        }
+        Returns: undefined
+      }
+      copy_question: {
+        Args: {
+          p_id: number
+        }
+        Returns: Database['public']['Tables']['questions']['Row']
+      }
+      set_ai_report_settings: {
+        Args: {
+          p_settings: Json
+        }
+        Returns: undefined
       }
       save_review_criterion: {
         Args: {

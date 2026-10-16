@@ -323,6 +323,7 @@ export function mapAttendanceStatusRow(row: AttendanceStatusRow): AttendanceStat
     color: row.color,
     sortOrder: row.sort_order,
     isActive: row.is_active,
+    rewardPoints: row.reward_points ?? 0,
   }
 }
 

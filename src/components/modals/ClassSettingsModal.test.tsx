@@ -30,6 +30,10 @@ function renderModal(overrides: Partial<Parameters<typeof ClassSettingsModal>[0]
     statuses: defaultAttendanceStatuses,
     onAddStatus: vi.fn(async () => null),
     onSaveStatus: vi.fn(async () => null),
+    onSaveStatusPoints: vi.fn(async () => null),
+    rewardPresets: [],
+    rewardLevels: [],
+    onRewardsChanged: vi.fn(),
     onSaveZoomOptions: vi.fn(async () => null),
     ...overrides,
   }

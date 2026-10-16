@@ -956,13 +956,8 @@ export function WhatsAppInbox({
   // numbers and the parent's name are never given to it. Null (feature off) for people who cannot edit leads.
   const aiContext = useMemo(() => {
     // No reply suggestion in a group: it is not one parent, and every message would cost an AI call.
-    // Nor in a Messenger chat: its text is not sent to the AI service (Meta's data-handling answers say so).
-    if (
-      !inbox.selected ||
-      !crm.canEditLeads ||
-      isGroupChat(inbox.selected.meta.sender) ||
-      socialKindOf(inbox.selected.meta.channel, inbox.selected.meta.sender) !== null
-    ) {
+    // WhatsApp, Messenger and Instagram chats all get one.
+    if (!inbox.selected || !crm.canEditLeads || isGroupChat(inbox.selected.meta.sender)) {
       return null
     }
     const sender = inbox.selected.meta.sender

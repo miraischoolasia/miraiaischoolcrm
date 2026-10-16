@@ -3,9 +3,9 @@ import type { AttendanceStatusOption, AttendanceStatusColor } from '../types/dom
 // The three every school starts with, used before the list has loaded and
 // when Supabase is not configured (same keys as the seeded rows).
 export const defaultAttendanceStatuses: AttendanceStatusOption[] = [
-  { key: 'present', label: 'Present', attended: true, deductsLesson: true, color: 'emerald', sortOrder: 10, isActive: true },
-  { key: 'absent', label: 'Absent', attended: false, deductsLesson: false, color: 'rose', sortOrder: 20, isActive: true },
-  { key: 'leave', label: 'Leave', attended: false, deductsLesson: false, color: 'amber', sortOrder: 30, isActive: true },
+  { key: 'present', label: 'Present', attended: true, deductsLesson: true, color: 'emerald', sortOrder: 10, isActive: true, rewardPoints: 10 },
+  { key: 'absent', label: 'Absent', attended: false, deductsLesson: false, color: 'rose', sortOrder: 20, isActive: true, rewardPoints: 0 },
+  { key: 'leave', label: 'Leave', attended: false, deductsLesson: false, color: 'amber', sortOrder: 30, isActive: true, rewardPoints: 0 },
 ]
 
 // Every new attendance starts on this one; it can never be hidden.
@@ -71,6 +71,7 @@ export function getStatusOption(statuses: AttendanceStatusOption[], key: string)
       color: 'slate',
       sortOrder: 999,
       isActive: false,
+      rewardPoints: 0,
     }
   )
 }

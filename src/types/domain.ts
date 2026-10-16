@@ -4,6 +4,7 @@ export type AppSection =
   | 'home'
   | 'calendar'
   | 'classrooms'
+  | 'questions'
   | 'students'
   | 'teachers'
   | 'leads'
@@ -30,6 +31,8 @@ export type AttendanceStatusOption = {
   color: AttendanceStatusColor
   sortOrder: number
   isActive: boolean
+  // Points the student gets for it when attendance is submitted.
+  rewardPoints: number
 }
 export type StudentType = 'trial' | 'preview' | 'regular'
 export type LeadOptionKind = 'source' | 'pic' | 'tag' | 'check'

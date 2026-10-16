@@ -3,6 +3,9 @@ import { Eye, EyeSlash, Plus, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { cn } from '../../lib/cn'
 import type { ZoomMeetingOptions } from '../../lib/api'
+import { RewardsSettings } from '../RewardsSettings'
+import { AiReportSettings } from '../AiReportSettings'
+import type { RewardLevel, RewardPreset } from '../../lib/rewards'
 import { attendanceColorNames, attendanceColorStyles, PRESENT, sortStatuses } from '../../lib/attendanceStatuses'
 import type { AttendanceStatusOption, ReviewCriterion } from '../../types/domain'
 
@@ -15,7 +18,7 @@ export type AttendanceStatusDraft = Pick<AttendanceStatusOption, 'label' | 'atte
 
 type StatusChanges = Partial<AttendanceStatusDraft & Pick<AttendanceStatusOption, 'isActive'>>
 
-type Tab = 'criteria' | 'attendance' | 'zoom'
+type Tab = 'criteria' | 'attendance' | 'rewards' | 'ai' | 'zoom'
 
 type ClassSettingsModalProps = {
   criteria: ReviewCriterion[]
@@ -29,6 +32,11 @@ type ClassSettingsModalProps = {
   statuses: AttendanceStatusOption[]
   onAddStatus: (draft: AttendanceStatusDraft) => Promise<string | null>
   onSaveStatus: (status: AttendanceStatusOption, changes: StatusChanges) => Promise<string | null>
+  // Points a status gives when attendance is submitted.
+  onSaveStatusPoints: (status: AttendanceStatusOption, points: number) => Promise<string | null>
+  rewardPresets: RewardPreset[]
+  rewardLevels: RewardLevel[]
+  onRewardsChanged: () => void
   onSaveZoomOptions: (options: ZoomMeetingOptions) => Promise<string | null>
 }
 
@@ -55,6 +63,10 @@ export function ClassSettingsModal({
   statuses,
   onAddStatus,
   onSaveStatus,
+  onSaveStatusPoints,
+  rewardPresets,
+  rewardLevels,
+  onRewardsChanged,
   onSaveZoomOptions,
 }: ClassSettingsModalProps) {
   const [tab, setTab] = useState<Tab>('criteria')
@@ -92,6 +104,8 @@ export function ClassSettingsModal({
             [
               ['criteria', 'Review criteria'],
               ['attendance', 'Attendance'],
+              ['rewards', 'Rewards'],
+              ['ai', 'AI analysis'],
               ['zoom', 'Zoom'],
             ] as const
           ).map(([key, label]) => (
@@ -183,8 +197,15 @@ export function ClassSettingsModal({
             statuses={statuses}
             onAdd={(draft) => run(onAddStatus(draft))}
             onSave={(status, changes) => run(onSaveStatus(status, changes))}
+            onSavePoints={(status, points) => run(onSaveStatusPoints(status, points))}
           />
         )}
+
+        {tab === 'rewards' && (
+          <RewardsSettings presets={rewardPresets} levels={rewardLevels} onChanged={onRewardsChanged} />
+        )}
+
+        {tab === 'ai' && <AiReportSettings />}
 
         {tab === 'zoom' && (
           <ZoomOptionsForm
@@ -456,23 +477,26 @@ function AttendanceStatusesForm({
   statuses,
   onAdd,
   onSave,
+  onSavePoints,
 }: {
   statuses: AttendanceStatusOption[]
   onAdd: (draft: AttendanceStatusDraft) => Promise<boolean>
   onSave: (status: AttendanceStatusOption, changes: StatusChanges) => Promise<boolean>
+  onSavePoints: (status: AttendanceStatusOption, points: number) => Promise<boolean>
 }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-500">
         What a teacher can mark each student as. Attended: the student was in class, so they are rated. Takes a
-        lesson: one class comes off their package.
+        lesson: one class comes off their package. Points: what the student gets for it (see Rewards).
       </p>
       <ul className="space-y-2">
         {sortStatuses(statuses).map((status) => (
           <StatusRow
-            key={`${status.key}-${status.label}-${status.attended}-${status.deductsLesson}-${status.color}-${status.isActive}`}
+            key={`${status.key}-${status.label}-${status.attended}-${status.deductsLesson}-${status.color}-${status.isActive}-${status.rewardPoints}`}
             status={status}
             onSave={(changes) => onSave(status, changes)}
+            onSavePoints={(points) => onSavePoints(status, points)}
           />
         ))}
       </ul>
@@ -547,15 +571,20 @@ function StatusFields({
   )
 }
 
-const statusGrid = 'grid grid-cols-2 items-center gap-2 sm:grid-cols-[1fr_6rem_8rem_9rem_6rem]'
+const statusGrid = 'grid grid-cols-2 items-center gap-2 sm:grid-cols-[1fr_6rem_8rem_9rem_5rem_6rem]'
 
 function StatusRow({
   status,
   onSave,
+  onSavePoints,
 }: {
   status: AttendanceStatusOption
   onSave: (changes: StatusChanges) => Promise<boolean>
+  onSavePoints: (points: number) => Promise<boolean>
 }) {
+  const [points, setPoints] = useState(status.rewardPoints)
+  const pointsDirty = points !== status.rewardPoints
+  const pointsValid = Number.isInteger(points) && points >= -100 && points <= 100
   const initial: AttendanceStatusDraft = {
     label: status.label,
     attended: status.attended,
@@ -569,12 +598,29 @@ function StatusRow({
   return (
     <li className={cn(statusGrid, 'rounded-xl border border-slate-200 p-2', !status.isActive && 'opacity-60')}>
       <StatusFields draft={draft} onChange={setDraft} label={status.label} locked={isPresent} />
+      <label className="flex items-center gap-1 text-xs font-semibold text-slate-600">
+        ⭐
+        <input
+          type="number"
+          min={-100}
+          max={100}
+          value={points}
+          aria-label={`${status.label} points`}
+          onChange={(event) => setPoints(Number(event.target.value))}
+          className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-sm"
+        />
+      </label>
       <div className="flex items-center justify-end gap-1">
-        {isDirty && (
+        {(isDirty || pointsDirty) && (
           <button
             type="button"
-            disabled={draft.label.trim().length === 0}
-            onClick={() => void onSave({ ...draft, label: draft.label.trim() })}
+            disabled={draft.label.trim().length === 0 || !pointsValid}
+            onClick={() =>
+              void (async () => {
+                if (isDirty && !(await onSave({ ...draft, label: draft.label.trim() }))) return
+                if (pointsDirty) await onSavePoints(points)
+              })()
+            }
             className="rounded-xl bg-[#fc0c97] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#de0a84] disabled:opacity-50"
           >
             Save
@@ -609,6 +655,7 @@ function NewStatusRow({ onAdd }: { onAdd: (draft: AttendanceStatusDraft) => Prom
       <div className="text-sm font-semibold text-slate-700">Add a status</div>
       <div className={statusGrid}>
         <StatusFields draft={draft} onChange={setDraft} label="New status" />
+        <span className="hidden sm:block" />
         <div className="flex justify-end">
           <button
             type="button"

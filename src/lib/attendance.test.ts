@@ -243,8 +243,8 @@ describe('review progress', () => {
 describe("a school's own attendance statuses", () => {
   const statuses = [
     ...defaultAttendanceStatuses,
-    { key: 'late', label: 'Late', attended: true, deductsLesson: true, color: 'sky' as const, sortOrder: 40, isActive: true },
-    { key: 'no_show', label: 'No-show', attended: false, deductsLesson: true, color: 'rose' as const, sortOrder: 50, isActive: true },
+    { key: 'late', label: 'Late', attended: true, deductsLesson: true, color: 'sky' as const, sortOrder: 40, isActive: true, rewardPoints: 5 },
+    { key: 'no_show', label: 'No-show', attended: false, deductsLesson: true, color: 'rose' as const, sortOrder: 50, isActive: true, rewardPoints: 0 },
   ]
 
   it('asks for a review of an attended status, not of one the student missed', () => {
