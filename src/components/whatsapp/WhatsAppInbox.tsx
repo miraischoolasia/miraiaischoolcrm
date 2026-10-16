@@ -715,28 +715,55 @@ export function WhatsAppInbox({
   }, [category, client])
   // The channel a chat came through: WhatsApp, or a Messenger Page / Instagram account with its picture (the one an
   // admin uploaded, else the Page's own from Facebook).
-  const channelKeyFor = useCallback((conversation: ChatwootConversation) => {
-    const page = conversation.meta.sender.additional_attributes?.ghl_page_name
-    return channelKeyOf(conversation.inbox_id, typeof page === 'string' ? page : null)
-  }, [])
+  // The Facebook Pages each inbox has chats from (the bridge notes the Page's id on the contact). Pages and inboxes
+  // go one to one, so a Page is told apart from its inbox only when an inbox really has more than one.
+  const pageIdsByInbox = useMemo(() => {
+    const found = new Map<number, Set<string>>()
+    for (const conversation of inbox.conversations) {
+      const pageId = conversation.meta.sender.additional_attributes?.ghl_page_id
+      if (conversation.inbox_id === undefined || typeof pageId !== 'string' || !pageId) {
+        continue
+      }
+      found.set(conversation.inbox_id, (found.get(conversation.inbox_id) ?? new Set()).add(pageId))
+    }
+    return found
+  }, [inbox.conversations])
+  const channelKeyFor = useCallback(
+    (conversation: ChatwootConversation) => {
+      const pageId = conversation.meta.sender.additional_attributes?.ghl_page_id
+      if (typeof pageId === 'string' && pageId && (pageIdsByInbox.get(conversation.inbox_id ?? -1)?.size ?? 0) > 1) {
+        return channelKeyOf(conversation.inbox_id, pageId)
+      }
+      return channelKeyOf(conversation.inbox_id)
+    },
+    [pageIdsByInbox],
+  )
   const channelOf = useCallback(
     (conversation: ChatwootConversation): ChannelInfo | null => {
       const social = socialKindOf(conversation.meta.channel, conversation.meta.sender)
       if (!social) {
         return { kind: 'whatsapp', name: null, avatar: null }
       }
-      const page = conversation.meta.sender.additional_attributes?.ghl_page_name
-      const pageId = conversation.inbox_id === undefined ? undefined : inboxPageIds.get(conversation.inbox_id)
+      const attributes = conversation.meta.sender.additional_attributes
+      const noted = typeof attributes?.ghl_page_id === 'string' && attributes.ghl_page_id ? attributes.ghl_page_id : null
+      const inboxPages = pageIdsByInbox.get(conversation.inbox_id ?? -1)
+      const pageId =
+        noted ??
+        (conversation.inbox_id === undefined ? undefined : inboxPageIds.get(conversation.inbox_id)) ??
+        (inboxPages?.size === 1 ? [...inboxPages][0] : undefined)
+      const inboxName = conversation.inbox_id === undefined ? null : (socialInboxNames.get(conversation.inbox_id) ?? null)
+      const pageName = typeof attributes?.ghl_page_name === 'string' && attributes.ghl_page_name ? attributes.ghl_page_name : null
       return {
         kind: social,
-        name: (typeof page === 'string' ? page : null) ?? (conversation.inbox_id === undefined ? null : (socialInboxNames.get(conversation.inbox_id) ?? null)),
+        // Several Pages in one inbox are named by their Page; otherwise the inbox's own name is the name.
+        name: (inboxPages?.size ?? 0) > 1 ? (pageName ?? inboxName) : (inboxName ?? pageName),
         avatar:
           channelAvatars.avatars.get(channelKeyFor(conversation)) ??
           channelAvatars.avatars.get(channelKeyOf(conversation.inbox_id)) ??
           (pageId ? facebookPictureUrl(pageId) : null),
       }
     },
-    [channelAvatars.avatars, channelKeyFor, inboxPageIds, socialInboxNames],
+    [channelAvatars.avatars, channelKeyFor, inboxPageIds, pageIdsByInbox, socialInboxNames],
   )
   const channelRows = useMemo<ChannelPictureRow[]>(() => {
     const rows = new Map<string, ChannelPictureRow>()

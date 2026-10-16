@@ -3,9 +3,14 @@ import { supabase } from './supabase'
 // The picture of the Page a Messenger / Instagram chat came through. The key names the channel: the Chatwoot
 // inbox id, then "|" and the Page name when one inbox carries several Pages (the GoHighLevel bridge).
 
+// A Page's name as it is compared: the same name written with other spaces, width or case is one Page.
+export function normalizePageName(name: string | null | undefined) {
+  return (name ?? '').normalize('NFKC').replace(/\p{Cf}/gu, '').replace(/\s+/g, '').toLowerCase()
+}
+
 export function channelKeyOf(inboxId: number | undefined | null, pageName?: string | null) {
   const inbox = inboxId ?? 0
-  const page = (pageName ?? '').trim()
+  const page = normalizePageName(pageName)
   return page ? `${inbox}|${page}` : String(inbox)
 }
 

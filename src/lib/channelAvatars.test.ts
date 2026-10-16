@@ -4,7 +4,10 @@ import { channelAvatarError, channelKeyOf, facebookPictureUrl } from './channelA
 describe('channel pictures', () => {
   it('names a channel by its inbox, and by its Page when the inbox carries several', () => {
     expect(channelKeyOf(7)).toBe('7')
-    expect(channelKeyOf(7, '  EduHero Online ')).toBe('7|EduHero Online')
+    expect(channelKeyOf(7, '  EduHero Online ')).toBe('7|eduheroonline')
+    // The same Page written with other spaces, width or case is one Page.
+    expect(channelKeyOf(7, 'EduHero  Online')).toBe(channelKeyOf(7, 'ＥduHero Online'))
+    expect(channelKeyOf(8, '万能教 Jack老师')).toBe(channelKeyOf(8, '万能教Jack' + String.fromCharCode(0x200b) + ' 老师'))
     expect(channelKeyOf(7, '')).toBe('7')
     expect(channelKeyOf(undefined, null)).toBe('0')
   })
