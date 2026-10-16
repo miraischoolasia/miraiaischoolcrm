@@ -3,7 +3,7 @@ import { brand } from '../../lib/brand'
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { PackagePicker } from '../PackagePicker'
-import { programLevelOptions } from '../../lib/constants'
+import { useProgramLevels } from '../../lib/programLevels'
 import { useAgeGroups } from '../../lib/ageGroups'
 import type { Classroom, CreateStudentFormState, Package, Teacher } from '../../types/domain'
 
@@ -34,6 +34,13 @@ export function CreateStudentModal({
   onPackageChange,
   packageNotice = null,
 }: CreateStudentModalProps) {
+  const schoolLevels = useProgramLevels()
+  const programLevelOptions = [
+    ...schoolLevels,
+    ...Array.from(new Set(activeVisibleClassrooms.map((classroom) => classroom.programLevel))).filter(
+      (level) => !schoolLevels.includes(level),
+    ),
+  ]
   // Classes are listed by the school's age groups; one a class still uses stays listed.
   const schoolAgeGroups = useAgeGroups()
   const ageGroupOptions = [

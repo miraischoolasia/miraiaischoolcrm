@@ -1,6 +1,6 @@
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
-import { programLevelOptions } from '../../lib/constants'
+import { useProgramLevels } from '../../lib/programLevels'
 import { useAgeGroups } from '../../lib/ageGroups'
 import type { AgeGroup, ClassroomCategory, Classroom, ClassroomFormState, ProgramLevel, Teacher } from '../../types/domain'
 import type { Programme } from '../../lib/programmes'
@@ -38,6 +38,9 @@ export function ClassroomModal({
   onSubmit,
   onFieldChange,
 }: ClassroomModalProps) {
+  // The school's levels, plus this class's own if it is hidden now.
+  const schoolLevels = useProgramLevels()
+  const programLevelOptions = schoolLevels.includes(formState.programLevel) ? schoolLevels : [...schoolLevels, formState.programLevel]
   // The school's age groups, plus this class's own if it is hidden now.
   const schoolAgeGroups = useAgeGroups()
   const ageGroupOptions = schoolAgeGroups.includes(formState.ageGroup) ? schoolAgeGroups : [...schoolAgeGroups, formState.ageGroup]

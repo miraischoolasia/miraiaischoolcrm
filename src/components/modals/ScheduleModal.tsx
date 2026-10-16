@@ -3,7 +3,7 @@ import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { cn } from '../../lib/cn'
 import { getStudentStatus } from '../../domain/studentStatus'
-import { programLevelOptions } from '../../lib/constants'
+import { useProgramLevels } from '../../lib/programLevels'
 import { useAgeGroups } from '../../lib/ageGroups'
 import { weekdayLabels } from '../../lib/schedule'
 import type { TeacherClash } from '../../lib/clash'
@@ -62,6 +62,13 @@ export function ScheduleModal({
   clashes = [],
   clashTeacherName = 'This teacher',
 }: ScheduleModalProps) {
+  const schoolLevels = useProgramLevels()
+  const programLevelOptions = [
+    ...schoolLevels,
+    ...Array.from(new Set(activeVisibleClassrooms.map((classroom) => classroom.programLevel))).filter(
+      (level) => !schoolLevels.includes(level),
+    ),
+  ]
   // Classes are listed by the school's age groups; one a class still uses stays listed.
   const schoolAgeGroups = useAgeGroups()
   const ageGroupOptions = [

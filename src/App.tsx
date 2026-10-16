@@ -215,6 +215,13 @@ import {
   saveAgeGroup,
   type AgeGroupOption,
 } from './lib/ageGroups'
+import {
+  ProgramLevelsContext,
+  defaultProgramLevels,
+  fetchProgramLevels,
+  saveProgramLevel,
+  type ProgramLevelOption,
+} from './lib/programLevels'
 import { ClassSettingsModal, type ReviewCriterionDraft } from './components/modals/ClassSettingsModal'
 import { ChangePackageModal, type PackageChange } from './components/modals/ChangePackageModal'
 import {
@@ -337,6 +344,16 @@ async function loadSubjects() {
   }
 }
 
+// Class levels: on a failed read the six usual ones stay.
+async function loadProgramLevels() {
+  try {
+    return await fetchProgramLevels()
+  } catch (error) {
+    console.error('Could not load the class levels.', error)
+    return null
+  }
+}
+
 // Age groups: on a failed read the four usual ones stay.
 async function loadAgeGroups() {
   try {
@@ -446,6 +463,9 @@ function App() {
   // The school's age groups (Class Settings > Subjects & ages).
   const [ageGroups, setAgeGroups] = useState<AgeGroupOption[]>(defaultAgeGroups)
   const schoolAgeGroupNames = useMemo(() => ageGroupNames(ageGroups), [ageGroups])
+  // The school's class levels (Class Settings > Class options).
+  const [programLevels, setProgramLevels] = useState<ProgramLevelOption[]>(defaultProgramLevels)
+  const schoolLevelNames = useMemo(() => ageGroupNames(programLevels), [programLevels])
   const [isClassSettingsOpen, setIsClassSettingsOpen] = useState(false)
   // Loaded when Class Settings opens.
   const [zoomOptions, setZoomOptions] = useState<ZoomMeetingOptions | null>(null)
@@ -1475,6 +1495,7 @@ function App() {
           nextRewards,
           nextSubjects,
           nextAgeGroups,
+          nextProgramLevels,
         ] = await Promise.all([
           fetchClassroomsFromSupabase(),
           fetchTeachersFromSupabase(),
@@ -1494,6 +1515,7 @@ function App() {
           loadRewards(),
           loadSubjects(),
           loadAgeGroups(),
+          loadProgramLevels(),
         ])
 
         if (!cancelled) {
@@ -1525,6 +1547,9 @@ function App() {
           }
           if (nextAgeGroups) {
             setAgeGroups(nextAgeGroups)
+          }
+          if (nextProgramLevels) {
+            setProgramLevels(nextProgramLevels)
           }
           setLoadedUserId(authUserId)
         }
@@ -1568,6 +1593,7 @@ function App() {
       nextRewards,
       nextSubjects,
       nextAgeGroups,
+      nextProgramLevels,
     ] = await Promise.all([
       fetchClassroomsFromSupabase(),
       fetchTeachersFromSupabase(),
@@ -1587,6 +1613,7 @@ function App() {
       loadRewards(),
       loadSubjects(),
       loadAgeGroups(),
+      loadProgramLevels(),
     ])
     setClassrooms((current) => (sameData(current, nextClassrooms) ? current : nextClassrooms))
     setTeachers((current) => (sameData(current, nextTeachers) ? current : nextTeachers))
@@ -1618,6 +1645,9 @@ function App() {
     }
     if (nextAgeGroups) {
       setAgeGroups((current) => (sameData(current, nextAgeGroups) ? current : nextAgeGroups))
+    }
+    if (nextProgramLevels) {
+      setProgramLevels((current) => (sameData(current, nextProgramLevels) ? current : nextProgramLevels))
     }
   }
   useLiveSync(Boolean(authUserId) && loadedUserId === authUserId && !isLoading && !loadError, syncCoreQuietly)
@@ -5853,6 +5883,7 @@ function App() {
 
   return (
     <AgeGroupsContext.Provider value={schoolAgeGroupNames}>
+    <ProgramLevelsContext.Provider value={schoolLevelNames}>
     <WhatsAppOpenProvider value={canOpenWhatsAppChat ? openWhatsAppChat : null}>
     <main className="compact-admin min-h-screen bg-white pb-20 text-slate-900 lg:pb-0">
       {confirmDialog}
@@ -6895,6 +6926,16 @@ function App() {
             }
             return failure
           }}
+          programLevels={programLevels}
+          onSaveProgramLevel={async (level, changes) => {
+            const failure = await saveProgramLevel(level, changes)
+            if (!failure) {
+              const next = await loadProgramLevels()
+              if (next) setProgramLevels(next)
+              if (level && changes.name && changes.name !== level.name) void syncCoreQuietly()
+            }
+            return failure
+          }}
           onSaveZoomOptions={saveZoomOptions}
         />
       )}
@@ -7333,6 +7374,7 @@ function App() {
       </nav>
     </main>
     </WhatsAppOpenProvider>
+    </ProgramLevelsContext.Provider>
     </AgeGroupsContext.Provider>
   )
 }

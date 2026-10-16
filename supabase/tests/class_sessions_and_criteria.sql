@@ -590,5 +590,20 @@ select pg_temp.fails($$select pg_temp.q('Gone age', null, '["9-11 Years Old"]')$
 reset role;
 select pg_temp.fails($$update public.classrooms set age_group = 'Nursery' where id = 9101$$, 'foreign key', 'a class must use an age group from the list');
 
+-- Class levels the school keeps itself (20261021190000) ----------------------
+select pg_temp.ok((select count(*) from public.program_levels) = 6, 'the six usual levels are there');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select pg_temp.fails($$select public.save_program_level(null, 'Form 4', null, true)$$, 'only admin', 'a teacher cannot add a level');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select pg_temp.ok((public.save_program_level(null, 'Form 4', null, true)).sort_order = 70, 'admin adds a level');
+select public.save_program_level('Coder Foundation', 'Foundation', null, null);
+reset role;
+select pg_temp.ok((select count(*) from public.classrooms where program_level = 'Foundation') = 2, 'a renamed level follows on every class');
+select pg_temp.fails($$update public.classrooms set program_level = 'Nope' where id = 9101$$, 'foreign key', 'a class must use a level from the list');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+set local role authenticated;
+select pg_temp.fails($$select public.save_program_level('Foundation', 'Coder Pro', null, null)$$, 'already a class level', 'two levels cannot share a name');
+
 reset role;
 rollback;

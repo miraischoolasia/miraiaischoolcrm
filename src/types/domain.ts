@@ -67,13 +67,8 @@ export type LeadBulkAction =
 export type LeadStatus = string
 // The name of one of the school's age groups (Class Settings > Subjects & ages).
 export type AgeGroup = string
-export type ProgramLevel =
-  | 'Coder Foundation'
-  | 'Coder Pro'
-  | 'VibeTech Innovator'
-  | 'VibeTech Pro'
-  | 'VibeTech Future'
-  | 'Software Engineer'
+// The name of one of the school's class levels (Class Settings > Class options).
+export type ProgramLevel = string
 // A review criterion a school sets itself (Logical Thinking, Teamwork, ...).
 export type ReviewCriterion = {
   id: number

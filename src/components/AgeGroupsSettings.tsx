@@ -10,8 +10,17 @@ type AgeGroupChanges = Partial<AgeGroupOption>
 export function AgeGroupsSettings({
   groups,
   onSave,
+  title = 'Age groups',
+  description = 'How classes are grouped in My Classroom, and which ages a question suits. Renaming one renames it on every class and question.',
+  placeholder = 'New age group, e.g. Primary 1-3',
+  noun = 'age group',
 }: {
   groups: AgeGroupOption[]
+  // The same editor serves class levels.
+  title?: string
+  description?: string
+  placeholder?: string
+  noun?: string
   // Adds (group null) or changes one; resolves to an error message, or null.
   onSave: (group: AgeGroupOption | null, changes: AgeGroupChanges) => Promise<string | null>
 }) {
@@ -38,11 +47,8 @@ export function AgeGroupsSettings({
   return (
     <div className="space-y-4 border-t border-slate-200 pt-5">
       <div>
-        <h3 className="text-sm font-semibold text-slate-900">Age groups</h3>
-        <p className="text-sm text-slate-500">
-          How classes are grouped in My Classroom, and which ages a question suits. Renaming one renames it on every class
-          and question.
-        </p>
+        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+        <p className="text-sm text-slate-500">{description}</p>
       </div>
       {error && (
         <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -66,8 +72,8 @@ export function AgeGroupsSettings({
           type="text"
           value={newName}
           maxLength={40}
-          placeholder="New age group, e.g. Primary 1-3"
-          aria-label="New age group name"
+          placeholder={placeholder}
+          aria-label={`New ${noun} name`}
           onChange={(event) => setNewName(event.target.value)}
           className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm"
         />
@@ -75,7 +81,7 @@ export function AgeGroupsSettings({
           type="button"
           disabled={!newName.trim()}
           onClick={() => void run(null, { name: newName.trim() }).then((ok) => ok && setNewName(''))}
-          aria-label="Add age group"
+          aria-label={`Add ${noun}`}
           className="inline-flex items-center gap-1 rounded-xl bg-[#fc0c97] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#de0a84] disabled:opacity-50"
         >
           <Plus size={14} aria-hidden="true" />

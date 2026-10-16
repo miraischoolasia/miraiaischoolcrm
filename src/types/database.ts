@@ -15,13 +15,7 @@ export type Database = {
           id: number
           name: string
           age_group: string
-          program_level:
-            | 'Coder Foundation'
-            | 'Coder Pro'
-            | 'VibeTech Innovator'
-            | 'VibeTech Pro'
-            | 'VibeTech Future'
-            | 'Software Engineer'
+          program_level: string
           teacher_id: number | null
           status: 'active' | 'archived'
           notes: string | null
@@ -37,13 +31,7 @@ export type Database = {
           id?: number
           name: string
           age_group: string
-          program_level:
-            | 'Coder Foundation'
-            | 'Coder Pro'
-            | 'VibeTech Innovator'
-            | 'VibeTech Pro'
-            | 'VibeTech Future'
-            | 'Software Engineer'
+          program_level: string
           teacher_id?: number | null
           status?: 'active' | 'archived'
           notes?: string | null
@@ -59,13 +47,7 @@ export type Database = {
           id?: number
           name?: string
           age_group?: string
-          program_level?:
-            | 'Coder Foundation'
-            | 'Coder Pro'
-            | 'VibeTech Innovator'
-            | 'VibeTech Pro'
-            | 'VibeTech Future'
-            | 'Software Engineer'
+          program_level?: string
           teacher_id?: number | null
           status?: 'active' | 'archived'
           notes?: string | null
@@ -1838,6 +1820,30 @@ export type Database = {
         }
         Relationships: []
       }
+      program_levels: {
+        Row: {
+          name: string
+          sort_order: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          name: string
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          name?: string
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       subjects: {
         Row: {
           id: number
@@ -2371,6 +2377,15 @@ export type Database = {
           p_is_active: boolean | null
         }
         Returns: Database['public']['Tables']['age_groups']['Row']
+      }
+      save_program_level: {
+        Args: {
+          p_name: string | null
+          p_new_name: string
+          p_sort_order: number | null
+          p_is_active: boolean | null
+        }
+        Returns: Database['public']['Tables']['program_levels']['Row']
       }
       save_subject: {
         Args: {

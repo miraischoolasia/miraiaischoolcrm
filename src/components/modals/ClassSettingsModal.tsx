@@ -48,6 +48,8 @@ type ClassSettingsModalProps = {
   ) => Promise<string | null>
   ageGroups: AgeGroupOption[]
   onSaveAgeGroup: (group: AgeGroupOption | null, changes: Partial<AgeGroupOption>) => Promise<string | null>
+  programLevels: AgeGroupOption[]
+  onSaveProgramLevel: (level: AgeGroupOption | null, changes: Partial<AgeGroupOption>) => Promise<string | null>
   onSaveZoomOptions: (options: ZoomMeetingOptions) => Promise<string | null>
 }
 
@@ -82,6 +84,8 @@ export function ClassSettingsModal({
   onSaveSubject,
   ageGroups,
   onSaveAgeGroup,
+  programLevels,
+  onSaveProgramLevel,
   onSaveZoomOptions,
 }: ClassSettingsModalProps) {
   const [tab, setTab] = useState<Tab>('criteria')
@@ -120,7 +124,7 @@ export function ClassSettingsModal({
               ['criteria', 'Review criteria'],
               ['attendance', 'Attendance'],
               ['rewards', 'Rewards'],
-              ['subjects', 'Subjects & ages'],
+              ['subjects', 'Class options'],
               ['ai', 'AI analysis'],
               ['zoom', 'Zoom'],
             ] as const
@@ -225,6 +229,14 @@ export function ClassSettingsModal({
           <>
             <SubjectsSettings subjects={subjects} onSave={onSaveSubject} />
             <AgeGroupsSettings groups={ageGroups} onSave={onSaveAgeGroup} />
+            <AgeGroupsSettings
+              groups={programLevels}
+              onSave={onSaveProgramLevel}
+              title="Class levels"
+              description="The level of each class (e.g. Coder Foundation, Form 4). Renaming one renames it on every class."
+              placeholder="New level, e.g. Form 4"
+              noun="level"
+            />
           </>
         )}
 
