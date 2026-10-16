@@ -19,6 +19,19 @@ describe('buildEnrolMessage', () => {
     expect(text.indexOf('Zoom')).toBeLessThan(text.indexOf('报名表'))
   })
 
+  it('gives the Zoom time without a link line when the meeting has no link', () => {
+    const text = buildEnrolMessage({
+      childName: 'Ethan',
+      classTime: null,
+      zoom: { startsAt: new Date(2026, 9, 16, 20, 30), link: '' },
+      formUrl: null,
+      paid: false,
+    })
+
+    expect(text).toContain('Fri 16 Oct, 20:30')
+    expect(text).not.toContain('Zoom 链接')
+  })
+
   it('leaves out what is not saved yet', () => {
     const text = buildEnrolMessage({ childName: '', classTime: null, zoom: null, formUrl: null, paid: false })
 

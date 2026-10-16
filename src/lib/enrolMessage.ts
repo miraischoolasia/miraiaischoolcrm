@@ -60,7 +60,10 @@ export function buildCampMessage({ childName, enrolled, zoom, formUrl, paid, toS
     lines.push(`${child} 已经报名 Mirai Online AI Holiday Camp（${enrolled.className}），${enrolled.startDate} 开始上课，共 ${enrolled.classes} 堂。`)
   }
   if (zoom) {
-    lines.push('', `${say.zoom}，时间：${formatZoomTime(zoom.startsAt)}`, `Zoom 链接：${zoom.link.trim()}`)
+    lines.push('', `${say.zoom}，时间：${formatZoomTime(zoom.startsAt)}`)
+    if (zoom.link.trim()) {
+      lines.push(`Zoom 链接：${zoom.link.trim()}`)
+    }
   }
   if (formUrl) {
     lines.push('', say.form, formUrl)
@@ -77,7 +80,10 @@ export function buildEnrolMessage({ childName, classTime, zoom, formUrl, paid, t
     lines.push(toStudent ? `你的 HOA 课程已经安排在 ${classTime}。` : `${childName.trim() || '孩子'} 的 HOA 课程已经安排在 ${classTime}。`)
   }
   if (zoom) {
-    lines.push('', `${say.zoom}，时间：${formatZoomTime(zoom.startsAt)}`, `Zoom 链接：${zoom.link.trim()}`)
+    lines.push('', `${say.zoom}，时间：${formatZoomTime(zoom.startsAt)}`)
+    if (zoom.link.trim()) {
+      lines.push(`Zoom 链接：${zoom.link.trim()}`)
+    }
   }
   if (formUrl) {
     lines.push('', say.formBeforeClass, formUrl)

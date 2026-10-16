@@ -5207,6 +5207,22 @@ function App() {
       )
     }
 
+    // A task, Zoom meeting or event is not a class: it says what it is, not "Replacement".
+    if (eventInfo.event.extendedProps.calendarItemId !== undefined) {
+      const itemKind = eventInfo.event.extendedProps.calendarItemKind as CalendarItem['kind']
+      return (
+        <div className="rounded-lg px-2 py-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[9px] font-semibold uppercase tracking-[0.14em] opacity-80">
+              {itemKind === 'meeting' ? 'Zoom meeting' : itemKind === 'task' ? 'Task' : 'Event'}
+            </span>
+            {eventInfo.timeText && <span className="text-[10px] font-medium">{eventInfo.timeText}</span>}
+          </div>
+          <div className="mt-1 text-[11px] font-semibold leading-snug">{eventInfo.event.title}</div>
+        </div>
+      )
+    }
+
     if (eventInfo.event.extendedProps.isCancelledOccurrence) {
       const cancelReason = eventInfo.event.extendedProps.cancelReason as string
 

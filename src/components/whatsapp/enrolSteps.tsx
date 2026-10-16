@@ -198,9 +198,11 @@ export function ZoomStep({
         <div key={meeting.id} className="flex items-start justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5">
           <span className="min-w-0">
             <span className="block font-medium text-slate-900">{formatZoomTime(new Date(meeting.startsAt))}</span>
-            <a href={meeting.link} target="_blank" rel="noopener noreferrer" className="block truncate text-[#be185d] hover:underline">
-              {meeting.link}
-            </a>
+            {meeting.link.trim() && (
+              <a href={meeting.link} target="_blank" rel="noopener noreferrer" className="block truncate text-[#be185d] hover:underline">
+                {meeting.link}
+              </a>
+            )}
           </span>
           {canEdit && (
             <button

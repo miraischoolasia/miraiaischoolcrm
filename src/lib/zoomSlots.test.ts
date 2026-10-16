@@ -22,7 +22,7 @@ function item(patch: Partial<CalendarItem> & Pick<CalendarItem, 'id'>): Calendar
 describe('upcomingZoomSlots', () => {
   const now = new Date('2026-10-16T08:00:00')
 
-  it('lists only meetings that have a time, a link and have not started, soonest first', () => {
+  it('lists only meetings that have a time and have not started, soonest first, with or without a link', () => {
     const slots = upcomingZoomSlots(
       [
         item({ id: 1, date: '2026-10-22' }),
@@ -34,8 +34,9 @@ describe('upcomingZoomSlots', () => {
       ],
       now,
     )
-    expect(slots.map((slot) => slot.id)).toEqual([2, 1])
-    expect(slots[0].startsAt.getHours()).toBe(15)
-    expect(slots[0].link).toBe('https://zoom.us/j/1')
+    expect(slots.map((slot) => slot.id)).toEqual([5, 2, 1])
+    expect(slots[1].startsAt.getHours()).toBe(15)
+    expect(slots[1].link).toBe('https://zoom.us/j/1')
+    expect(slots[0].link).toBe('')
   })
 })
