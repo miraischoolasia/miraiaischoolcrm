@@ -27,6 +27,8 @@ export type StudentRow = {
   parent: StudentParent | null
   // The HOA class a trial-slot student was booked into.
   booking: TrialBooking | null
+  // The programme of the student's class (or of the class they were booked into), or null.
+  programmeId: number | null
 }
 
 export type StudentRowSources = {
@@ -62,6 +64,7 @@ export function buildStudentRows({
       bookingByStudent.set(booking.studentId, booking)
     }
   }
+  const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]))
   const slotByClassroom = new Map<number, Schedule>()
   for (const schedule of [...schedules].sort((a, b) => (a.dayOfWeek ?? 7) - (b.dayOfWeek ?? 7))) {
     if (
@@ -113,6 +116,10 @@ export function buildStudentRows({
       teacherName: teacherId ? teacherMap.get(teacherId)?.fullName ?? null : null,
       parent: parents.get(student.id) ?? null,
       booking,
+      programmeId:
+        classroom?.programmeId ??
+        classroomById.get(scheduleById.get(booking?.scheduleId ?? -1)?.classroomId ?? -1)?.programmeId ??
+        null,
     }
   })
 }
@@ -124,7 +131,12 @@ export function filterStudentRows(
   const query = search.trim().toLowerCase()
 
   return rows.filter((row) => {
-    if (type !== 'all' && row.kind !== type) {
+    if (type.startsWith('programme:')) {
+      const wanted = type === 'programme:none' ? null : Number(type.slice('programme:'.length))
+      if (row.programmeId !== wanted) {
+        return false
+      }
+    } else if (type !== 'all' && row.kind !== type) {
       return false
     }
     if (followUpOnly && !row.needsFollowUp) {

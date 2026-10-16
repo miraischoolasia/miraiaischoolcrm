@@ -4,6 +4,7 @@ import { cn } from '../../lib/cn'
 import { formatStudentAge, getStudentAge } from '../../lib/age'
 import { formatDate, getWorstFee, type StudentIssue } from '../../domain/studentStatus'
 import { studentFilterOptions } from '../../lib/constants'
+import type { Programme } from '../../lib/programmes'
 import {
   buildStudentRows,
   filterStudentRows,
@@ -53,6 +54,9 @@ type StudentDashboardSectionProps = {
   trialBookings?: TrialBooking[]
   parents?: Map<number, StudentParent>
   attendedStudentIds?: Set<number>
+  // The school's programmes. A school with programmes of its own gets one tab for each, instead of the
+  // HOA / Trial / Regular / Camp tabs.
+  programmes?: Programme[]
   // Opens the window that tags students with their current package.
   onOpenAssignPackages?: () => void
   // Admin only: opens the course packages settings.
@@ -96,6 +100,7 @@ export function StudentDashboardSection({
   trialBookings = NO_BOOKINGS,
   parents = NO_PARENTS,
   attendedStudentIds,
+  programmes,
   onOpenAssignPackages,
   onOpenPackages,
   onDeactivateStudent,
@@ -123,6 +128,26 @@ export function StudentDashboardSection({
       }),
     [students, packages, classrooms, schedules, teacherMap, trialBookings, parents, attendedStudentIds, todayString],
   )
+
+  // The tabs: the kinds of student, or one for each programme the school made (and one for the rest).
+  const tabs = useMemo(() => {
+    const own = (programmes ?? []).filter((programme) => programme.legacyKey === null && programme.isActive)
+    if (own.length === 0) {
+      return studentFilterOptions.map((option) => ({ ...option, count: (row: StudentRow) => option.key === 'all' || row.kind === option.key }))
+    }
+    const tabsOf: { key: FilterKey; label: string; count: (row: StudentRow) => boolean }[] = [
+      { key: 'all', label: 'All', count: () => true },
+      ...own.map((programme) => ({
+        key: `programme:${programme.id}` as FilterKey,
+        label: programme.name,
+        count: (row: StudentRow) => row.programmeId === programme.id,
+      })),
+    ]
+    if (rows.some((row) => row.programmeId === null)) {
+      tabsOf.push({ key: 'programme:none', label: 'Other', count: (row) => row.programmeId === null })
+    }
+    return tabsOf
+  }, [programmes, rows])
 
   const visibleRows = sortStudentRows(
     filterStudentRows(rows, { type: activeFilter, followUpOnly, search: searchTerm }),
@@ -250,11 +275,9 @@ export function StudentDashboardSection({
 
           <div className="mt-4 flex flex-wrap items-end justify-between gap-x-5 gap-y-2">
             <div className="flex flex-wrap gap-x-5 gap-y-1">
-              {studentFilterOptions.map((option) => {
+              {tabs.map((option) => {
                 const selected = activeFilter === option.key
-                const count = rows.filter(
-                  (row) => option.key === 'all' || row.kind === option.key,
-                ).length
+                const count = rows.filter(option.count).length
                 return (
                   <button
                     key={option.key}

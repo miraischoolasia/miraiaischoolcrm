@@ -247,6 +247,7 @@ const isMockMode = import.meta.env.MODE === 'mock'
 
 import { buildCalendarItemEvents, itemsVisibleTo, type CalendarItem } from './lib/calendarItems'
 import { AttendanceModal } from './components/modals/AttendanceModal'
+import { LiveQuestionsPanel } from './components/LiveQuestionsPanel'
 import { MakeupPlanModal, type MakeupPlanInput } from './components/modals/MakeupPlanModal'
 import {
   MoveClassModal,
@@ -659,6 +660,14 @@ function App() {
 
   const [attendanceModal, setAttendanceModal] =
     useState<AttendanceModalState | null>(null)
+  // The lesson whose live questions are open (Home > Today > Live questions).
+  const [liveLesson, setLiveLesson] = useState<{
+    scheduleId: number
+    date: string
+    title: string
+    classroomId: number | null
+    studentCount: number
+  } | null>(null)
   const [attendanceStatuses, setAttendanceStatuses] = useState<
     Record<number, AttendanceStatus>
   >({})
@@ -6264,6 +6273,18 @@ function App() {
                 onTakeAttendance={(item) =>
                   void openAttendanceForEvent(item.scheduleId, item.date, item.title)
                 }
+                onRunLive={
+                  supabase
+                    ? (item) =>
+                        setLiveLesson({
+                          scheduleId: item.scheduleId,
+                          date: item.date,
+                          title: item.title,
+                          classroomId: item.classroomId,
+                          studentCount: item.studentCount,
+                        })
+                    : undefined
+                }
                 onOpenCalendar={() => setActiveSection('calendar')}
                 onOpenClass={(classroomId) => {
                   const classroom = classroomMap.get(classroomId)
@@ -6669,6 +6690,7 @@ function App() {
                 trialBookings={trialBookings}
                 parents={studentParents}
                 attendedStudentIds={attendedStudentIds}
+                programmes={programmes.programmes}
                 onOpenAssignPackages={
                   can('students', 'edit')
                     ? () => {
@@ -7300,6 +7322,18 @@ function App() {
               ? (teacherMap.get(scheduleClashTeacherId)?.fullName ?? 'This teacher')
               : 'This teacher'
           }
+        />
+      )}
+
+      {liveLesson && (
+        <LiveQuestionsPanel
+          scheduleId={liveLesson.scheduleId}
+          lessonDate={liveLesson.date}
+          title={liveLesson.title}
+          classroom={(liveLesson.classroomId && classroomMap.get(liveLesson.classroomId)) || null}
+          studentNames={new Map(Array.from(studentMap, ([id, student]) => [id, student.name]))}
+          rosterCount={liveLesson.studentCount}
+          onClose={() => setLiveLesson(null)}
         />
       )}
 

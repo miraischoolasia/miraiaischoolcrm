@@ -14,7 +14,9 @@ export type AppSection =
   | 'programmes'
   | 'forms'
   | 'activity'
-export type FilterKey = 'all' | 'hoa' | 'trial' | 'regular' | 'camp'
+// A tab on the Students page: a kind of student, or (for a school with programmes of its own) one programme,
+// 'programme:<id>', or the students in none, 'programme:none'.
+export type FilterKey = 'all' | 'hoa' | 'trial' | 'regular' | 'camp' | `programme:${number}` | 'programme:none'
 // The key of one of the school's attendance statuses ('present', 'absent',
 // 'leave', or one an admin added such as 'late').
 export type AttendanceStatus = string

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { StudentDashboardSection } from './StudentDashboardSection'
 import type { Classroom, Package, Schedule, Student, Teacher } from '../../types/domain'
 import type { StudentParent } from '../../lib/studentParents'
+import type { Programme } from '../../lib/programmes'
 
 const student: Student = {
   id: 1,
@@ -110,6 +111,37 @@ describe('StudentDashboardSection', () => {
     cleanup()
     renderSection(enrolled, { activeFilter: 'regular', packages })
     expect(shown()).toEqual(['Six Months', 'Not Tagged'])
+  })
+
+  describe('a school with programmes of its own', () => {
+    const programme = (id: number, name: string) =>
+      ({ id, name, legacyKey: null, isActive: true, outcome: 'enrol', steps: [] }) as unknown as Programme
+    const programmes = [programme(5, 'F1 SEJ'), programme(6, 'F2 SEJ')]
+    const room = (id: number, programmeId: number | null) => ({ id, name: `Room ${id}`, programmeId }) as unknown as Classroom
+    const classrooms = [room(1, 5), room(2, 6)]
+    const kids: Student[] = [
+      { ...student, id: 21, name: 'In F1', classroomId: 1 },
+      { ...student, id: 22, name: 'In F2', classroomId: 2 },
+      { ...student, id: 23, name: 'No Class' },
+    ]
+
+    it('has one tab for each programme instead of HOA / Trial / Regular / Camp', () => {
+      renderSection(kids, { programmes, classrooms })
+
+      const tabs = screen.getAllByRole('button', { pressed: false }).map((entry) => entry.textContent)
+      expect(tabs).toEqual(expect.arrayContaining(['F1 SEJ1', 'F2 SEJ1', 'Other1']))
+      expect(screen.queryByRole('button', { name: /^HOA/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /^Camp/ })).not.toBeInTheDocument()
+    })
+
+    it('lists the students of the programme picked', () => {
+      renderSection(kids, { programmes, classrooms, activeFilter: 'programme:6' })
+
+      expect(shown()).toEqual(['In F2'])
+      cleanup()
+      renderSection(kids, { programmes, classrooms, activeFilter: 'programme:none' })
+      expect(shown()).toEqual(['No Class'])
+    })
   })
 
   it('shows the package, and no fee dates or fee alerts for no-fee packages', () => {
