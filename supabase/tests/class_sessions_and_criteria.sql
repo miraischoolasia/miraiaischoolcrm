@@ -1006,5 +1006,50 @@ select pg_temp.ok(public.set_portal_terms('Our rules', 'New wording.') = 2, 'new
 select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
 select pg_temp.ok((public.portal_onboarding() ->> 'needs_terms')::boolean and (public.portal_onboarding() -> 'terms' ->> 'text') = 'New wording.', 'parents are asked again after a change');
 
+-- Zoom accounts that host lessons (20261022080000) -----------------------------
+reset role;
+-- Class B also meets on Wednesdays 15:30-16:30 (overlaps class A's 15:00-16:00 on 2026-10-21).
+insert into public.schedules (id, teacher_id, title, event_type, recurrence_type, day_of_week, start_time, end_time, start_recur, classroom_id)
+  overriding system value values (9204, 9003, 'Class B extra', 'regular', 'weekly', 3, '15:30', '16:30', '2026-09-01', 9102);
+update public.class_session_zoom set host_user = 'room1@school.my' where session_id = (select id from lq_ids where name = 'zsession');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select pg_temp.fails($$select public.set_zoom_hosts(array['room1@school.my'])$$, 'only admin', 'a teacher cannot change the Zoom accounts');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select pg_temp.fails($$select public.set_zoom_hosts(array['not an email'])$$, 'e-mail', 'each account is an e-mail');
+select public.set_zoom_hosts(array[' Room1@School.my ', 'room2@school.my', 'room1@school.my', '']);
+select pg_temp.ok((select value -> 'hosts' from public.app_settings where key = 'zoom_hosts') = '["room1@school.my", "room2@school.my"]'::jsonb, 'the list is cleaned: trimmed, lower case, no repeats');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+insert into lq_ids select 'bsession', (public.open_class_session(9204, '2026-10-21')).id;
+select pg_temp.ok((select busy_with from public.zoom_hosts_for_session((select id from lq_ids where name = 'bsession')) where host_user = 'room1@school.my') like 'Class A weekly 15:00%'
+  and (select busy_with from public.zoom_hosts_for_session((select id from lq_ids where name = 'bsession')) where host_user = 'room2@school.my') is null,
+  'an account busy with an overlapping lesson is shown busy; the next one is free');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select pg_temp.ok((select count(*) from public.zoom_hosts_for_session((select id from lq_ids where name = 'bsession'))) = 0, 'only the lesson''s own teacher sees its accounts');
+select pg_temp.ok((select busy_with from public.zoom_hosts_for_session((select id from lq_ids where name = 'zsession')) where host_user = 'room1@school.my') is null,
+  'a lesson does not count its own meeting as busy');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select pg_temp.fails($$select public.set_zoom_hosts(array['room1@school.my'], 0)$$, '1 to 10', 'an account runs 1 to 10 meetings at once');
+select public.set_zoom_hosts(array['room1@school.my', 'room2@school.my'], 2);
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select pg_temp.ok((select busy_with is null and meetings = 1 from public.zoom_hosts_for_session((select id from lq_ids where name = 'bsession')) where host_user = 'room1@school.my'),
+  'with 2 meetings per account, the busy account still has room for a second lesson');
+select pg_temp.fails($$select public.set_teacher_zoom_host(9003, 'room3@school.my')$$, 'only admin', 'a teacher cannot set their Zoom account');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select pg_temp.fails($$select public.set_teacher_zoom_host(9003, 'room 3')$$, 'e-mail', 'the teacher''s account is an e-mail');
+select public.set_teacher_zoom_host(9003, ' Room3@School.my ');
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select pg_temp.ok((select host_user = 'room3@school.my' and preferred and busy_with is null
+  from public.zoom_hosts_for_session((select id from lq_ids where name = 'bsession')) limit 1), 'the teacher''s own account comes first, marked preferred');
+select pg_temp.ok((select count(*) from public.zoom_hosts_for_session((select id from lq_ids where name = 'bsession'))) = 3, 'the listed accounts follow as the fallback');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select public.set_teacher_zoom_host(9003, 'room1@school.my');
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select pg_temp.ok((select count(*) from public.zoom_hosts_for_session((select id from lq_ids where name = 'bsession'))) = 2
+  and (select preferred from public.zoom_hosts_for_session((select id from lq_ids where name = 'bsession')) where host_user = 'room1@school.my'),
+  'a teacher''s account that is also listed shows once, preferred');
+
 reset role;
 rollback;

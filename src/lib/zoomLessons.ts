@@ -6,7 +6,7 @@ import { supabase } from './supabase'
 
 export type LessonZoom = {
   sessionId: number | null
-  meeting: { meetingId: string; joinUrl: string | null } | null
+  meeting: { meetingId: string; joinUrl: string | null; host: string | null } | null
   // Children with a link of their own.
   linked: number
 }
@@ -22,12 +22,12 @@ export async function fetchLessonZoom(scheduleId: number, lessonDate: string): P
     .maybeSingle()
   if (!session) return empty
   const [{ data: zoom }, { count }] = await Promise.all([
-    supabase.from('class_session_zoom').select('meeting_id, join_url').eq('session_id', session.id).maybeSingle(),
+    supabase.from('class_session_zoom').select('meeting_id, join_url, host_user').eq('session_id', session.id).maybeSingle(),
     supabase.from('class_session_zoom_links').select('student_id', { count: 'exact', head: true }).eq('session_id', session.id),
   ])
   return {
     sessionId: session.id,
-    meeting: zoom ? { meetingId: zoom.meeting_id, joinUrl: zoom.join_url } : null,
+    meeting: zoom ? { meetingId: zoom.meeting_id, joinUrl: zoom.join_url, host: zoom.host_user } : null,
     linked: count ?? 0,
   }
 }

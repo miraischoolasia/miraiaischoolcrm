@@ -8,6 +8,7 @@ import { AiReportSettings } from '../AiReportSettings'
 import { StudentAppSettings } from '../StudentAppSettings'
 import { LiveQuestionSettingsForm } from '../LiveQuestionSettingsForm'
 import { ZoomAttendanceRule } from '../ZoomAttendanceRule'
+import { ZoomHostsSetting } from '../ZoomHostsSetting'
 import { SubjectsSettings } from '../SubjectsSettings'
 import { AgeGroupsSettings } from '../AgeGroupsSettings'
 import type { AgeGroupOption } from '../../lib/ageGroups'
@@ -259,6 +260,7 @@ export function ClassSettingsModal({
               options={zoomOptions}
               onSave={(options) => run(onSaveZoomOptions(options))}
             />
+            <ZoomHostsSetting />
             <ZoomAttendanceRule />
           </>
         )}

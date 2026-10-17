@@ -99,7 +99,7 @@ export function LessonZoomCard({
         {zoom === null
           ? 'Loading…'
           : zoom.meeting
-            ? `Meeting ${zoom.meeting.meetingId} · ${zoom.linked} of ${rosterCount} children have their own link in the student app.`
+            ? `Meeting ${zoom.meeting.meetingId}${zoom.meeting.host ? ` on ${zoom.meeting.host}` : ''} · ${zoom.linked} of ${rosterCount} children have their own link in the student app.`
             : 'Each child gets a link of their own in the student app; Zoom then tells the attendance form who was there.'}
       </p>
       {error && (

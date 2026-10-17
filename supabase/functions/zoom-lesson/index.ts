@@ -6,11 +6,13 @@
 //             the lesson who has no link yet (each gets their own link, which
 //             the student app shows; no e-mail goes to anyone)
 //   start     a fresh host link to start the meeting (Zoom's host links expire)
-// The meeting follows the school's Zoom options (Class Settings > Zoom).
+// The meeting follows the school's Zoom options (Class Settings > Zoom) and is
+// hosted by the teacher's own Zoom account, or when it is full at that time by
+// another of the school's (Class Settings > Zoom).
 //
 // Secrets (set in each school's Supabase project, never in a table):
 //   ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET   a Server-to-Server OAuth app
-//   ZOOM_HOST_USER          the Zoom user who hosts the meetings (e-mail or id), default "me"
+//   ZOOM_HOST_USER          the Zoom user who hosts when the school lists no accounts, default "me"
 //   ZOOM_REGISTRANT_DOMAIN  domain for the made-up sign-up addresses, default "students.example.com"
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { meetingBody, registrantEmail, registrantNames, type MeetingOptions } from './logic.ts'
@@ -108,8 +110,31 @@ Deno.serve(async (req) => {
         caller.from('app_settings').select('value').eq('key', 'zoom_meeting_options').maybeSingle(),
       ])
       if (!schedule) return jsonResponse({ ok: false, error: 'Lesson not found.' }, 404)
+
+      // A Zoom account with room at this time: the teacher's own first, then the
+      // least busy of the school's (an idle one before a second meeting), in list order.
+      const { data: hosts } = await caller.rpc('zoom_hosts_for_session', { p_session_id: session.id })
+      const pool = (hosts ?? []) as { host_user: string; busy_with: string | null; meetings: number; preferred: boolean }[]
+      let host = hostUser
+      if (pool.length > 0) {
+        const free = pool
+          .map((entry, order) => ({ ...entry, order }))
+          .filter((entry) => !entry.busy_with)
+          .sort(
+            (left, right) =>
+              Number(right.preferred) - Number(left.preferred) || left.meetings - right.meetings || left.order - right.order,
+          )[0]
+        if (!free) {
+          return jsonResponse(
+            { ok: false, error: `All ${pool.length} Zoom accounts are full at this time. Add one in Class Settings > Zoom.` },
+            409,
+          )
+        }
+        host = free.host_user
+      }
+
       const topic = `${schedule.title} · ${lessonDate}`
-      const created = await zoomApi(token, `/users/${encodeURIComponent(hostUser)}/meetings`, {
+      const created = await zoomApi(token, `/users/${encodeURIComponent(host)}/meetings`, {
         method: 'POST',
         body: meetingBody({
           topic,
@@ -129,6 +154,7 @@ Deno.serve(async (req) => {
           passcode: created.password ?? null,
           uses_registration: true,
           topic,
+          host_user: host === 'me' ? null : host,
         })
         .select('*')
         .single()
@@ -168,6 +194,7 @@ Deno.serve(async (req) => {
         ok: true,
         meetingId: meeting.meeting_id,
         joinUrl: meeting.join_url,
+        host: meeting.host_user ?? null,
         linked: linked.size,
         roster: (roster ?? []).length,
         problems,

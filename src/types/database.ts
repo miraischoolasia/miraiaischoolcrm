@@ -82,6 +82,7 @@ export type Database = {
           permissions: Json
           created_at: string
           updated_at: string
+          zoom_host_user: string | null
         }
         Insert: {
           id?: number
@@ -1979,6 +1980,7 @@ export type Database = {
           created_by: number | null
           created_at: string
           updated_at: string
+          host_user: string | null
         }
         Insert: {
           session_id: number
@@ -2930,6 +2932,26 @@ export type Database = {
           p_granted: boolean
         }
         Returns: undefined
+      }
+      set_teacher_zoom_host: {
+        Args: {
+          p_teacher_id: number
+          p_host: string | null
+        }
+        Returns: undefined
+      }
+      set_zoom_hosts: {
+        Args: {
+          p_hosts: string[]
+          p_per_host?: number
+        }
+        Returns: undefined
+      }
+      zoom_hosts_for_session: {
+        Args: {
+          p_session_id: number
+        }
+        Returns: { host_user: string; busy_with: string | null; meetings: number; preferred: boolean }[]
       }
       class_session_roster: {
         Args: {
