@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { cn } from '../../lib/cn'
@@ -15,6 +15,7 @@ import { countRatedMetrics, getReviewProgress, isReviewComplete, lowScoreText } 
 import { createEmptyAttendanceReviewForm } from '../../lib/mappers'
 import { StarRatingInput } from '../StarRatingInput'
 import { GivePointsBar } from '../GivePointsBar'
+import { fetchLessonZoom, fetchLessonZoomMinutes } from '../../lib/zoomLessons'
 import type { RewardPreset } from '../../lib/rewards'
 import type {
   AttendanceModalState,
@@ -226,17 +227,26 @@ export function AttendanceModal({
                     }}
                   />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    for (const student of attendanceRoster) {
-                      onSetStatus(student.id, PRESENT)
-                    }
-                  }}
-                  className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  Mark all present
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <ZoomFillButton
+                    scheduleId={attendanceModal.scheduleId}
+                    lessonDate={attendanceModal.occurrenceDate}
+                    rosterIds={rosterIds}
+                    absentKey={statusOptions.find((option) => !option.attended && option.key === 'absent')?.key ?? statusOptions.find((option) => !option.attended)?.key ?? null}
+                    onSetStatus={onSetStatus}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      for (const student of attendanceRoster) {
+                        onSetStatus(student.id, PRESENT)
+                      }
+                    }}
+                    className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Mark all present
+                  </button>
+                </div>
               </div>
             )}
 
@@ -499,5 +509,70 @@ export function AttendanceModal({
         </div>
       </form>
     </ModalShell>
+  )
+}
+
+// Fills the form from the lesson's Zoom meeting: there when the child was in it
+// long enough (Class Settings > Zoom), else absent. Shown only when the lesson
+// had its own meeting; the teacher still checks and submits.
+function ZoomFillButton({
+  scheduleId,
+  lessonDate,
+  rosterIds,
+  absentKey,
+  onSetStatus,
+}: {
+  scheduleId: number
+  lessonDate: string
+  rosterIds: number[]
+  absentKey: AttendanceStatus | null
+  onSetStatus: (studentId: number, status: AttendanceStatus) => void
+}) {
+  const [hasMeeting, setHasMeeting] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchLessonZoom(scheduleId, lessonDate)
+      .then((zoom) => !cancelled && setHasMeeting(Boolean(zoom.meeting)))
+      .catch(() => !cancelled && setHasMeeting(false))
+    return () => {
+      cancelled = true
+    }
+  }, [lessonDate, scheduleId])
+
+  if (!hasMeeting) return null
+
+  async function fill() {
+    try {
+      const minutes = await fetchLessonZoomMinutes(scheduleId, lessonDate)
+      const byStudent = new Map(minutes.map((row) => [row.studentId, row]))
+      let there = 0
+      for (const studentId of rosterIds) {
+        const row = byStudent.get(studentId)
+        if (row?.countsAsPresent) {
+          onSetStatus(studentId, PRESENT)
+          there += 1
+        } else if (absentKey) {
+          onSetStatus(studentId, absentKey)
+        }
+      }
+      setNote(`From Zoom: ${there} there, ${rosterIds.length - there} not. Check before submitting.`)
+    } catch (fillError) {
+      setNote(fillError instanceof Error ? fillError.message : 'Could not read Zoom.')
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => void fill()}
+        className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-800 transition hover:bg-sky-100"
+      >
+        Fill from Zoom
+      </button>
+      {note && <span className="text-xs text-slate-600">{note}</span>}
+    </>
   )
 }

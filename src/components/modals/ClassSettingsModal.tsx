@@ -7,6 +7,7 @@ import { RewardsSettings } from '../RewardsSettings'
 import { AiReportSettings } from '../AiReportSettings'
 import { StudentAppSettings } from '../StudentAppSettings'
 import { LiveQuestionSettingsForm } from '../LiveQuestionSettingsForm'
+import { ZoomAttendanceRule } from '../ZoomAttendanceRule'
 import { SubjectsSettings } from '../SubjectsSettings'
 import { AgeGroupsSettings } from '../AgeGroupsSettings'
 import type { AgeGroupOption } from '../../lib/ageGroups'
@@ -251,12 +252,15 @@ export function ClassSettingsModal({
         {tab === 'app' && <StudentAppSettings />}
 
         {tab === 'zoom' && (
-          <ZoomOptionsForm
-            // Starts over once the saved settings have loaded.
-            key={zoomOptions ? 'loaded' : 'loading'}
-            options={zoomOptions}
-            onSave={(options) => run(onSaveZoomOptions(options))}
-          />
+          <>
+            <ZoomOptionsForm
+              // Starts over once the saved settings have loaded.
+              key={zoomOptions ? 'loaded' : 'loading'}
+              options={zoomOptions}
+              onSave={(options) => run(onSaveZoomOptions(options))}
+            />
+            <ZoomAttendanceRule />
+          </>
         )}
       </div>
     </ModalShell>

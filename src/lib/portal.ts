@@ -12,7 +12,7 @@ export type PortalAccount = {
   isActive: boolean
 }
 
-export type PortalVisibility = { schedule: boolean; points: boolean; scores: boolean; package: boolean }
+export type PortalVisibility = { schedule: boolean; points: boolean; scores: boolean; package: boolean; report: boolean; recordings: boolean }
 
 export type PortalSettings = {
   school_name: string
@@ -24,8 +24,8 @@ export type PortalSettings = {
 export const defaultPortalSettings: PortalSettings = {
   school_name: '',
   accent_color: '#fc0c97',
-  student_sees: { schedule: true, points: true, scores: true, package: false },
-  parent_sees: { schedule: true, points: true, scores: true, package: true },
+  student_sees: { schedule: true, points: true, scores: true, package: false, report: false, recordings: true },
+  parent_sees: { schedule: true, points: true, scores: true, package: true, report: true, recordings: true },
 }
 
 // The student, and the parent the CRM links them to (people.parent_id).
@@ -110,4 +110,58 @@ export async function savePortalSettings(settings: PortalSettings) {
   if (!supabase) return 'Supabase is not configured.'
   const { error } = await supabase.rpc('set_portal_settings', { p_settings: settings })
   return error ? error.message || 'Failed to save.' : null
+}
+
+// ---------------------------------------------------------------------------
+// Parents' consent (PDPA): the school's wording, and what each parent answered
+
+export type ConsentKind = 'ai_analysis' | 'class_recording'
+
+export const consentKinds: ConsentKind[] = ['ai_analysis', 'class_recording']
+
+export type ConsentSetting = { title: string; text: string; required: boolean }
+
+export type ConsentSettings = Record<ConsentKind, ConsentSetting>
+
+export const defaultConsentSettings: ConsentSettings = {
+  ai_analysis: { title: 'AI progress reports', text: '', required: false },
+  class_recording: { title: 'Class recordings', text: '', required: false },
+}
+
+export type StudentConsent = { kind: ConsentKind; granted: boolean; at: string }
+
+export async function fetchConsentSettings(): Promise<ConsentSettings> {
+  if (!supabase) return defaultConsentSettings
+  const { data, error } = await supabase.from('app_settings').select('value').eq('key', 'portal_consents').maybeSingle()
+  if (error) throw error
+  const value = (data?.value ?? {}) as Partial<Record<ConsentKind, Partial<ConsentSetting>>>
+  const read = (kind: ConsentKind): ConsentSetting => ({
+    title: typeof value[kind]?.title === 'string' ? value[kind].title : defaultConsentSettings[kind].title,
+    text: typeof value[kind]?.text === 'string' ? value[kind].text : '',
+    required: value[kind]?.required === true,
+  })
+  return { ai_analysis: read('ai_analysis'), class_recording: read('class_recording') }
+}
+
+export async function saveConsentSettings(settings: ConsentSettings) {
+  if (!supabase) return 'Supabase is not configured.'
+  const { error } = await supabase.rpc('set_portal_consents', { p_settings: settings })
+  return error ? error.message || 'Failed to save.' : null
+}
+
+// The parent's latest answer for each consent (missing: not answered yet).
+export async function fetchStudentConsents(studentId: number): Promise<StudentConsent[]> {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('student_consents')
+    .select('kind, granted, created_at')
+    .eq('student_id', studentId)
+    .order('id', { ascending: false })
+    .limit(50)
+  if (error) throw error
+  const latest = new Map<ConsentKind, StudentConsent>()
+  for (const row of data) {
+    if (!latest.has(row.kind)) latest.set(row.kind, { kind: row.kind, granted: row.granted, at: row.created_at })
+  }
+  return consentKinds.flatMap((kind) => (latest.has(kind) ? [latest.get(kind)!] : []))
 }

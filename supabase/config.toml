@@ -425,3 +425,8 @@ verify_jwt = false
 
 [functions.auto-sender]
 verify_jwt = false
+
+# Zoom calls this one (meeting joins and leaves, recordings) with no login; Zoom's signature,
+# checked with ZOOM_WEBHOOK_SECRET, is what authorises it.
+[functions.zoom-webhook]
+verify_jwt = false

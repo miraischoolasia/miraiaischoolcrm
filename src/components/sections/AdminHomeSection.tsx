@@ -38,6 +38,8 @@ export type AdminHomeSectionProps = {
   // Admin only: how each person answers the WhatsApp chats. Null when it is not offered.
   teamReplies?: TeamRepliesCardProps | null
   onTakeAttendance: (item: AgendaItem) => void
+  // Opens the lesson's live questions (pop questions, see the answers).
+  onRunLive?: (item: AgendaItem) => void
   onOpenCalendar: () => void
   onOpenStudent: (studentId: number) => void
   onRenewStudent: (studentId: number) => void
@@ -132,6 +134,7 @@ export function AdminHomeSection({
   canRenew,
   teamReplies = null,
   onTakeAttendance,
+  onRunLive,
   onOpenCalendar,
   onOpenStudent,
   onRenewStudent,
@@ -207,6 +210,11 @@ export function AdminHomeSection({
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        {onRunLive && (
+                          <button type="button" onClick={() => onRunLive(item)} className={secondaryButton}>
+                            Live questions
+                          </button>
+                        )}
                         {submitted ? (
                           <Chip tone="ok">✓ Submitted</Chip>
                         ) : (

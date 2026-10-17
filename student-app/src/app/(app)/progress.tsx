@@ -1,8 +1,9 @@
-import { StyleSheet, View } from 'react-native'
+import { Linking, Platform, StyleSheet, View } from 'react-native'
 
 import { formatDay } from '@/lib/format'
+import type { Home, TeacherReport } from '@/lib/portal'
 import { useSession } from '@/lib/session'
-import { Body, Card, colors, Empty, Heading, Loading, Muted, Pill, Screen, Title } from '@/ui/kit'
+import { Body, Button, Card, colors, Empty, Heading, Loading, Muted, Pill, Screen, Title } from '@/ui/kit'
 
 // Progress: each lesson so far, whether the child was there, and (when the
 // school shows it) the teacher's rating on each criterion. Never the remarks.
@@ -23,6 +24,8 @@ export default function Progress() {
           ? 'No lessons yet.'
           : `${attended} of the last ${home.lessons.length} lessons attended.`}
       </Muted>
+
+      {home.report && <TeacherReportCard report={home.report} viewer={home.viewer} color={branding.accentColor} />}
 
       {home.lessons.map((lesson) => (
         <Card key={`${lesson.date}-${lesson.title}`}>
@@ -47,10 +50,21 @@ export default function Progress() {
                 </Body>
               </View>
             ))}
+          {lesson.recording?.url && (
+            <View style={{ gap: 4 }}>
+              <Button label="Watch the recording" variant="outline" color={branding.accentColor} onPress={() => openLink(lesson.recording!.url)} />
+              {lesson.recording.passcode && <Muted>Passcode: {lesson.recording.passcode}</Muted>}
+            </View>
+          )}
         </Card>
       ))}
     </Screen>
   )
+}
+
+function openLink(url: string) {
+  if (Platform.OS === 'web') window.open(url, '_blank', 'noopener')
+  else void Linking.openURL(url)
 }
 
 const styles = StyleSheet.create({
@@ -61,3 +75,32 @@ const styles = StyleSheet.create({
   fill: { height: '100%', borderRadius: 999 },
   score: { width: 36, textAlign: 'right', fontSize: 14, fontWeight: '700' },
 })
+
+// The report a teacher shared: for a parent the message, then what is going
+// well and what comes next.
+function TeacherReportCard({ report, viewer, color }: { report: TeacherReport; viewer: Home['viewer']; color: string }) {
+  const { summary, message, strengths = [], next_steps: nextSteps = [] } = report.report
+  return (
+    <Card style={{ borderColor: color, borderWidth: 1.5 }}>
+      <Heading>{"Teacher's report"}</Heading>
+      <Muted>{formatDay(report.shared_at.slice(0, 10))}</Muted>
+      {viewer === 'parent' && message ? <Body>{message}</Body> : summary ? <Body>{summary}</Body> : null}
+      {strengths.length > 0 && (
+        <View style={{ gap: 2 }}>
+          <Body style={{ fontWeight: '700' }}>Going well</Body>
+          {strengths.map((item, index) => (
+            <Body key={index}>• {item}</Body>
+          ))}
+        </View>
+      )}
+      {nextSteps.length > 0 && (
+        <View style={{ gap: 2 }}>
+          <Body style={{ fontWeight: '700' }}>Next</Body>
+          {nextSteps.map((item, index) => (
+            <Body key={index}>• {item}</Body>
+          ))}
+        </View>
+      )}
+    </Card>
+  )
+}

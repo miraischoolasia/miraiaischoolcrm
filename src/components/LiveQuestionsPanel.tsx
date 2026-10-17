@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Lightning, MagnifyingGlass, Robot, X } from '@phosphor-icons/react'
 import { ModalShell } from './ModalShell'
+import { LessonZoomCard } from './LessonZoomCard'
 import { cn } from '../lib/cn'
 import { fetchQuestions, fitsClassroom, questionKindLabels, type Question } from '../lib/questions'
 import {
@@ -209,6 +210,8 @@ export function LiveQuestionsPanel({
         )}
 
         {!sessionId && !error && <p className="text-sm text-slate-500">Opening the lesson…</p>}
+
+        {sessionId && <LessonZoomCard scheduleId={scheduleId} lessonDate={lessonDate} rosterCount={rosterCount} />}
 
         {current && (
           <section aria-label="Question now" className="rounded-2xl border border-slate-200 p-4">

@@ -75,6 +75,15 @@ Deno.serve(async (req) => {
     .maybeSingle()
   if (!student) return jsonResponse({ ok: false, error: 'Student not found.' }, 404)
 
+  // When the school asks parents first (Class Settings > Student app), no yes means no analysis.
+  const { data: consentRow } = await caller.from('app_settings').select('value').eq('key', 'portal_consents').maybeSingle()
+  if ((consentRow?.value as { ai_analysis?: { required?: unknown } } | undefined)?.ai_analysis?.required === true) {
+    const { data: agreed } = await caller.rpc('student_has_consent', { p_student_id: studentId, p_kind: 'ai_analysis' })
+    if (agreed !== true) {
+      return jsonResponse({ ok: false, error: 'The parent has not agreed to AI reports yet (they answer in the student app).' }, 403)
+    }
+  }
+
   const admin = createClient(supabaseUrl, serviceRoleKey)
   const cap = Number(Deno.env.get('AI_REPORT_DAILY_CAP') ?? '100')
   const { count } = await admin

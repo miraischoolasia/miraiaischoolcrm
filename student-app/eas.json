@@ -1,0 +1,37 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "base": {
+      "node": "22.12.0"
+    },
+    "mirai": {
+      "extends": "base",
+      "environment": "production",
+      "autoIncrement": true,
+      "env": {
+        "APP_NAME": "Mirai Student",
+        "APP_ID": "asia.miraischool.student",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://kgagnvrmmrwaflvdvsrd.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_jvraOx7nm0mq1UYw18vLvA_Pjf-tVuv"
+      }
+    },
+    "eduhero": {
+      "extends": "base",
+      "environment": "production",
+      "autoIncrement": true,
+      "env": {
+        "APP_NAME": "EduHero Student",
+        "APP_ID": "com.edusuperhero.student",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://oehgicbvayteuvskjxez.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_pnZZhWm9LeKrmRdDKSnGuw_gYnbJV50"
+      }
+    }
+  },
+  "submit": {
+    "mirai": {},
+    "eduhero": {}
+  }
+}

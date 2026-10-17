@@ -6,12 +6,15 @@ import {
   type PortalSettings,
   type PortalVisibility,
 } from '../lib/portal'
+import { PortalConsentSettings } from './PortalConsentSettings'
 
 const sections: Array<[keyof PortalVisibility, string]> = [
   ['schedule', 'Classes and their Zoom link'],
   ['points', 'Points and level'],
   ['scores', "The teacher's ratings (never the remarks)"],
   ['package', 'Lessons left and expiry'],
+  ['report', "The teacher's report (only when a teacher shares it)"],
+  ['recordings', 'Class recordings (from Zoom)'],
 ]
 
 // Class Settings > Student app: the school's name and colour in the app, and
@@ -132,6 +135,8 @@ export function StudentAppSettings() {
           Save
         </button>
       </div>
+
+      <PortalConsentSettings />
     </div>
   )
 }

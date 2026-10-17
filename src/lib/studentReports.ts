@@ -16,6 +16,8 @@ export type SavedReport = {
   report: StudentReport
   lessonCount: number
   createdAt: string
+  // When a teacher shared it in the student app (reports for parents only).
+  sharedAt: string | null
 }
 
 // The newest analysis for the teacher and for the parent.
@@ -23,7 +25,7 @@ export async function fetchLatestReports(studentId: number): Promise<Partial<Rec
   if (!supabase) return {}
   const { data, error } = await supabase
     .from('student_ai_reports')
-    .select('id, audience, report, lesson_count, created_at')
+    .select('id, audience, report, lesson_count, created_at, shared_at')
     .eq('student_id', studentId)
     .order('created_at', { ascending: false })
     .limit(20)
@@ -37,6 +39,7 @@ export async function fetchLatestReports(studentId: number): Promise<Partial<Rec
         report: row.report as StudentReport,
         lessonCount: row.lesson_count,
         createdAt: row.created_at,
+        sharedAt: row.shared_at,
       }
     }
   }
@@ -65,8 +68,23 @@ export async function requestReport(
   if (!data?.ok) return { ok: false, error: data?.error ?? 'The analysis failed.' }
   return {
     ok: true,
-    saved: { id: data.id, audience, report: data.report, lessonCount: data.lessonCount, createdAt: data.createdAt },
+    saved: { id: data.id, audience, report: data.report, lessonCount: data.lessonCount, createdAt: data.createdAt, sharedAt: null },
   }
+}
+
+// Shows (or stops showing) a parent report in the student app. The database
+// stamps the time and who shared it. Resolves to the new time, or an error.
+export async function setReportShared(reportId: number, shared: boolean): Promise<{ sharedAt: string | null; error: string | null }> {
+  if (!supabase) return { sharedAt: null, error: 'Supabase is not configured.' }
+  const { data, error } = await supabase
+    .from('student_ai_reports')
+    .update({ shared_at: shared ? new Date().toISOString() : null })
+    .eq('id', reportId)
+    .select('shared_at')
+    .maybeSingle()
+  if (error) return { sharedAt: null, error: error.message || 'Failed to share.' }
+  if (!data) return { sharedAt: null, error: 'Only reports for parents, of students you teach, can be shared.' }
+  return { sharedAt: data.shared_at, error: null }
 }
 
 export async function fetchReportSettings(): Promise<ReportSettings> {

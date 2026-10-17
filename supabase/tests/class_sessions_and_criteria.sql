@@ -854,5 +854,129 @@ select public.set_live_question_settings('{"scoring": "fixed", "leaderboard_top"
 select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
 select pg_temp.ok(jsonb_array_length(public.portal_live_state(9301) -> 'leaderboard') = 0, 'a school can hide the leaderboard');
 
+-- Reports for parents and consent (20261022050000) ---------------------------
+reset role;
+with r as (insert into public.student_ai_reports (student_id, audience, report, language) values (9301, 'parent', '{"summary": "Ali is doing well"}', 'en') returning id)
+insert into lq_ids select 'rep_parent', id from r;
+with r as (insert into public.student_ai_reports (student_id, audience, report, language) values (9301, 'teacher', '{"summary": "Teacher only"}', 'en') returning id)
+insert into lq_ids select 'rep_teacher', id from r;
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+set local role authenticated;
+select public.set_portal_settings('{"school_name": "Mirai AI School", "accent_color": "#123abc",
+  "student_sees": {"schedule": true, "points": true, "scores": true, "package": false, "report": false},
+  "parent_sees": {"schedule": true, "points": true, "scores": true, "package": true, "report": true}}');
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
+set local role authenticated;
+select pg_temp.ok(public.portal_home(9301) -> 'report' = 'null'::jsonb, 'a report is not in the app until a teacher shares it');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+update public.student_ai_reports set shared_at = '2000-01-01' where id = (select id from lq_ids where name = 'rep_parent');
+update public.student_ai_reports set shared_at = now() where id = (select id from lq_ids where name = 'rep_teacher');
+reset role;
+select pg_temp.ok((select shared_by = 9002 and shared_at > now() - interval '1 minute' from public.student_ai_reports where id = (select id from lq_ids where name = 'rep_parent')),
+  'the teacher shares the parent report; the database stamps who and when');
+select pg_temp.ok((select shared_at is null from public.student_ai_reports where id = (select id from lq_ids where name = 'rep_teacher')), 'a report written for teachers cannot be shared');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+set local role authenticated;
+update public.student_ai_reports set shared_at = null where id = (select id from lq_ids where name = 'rep_parent');
+reset role;
+select pg_temp.ok((select shared_at is not null from public.student_ai_reports where id = (select id from lq_ids where name = 'rep_parent')), 'another teacher cannot unshare it');
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
+set local role authenticated;
+select pg_temp.ok((public.portal_home(9301) -> 'report' -> 'report' ->> 'summary') = 'Ali is doing well', 'the parent sees the shared report');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok(not (public.portal_home(9301) ? 'report'), 'a child does not, by default');
+select pg_temp.ok(not (public.portal_home(9301) ? 'consents'), 'and a child gets no consent questions');
+
+-- Consent
+select pg_temp.fails($$select public.portal_set_consent(9301, 'ai_analysis', true)$$, 'only a parent', 'a child cannot give consent');
+select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
+select pg_temp.ok(jsonb_array_length(public.portal_home(9301) -> 'consents') = 2
+  and (public.portal_home(9301) -> 'consents' -> 0 -> 'granted') = 'null'::jsonb, 'the parent sees the two consent questions, unanswered');
+select public.portal_set_consent(9301, 'ai_analysis', true);
+select pg_temp.ok((public.portal_home(9301) -> 'consents' -> 0 ->> 'granted')::boolean, 'the parent agrees');
+select pg_temp.fails($$select public.portal_set_consent(9302, 'ai_analysis', true)$$, 'only a parent', 'not for a child that is not theirs');
+select pg_temp.fails($$select public.portal_set_consent(9301, 'photos', true)$$, 'unknown consent', 'unknown consents are refused');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select pg_temp.ok(public.student_has_consent(9301, 'ai_analysis') and not public.student_has_consent(9301, 'class_recording'), 'the teacher can check the consent');
+select pg_temp.ok((select count(*) from public.student_consents where student_id = 9301 and text_shown like 'I agree%') = 1, 'the wording shown is kept with the answer');
+select pg_temp.fails($$insert into public.student_consents (student_id, kind, granted, text_shown) values (9301, 'ai_analysis', true, 'x')$$, 'permission denied', 'staff cannot write consents themselves');
+select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
+select public.portal_set_consent(9301, 'ai_analysis', false);
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select pg_temp.ok(not public.student_has_consent(9301, 'ai_analysis'), 'the parent can withdraw');
+
+-- Settings
+select pg_temp.fails($$select public.set_portal_consents('{}')$$, 'only admin', 'a teacher cannot change the consent wording');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select pg_temp.fails($$select public.set_portal_consents('{"ai_analysis": {"title": "AI", "text": "ok", "required": true}}')$$, 'needs a title', 'both consents are needed');
+select public.set_portal_consents('{"ai_analysis": {"title": "AI", "text": "We use AI.", "required": true}, "class_recording": {"title": "Video", "text": "We record.", "required": false}}');
+select public.set_portal_settings('{"school_name": "Mirai AI School", "accent_color": "#123abc",
+  "student_sees": {"schedule": true, "points": true, "scores": true, "package": false, "report": true},
+  "parent_sees": {"schedule": true, "points": true, "scores": true, "package": true, "report": true}}');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok(public.portal_home(9301) ? 'report', 'a school can show the report to children too');
+select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
+select pg_temp.ok((public.portal_home(9301) -> 'consents' -> 0 ->> 'text') = 'We use AI.' and (public.portal_home(9301) -> 'consents' -> 0 ->> 'required')::boolean,
+  'the school''s own wording shows in the app');
+
+-- Zoom for each lesson (20261022060000) --------------------------------------
+reset role;
+-- The lesson of 2026-10-21 (class A, 15:00-16:00 KL) gets a meeting with sign-up.
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+insert into lq_ids select 'zsession', (public.open_class_session(9201, '2026-10-21')).id;
+select pg_temp.ok((select count(*) from public.class_session_roster((select id from lq_ids where name = 'zsession'))) = 1
+  and (select full_name from public.class_session_roster((select id from lq_ids where name = 'zsession'))) = 'Ali', 'the roster of the lesson, for signing up to Zoom');
+reset role;
+insert into public.class_session_zoom (session_id, meeting_id, join_url, uses_registration)
+values ((select id from lq_ids where name = 'zsession'), '123456789', 'https://zoom.us/j/123456789', true);
+insert into public.class_session_zoom_links (session_id, student_id, registrant_id, join_url)
+values ((select id from lq_ids where name = 'zsession'), 9301, 'reg-ali', 'https://zoom.us/w/123456789?tk=ali');
+-- Ali was in the meeting 14:55-15:20 and 15:25-15:50 KL (50 minutes inside the lesson).
+insert into public.zoom_participation (session_id, student_id, participant_uuid, user_name, joined_at, left_at) values
+  ((select id from lq_ids where name = 'zsession'), 9301, 'p1', 'Ali', '2026-10-21 14:55+08', '2026-10-21 15:20+08'),
+  ((select id from lq_ids where name = 'zsession'), 9301, 'p2', 'Ali', '2026-10-21 15:25+08', '2026-10-21 15:50+08');
+insert into public.class_session_recordings (session_id, zoom_recording_uuid, share_url, passcode, started_at)
+values ((select id from lq_ids where name = 'zsession'), 'rec1', 'https://zoom.us/rec/share/abc', 'pw1', '2026-10-21 15:00+08');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select pg_temp.ok((select minutes from public.lesson_zoom_minutes(9201, '2026-10-21') where student_id = 9301) = 50
+  and (select counts_as_present from public.lesson_zoom_minutes(9201, '2026-10-21') where student_id = 9301), 'minutes online inside the lesson, and they count as there');
+select pg_temp.ok((select count(*) from public.class_session_zoom_links) = 1 and (select count(*) from public.zoom_participation) = 2, 'the teacher sees the links and who joined');
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select pg_temp.ok((select count(*) from public.class_session_zoom_links) = 0 and (select count(*) from public.lesson_zoom_minutes(9201, '2026-10-21')) = 0
+  and (select count(*) from public.class_session_roster((select id from lq_ids where name = 'zsession'))) = 0, 'another teacher sees none of it');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok((select count(*) from public.class_session_zoom_links) = 0 and (select count(*) from public.class_session_recordings) = 0, 'a child reads none of the tables');
+select pg_temp.ok(exists (select 1 from jsonb_array_elements(public.portal_home(9301) -> 'schedule') e
+  where e ->> 'date' = '2026-10-21' and e ->> 'zoom_link' = 'https://zoom.us/w/123456789?tk=ali') or (timezone('Asia/Kuala_Lumpur', now()))::date > '2026-10-21',
+  'the app shows the child''s own link for that lesson');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select public.set_zoom_attendance(90);
+select pg_temp.fails($$select public.set_zoom_attendance(0)$$, '1 to 100', 'the rule is 1 to 100 percent');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select pg_temp.fails($$select public.set_zoom_attendance(50)$$, 'only admin', 'a teacher cannot change the rule');
+select pg_temp.ok(not (select counts_as_present from public.lesson_zoom_minutes(9201, '2026-10-21') where student_id = 9301), 'with 90% needed, 50 minutes is not enough');
+-- Recordings show under the lesson, when the school shows them
+reset role;
+insert into public.class_session_recordings (session_id, zoom_recording_uuid, share_url, passcode, started_at)
+select id, 'rec14', 'https://zoom.us/rec/share/oct14', 'pw14', '2026-10-14 15:00+08' from public.class_sessions where schedule_id = 9201 and lesson_date = '2026-10-14';
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+set local role authenticated;
+select public.set_portal_settings('{"school_name": "Mirai AI School", "accent_color": "#123abc",
+  "student_sees": {"schedule": true, "points": true, "scores": true, "package": false, "report": false, "recordings": true},
+  "parent_sees": {"schedule": true, "points": true, "scores": true, "package": true, "report": true, "recordings": false}}');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok(exists (select 1 from jsonb_array_elements(public.portal_home(9301) -> 'lessons') e
+  where e ->> 'date' = '2026-10-14' and e -> 'recording' ->> 'url' = 'https://zoom.us/rec/share/oct14'), 'the child sees the recording under that lesson');
+select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
+select pg_temp.ok(not exists (select 1 from jsonb_array_elements(public.portal_home(9301) -> 'lessons') e
+  where e -> 'recording' <> 'null'::jsonb), 'a school can hide recordings from a login');
+
 reset role;
 rollback;

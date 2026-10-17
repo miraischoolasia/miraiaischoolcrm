@@ -8,7 +8,7 @@ export type Branding = { schoolName: string; accentColor: string }
 
 export type Child = { studentId: number; name: string }
 
-export type Sees = { schedule?: boolean; points?: boolean; scores?: boolean; package?: boolean }
+export type Sees = { schedule?: boolean; points?: boolean; scores?: boolean; package?: boolean; report?: boolean; recordings?: boolean }
 
 export type UpcomingClass = {
   date: string
@@ -26,6 +26,8 @@ export type Lesson = {
   status: string
   attended: boolean
   scores: { criterion: string; score: number; max: number }[]
+  // The lesson's Zoom recording, when the school shows recordings.
+  recording?: { url: string; passcode: string | null } | null
 }
 
 export type Points = {
@@ -34,6 +36,22 @@ export type Points = {
   next_level: { name: string; min_points: number } | null
   level_start: number
   recent: { reason: string; points: number; kind: string; date: string }[]
+}
+
+export type TeacherReport = {
+  report: { summary?: string; strengths?: string[]; needs?: string[]; next_steps?: string[]; message?: string }
+  shared_at: string
+}
+
+export type ConsentKind = 'ai_analysis' | 'class_recording'
+
+export type Consent = {
+  kind: ConsentKind
+  title: string
+  text: string
+  required: boolean
+  granted: boolean | null
+  at: string | null
 }
 
 export type Home = {
@@ -46,6 +64,10 @@ export type Home = {
   lessons: Lesson[]
   points?: Points
   package?: { name: string | null; lessons_left: number; expires: string | null }
+  // The latest report a teacher shared (null: none yet; missing: not shown to this login).
+  report?: TeacherReport | null
+  // Only for a parent's login.
+  consents?: Consent[]
 }
 
 // Login names become an internal email; the school never sees or sends mail.
@@ -78,4 +100,9 @@ export async function fetchHome(studentId: number): Promise<Home> {
   const { data, error } = await supabase.rpc('portal_home', { p_student_id: studentId })
   if (error) throw new Error(error.message)
   return data as Home
+}
+
+export async function setConsent(studentId: number, kind: ConsentKind, granted: boolean) {
+  const { error } = await supabase.rpc('portal_set_consent', { p_student_id: studentId, p_kind: kind, p_granted: granted })
+  return error ? error.message : null
 }

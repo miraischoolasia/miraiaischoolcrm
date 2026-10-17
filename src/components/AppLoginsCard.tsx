@@ -2,13 +2,18 @@ import { useCallback, useEffect, useState } from 'react'
 import { Copy, DeviceMobile } from '@phosphor-icons/react'
 import { cn } from '../lib/cn'
 import {
+  consentKinds,
   createParentLogin,
   createStudentLogin,
+  defaultConsentSettings,
+  fetchStudentConsents,
   fetchStudentLogins,
   resetPortalPassword,
   setPortalLoginActive,
   type PortalAccount,
+  type StudentConsent,
 } from '../lib/portal'
+import { formatDate } from '../domain/studentStatus'
 
 type Logins = Awaited<ReturnType<typeof fetchStudentLogins>>
 
@@ -30,6 +35,8 @@ export function AppLoginsCard({
   // New passwords made while the card is open (each shows only once).
   const [shown, setShown] = useState<{ who: string; username: string; password: string }[]>([])
   const [copied, setCopied] = useState(false)
+  // The parent's latest consent answers (null until loaded, or when they cannot be read).
+  const [consents, setConsents] = useState<StudentConsent[] | null>(null)
 
   const load = useCallback(() => {
     fetchStudentLogins(studentId)
@@ -38,6 +45,16 @@ export function AppLoginsCard({
   }, [studentId])
 
   useEffect(load, [load])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchStudentConsents(studentId)
+      .then((next) => !cancelled && setConsents(next))
+      .catch(() => !cancelled && setConsents(null))
+    return () => {
+      cancelled = true
+    }
+  }, [studentId])
 
   async function run(who: string, action: Promise<{ ok: boolean; error?: string; username?: string; password?: string }>) {
     setBusy(true)
@@ -171,6 +188,25 @@ export function AppLoginsCard({
             logins.parentPerson ? undefined : 'No parent linked to this student yet (link one from the family card in the Inbox).',
           )}
         </ul>
+      )}
+
+      {consents && (
+        <div className="mt-2 border-t border-slate-100 pt-2">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Parent's consent (answered in the app)</div>
+          <ul className="mt-1 space-y-0.5 text-sm">
+            {consentKinds.map((kind) => {
+              const answer = consents.find((entry) => entry.kind === kind)
+              return (
+                <li key={kind} className="flex justify-between gap-2">
+                  <span className="text-slate-700">{defaultConsentSettings[kind].title}</span>
+                  <span className={cn(answer ? (answer.granted ? 'text-emerald-700' : 'text-rose-700') : 'text-slate-400')}>
+                    {answer ? `${answer.granted ? 'Agreed' : 'Said no'} · ${formatDate(answer.at.slice(0, 10))}` : 'Not answered'}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
       )}
     </section>
   )

@@ -1,0 +1,25 @@
+type,question,options,answers,match,points,seconds,topic,explanation,subject,ages
+choice,"Which block makes a sprite repeat its steps again and again, without stopping?",*forever | repeat 10 | wait 1 second | if then,,,10,30,Scratch basics,The forever block runs the blocks inside it until the project stops.,,6-8 | 9-11
+choice,Which block starts a script when you click the green flag?,*when green flag clicked | when this sprite clicked | broadcast | stop all,,,10,30,Scratch basics,Hat blocks start scripts; this one runs when the green flag is clicked.,,6-8 | 9-11
+choice,A sprite is at x: 0. It moves 10 steps four times. Where is it now?,*x: 40 | x: 10 | x: 14 | x: 0,,,10,45,Scratch basics,"Each move adds 10, so 4 x 10 = 40.",,9-11 | 12-14
+choice,"What does an ""if ... then"" block do?",*Runs the blocks inside only when the condition is true | Repeats the blocks forever | Stops the project | Changes the costume,,,10,30,Logic,If then checks a condition first.,,6-8 | 9-11 | 12-14
+choice,Which of these is a variable?,*score | move 10 steps | green flag | backdrop,,,10,30,Variables,"A variable stores a value that can change, like a score.",,9-11 | 12-14
+choice,"You want the cat to say ""Hi"" only when it touches the ball. Which blocks do you need?",*if touching ball then + say Hi | forever + move 10 steps | when green flag clicked + stop all | repeat 10 + turn 15 degrees,,,10,45,Logic,A condition (touching) inside if then decides when to say Hi.,,9-11 | 12-14
+choice,What is a bug in coding?,*A mistake that makes the program do the wrong thing | An insect in the computer | A new sprite | A sound effect,,,10,30,Debugging,Finding and fixing bugs is called debugging.,,
+choice,Which loop runs exactly 5 times?,*repeat 5 | forever | repeat until score = 5 | wait 5 seconds,,,10,30,Loops,repeat 5 counts to five and stops.,,6-8 | 9-11
+choice,"In x and y on the Scratch stage, which way is y getting bigger?",*Up | Down | Left | Right,,,10,30,Coordinates,y goes up when it gets bigger; x goes right.,,9-11 | 12-14
+choice,"What does ""broadcast message"" do?",*Sends a message so other sprites can start their scripts | Plays a sound | Shows a speech bubble | Deletes a sprite,,,10,45,Events,"Other sprites listen with ""when I receive"".",,9-11 | 12-14
+choice,Which is the best order to make a sandwich algorithm?,"*Get bread, add filling, close the sandwich | Close the sandwich, get bread, add filling | Add filling, get bread, eat | Eat, get bread, add filling",,,10,45,Algorithms,An algorithm is steps in the right order.,,6-8 | 9-11
+choice,"In Python, what does print(""Hello"") do?",*Shows Hello on the screen | Prints on paper | Saves a file | Asks a question,,,10,30,Python basics,print shows text in the output.,,12-14 | 15-17
+choice,"In Python, what is the value of 7 // 2?",*3 | 3.5 | 4 | 14,,,10,45,Python basics,// divides and keeps only the whole number.,,12-14 | 15-17
+fill,Fill in: a set of steps to solve a problem is called an ____.,,algorithm,close,10,45,Algorithms,An algorithm is a step-by-step plan.,,9-11 | 12-14
+fill,"How many times does ""repeat 3"" inside ""repeat 4"" run the inside blocks?",,12,exact,10,60,Loops,3 x 4 = 12.,,9-11 | 12-14
+fill,What is the x position of the centre of the Scratch stage?,,0,exact,10,30,Coordinates,"The centre is x: 0, y: 0.",,9-11 | 12-14
+fill,Fill in: fixing mistakes in code is called ____.,,debugging,close,10,30,Debugging,,,
+fill,"In Python, what word starts a loop that goes through a list? (for / while / if)",,for,exact,10,30,Python basics,for item in my_list: goes through each item.,,12-14 | 15-17
+short,"In your own words, what does a loop do?",,repeat | again | many times,contains,20,120,Loops,A loop runs the same steps many times.,,
+short,Your sprite does not move when you press the space key. What would you check first?,,when space key pressed | key | event,contains,20,120,Debugging,Check the event block (when space key pressed) and that the move block is attached under it.,,9-11 | 12-14
+short,Why do games use a score variable?,,keep track | count | remember,contains,20,120,Variables,A variable keeps track of a value that changes while you play.,,9-11 | 12-14 | 15-17
+screenshot,Show a screenshot of your script that makes the sprite move with the arrow keys.,,,,20,300,Projects,"Look for one ""when key pressed"" event for each arrow key.",,
+screenshot,Show your game start screen.,,,,20,300,Projects,,,
+link,Share the link to your Scratch project.,,,,20,300,Projects,,,

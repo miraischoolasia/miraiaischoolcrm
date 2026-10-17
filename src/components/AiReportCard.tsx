@@ -6,6 +6,7 @@ import {
   fetchLatestReports,
   reportAsText,
   requestReport,
+  setReportShared,
   type Audience,
   type SavedReport,
 } from '../lib/studentReports'
@@ -44,6 +45,19 @@ export function AiReportCard({ studentId }: { studentId: number }) {
       return
     }
     setReports((existing) => ({ ...(existing ?? {}), [audience]: result.saved }))
+  }
+
+  async function share(shared: boolean) {
+    if (!current?.id) return
+    setBusy(true)
+    setError(null)
+    const result = await setReportShared(current.id, shared)
+    setBusy(false)
+    if (result.error) {
+      setError(result.error)
+      return
+    }
+    setReports((existing) => ({ ...(existing ?? {}), parent: { ...current, sharedAt: result.sharedAt } }))
   }
 
   async function copy() {
@@ -127,6 +141,22 @@ export function AiReportCard({ studentId }: { studentId: number }) {
       )}
 
       <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+        {current?.id && audience === 'parent' && !busy && (
+          <>
+            {current.sharedAt && (
+              <span className="text-xs font-semibold text-emerald-700">
+                In the student app since {formatDate(current.sharedAt.slice(0, 10))}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => void share(!current.sharedAt)}
+              className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              {current.sharedAt ? 'Stop showing in the app' : 'Show in the student app'}
+            </button>
+          </>
+        )}
         {current && !busy && (
           <button
             type="button"

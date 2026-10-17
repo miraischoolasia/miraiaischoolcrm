@@ -1968,6 +1968,132 @@ export type Database = {
         }
         Relationships: []
       }
+      class_session_zoom: {
+        Row: {
+          session_id: number
+          meeting_id: string
+          join_url: string | null
+          passcode: string | null
+          uses_registration: boolean
+          topic: string | null
+          created_by: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          session_id: number
+          meeting_id: string
+          join_url?: string | null
+          passcode?: string | null
+          uses_registration?: boolean
+          topic?: string | null
+          created_by?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          session_id?: number
+          meeting_id?: string
+          join_url?: string | null
+          passcode?: string | null
+          uses_registration?: boolean
+          topic?: string | null
+          created_by?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      class_session_zoom_links: {
+        Row: {
+          session_id: number
+          student_id: number
+          registrant_id: string | null
+          join_url: string
+          created_at: string
+        }
+        Insert: {
+          session_id: number
+          student_id: number
+          registrant_id?: string | null
+          join_url: string
+          created_at?: string
+        }
+        Update: {
+          session_id?: number
+          student_id?: number
+          registrant_id?: string | null
+          join_url?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      zoom_participation: {
+        Row: {
+          id: number
+          session_id: number
+          student_id: number | null
+          participant_uuid: string
+          user_name: string | null
+          joined_at: string
+          left_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: never
+          session_id: number
+          student_id?: number | null
+          participant_uuid: string
+          user_name?: string | null
+          joined_at: string
+          left_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: never
+          session_id?: number
+          student_id?: number | null
+          participant_uuid?: string
+          user_name?: string | null
+          joined_at?: string
+          left_at?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      class_session_recordings: {
+        Row: {
+          id: number
+          session_id: number
+          zoom_recording_uuid: string
+          share_url: string | null
+          passcode: string | null
+          started_at: string | null
+          duration_minutes: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: never
+          session_id: number
+          zoom_recording_uuid: string
+          share_url?: string | null
+          passcode?: string | null
+          started_at?: string | null
+          duration_minutes?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: never
+          session_id?: number
+          zoom_recording_uuid?: string
+          share_url?: string | null
+          passcode?: string | null
+          started_at?: string | null
+          duration_minutes?: number | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       student_ai_reports: {
         Row: {
           id: number
@@ -1980,6 +2106,8 @@ export type Database = {
           model: string | null
           created_by: number | null
           created_at: string
+          shared_at: string | null
+          shared_by: number | null
         }
         Insert: {
           id?: never
@@ -1992,6 +2120,8 @@ export type Database = {
           model?: string | null
           created_by?: number | null
           created_at?: string
+          shared_at?: string | null
+          shared_by?: number | null
         }
         Update: {
           id?: never
@@ -2003,6 +2133,41 @@ export type Database = {
           lesson_count?: number
           model?: string | null
           created_by?: number | null
+          created_at?: string
+          shared_at?: string | null
+          shared_by?: number | null
+        }
+        Relationships: []
+      }
+      student_consents: {
+        Row: {
+          id: number
+          student_id: number
+          kind: 'ai_analysis' | 'class_recording'
+          granted: boolean
+          text_shown: string
+          given_by_person_id: number | null
+          given_by_auth_user: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: never
+          student_id: number
+          kind: 'ai_analysis' | 'class_recording'
+          granted: boolean
+          text_shown: string
+          given_by_person_id?: number | null
+          given_by_auth_user?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: never
+          student_id?: number
+          kind?: 'ai_analysis' | 'class_recording'
+          granted?: boolean
+          text_shown?: string
+          given_by_person_id?: number | null
+          given_by_auth_user?: string | null
           created_at?: string
         }
         Relationships: []
@@ -2702,6 +2867,46 @@ export type Database = {
           p_student_id: number
         }
         Returns: Json
+      }
+      set_portal_consents: {
+        Args: {
+          p_settings: Json
+        }
+        Returns: undefined
+      }
+      student_has_consent: {
+        Args: {
+          p_student_id: number
+          p_kind: string
+        }
+        Returns: boolean
+      }
+      portal_set_consent: {
+        Args: {
+          p_student_id: number
+          p_kind: string
+          p_granted: boolean
+        }
+        Returns: undefined
+      }
+      class_session_roster: {
+        Args: {
+          p_session_id: number
+        }
+        Returns: { student_id: number; full_name: string }[]
+      }
+      lesson_zoom_minutes: {
+        Args: {
+          p_schedule_id: number
+          p_lesson_date: string
+        }
+        Returns: { student_id: number; minutes: number; counts_as_present: boolean }[]
+      }
+      set_zoom_attendance: {
+        Args: {
+          p_present_percent: number
+        }
+        Returns: undefined
       }
       portal_home: {
         Args: {

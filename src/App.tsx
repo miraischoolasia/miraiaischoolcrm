@@ -164,7 +164,7 @@ import { AdminHomeSection } from './components/sections/AdminHomeSection'
 import { buildStudentRows } from './lib/studentRows'
 import { useAutomationSummary } from './hooks/useAutomationSummary'
 import { useStaffReplyStats } from './hooks/useStaffReplyStats'
-import { buildTeacherAgenda, formatClockTime, getAgendaItems, getWeekRange } from './lib/teacherAgenda'
+import { buildTeacherAgenda, formatClockTime, getAgendaItems, getWeekRange, type AgendaItem } from './lib/teacherAgenda'
 import { buildTeacherClasses } from './lib/teacherDetails'
 import { TeacherDetailsSection } from './components/sections/TeacherDetailsSection'
 import {
@@ -5529,6 +5529,16 @@ function App() {
     }
   }
 
+  function openLiveLesson(item: AgendaItem) {
+    setLiveLesson({
+      scheduleId: item.scheduleId,
+      date: item.date,
+      title: item.title,
+      classroomId: item.classroomId,
+      studentCount: item.studentCount,
+    })
+  }
+
   function closeAttendanceModal() {
     setAttendanceModal(null)
     setAttendanceSaveError(null)
@@ -6273,18 +6283,7 @@ function App() {
                 onTakeAttendance={(item) =>
                   void openAttendanceForEvent(item.scheduleId, item.date, item.title)
                 }
-                onRunLive={
-                  supabase
-                    ? (item) =>
-                        setLiveLesson({
-                          scheduleId: item.scheduleId,
-                          date: item.date,
-                          title: item.title,
-                          classroomId: item.classroomId,
-                          studentCount: item.studentCount,
-                        })
-                    : undefined
-                }
+                onRunLive={supabase ? openLiveLesson : undefined}
                 onOpenCalendar={() => setActiveSection('calendar')}
                 onOpenClass={(classroomId) => {
                   const classroom = classroomMap.get(classroomId)
@@ -6331,6 +6330,7 @@ function App() {
                 onTakeAttendance={(item) =>
                   void openAttendanceForEvent(item.scheduleId, item.date, item.title)
                 }
+                onRunLive={supabase ? openLiveLesson : undefined}
                 onOpenCalendar={() => setActiveSection('calendar')}
                 onOpenStudent={openStudentDetail}
                 onRenewStudent={openStudentRenewal}
