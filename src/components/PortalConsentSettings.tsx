@@ -57,7 +57,7 @@ export function PortalConsentSettings() {
           Parents' consent
         </h3>
         <p className="text-sm text-slate-500">
-          Parents answer these in the student app (a parent's login only). Each answer is kept with the wording they saw.
+          Asked with the terms at a parent's first sign-in; parents can change them later in the app (Me). Each answer is kept with the wording they saw.
         </p>
       </div>
 

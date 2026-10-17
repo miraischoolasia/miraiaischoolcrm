@@ -106,3 +106,24 @@ export async function setConsent(studentId: number, kind: ConsentKind, granted: 
   const { error } = await supabase.rpc('portal_set_consent', { p_student_id: studentId, p_kind: kind, p_granted: granted })
   return error ? error.message : null
 }
+
+// Before the app opens: a parent who has not agreed to the school's current
+// terms sees them, with the consent questions.
+export type Onboarding =
+  | { needs_terms: false }
+  | {
+      needs_terms: true
+      terms: { title: string; text: string; version: number }
+      consents: { kind: ConsentKind; title: string; text: string; required: boolean }[]
+    }
+
+export async function fetchOnboarding(): Promise<Onboarding> {
+  const { data, error } = await supabase.rpc('portal_onboarding')
+  if (error) throw new Error(error.message)
+  return (data ?? { needs_terms: false }) as Onboarding
+}
+
+export async function acceptTerms(version: number, answers: Record<ConsentKind, boolean>) {
+  const { error } = await supabase.rpc('portal_accept_terms', { p_version: version, p_consents: answers })
+  return error ? error.message : null
+}

@@ -7,6 +7,7 @@ import {
   type PortalVisibility,
 } from '../lib/portal'
 import { PortalConsentSettings } from './PortalConsentSettings'
+import { PortalTermsSettings } from './PortalTermsSettings'
 
 const sections: Array<[keyof PortalVisibility, string]> = [
   ['schedule', 'Classes and their Zoom link'],
@@ -135,6 +136,8 @@ export function StudentAppSettings() {
           Save
         </button>
       </div>
+
+      <PortalTermsSettings />
 
       <PortalConsentSettings />
     </div>

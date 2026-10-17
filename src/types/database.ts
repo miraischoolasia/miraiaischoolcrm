@@ -2139,6 +2139,30 @@ export type Database = {
         }
         Relationships: []
       }
+      portal_terms_acceptances: {
+        Row: {
+          id: number
+          auth_user_id: string
+          version: number
+          text_shown: string
+          accepted_at: string
+        }
+        Insert: {
+          id?: never
+          auth_user_id: string
+          version: number
+          text_shown: string
+          accepted_at?: string
+        }
+        Update: {
+          id?: never
+          auth_user_id?: string
+          version?: number
+          text_shown?: string
+          accepted_at?: string
+        }
+        Relationships: []
+      }
       student_consents: {
         Row: {
           id: number
@@ -2867,6 +2891,24 @@ export type Database = {
           p_student_id: number
         }
         Returns: Json
+      }
+      set_portal_terms: {
+        Args: {
+          p_title: string
+          p_text: string
+        }
+        Returns: number
+      }
+      portal_onboarding: {
+        Args: Record<string, never>
+        Returns: Json
+      }
+      portal_accept_terms: {
+        Args: {
+          p_version: number
+          p_consents: Json
+        }
+        Returns: undefined
       }
       set_portal_consents: {
         Args: {

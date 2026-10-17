@@ -5,8 +5,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { LiveProvider } from '@/lib/live'
 import { useSession } from '@/lib/session'
-import { colors } from '@/ui/kit'
+import { colors, Loading, Screen } from '@/ui/kit'
 import { LiveQuestionBanner } from '@/ui/LiveQuestionCard'
+import { TermsScreen } from '@/ui/TermsScreen'
 
 // The three tabs, as one bar at the bottom on phones and on the web. A
 // question the teacher pops shows on Home; the other tabs get a bar for it.
@@ -14,7 +15,16 @@ export default function AppLayout() {
   const insets = useSafeAreaInsets()
   const pathname = usePathname()
   const router = useRouter()
-  const { branding } = useSession()
+  const { branding, onboarding } = useSession()
+  // A parent agrees to the school's terms before the app opens.
+  if (onboarding === null) {
+    return (
+      <Screen>
+        <Loading />
+      </Screen>
+    )
+  }
+  if (onboarding.needs_terms) return <TermsScreen onboarding={onboarding} />
   return (
     <LiveProvider>
       <Tabs>

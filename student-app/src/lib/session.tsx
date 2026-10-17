@@ -5,10 +5,12 @@ import {
   fetchBranding,
   fetchChildren,
   fetchHome,
+  fetchOnboarding,
   loginEmail,
   type Branding,
   type Child,
   type Home,
+  type Onboarding,
 } from './portal'
 import { isConfigured, supabase } from './supabase'
 
@@ -21,6 +23,9 @@ type SessionState = {
   chooseChild: (studentId: number) => void
   home: Home | null
   homeError: string | null
+  // What must happen before the app opens (null while it is being checked).
+  onboarding: Onboarding | null
+  reloadOnboarding: () => Promise<void>
   isRefreshing: boolean
   refresh: () => Promise<void>
   signIn: (username: string, password: string) => Promise<string | null>
@@ -40,6 +45,7 @@ export function SessionProvider({ children: content }: PropsWithChildren) {
   const [home, setHome] = useState<Home | null>(null)
   const [homeError, setHomeError] = useState<string | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [onboarding, setOnboarding] = useState<Onboarding | null>(null)
 
   useEffect(() => {
     fetchBranding().then(setBranding)
@@ -54,9 +60,22 @@ export function SessionProvider({ children: content }: PropsWithChildren) {
         setChildren([])
         setChildId(null)
         setHome(null)
+        setOnboarding(null)
       }
     })
     return () => data.subscription.unsubscribe()
+  }, [])
+
+  // Terms to agree to first (a parent's first sign-in, or new terms).
+  useEffect(() => {
+    if (!session) return
+    fetchOnboarding()
+      .then(setOnboarding)
+      .catch(() => setOnboarding({ needs_terms: false }))
+  }, [session])
+
+  const reloadOnboarding = useCallback(async () => {
+    setOnboarding(await fetchOnboarding())
   }, [])
 
   // The children this login may see; the first is picked.
@@ -134,12 +153,14 @@ export function SessionProvider({ children: content }: PropsWithChildren) {
       chooseChild,
       home,
       homeError,
+      onboarding,
+      reloadOnboarding,
       isRefreshing,
       refresh,
       signIn,
       signOut,
     }),
-    [branding, childId, children, chooseChild, home, homeError, isLoading, isRefreshing, refresh, session, signIn, signOut],
+    [branding, childId, children, chooseChild, home, homeError, isLoading, isRefreshing, onboarding, refresh, reloadOnboarding, session, signIn, signOut],
   )
 
   return <SessionContext.Provider value={value}>{content}</SessionContext.Provider>

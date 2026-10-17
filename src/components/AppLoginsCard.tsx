@@ -8,6 +8,7 @@ import {
   defaultConsentSettings,
   fetchStudentConsents,
   fetchStudentLogins,
+  fetchTermsAcceptance,
   resetPortalPassword,
   setPortalLoginActive,
   type PortalAccount,
@@ -37,6 +38,8 @@ export function AppLoginsCard({
   const [copied, setCopied] = useState(false)
   // The parent's latest consent answers (null until loaded, or when they cannot be read).
   const [consents, setConsents] = useState<StudentConsent[] | null>(null)
+  // When the parent agreed to the app's terms (null: not yet, undefined: not loaded).
+  const [terms, setTerms] = useState<{ version: number; at: string } | null | undefined>(undefined)
 
   const load = useCallback(() => {
     fetchStudentLogins(studentId)
@@ -55,6 +58,18 @@ export function AppLoginsCard({
       cancelled = true
     }
   }, [studentId])
+
+  const parentAuthId = logins?.parent?.authUserId ?? null
+  useEffect(() => {
+    if (!parentAuthId) return
+    let cancelled = false
+    fetchTermsAcceptance(parentAuthId)
+      .then((next) => !cancelled && setTerms(next))
+      .catch(() => !cancelled && setTerms(undefined))
+    return () => {
+      cancelled = true
+    }
+  }, [parentAuthId])
 
   async function run(who: string, action: Promise<{ ok: boolean; error?: string; username?: string; password?: string }>) {
     setBusy(true)
@@ -194,6 +209,14 @@ export function AppLoginsCard({
         <div className="mt-2 border-t border-slate-100 pt-2">
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Parent's consent (answered in the app)</div>
           <ul className="mt-1 space-y-0.5 text-sm">
+            {parentAuthId && terms !== undefined && (
+              <li className="flex justify-between gap-2">
+                <span className="text-slate-700">App terms</span>
+                <span className={cn(terms ? 'text-emerald-700' : 'text-slate-400')}>
+                  {terms ? `Agreed · ${formatDate(terms.at.slice(0, 10))} (version ${terms.version})` : 'Not yet (asked at first sign-in)'}
+                </span>
+              </li>
+            )}
             {consentKinds.map((kind) => {
               const answer = consents.find((entry) => entry.kind === kind)
               return (

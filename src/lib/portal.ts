@@ -165,3 +165,42 @@ export async function fetchStudentConsents(studentId: number): Promise<StudentCo
   }
   return consentKinds.flatMap((kind) => (latest.has(kind) ? [latest.get(kind)!] : []))
 }
+
+// ---------------------------------------------------------------------------
+// The app's terms, agreed at a parent's first sign-in
+
+export type PortalTerms = { title: string; text: string; version: number }
+
+export async function fetchPortalTerms(): Promise<PortalTerms> {
+  const empty: PortalTerms = { title: 'Terms and conditions', text: '', version: 0 }
+  if (!supabase) return empty
+  const { data, error } = await supabase.from('app_settings').select('value').eq('key', 'portal_terms').maybeSingle()
+  if (error) throw error
+  const value = (data?.value ?? {}) as Partial<PortalTerms>
+  return {
+    title: typeof value.title === 'string' ? value.title : empty.title,
+    text: typeof value.text === 'string' ? value.text : '',
+    version: Number(value.version) || 0,
+  }
+}
+
+// Resolves to the new version (it goes up when the wording changes), or an error.
+export async function savePortalTerms(title: string, text: string): Promise<{ version: number | null; error: string | null }> {
+  if (!supabase) return { version: null, error: 'Supabase is not configured.' }
+  const { data, error } = await supabase.rpc('set_portal_terms', { p_title: title, p_text: text })
+  return error ? { version: null, error: error.message || 'Failed to save.' } : { version: data, error: null }
+}
+
+// When this login last agreed to the terms (and which version), or null.
+export async function fetchTermsAcceptance(authUserId: string): Promise<{ version: number; at: string } | null> {
+  if (!supabase) return null
+  const { data, error } = await supabase
+    .from('portal_terms_acceptances')
+    .select('version, accepted_at')
+    .eq('auth_user_id', authUserId)
+    .order('version', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data ? { version: data.version, at: data.accepted_at } : null
+}

@@ -978,5 +978,33 @@ select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
 select pg_temp.ok(not exists (select 1 from jsonb_array_elements(public.portal_home(9301) -> 'lessons') e
   where e -> 'recording' <> 'null'::jsonb), 'a school can hide recordings from a login');
 
+-- Terms at the first sign-in (20261022070000) ---------------------------------
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+set local role authenticated;
+select pg_temp.ok(not (public.portal_onboarding() ->> 'needs_terms')::boolean, 'a child''s login is not asked to agree');
+select pg_temp.fails($$select public.portal_accept_terms(1, '{"ai_analysis": true, "class_recording": true}')$$, 'only a parent', 'a child cannot agree to the terms');
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
+select pg_temp.ok((public.portal_onboarding() ->> 'needs_terms')::boolean
+  and (public.portal_onboarding() -> 'terms' ->> 'version')::int = 1
+  and jsonb_array_length(public.portal_onboarding() -> 'consents') = 2, 'a parent who has not agreed sees the terms and the consent questions');
+-- AI consent was made required earlier in these checks.
+select pg_temp.fails($$select public.portal_accept_terms(1, '{"ai_analysis": false, "class_recording": true}')$$, 'the school needs', 'a required consent must be yes');
+select pg_temp.fails($$select public.portal_accept_terms(1, '{"ai_analysis": true}')$$, 'answer each', 'every consent needs an answer');
+select pg_temp.fails($$select public.portal_accept_terms(7, '{"ai_analysis": true, "class_recording": true}')$$, 'have changed', 'only the terms shown can be agreed');
+select public.portal_accept_terms(1, '{"ai_analysis": true, "class_recording": false}');
+select pg_temp.ok(not (public.portal_onboarding() ->> 'needs_terms')::boolean, 'after agreeing the app opens');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select pg_temp.ok(public.student_has_consent(9301, 'ai_analysis') and not public.student_has_consent(9301, 'class_recording'), 'the answers count for the child');
+select pg_temp.ok((select count(*) from public.portal_terms_acceptances where version = 1 and text_shown like 'This app shows%') = 1, 'the teacher sees the agreement, with the wording agreed to');
+select pg_temp.fails($$select public.set_portal_terms('T', 'x')$$, 'only admin', 'a teacher cannot change the terms');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select pg_temp.ok(public.set_portal_terms('Our rules', 'This app shows your child''s classes, class links, points, the teacher''s ratings and the package. Keep your login to yourself. The school keeps your child''s records to run the classes and may contact you about them. You can ask the school to see or correct your child''s records at any time.') = 1,
+  'a new title alone keeps the version');
+select pg_temp.ok(public.set_portal_terms('Our rules', 'New wording.') = 2, 'new wording raises the version');
+select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
+select pg_temp.ok((public.portal_onboarding() ->> 'needs_terms')::boolean and (public.portal_onboarding() -> 'terms' ->> 'text') = 'New wording.', 'parents are asked again after a change');
+
 reset role;
 rollback;
