@@ -99,7 +99,7 @@ async function addClassVideo(admin: SupabaseClient, row: Row) {
       source: 'zoom',
       recording_id: row.id,
     },
-    { onConflict: 'bunny_library_id,bunny_video_id', ignoreDuplicates: true },
+    { onConflict: 'classroom_id,bunny_library_id,bunny_video_id', ignoreDuplicates: true },
   )
 }
 

@@ -71,8 +71,10 @@ export type Home = {
 }
 
 // Login names become an internal email; the school never sees or sends mail.
+// A login name, or the e-mail a student used before (the old recordings
+// site): "ali@gmail.com" becomes the login "ali_gmail.com".
 export function loginEmail(username: string) {
-  return `${username.trim().toLowerCase()}@portal.internal`
+  return `${username.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '_')}@portal.internal`
 }
 
 export const defaultBranding: Branding = { schoolName: '', accentColor: '#fc0c97' }

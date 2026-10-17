@@ -1185,4 +1185,16 @@ select pg_temp.ok((select classroom_id from public.students where id = 9301) = 9
   'leaving the main class makes the other class the main one, without a second stay');
 
 reset role;
+
+-- One Bunny video in several classes (20261022110000) ----------------------------
+reset role;
+insert into public.classrooms (id, name, age_group, program_level, status) select 9199, 'Shared video class', age_group, program_level, 'active' from public.classrooms where id = 9101;
+insert into public.class_videos (classroom_id, title, year, month, bunny_library_id, bunny_video_id) values (9199, 'Shared', 2026, 6, '123456', 'vid-june');
+select pg_temp.fails($$insert into public.class_videos (classroom_id, title, year, month, bunny_library_id, bunny_video_id) values (9199, 'Twice', 2026, 6, '123456', 'vid-june')$$, 'duplicate key', 'a video is in a class once');
+select pg_temp.ok((select count(*) from public.class_videos where bunny_video_id = 'vid-june') = 2, 'the same Bunny video in two classes');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+set local role authenticated;
+select pg_temp.fails($$select * from public.legacy_ids$$, 'permission denied', 'nobody signed in reads the import ids');
+reset role;
+
 rollback;

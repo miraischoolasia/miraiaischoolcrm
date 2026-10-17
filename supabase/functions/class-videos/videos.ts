@@ -39,7 +39,13 @@ export async function checkClassVideo(admin: SupabaseClient, row: ClassVideoRow)
     // Bunny has no file yet: an upload that has not arrived stays "uploading".
     const status = state === 'processing' && row.status === 'uploading' && !video?.storageSize ? 'uploading' : state
     if (status !== row.status) {
-      await admin.from('class_videos').update({ status, updated_at: new Date().toISOString() }).eq('id', row.id)
+      // The same Bunny video can be in several classes.
+      await admin
+        .from('class_videos')
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq('bunny_library_id', row.bunny_library_id)
+        .eq('bunny_video_id', row.bunny_video_id)
+        .eq('status', row.status)
     }
     return status
   } catch {

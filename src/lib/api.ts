@@ -41,6 +41,8 @@ function isMissingTableError(error: { code?: string }) {
   return error.code === 'PGRST205' || error.code === '42P01'
 }
 
+const STUDENT_PAGE_SIZE = 1000
+
 export async function fetchStudentsFromSupabase() {
   if (!supabase) {
     return []
@@ -49,16 +51,28 @@ export async function fetchStudentsFromSupabase() {
   const columns =
     'id, teacher_id, classroom_id, full_name, phone, age, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date, notes, is_active, student_type'
   const birth = 'date_of_birth'
+  type Row = Omit<StudentRow, 'package_id'> & {
+    package_id?: number | null
+    student_classroom_periods?: ClassroomPeriodRow[]
+  }
+  // Supabase answers at most 1000 rows at a time, so a big school is read
+  // page by page.
   const select = async (selected: string) => {
-    const result = await supabase!.from('students').select(selected).order('full_name')
-    return result as unknown as {
-      data:
-        | (Omit<StudentRow, 'package_id'> & {
-            package_id?: number | null
-            student_classroom_periods?: ClassroomPeriodRow[]
-          })[]
-        | null
-      error: { code?: string } | null
+    const rows: Row[] = []
+    for (let from = 0; ; from += STUDENT_PAGE_SIZE) {
+      const result = (await supabase!
+        .from('students')
+        .select(selected)
+        .order('full_name')
+        .order('id')
+        .range(from, from + STUDENT_PAGE_SIZE - 1)) as unknown as { data: Row[] | null; error: { code?: string } | null }
+      if (result.error) {
+        return { data: null, error: result.error }
+      }
+      rows.push(...(result.data ?? []))
+      if ((result.data ?? []).length < STUDENT_PAGE_SIZE) {
+        return { data: rows, error: null }
+      }
     }
   }
   const history = 'student_classroom_periods(classroom_id, start_date, end_date)'
