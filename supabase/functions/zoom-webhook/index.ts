@@ -9,7 +9,6 @@
 //
 // Secret: ZOOM_WEBHOOK_SECRET (the app's "Secret Token"). No login: every event
 // must carry Zoom's signature (only the address check is answered without one).
-import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
   readParticipantEvent,
   readRecordingEvent,
@@ -54,6 +53,9 @@ Deno.serve(async (req) => {
   if (!signed) return json({ ok: false }, 401)
 
   const event = message.event ?? ''
+  // Loaded only for real events, so Zoom's address check (which must be
+  // answered within 3 seconds, even on a cold start) does not wait for it.
+  const { createClient } = await import('jsr:@supabase/supabase-js@2')
   const admin = createClient(supabaseUrl, serviceRoleKey)
   const meetingIdOf = (payload: unknown) => String((payload as { object?: { id?: unknown } })?.object?.id ?? '')
   const { data: meeting } = await admin
