@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Bell, BellSlash, CaretDown, ChatCircleDots, CheckCircle, EnvelopeSimple, FunnelSimple, ImageSquare, Lightning, X, MagnifyingGlass, Phone, Plus, SpeakerHigh, SpeakerSlash, PushPin } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { LeadTagChip } from '../LeadTagChip'
 import { ChannelBadge, type ChannelInfo } from './ChannelBadge'
+import { Highlighted } from './Highlighted'
 import { formatReactionLine, isCheckingReaction, type ReactionPreview } from '../../lib/reactionPreview'
 import { waIdOf } from '../../lib/waActions'
 import type { LeadOption } from '../../types/domain'
@@ -64,6 +65,11 @@ type ConversationListProps = {
   sources: FilterChoice[]
   // The message that matched the search, by chat.
   snippets: ReadonlyMap<number, string>
+  // While searching: the chats found by name or number. The rest were found by the words in their messages.
+  // null when nothing is being searched.
+  peopleIds?: ReadonlySet<number> | null
+  // The name or number that made a chat fit the search, shown when the row itself does not show it.
+  matchOf?: (conversation: ChatwootConversation) => string | null
   // The parent's name on the lead a chat belongs to, for chats WhatsApp gave no name.
   leadNameOf?: (conversation: ChatwootConversation) => string | null
   // What the parent's students are to the school ("Regular · 3 Months", "HOA"), per chat.
@@ -175,6 +181,8 @@ export function ConversationList({
   tags,
   sources,
   snippets,
+  peopleIds = null,
+  matchOf,
   leadNameOf,
   studentLabelsOf,
   tagsOf,
@@ -503,8 +511,15 @@ export function ConversationList({
               : emptyText(tab, canLoadMore)}
           </p>
         )}
-        {conversations.map((conversation) => {
+        {conversations.map((conversation, index) => {
+          // While searching, a heading starts each group: the people found, then the chats where the words were said.
+          const isPerson = peopleIds?.has(conversation.id) ?? false
+          const startsGroup =
+            peopleIds !== null && (index === 0 || (peopleIds.has(conversations[index - 1].id) ?? false) !== isPerson)
           const identity = getChatIdentity(conversation.meta.sender, leadNameOf?.(conversation), conversation.meta.channel)
+          // Why a person came up when the row does not show it: the WhatsApp name, a child's name...
+          const matched = isPerson ? (matchOf?.(conversation) ?? null) : null
+          const matchedName = matched && !identity.title.toLowerCase().includes(matched.toLowerCase()) ? matched : null
           const channel = channelOf?.(conversation) ?? null
           const pic = picOf?.(conversation) ?? null
           const lastMessage = conversation.last_non_activity_message
@@ -523,8 +538,13 @@ export function ConversationList({
           // Past a day it is most likely an old chat, so it gets the label but not the red row.
           const redRow = overdue && waiting < STALE_SECONDS
           return (
+            <Fragment key={conversation.id}>
+            {startsGroup && (
+              <h3 className="sticky top-0 z-10 border-b border-slate-100 bg-slate-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {isPerson ? 'Chats' : 'Found in messages'}
+              </h3>
+            )}
             <button
-              key={conversation.id}
               type="button"
               onClick={() => onSelect(conversation.id)}
               className={cn(
@@ -545,7 +565,7 @@ export function ConversationList({
               <span className="min-w-0">
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate text-sm font-semibold text-slate-900">{identity.title}</span>
+                    <span className="truncate text-sm font-semibold text-slate-900"><Highlighted text={identity.title} query={isPerson ? search : undefined} /></span>
                     {!channel && socialKindOf(conversation.meta.channel, conversation.meta.sender) === 'messenger' && (
                       <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
                         Messenger
@@ -575,6 +595,11 @@ export function ConversationList({
                   </span>
                   <span className="shrink-0 text-xs text-slate-400">{formatListTime(conversation.last_activity_at)}</span>
                 </span>
+                {isPerson && matchedName && (
+                  <span className="block truncate text-xs text-slate-500">
+                    <Highlighted text={matchedName} query={search} />
+                  </span>
+                )}
                 <span className="flex items-center justify-between gap-2">
                   <span className="truncate text-sm text-slate-500">
                     {draftOf?.(conversation) ? (
@@ -585,16 +610,20 @@ export function ConversationList({
                     ) : snippets.get(conversation.id) ? (
                       <>
                         <span className="font-medium text-[#be185d]">Found: </span>
-                        {snippets.get(conversation.id)}
+                        <Highlighted text={snippets.get(conversation.id) ?? ''} query={search} />
                       </>
                     ) : reactionLine ? (
                       reactionLine
                     ) : lastMessage?.private && preview ? (
-                      `Note: ${preview}`
+                      <>
+                        Note: <Highlighted text={preview} query={search} />
+                      </>
                     ) : lastMessage?.message_type === 1 && preview ? (
-                      `You: ${preview}`
+                      <>
+                        You: <Highlighted text={preview} query={search} />
+                      </>
                     ) : (
-                      preview
+                      <Highlighted text={preview} query={search} />
                     )}
                   </span>
                   {conversation.unread_count > 0 && conversation.status !== 'resolved' && conversation.custom_attributes?.crm_marked_unread && conversation.unread_count <= 1 ? (
@@ -642,6 +671,7 @@ export function ConversationList({
                 </span>
               </span>
             </button>
+            </Fragment>
           )
         })}
         {canLoadMore && (

@@ -363,6 +363,7 @@ export function DetailsPanel({
   if (isGroupChat(sender)) {
     return (
       <aside className={className}>
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4">
         {onBack && (
           <button
             type="button"
@@ -380,6 +381,7 @@ export function DetailsPanel({
             lead form, family card or AI suggestion for it.
           </p>
         </div>
+        </div>
       </aside>
     )
   }
@@ -391,6 +393,7 @@ export function DetailsPanel({
 
   return (
     <aside className={className}>
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4">
       {onBack && (
         <button
           type="button"
@@ -605,8 +608,11 @@ export function DetailsPanel({
             </div>
           )}
         </div>
-        {tabs.length > 1 && (
-          <nav aria-label="Panel sections" className="sticky top-0 flex shrink-0 flex-col gap-1">
+      </div>
+      </div>
+      {tabs.length > 1 && (
+          // The same column as the Inbox menu on the left (full height, light grey), with icons only.
+          <nav aria-label="Panel sections" className="flex w-[58px] shrink-0 flex-col items-center gap-1.5 border-l border-slate-200 bg-slate-50 py-3">
             {tabs.map((entry) => {
               const { label, Icon } = TAB_ICONS[entry]
               return (
@@ -618,10 +624,10 @@ export function DetailsPanel({
                   title={label}
                   onClick={() => setTab(entry)}
                   className={cn(
-                    'relative flex h-10 w-10 items-center justify-center rounded-xl border transition',
+                    'relative flex h-11 w-11 items-center justify-center rounded-xl border transition',
                     shownTab === entry
-                      ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]'
-                      : 'border-transparent text-slate-500 hover:border-slate-200 hover:bg-white',
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white',
                   )}
                 >
                   <Icon size={20} weight={shownTab === entry ? 'fill' : 'regular'} aria-hidden="true" />
@@ -634,8 +640,7 @@ export function DetailsPanel({
               )
             })}
           </nav>
-        )}
-      </div>
+      )}
     </aside>
   )
 }

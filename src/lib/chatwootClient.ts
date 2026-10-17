@@ -190,8 +190,8 @@ export function createChatwootClient(
     },
 
     // Every inbox (= WhatsApp number) Chatwoot has.
-    async listInboxes(): Promise<{ id: number; name: string; channelType: string; pageId: string | null }[]> {
-      const data = await request<{ payload: { id: number; name: string; channel_type: string; page_id?: string | number | null }[] }>(
+    async listInboxes(): Promise<{ id: number; name: string; channelType: string; pageId: string | null; phone: string | null }[]> {
+      const data = await request<{ payload: { id: number; name: string; channel_type: string; page_id?: string | number | null; phone_number?: string | null }[] }>(
         '/inboxes',
       )
       return data.payload.map((entry) => ({
@@ -199,6 +199,7 @@ export function createChatwootClient(
         name: entry.name,
         channelType: entry.channel_type,
         // A Facebook Page inbox says which Page it is, so its picture can be fetched.
+        phone: entry.phone_number ? entry.phone_number.replace(/\D/g, '') || null : null,
         pageId: entry.page_id === undefined || entry.page_id === null || entry.page_id === '' ? null : String(entry.page_id),
       }))
     },
