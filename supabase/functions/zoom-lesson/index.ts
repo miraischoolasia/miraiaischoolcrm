@@ -16,6 +16,7 @@
 //   ZOOM_REGISTRANT_DOMAIN  domain for the made-up sign-up addresses, default "students.example.com"
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { meetingBody, registrantEmail, registrantNames, type MeetingOptions } from './logic.ts'
+import { zoomApi, zoomToken } from './zoomApi.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -25,30 +26,6 @@ const corsHeaders = {
 
 function jsonResponse(body: unknown, status: number) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } })
-}
-
-async function zoomToken(accountId: string, clientId: string, clientSecret: string) {
-  const response = await fetch(`https://zoom.us/oauth/token?grant_type=account_credentials&account_id=${encodeURIComponent(accountId)}`, {
-    method: 'POST',
-    headers: { Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}` },
-    signal: AbortSignal.timeout(15000),
-  })
-  if (!response.ok) throw new Error(`Zoom did not accept the account (${response.status}). Check the Zoom app's secrets.`)
-  const data = await response.json()
-  return String(data.access_token)
-}
-
-async function zoomApi(token: string, path: string, init: { method?: string; body?: unknown } = {}) {
-  const response = await fetch(`https://api.zoom.us/v2${path}`, {
-    method: init.method ?? 'GET',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: init.body === undefined ? undefined : JSON.stringify(init.body),
-    signal: AbortSignal.timeout(20000),
-  })
-  const text = await response.text()
-  const data = text ? JSON.parse(text) : {}
-  if (!response.ok) throw new Error(`Zoom: ${data?.message ?? response.status}`)
-  return data
 }
 
 Deno.serve(async (req) => {

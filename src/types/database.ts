@@ -25,6 +25,7 @@ export type Database = {
           subject_id: number | null
           created_at: string
           updated_at: string
+          recording_library_id?: number | null
         }
         Insert: {
           category?: 'regular' | 'trial' | 'camp'
@@ -2073,6 +2074,12 @@ export type Database = {
           started_at: string | null
           duration_minutes: number | null
           created_at: string
+          bunny_library_id: string | null
+          bunny_video_id: string | null
+          bunny_status: 'sending' | 'sent' | 'ready' | 'failed' | 'no_library' | null
+          bunny_detail: string | null
+          zoom_deleted_at: string | null
+          updated_at: string
         }
         Insert: {
           id?: never
@@ -2952,6 +2959,39 @@ export type Database = {
           p_session_id: number
         }
         Returns: { host_user: string; busy_with: string | null; meetings: number; preferred: boolean }[]
+      }
+      set_recording_settings: {
+        Args: {
+          p_delete_zoom_after_upload: boolean
+        }
+        Returns: undefined
+      }
+      recording_libraries_list: {
+        Args: Record<string, never>
+        Returns: { id: number; name: string; library_id: string; collection_id: string | null; has_key: boolean; classes: number }[]
+      }
+      save_recording_library: {
+        Args: {
+          p_id: number | null
+          p_name: string
+          p_library_id: string
+          p_api_key: string
+          p_collection_id: string | null
+        }
+        Returns: number
+      }
+      delete_recording_library: {
+        Args: {
+          p_id: number
+        }
+        Returns: undefined
+      }
+      set_classroom_recording_library: {
+        Args: {
+          p_classroom_id: number
+          p_library_id: number | null
+        }
+        Returns: undefined
       }
       class_session_roster: {
         Args: {

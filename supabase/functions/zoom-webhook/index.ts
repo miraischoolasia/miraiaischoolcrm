@@ -16,6 +16,7 @@ import {
   urlValidationAnswer,
   verifyZoomSignature,
 } from '../zoom-lesson/logic.ts'
+import { readRecordingFiles } from '../zoom-lesson/recordings.ts'
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -29,7 +30,7 @@ Deno.serve(async (req) => {
   if (!secret || !supabaseUrl || !serviceRoleKey) return json({ ok: false, error: 'Not set up.' }, 503)
 
   const raw = await req.text()
-  let message: { event?: string; payload?: Record<string, unknown> }
+  let message: { event?: string; payload?: Record<string, unknown>; download_token?: unknown }
   try {
     message = JSON.parse(raw)
   } catch {
@@ -108,17 +109,30 @@ Deno.serve(async (req) => {
 
   const recording = readRecordingEvent(event, message.payload)
   if (recording) {
-    await admin.from('class_session_recordings').upsert(
-      {
-        session_id: meeting.session_id,
-        zoom_recording_uuid: recording.recordingUuid,
-        share_url: recording.shareUrl,
-        passcode: recording.passcode,
-        started_at: recording.startedAt,
-        duration_minutes: recording.durationMinutes,
-      },
-      { onConflict: 'session_id,zoom_recording_uuid' },
-    )
+    const { data: row } = await admin
+      .from('class_session_recordings')
+      .upsert(
+        {
+          session_id: meeting.session_id,
+          zoom_recording_uuid: recording.recordingUuid,
+          share_url: recording.shareUrl,
+          passcode: recording.passcode,
+          started_at: recording.startedAt,
+          duration_minutes: recording.durationMinutes,
+        },
+        { onConflict: 'session_id,zoom_recording_uuid' },
+      )
+      .select('id, session_id, zoom_recording_uuid, bunny_library_id, bunny_video_id, bunny_status, zoom_deleted_at')
+      .single()
+    // Bunny fetches the video from Zoom; answered first, since Zoom only waits 3 seconds.
+    if (row && !row.bunny_status) {
+      const { files, downloadToken } = readRecordingFiles(message)
+      const { sendToBunny } = await import('../zoom-lesson/bunny.ts')
+      const sending = sendToBunny(admin, row, files, downloadToken)
+      const runtime = (globalThis as { EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void } }).EdgeRuntime
+      if (runtime) runtime.waitUntil(sending)
+      else await sending
+    }
     return json({ ok: true })
   }
 

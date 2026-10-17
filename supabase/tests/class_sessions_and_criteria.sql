@@ -1051,5 +1051,46 @@ select pg_temp.ok((select count(*) from public.zoom_hosts_for_session((select id
   and (select preferred from public.zoom_hosts_for_session((select id from lq_ids where name = 'bsession')) where host_user = 'room1@school.my'),
   'a teacher''s account that is also listed shows once, preferred');
 
+-- Recordings to Bunny (20261022090000) ---------------------------------------
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+set local role authenticated;
+select pg_temp.fails($$select public.save_recording_library(null, 'Coding', '123456', '', null)$$, 'access key', 'a new library needs its key');
+select pg_temp.fails($$select public.save_recording_library(null, 'Coding', 'abc', 'key-12345678', null)$$, 'check constraint', 'the library number is digits');
+insert into lq_ids select 'lib', public.save_recording_library(null, 'Coding', '123456', 'key-12345678', null);
+select public.save_recording_library((select id from lq_ids where name = 'lib'), 'Coding classes', '123456', '', 'col-1');
+select public.set_classroom_recording_library(9101, (select id from lq_ids where name = 'lib'));
+select pg_temp.ok((select has_key and classes = 1 and name = 'Coding classes' and collection_id = 'col-1' from public.recording_libraries_list()),
+  'admin sees the library (not its key), and which classes use it');
+select pg_temp.fails($$select public.set_recording_settings(null)$$, 'say whether', 'the delete setting needs an answer');
+select public.set_recording_settings(true);
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select pg_temp.fails($$select count(*) from public.recording_libraries$$, 'permission denied', 'nobody signed in reads the libraries (they hold keys)');
+select pg_temp.fails($$select * from public.recording_libraries_list()$$, 'only admin', 'a teacher cannot list the libraries');
+select pg_temp.fails(format('select public.set_classroom_recording_library(9101, %s)', (select id from lq_ids where name = 'lib')), 'only admin', 'a teacher cannot change where recordings go');
+reset role;
+select pg_temp.ok((select api_key from public.recording_libraries where id = (select id from lq_ids where name = 'lib')) = 'key-12345678', 'an empty key on a change keeps the key');
+
+-- The app plays Bunny's copy once it is ready
+update public.class_session_recordings
+set bunny_status = 'ready', bunny_library_id = '123456', bunny_video_id = 'vid-1', zoom_deleted_at = now()
+where zoom_recording_uuid = 'rec14';
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+set local role authenticated;
+select pg_temp.ok(exists (select 1 from jsonb_array_elements(public.portal_home(9301) -> 'lessons') e
+  where e ->> 'date' = '2026-10-14' and e -> 'recording' ->> 'url' = 'https://iframe.mediadelivery.net/embed/123456/vid-1'), 'the app plays the Bunny copy');
+reset role;
+update public.class_session_recordings set bunny_status = 'sent' where zoom_recording_uuid = 'rec14';
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+set local role authenticated;
+select pg_temp.ok(not exists (select 1 from jsonb_array_elements(public.portal_home(9301) -> 'lessons') e
+  where e ->> 'date' = '2026-10-14' and e -> 'recording' <> 'null'::jsonb), 'nothing to play while Bunny is not ready and Zoom''s copy is gone');
+reset role;
+update public.class_session_recordings set zoom_deleted_at = null where zoom_recording_uuid = 'rec14';
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+set local role authenticated;
+select pg_temp.ok(exists (select 1 from jsonb_array_elements(public.portal_home(9301) -> 'lessons') e
+  where e ->> 'date' = '2026-10-14' and e -> 'recording' ->> 'url' = 'https://zoom.us/rec/share/oct14'), 'until then Zoom''s copy plays');
+
 reset role;
 rollback;

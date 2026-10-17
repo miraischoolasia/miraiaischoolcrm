@@ -430,3 +430,8 @@ verify_jwt = false
 # checked with ZOOM_WEBHOOK_SECRET, is what authorises it.
 [functions.zoom-webhook]
 verify_jwt = false
+
+# Bunny Stream calls this one (a video is processed) with no login; it only asks Bunny itself,
+# so a fake notice changes nothing. Signed-in staff use it for Check / Send again.
+[functions.recording-bunny]
+verify_jwt = false

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { VideoCamera } from '@phosphor-icons/react'
 import { fetchLessonZoom, lessonZoomHostUrl, prepareLessonZoom, type LessonZoom } from '../lib/zoomLessons'
+import { fetchLessonRecordings, recordingAction, recordingStatusLabels, type LessonRecording } from '../lib/recordings'
 
 // The lesson's own Zoom meeting: make it (each child gets a link of their own
 // in the student app), sign up children added later, and start it as host.
@@ -17,12 +18,25 @@ export function LessonZoomCard({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [problems, setProblems] = useState<string[]>([])
+  const [recordings, setRecordings] = useState<LessonRecording[]>([])
 
   const load = useCallback(() => {
     fetchLessonZoom(scheduleId, lessonDate)
-      .then(setZoom)
+      .then((next) => {
+        setZoom(next)
+        if (next.sessionId) void fetchLessonRecordings(next.sessionId).then(setRecordings).catch(() => setRecordings([]))
+      })
       .catch((loadError) => setError(loadError instanceof Error ? loadError.message : 'Could not read the Zoom meeting.'))
   }, [lessonDate, scheduleId])
+
+  async function act(recordingId: number, action: 'check' | 'send') {
+    setBusy(true)
+    setError(null)
+    const problem = await recordingAction(recordingId, action)
+    setBusy(false)
+    setError(problem)
+    load()
+  }
 
   useEffect(load, [load])
 
@@ -106,6 +120,39 @@ export function LessonZoomCard({
         <p role="alert" className="mt-2 text-sm text-red-700">
           {error}
         </p>
+      )}
+      {recordings.length > 0 && (
+        <ul className="mt-3 space-y-1 border-t border-slate-100 pt-2 text-sm">
+          {recordings.map((recording) => (
+            <li key={recording.id} className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-slate-700">
+                Recording{recording.durationMinutes ? ` · ${recording.durationMinutes} min` : ''} ·{' '}
+                <span className={recording.bunnyStatus === 'ready' ? 'font-semibold text-emerald-700' : recording.bunnyStatus === 'failed' || recording.bunnyStatus === 'no_library' ? 'text-rose-700' : 'text-slate-600'}>
+                  {recordingStatusLabels[recording.bunnyStatus ?? 'none']}
+                </span>
+                {recording.zoomDeleted ? ' · removed from Zoom' : ''}
+                {recording.bunnyDetail && <span className="block text-xs text-slate-500">{recording.bunnyDetail}</span>}
+              </span>
+              <span className="flex gap-2">
+                {recording.bunnyUrl && (
+                  <a href={recording.bunnyUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-sky-700 underline underline-offset-2">
+                    Watch
+                  </a>
+                )}
+                {recording.bunnyStatus === 'sent' && (
+                  <button type="button" disabled={busy} onClick={() => void act(recording.id, 'check')} className="text-xs font-semibold text-slate-600 underline underline-offset-2 disabled:opacity-50">
+                    Check
+                  </button>
+                )}
+                {(recording.bunnyStatus === 'failed' || recording.bunnyStatus === 'no_library' || recording.bunnyStatus === null) && !recording.zoomDeleted && (
+                  <button type="button" disabled={busy} onClick={() => void act(recording.id, 'send')} className="text-xs font-semibold text-slate-600 underline underline-offset-2 disabled:opacity-50">
+                    Send to Bunny
+                  </button>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
       {problems.length > 0 && (
         <ul className="mt-2 list-disc pl-5 text-xs text-amber-700">

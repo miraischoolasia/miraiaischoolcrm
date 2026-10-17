@@ -9,6 +9,7 @@ import { StudentAppSettings } from '../StudentAppSettings'
 import { LiveQuestionSettingsForm } from '../LiveQuestionSettingsForm'
 import { ZoomAttendanceRule } from '../ZoomAttendanceRule'
 import { ZoomHostsSetting } from '../ZoomHostsSetting'
+import { RecordingsSettings } from '../RecordingsSettings'
 import { SubjectsSettings } from '../SubjectsSettings'
 import { AgeGroupsSettings } from '../AgeGroupsSettings'
 import type { AgeGroupOption } from '../../lib/ageGroups'
@@ -26,7 +27,7 @@ export type AttendanceStatusDraft = Pick<AttendanceStatusOption, 'label' | 'atte
 
 type StatusChanges = Partial<AttendanceStatusDraft & Pick<AttendanceStatusOption, 'isActive'>>
 
-type Tab = 'criteria' | 'attendance' | 'rewards' | 'subjects' | 'ai' | 'live' | 'app' | 'zoom'
+type Tab = 'criteria' | 'attendance' | 'rewards' | 'subjects' | 'ai' | 'live' | 'app' | 'zoom' | 'recordings'
 
 type ClassSettingsModalProps = {
   criteria: ReviewCriterion[]
@@ -133,6 +134,7 @@ export function ClassSettingsModal({
               ['live', 'Live questions'],
               ['app', 'Student app'],
               ['zoom', 'Zoom'],
+              ['recordings', 'Recordings'],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -264,6 +266,7 @@ export function ClassSettingsModal({
             <ZoomAttendanceRule />
           </>
         )}
+        {tab === 'recordings' && <RecordingsSettings />}
       </div>
     </ModalShell>
   )
