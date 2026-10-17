@@ -44,7 +44,7 @@ export async function fetchLessonZoom(scheduleId: number, lessonDate: string): P
   }
 }
 
-async function callZoom(action: 'prepare' | 'start' | 'facebook_status' | 'facebook_on' | 'facebook_off', scheduleId: number, lessonDate: string) {
+async function callZoom(action: 'prepare' | 'start' | 'end' | 'facebook_status' | 'facebook_on' | 'facebook_off', scheduleId: number, lessonDate: string) {
   if (!supabase) return { error: 'Supabase is not configured.', data: null }
   const { data, error } = await supabase.functions.invoke('zoom-lesson', { body: { action, scheduleId, lessonDate } })
   if (error) {
@@ -92,4 +92,10 @@ export async function facebookLiveConfigured(scheduleId: number, lessonDate: str
 export async function setFacebookLive(scheduleId: number, lessonDate: string, on: boolean) {
   const { error, data } = await callZoom(on ? 'facebook_on' : 'facebook_off', scheduleId, lessonDate)
   return { error, note: (data?.note as string | undefined) ?? null }
+}
+
+// Ends the lesson's Zoom meeting for everyone (and Facebook Live).
+export async function endLessonZoom(scheduleId: number, lessonDate: string) {
+  const { error, data } = await callZoom('end', scheduleId, lessonDate)
+  return { error, ended: Boolean(data?.ended) }
 }

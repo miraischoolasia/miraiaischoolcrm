@@ -6,6 +6,8 @@
 //             the lesson who has no link yet (each gets their own link, which
 //             the student app shows; no e-mail goes to anyone)
 //   start     a fresh host link to start the meeting (Zoom's host links expire)
+//   end       end the meeting for everyone (and Facebook Live); needs the
+//             Zoom app's meeting:update:status scope
 //   facebook_status / facebook_on / facebook_off
 //             stream the lesson to the school's Facebook Page (facebook.ts)
 // The meeting follows the school's Zoom options (Class Settings > Zoom) and is
@@ -22,7 +24,7 @@ import { meetingBody, registrantEmail, registrantNames, type MeetingOptions } fr
 import { zoomApi, zoomToken } from './zoomApi.ts'
 import { facebookConfigured, goLiveOnFacebook, stopFacebookLive } from './facebook.ts'
 
-const ACTIONS = ['prepare', 'start', 'facebook_status', 'facebook_on', 'facebook_off'] as const
+const ACTIONS = ['prepare', 'start', 'end', 'facebook_status', 'facebook_on', 'facebook_off'] as const
 type Action = (typeof ACTIONS)[number]
 
 const corsHeaders = {
@@ -86,6 +88,24 @@ Deno.serve(async (req) => {
       if (!existing) return jsonResponse({ ok: false, error: 'Make the meeting first.' }, 409)
       const meeting = await zoomApi(token, `/meetings/${encodeURIComponent(existing.meeting_id)}`)
       return jsonResponse({ ok: true, startUrl: meeting.start_url ?? null }, 200)
+    }
+
+    if (action === 'end') {
+      if (!existing) return jsonResponse({ ok: true, ended: false }, 200)
+      await stopFacebookLive(admin, token, existing)
+      await admin.from('class_session_zoom').update({ fb_live_wanted: false }).eq('session_id', session.id)
+      const meeting = await zoomApi(token, `/meetings/${encodeURIComponent(existing.meeting_id)}`)
+      if (meeting.status !== 'started') return jsonResponse({ ok: true, ended: false }, 200)
+      try {
+        await zoomApi(token, `/meetings/${encodeURIComponent(existing.meeting_id)}/status`, { method: 'PUT', body: { action: 'end' } })
+      } catch (problem) {
+        const reason = problem instanceof Error ? problem.message : 'Zoom did not answer.'
+        return jsonResponse(
+          { ok: false, error: `${reason} End the meeting in Zoom (the Zoom app may need the meeting:update:status permission).` },
+          502,
+        )
+      }
+      return jsonResponse({ ok: true, ended: true }, 200)
     }
 
     if (action === 'facebook_on' || action === 'facebook_off') {

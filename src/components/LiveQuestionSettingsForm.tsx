@@ -46,7 +46,7 @@ export function LiveQuestionSettingsForm() {
   return (
     <div className="space-y-5">
       <p className="text-sm text-slate-500">
-        Teachers pop questions from the Question Bank during a lesson (Home &gt; Today &gt; Live questions); children answer in the
+        Teachers pop questions from the Question Bank during a lesson (Home &gt; Today &gt; Live class); children answer in the
         student app. The right answer shows only when the teacher presses Show the answer.
       </p>
 

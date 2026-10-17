@@ -8,6 +8,7 @@ import { AiReportSettings } from '../AiReportSettings'
 import { StudentAppSettings } from '../StudentAppSettings'
 import { LiveQuestionSettingsForm } from '../LiveQuestionSettingsForm'
 import { ZoomAttendanceRule } from '../ZoomAttendanceRule'
+import { LateReminderSetting } from '../LateReminderSetting'
 import { ZoomHostsSetting } from '../ZoomHostsSetting'
 import { RecordingsSettings } from '../RecordingsSettings'
 import { SubjectsSettings } from '../SubjectsSettings'
@@ -264,6 +265,7 @@ export function ClassSettingsModal({
             />
             <ZoomHostsSetting />
             <ZoomAttendanceRule />
+            <LateReminderSetting />
           </>
         )}
         {tab === 'recordings' && <RecordingsSettings />}

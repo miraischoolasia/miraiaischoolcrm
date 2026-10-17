@@ -2084,6 +2084,75 @@ export type Database = {
         }
         Relationships: []
       }
+      class_session_notes: {
+        Row: {
+          session_id: number
+          student_id: number
+          note: string
+          updated_at: string
+          updated_by: number | null
+        }
+        Insert: {
+          session_id: number
+          student_id: number
+          note: string
+          updated_at?: string
+          updated_by?: number | null
+        }
+        Update: {
+          session_id?: number
+          student_id?: number
+          note?: string
+          updated_at?: string
+          updated_by?: number | null
+        }
+        Relationships: []
+      }
+      lesson_late_reminders: {
+        Row: {
+          id: number
+          session_id: number
+          student_id: number
+          sent_via: string
+          sent_at: string
+          sent_by: number | null
+        }
+        Insert: {
+          id?: number
+          session_id: number
+          student_id: number
+          sent_via: string
+          sent_at?: string
+          sent_by?: number | null
+        }
+        Update: {
+          id?: number
+          session_id?: number
+          student_id?: number
+          sent_via?: string
+          sent_at?: string
+          sent_by?: number | null
+        }
+        Relationships: []
+      }
+      class_session_question_plan: {
+        Row: {
+          session_id: number
+          question_id: number
+          position: number
+        }
+        Insert: {
+          session_id: number
+          question_id: number
+          position: number
+        }
+        Update: {
+          session_id?: number
+          question_id?: number
+          position?: number
+        }
+        Relationships: []
+      }
       zoom_waiting: {
         Row: {
           id: number
@@ -3138,6 +3207,36 @@ export type Database = {
         Args: {
           p_drop_grace_seconds: number
           p_late_minutes: number
+        }
+        Returns: undefined
+      }
+      set_late_reminder_settings: {
+        Args: {
+          p_after_minutes: number
+          p_text: string
+        }
+        Returns: undefined
+      }
+      record_late_reminder: {
+        Args: {
+          p_session_id: number
+          p_student_id: number
+          p_sent_via: string
+        }
+        Returns: undefined
+      }
+      set_class_session_plan: {
+        Args: {
+          p_session_id: number
+          p_question_ids: number[]
+        }
+        Returns: undefined
+      }
+      save_class_session_note: {
+        Args: {
+          p_session_id: number
+          p_student_id: number
+          p_note: string
         }
         Returns: undefined
       }

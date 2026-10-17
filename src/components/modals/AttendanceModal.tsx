@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { cn } from '../../lib/cn'
 import { formatDate } from '../../domain/studentStatus'
+import { fetchClassNotesFor, remarksWithNotes } from '../../lib/classNotes'
 import { needsRemark, type ReviewMetric } from '../../lib/reviewCriteria'
 import {
   attendanceColorStyles,
@@ -234,7 +235,18 @@ export function AttendanceModal({
                     rosterIds={rosterIds}
                     absentKey={statusOptions.find((option) => !option.attended && option.key === 'absent')?.key ?? statusOptions.find((option) => !option.attended)?.key ?? null}
                     onSetStatus={onSetStatus}
+                    auto={Boolean(attendanceModal.autoFill) && !attendanceExistingLog && !isRosterOnly}
                   />
+                  {!isRosterOnly && (
+                    <ClassNotesButton
+                      auto={Boolean(attendanceModal.autoFill) && !attendanceExistingLog}
+                      scheduleId={attendanceModal.scheduleId}
+                      lessonDate={attendanceModal.occurrenceDate}
+                      rosterIds={rosterIds}
+                      remarkOf={(studentId) => attendanceReviews[studentId]?.lessonRemark ?? ''}
+                      onUpdateLessonRemark={onUpdateLessonRemark}
+                    />
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -521,15 +533,19 @@ function ZoomFillButton({
   rosterIds,
   absentKey,
   onSetStatus,
+  auto = false,
 }: {
   scheduleId: number
   lessonDate: string
   rosterIds: number[]
   absentKey: AttendanceStatus | null
   onSetStatus: (studentId: number, status: AttendanceStatus) => void
+  // Fill at once (after "End class"), when the roster is in.
+  auto?: boolean
 }) {
   const [hasMeeting, setHasMeeting] = useState(false)
   const [note, setNote] = useState<string | null>(null)
+  const autoDone = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -540,6 +556,14 @@ function ZoomFillButton({
       cancelled = true
     }
   }, [lessonDate, scheduleId])
+
+  const ready = auto && hasMeeting && rosterIds.length > 0
+  useEffect(() => {
+    if (!ready || autoDone.current) return
+    autoDone.current = true
+    void fill()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready])
 
   if (!hasMeeting) return null
 
@@ -576,3 +600,66 @@ function ZoomFillButton({
     </>
   )
 }
+
+// Copies the notes the teacher wrote in the live class console into each
+// child's lesson remark (added to what is there). Shown only when there are notes.
+function ClassNotesButton({
+  scheduleId,
+  lessonDate,
+  rosterIds,
+  remarkOf,
+  onUpdateLessonRemark,
+  auto = false,
+}: {
+  scheduleId: number
+  lessonDate: string
+  rosterIds: number[]
+  remarkOf: (studentId: number) => string
+  onUpdateLessonRemark: (studentId: number, value: string) => void
+  // Add at once (after "End class"), when the roster is in.
+  auto?: boolean
+}) {
+  const [notes, setNotes] = useState<Map<number, string>>(new Map())
+  const [note, setNote] = useState<string | null>(null)
+  const autoDone = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchClassNotesFor(scheduleId, lessonDate)
+      .then((next) => !cancelled && setNotes(next))
+      .catch(() => !cancelled && setNotes(new Map()))
+    return () => {
+      cancelled = true
+    }
+  }, [lessonDate, scheduleId])
+
+  const ready = auto && notes.size > 0 && rosterIds.length > 0
+  useEffect(() => {
+    if (!ready || autoDone.current) return
+    autoDone.current = true
+    add()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready])
+
+  if (notes.size === 0) return null
+
+  function add() {
+    const changes = remarksWithNotes(notes, remarkOf, rosterIds)
+    for (const [studentId, remark] of changes) onUpdateLessonRemark(studentId, remark)
+    setNote(changes.size > 0 ? `Added ${changes.size} ${changes.size === 1 ? 'note' : 'notes'} to the lesson remarks.` : 'The notes are already in the remarks.')
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={add}
+        className="rounded-xl border border-sky-200 bg-white px-3 py-1.5 text-sm font-semibold text-sky-800 transition hover:bg-sky-50"
+      >
+        Add class notes ({notes.size})
+      </button>
+      {note && <span className="text-xs text-slate-600">{note}</span>}
+    </>
+  )
+}
+

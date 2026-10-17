@@ -30,7 +30,7 @@ export type RoomChild = { studentId: number; name: string; firstJoinedAt: string
 
 export type Room = {
   here: RoomChild[]
-  waiting: { key: string; name: string; enteredAt: string }[]
+  waiting: { key: string; studentId: number | null; name: string; enteredAt: string }[]
   left: RoomChild[]
   notYet: RoomChild[]
   strangers: { id: number; name: string; joinedAt: string; stillHere: boolean }[]
@@ -78,6 +78,7 @@ export function buildRoom(input: {
     .sort((a, b) => a.enteredAt.localeCompare(b.enteredAt))
     .map((row) => ({
       key: `w${row.id}`,
+      studentId: row.studentId,
       name: (row.studentId !== null ? names.get(row.studentId) : null) ?? row.userName ?? 'Someone',
       enteredAt: row.enteredAt,
     }))

@@ -467,6 +467,9 @@ export type AttendanceModalState = {
   scheduleId: number
   occurrenceDate: string
   title: string
+  // Opened by "End class" in the live class console: fill from Zoom and add
+  // the class notes at once (the teacher still checks and submits).
+  autoFill?: boolean
 }
 
 export type ClassStatusSummary = {

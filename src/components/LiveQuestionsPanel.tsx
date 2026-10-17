@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Lightning, MagnifyingGlass, Robot, X } from '@phosphor-icons/react'
-import { ModalShell } from './ModalShell'
-import { LessonZoomCard } from './LessonZoomCard'
-import { LessonRoomCard } from './LessonRoomCard'
-import { LessonReportModal } from './LessonReportModal'
+import { ArrowDown, ArrowUp, Check, ListNumbers, MagnifyingGlass, Robot, X } from '@phosphor-icons/react'
 import { QuestionEditorModal } from './questions/QuestionEditorModal'
 import { cn } from '../lib/cn'
 import { emptyQuestionDraft, fetchQuestions, fitsClassroom, questionKindLabels, saveQuestion, type Question } from '../lib/questions'
 import { fetchSubjects, type Subject } from '../lib/subjects'
+import { fetchQuestionPlan, moveInPlan, nextPlanned, saveQuestionPlan } from '../lib/questionPlan'
 import {
   answerText,
   askAiToMark,
@@ -50,25 +47,24 @@ function clock(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-// The teacher runs a lesson's questions from here: pop one from the bank, see
-// the answers come in, show the right answer, mark what waits for them (with
-// the AI's suggestion), and the lesson's points.
+// The questions column of the live class console: pop one from the bank (or
+// write / speak a new one), see the answers come in, show the right answer,
+// mark what waits for the teacher (with the AI's suggestion), and the
+// lesson's points. What it loads is passed up (onLive) for the student grid.
 export function LiveQuestionsPanel({
   scheduleId,
   lessonDate,
-  title,
   classroom,
   studentNames,
   rosterCount,
-  onClose,
+  onLive,
 }: {
   scheduleId: number
   lessonDate: string
-  title: string
   classroom: { subjectId?: number | null; ageGroup: AgeGroup } | null
   studentNames: Map<number, string>
   rosterCount: number
-  onClose: () => void
+  onLive?: (live: { sessionId: number; questions: LiveQuestion[]; keys: Map<number, LiveKey>; answers: LiveAnswer[] }) => void
 }) {
   const [sessionId, setSessionId] = useState<number | null>(null)
   const [questions, setQuestions] = useState<LiveQuestion[]>([])
@@ -84,10 +80,16 @@ export function LiveQuestionsPanel({
   const [onlyFits, setOnlyFits] = useState(Boolean(classroom))
   const [timeLimit, setTimeLimit] = useState(0)
   const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [showReport, setShowReport] = useState(false)
   const [writing, setWriting] = useState(false)
   const [subjects, setSubjects] = useState<Subject[]>([])
+  const [plan, setPlan] = useState<number[]>([])
   const aiAsked = useRef(new Set<number>())
+
+  const onLiveRef = useRef(onLive)
+  onLiveRef.current = onLive
+  useEffect(() => {
+    if (sessionId) onLiveRef.current?.({ sessionId, questions, keys, answers })
+  }, [answers, keys, questions, sessionId])
 
   const load = useCallback(async (id: number) => {
     try {
@@ -108,6 +110,7 @@ export function LiveQuestionsPanel({
         if (cancelled) return
         setSessionId(session.id)
         void load(session.id)
+        void fetchQuestionPlan(session.id).then((ids) => !cancelled && setPlan(ids))
       })
       .catch((openError: Error) => !cancelled && setError(openError.message))
     fetchQuestions()
@@ -190,31 +193,26 @@ export function LiveQuestionsPanel({
     await run(pushLiveQuestion(sessionId, questionId, timeLimit > 0 ? timeLimit : null))
   }
 
+  async function changePlan(next: number[]) {
+    if (!sessionId) return
+    const before = plan
+    setPlan(next)
+    const problem = await saveQuestionPlan(sessionId, next)
+    if (problem) {
+      setPlan(before)
+      setError(problem)
+    }
+  }
+
+  const bankById = useMemo(() => new Map((bank ?? []).map((question) => [question.id, question])), [bank])
+  const poppedIds = useMemo(() => new Set(questions.map((question) => question.questionId)), [questions])
+  const nextId = nextPlanned(plan, questions)
+  const nextQuestion = nextId !== null ? bankById.get(nextId) ?? null : null
+
   const nameOf = (studentId: number) => studentNames.get(studentId) ?? `Student ${studentId}`
 
   return (
-    <ModalShell placement="right" onClose={onClose}>
-      <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <Lightning size={18} weight="fill" className="text-[#fc0c97]" aria-hidden="true" />
-            <h2 className="text-lg font-semibold text-slate-900">Live questions</h2>
-          </div>
-          <p className="truncate text-sm text-slate-500">
-            {title} · {lessonDate}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {sessionId && (
-            <button type="button" onClick={() => setShowReport(true)} className={secondaryButton}>
-              Lesson report
-            </button>
-          )}
-          <button type="button" onClick={onClose} aria-label="Close" className="rounded-full p-2 text-slate-500 hover:bg-slate-100">
-            <X size={18} aria-hidden="true" />
-          </button>
-        </div>
-      </div>
+    <div className="space-y-5">
       {writing && (
         <QuestionEditorModal
           title="New question"
@@ -236,19 +234,7 @@ export function LiveQuestionsPanel({
           }}
         />
       )}
-      {showReport && sessionId && (
-        <LessonReportModal
-          sessionId={sessionId}
-          scheduleId={scheduleId}
-          lessonDate={lessonDate}
-          title={title}
-          questions={questions}
-          answers={answers}
-          onClose={() => setShowReport(false)}
-        />
-      )}
-
-      <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
+      <>
         {error && (
           <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {error}
@@ -257,8 +243,6 @@ export function LiveQuestionsPanel({
 
         {!sessionId && !error && <p className="text-sm text-slate-500">Opening the lesson…</p>}
 
-        {sessionId && <LessonZoomCard scheduleId={scheduleId} lessonDate={lessonDate} rosterCount={rosterCount} />}
-        {sessionId && <LessonRoomCard sessionId={sessionId} />}
 
         {current && (
           <section aria-label="Question now" className="rounded-2xl border border-slate-200 p-4">
@@ -332,6 +316,49 @@ export function LiveQuestionsPanel({
           </section>
         )}
 
+        <section aria-label="Lesson plan" className="rounded-2xl border border-slate-200 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="flex items-center gap-1.5 text-base font-semibold text-slate-900">
+              <ListNumbers size={18} className="text-[#fc0c97]" aria-hidden="true" />
+              Lesson plan
+            </h3>
+            {nextQuestion && (
+              <button type="button" disabled={busy || !sessionId} onClick={() => void pop(nextQuestion.id)} className={primaryButton}>
+                Pop next: {nextQuestion.prompt.slice(0, 30)}
+                {nextQuestion.prompt.length > 30 ? '…' : ''}
+              </button>
+            )}
+          </div>
+          {plan.length === 0 ? (
+            <p className="mt-1 text-sm text-slate-500">Line questions up before class with "+ Plan" below; in class, pop the next one with one tap.</p>
+          ) : (
+            <ol className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-200">
+              {plan.map((questionId, index) => {
+                const question = bankById.get(questionId)
+                const popped = poppedIds.has(questionId)
+                return (
+                  <li key={questionId} className={cn('flex items-center gap-2 px-3 py-1.5 text-sm', questionId === nextId && 'bg-[#fff0f8]')}>
+                    <span className="w-5 shrink-0 text-xs font-semibold text-slate-500">{index + 1}.</span>
+                    <span className={cn('min-w-0 flex-1 truncate', popped ? 'text-slate-400 line-through' : 'text-slate-800')}>
+                      {question?.prompt ?? 'A question no longer in the bank'}
+                    </span>
+                    {questionId === nextId && <span className="shrink-0 text-xs font-semibold text-[#be185d]">next</span>}
+                    <button type="button" aria-label="Move up" disabled={index === 0} onClick={() => void changePlan(moveInPlan(plan, questionId, -1))} className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30">
+                      <ArrowUp size={14} aria-hidden="true" />
+                    </button>
+                    <button type="button" aria-label="Move down" disabled={index === plan.length - 1} onClick={() => void changePlan(moveInPlan(plan, questionId, 1))} className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30">
+                      <ArrowDown size={14} aria-hidden="true" />
+                    </button>
+                    <button type="button" aria-label="Take out of the plan" onClick={() => void changePlan(plan.filter((id) => id !== questionId))} className="rounded p-1 text-slate-500 hover:bg-slate-100">
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  </li>
+                )
+              })}
+            </ol>
+          )}
+        </section>
+
         <section aria-label="Pop a question" className="rounded-2xl border border-slate-200 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-base font-semibold text-slate-900">Pop a question</h3>
@@ -395,9 +422,19 @@ export function LiveQuestionsPanel({
                       {question.topic ? ` · ${question.topic}` : ''}
                     </div>
                   </div>
-                  <button type="button" disabled={busy || !sessionId} onClick={() => void pop(question.id)} className={primaryButton}>
-                    Pop
-                  </button>
+                  <span className="flex shrink-0 gap-1.5">
+                    <button
+                      type="button"
+                      disabled={!sessionId || plan.includes(question.id) || plan.length >= 200}
+                      onClick={() => void changePlan([...plan, question.id])}
+                      className={secondaryButton}
+                    >
+                      {plan.includes(question.id) ? 'In plan' : '+ Plan'}
+                    </button>
+                    <button type="button" disabled={busy || !sessionId} onClick={() => void pop(question.id)} className={primaryButton}>
+                      Pop
+                    </button>
+                  </span>
                 </li>
               ))}
             </ul>
@@ -456,8 +493,8 @@ export function LiveQuestionsPanel({
             </div>
           </section>
         )}
-      </div>
-    </ModalShell>
+      </>
+    </div>
   )
 }
 

@@ -962,6 +962,55 @@ select pg_temp.fails($$select public.set_zoom_attendance(0)$$, '1 to 100', 'the 
 select pg_temp.login('00000000-0000-0000-0000-00000000000b');
 select pg_temp.fails($$select public.set_zoom_attendance(50)$$, 'only admin', 'a teacher cannot change the rule');
 select pg_temp.ok(not (select counts_as_present from public.lesson_zoom_minutes(9201, '2026-10-21') where student_id = 9301), 'with 90% needed, 50 minutes is not enough');
+-- Notes during a lesson (20261023110000) -----------------------------------------
+reset role;
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+-- a child who is in the lesson that day, and one who is not
+insert into lq_ids select 'nkid', (select student_id from public.class_session_roster((select id from lq_ids where name = 'zsession')) order by student_id limit 1);
+insert into lq_ids select 'nout', (select id from public.students where id in (9301, 9302) and id <> (select id from lq_ids where name = 'nkid') order by id limit 1);
+select pg_temp.ok((select id from lq_ids where name = 'nkid') is not null, 'the lesson has a child');
+select public.save_class_session_note((select id from lq_ids where name = 'zsession'), (select id from lq_ids where name = 'nkid'), '  Helped Siti with loops  ');
+select pg_temp.ok((select note from public.class_session_notes where student_id = (select id from lq_ids where name = 'nkid')) = 'Helped Siti with loops', 'the teacher writes a note, trimmed');
+select public.save_class_session_note((select id from lq_ids where name = 'zsession'), (select id from lq_ids where name = 'nkid'), 'Great focus');
+select pg_temp.ok((select count(*) from public.class_session_notes) = 1 and (select note from public.class_session_notes) = 'Great focus', 'one note per child per lesson');
+select pg_temp.fails($$select public.save_class_session_note((select id from lq_ids where name = 'zsession'), (select id from lq_ids where name = 'nout'), 'x')$$, 'not in this lesson', 'only children in the lesson');
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select pg_temp.ok((select count(*) from public.class_session_notes) = 0, 'another teacher does not see the notes');
+select pg_temp.fails($$select public.save_class_session_note((select session_id from public.class_session_zoom where meeting_id = '123456789'), 9301, 'x')$$, 'only this class', 'another teacher cannot write');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok((select count(*) from public.class_session_notes) = 0, 'a child never sees the notes');
+select pg_temp.fails($$insert into public.class_session_notes (session_id, student_id, note) values (1, 9301, 'x')$$, 'permission denied', 'nobody writes the table directly');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select public.save_class_session_note((select id from lq_ids where name = 'zsession'), (select id from lq_ids where name = 'nkid'), '   ');
+select pg_temp.ok((select count(*) from public.class_session_notes) = 0, 'an empty note removes it');
+
+
+-- Late reminders and the question plan (20261023120000) ---------------------------
+reset role;
+insert into public.questions (owner_id, kind, prompt) values (9002, 'short', 'Plan one'), (9002, 'short', 'Plan two');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select public.record_late_reminder((select id from lq_ids where name = 'zsession'), (select id from lq_ids where name = 'nkid'), 'phone');
+select pg_temp.ok((select count(*) from public.lesson_late_reminders where sent_via = 'phone' and sent_by = 9002) = 1, 'the teacher records a reminder sent');
+select pg_temp.fails($$select public.record_late_reminder((select id from lq_ids where name = 'zsession'), (select id from lq_ids where name = 'nkid'), 'sms')$$, 'how the reminder', 'only inbox or phone');
+select pg_temp.fails($$select public.record_late_reminder((select id from lq_ids where name = 'zsession'), (select id from lq_ids where name = 'nout'), 'inbox')$$, 'not in this lesson', 'only children in the lesson');
+select pg_temp.fails($$select public.set_late_reminder_settings(5, 'Hi')$$, 'only admin', 'a teacher cannot change the reminder words');
+select public.set_class_session_plan((select id from lq_ids where name = 'zsession'), (select array_agg(id order by id desc) from public.questions where prompt in ('Plan one', 'Plan two')));
+select pg_temp.ok((select array_agg(q.prompt order by p.position) from public.class_session_question_plan p join public.questions q on q.id = p.question_id) = array['Plan two', 'Plan one'], 'the plan keeps the order');
+select pg_temp.fails($$select public.set_class_session_plan((select id from lq_ids where name = 'zsession'), array[1, 1]::bigint[])$$, 'twice', 'a question only once');
+select pg_temp.fails($$select public.set_class_session_plan((select id from lq_ids where name = 'zsession'), array[-5]::bigint[])$$, 'not in the bank', 'only bank questions');
+select public.set_class_session_plan((select id from lq_ids where name = 'zsession'), '{}');
+select pg_temp.ok((select count(*) from public.class_session_question_plan) = 0, 'an empty plan clears it');
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select pg_temp.fails($$select public.set_class_session_plan((select session_id from public.class_session_zoom where meeting_id = '123456789'), '{}')$$, 'only this class', 'another teacher cannot plan');
+select pg_temp.ok((select count(*) from public.lesson_late_reminders) = 0, 'another teacher does not see the reminders');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok((select count(*) from public.lesson_late_reminders) = 0 and (select count(*) from public.class_session_question_plan) = 0, 'a child sees neither');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select pg_temp.fails($$select public.set_late_reminder_settings(121, 'Hi')$$, '0 to 120', 'the reminder waits at most 2 hours');
+select public.set_late_reminder_settings(10, '  {child} is late  ');
+select pg_temp.ok((select value from public.app_settings where key = 'lesson_late_reminder') = '{"after_minutes": 10, "text": "{child} is late"}'::jsonb, 'admin sets the reminder words');
 -- Recordings show under the lesson, when the school shows them
 reset role;
 insert into public.class_session_recordings (session_id, zoom_recording_uuid, share_url, passcode, started_at)
@@ -1265,6 +1314,5 @@ reset role;
 update public.classrooms set teacher_id = 9003 where id = 9102;
 select pg_temp.ok((select array_agg(teacher_id order by teacher_id) from public.classroom_teachers where classroom_id = 9102) = array[9003]::bigint[],
   'a new main teacher replaces the old one');
-
 
 rollback;

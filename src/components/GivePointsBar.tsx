@@ -17,12 +17,14 @@ type GivePointsBarProps = {
   // The students who were in class.
   students: Array<{ id: number; name: string }>
   presets: RewardPreset[]
+  // Told after points are given or undone.
+  onChanged?: () => void
 }
 
 // Give points in a lesson: pick a reward (or type your own), pick who gets it
 // (everyone in class by default), give. Points are saved at once, apart from
 // the attendance, and each award can be undone from the list below.
-export function GivePointsBar({ scheduleId, lessonDate, students, presets }: GivePointsBarProps) {
+export function GivePointsBar({ scheduleId, lessonDate, students, presets, onChanged }: GivePointsBarProps) {
   const [entries, setEntries] = useState<PointsEntry[]>([])
   const [presetId, setPresetId] = useState<number | 'custom' | null>(null)
   const [customPoints, setCustomPoints] = useState(5)
@@ -83,6 +85,7 @@ export function GivePointsBar({ scheduleId, lessonDate, students, presets }: Giv
     setCustomReason('')
     setChosenIds(null)
     load()
+    onChanged?.()
   }
 
   async function undo(entry: PointsEntry) {
@@ -94,6 +97,7 @@ export function GivePointsBar({ scheduleId, lessonDate, students, presets }: Giv
     }
     setDone(null)
     load()
+    onChanged?.()
   }
 
   if (students.length === 0) {

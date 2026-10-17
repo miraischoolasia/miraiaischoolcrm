@@ -253,7 +253,9 @@ const isMockMode = import.meta.env.MODE === 'mock'
 
 import { buildCalendarItemEvents, itemsVisibleTo, type CalendarItem } from './lib/calendarItems'
 import { AttendanceModal } from './components/modals/AttendanceModal'
-import { LiveQuestionsPanel } from './components/LiveQuestionsPanel'
+import { LiveClassConsole } from './components/LiveClassConsole'
+import { studentBackgrounds } from './lib/studentBackground'
+import { startChat } from './lib/startChat'
 import { MakeupPlanModal, type MakeupPlanInput } from './components/modals/MakeupPlanModal'
 import {
   MoveClassModal,
@@ -670,7 +672,7 @@ function App() {
 
   const [attendanceModal, setAttendanceModal] =
     useState<AttendanceModalState | null>(null)
-  // The lesson whose live questions are open (Home > Today > Live questions).
+  // The lesson open in the live class console (Home > Today > Live class).
   const [liveLesson, setLiveLesson] = useState<{
     scheduleId: number
     date: string
@@ -5486,6 +5488,7 @@ function App() {
     scheduleId: number,
     occurrenceDate: string,
     title: string,
+    options: { autoFill?: boolean } = {},
   ) {
     // Mirrors submit_lesson_attendance: no attendance ahead of the class day,
     // but the class can still be opened to see who is in it.
@@ -5499,6 +5502,7 @@ function App() {
       scheduleId,
       occurrenceDate,
       title,
+      autoFill: options.autoFill,
     })
     setAttendanceRemark('')
     setAttendanceStatuses({})
@@ -5591,6 +5595,39 @@ function App() {
       },
     }
   }
+
+  // What the live class console shows about each child (lessons left, the last remark).
+  const liveBackgrounds = useMemo(
+    () =>
+      liveLesson
+        ? studentBackgrounds({
+            students: Array.from(studentMap.values()).map((student) => ({
+              id: student.id,
+              remainingHours: student.remainingHours,
+              lessonExpiryDate: student.lessonExpiryDate,
+              hasPackage: student.packageId != null,
+            })),
+            logs: lessonLogs,
+            reviews: lessonReviews,
+            today: todayString,
+          })
+        : undefined,
+    [lessonLogs, lessonReviews, liveLesson, studentMap, todayString],
+  )
+
+  // "New window" in the live class console opens /?live=<timetable entry>&date=<day>.
+  const liveLinkOpened = useRef(false)
+  useEffect(() => {
+    if (liveLinkOpened.current || schedules.length === 0) return
+    const params = new URLSearchParams(window.location.search)
+    const scheduleId = Number(params.get('live'))
+    const date = params.get('date') ?? ''
+    if (!Number.isInteger(scheduleId) || scheduleId <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return
+    const schedule = schedules.find((entry) => entry.id === scheduleId)
+    if (!schedule) return
+    liveLinkOpened.current = true
+    setLiveLesson({ scheduleId, date, title: schedule.title, classroomId: schedule.classroomId, studentCount: 0 })
+  }, [schedules])
 
   function openLiveLesson(item: AgendaItem) {
     setLiveLesson({
@@ -7431,14 +7468,34 @@ function App() {
       )}
 
       {liveLesson && (
-        <LiveQuestionsPanel
+        <LiveClassConsole
           scheduleId={liveLesson.scheduleId}
           lessonDate={liveLesson.date}
           title={liveLesson.title}
           classroom={(liveLesson.classroomId && classroomMap.get(liveLesson.classroomId)) || null}
           studentNames={new Map(Array.from(studentMap, ([id, student]) => [id, student.name]))}
-          rosterCount={liveLesson.studentCount}
+          backgrounds={liveBackgrounds}
+          parentPhones={new Map(Array.from(studentMap, ([id, student]) => [id, student.phone]))}
+          sendWhatsApp={
+            whatsAppClient && whatsAppUser
+              ? async (phone, name, text) => {
+                  const started = await startChat(whatsAppClient, { phone, name })
+                  if (started.error !== null) return started.error
+                  try {
+                    await whatsAppClient.sendMessage(started.conversationId, { content: text, isPrivate: false, files: [], sender: whatsAppUser })
+                    return null
+                  } catch (sendError) {
+                    return sendError instanceof Error ? sendError.message : 'Could not send.'
+                  }
+                }
+              : undefined
+          }
           onClose={() => setLiveLesson(null)}
+          onEndClass={() => {
+            const lesson = liveLesson
+            setLiveLesson(null)
+            void openAttendanceForEvent(lesson.scheduleId, lesson.date, lesson.title, { autoFill: true })
+          }}
         />
       )}
 

@@ -218,7 +218,7 @@ export function AdminHomeSection({
                       <div className="flex items-center gap-2">
                         {onRunLive && (
                           <button type="button" onClick={() => onRunLive(item)} className={secondaryButton}>
-                            Live questions
+                            Live class
                           </button>
                         )}
                         {submitted ? (

@@ -68,6 +68,19 @@ async function start() {
     return
   }
 
+  // /?screen=<timetable entry>&date=<day>: the class screen the teacher shares in Zoom (fed by the live class console).
+  const screenSchedule = Number(params.get('screen'))
+  const screenDate = params.get('date') ?? ''
+  if (Number.isInteger(screenSchedule) && screenSchedule > 0 && /^\d{4}-\d{2}-\d{2}$/.test(screenDate)) {
+    const { ClassScreen } = await import('./components/ClassScreen.tsx')
+    root.render(
+      <StrictMode>
+        <ClassScreen scheduleId={screenSchedule} lessonDate={screenDate} />
+      </StrictMode>,
+    )
+    return
+  }
+
   // Dev server only: /?demo=zoomstep shows the Zoom step with made-up times, without logging in.
   if (import.meta.env.DEV && params.get('demo') === 'zoomstep') {
     const { ZoomStepDemo } = await import('./dev/ZoomStepDemo.tsx')

@@ -350,7 +350,7 @@ function TodayRow({
       <div className="flex flex-wrap items-center gap-2 sm:justify-end">
         {onRunLive && (
           <button type="button" onClick={() => onRunLive(item)} className={secondaryButton}>
-            Live questions
+            Live class
           </button>
         )}
         {submitted ? (
