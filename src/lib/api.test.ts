@@ -10,10 +10,11 @@ vi.mock('./supabase', () => ({
   supabase: {
     from: () => ({
       select: () => {
-        // Chainable .order().order(); awaiting it takes the next result.
+        // Chainable .order().order().range(); awaiting it takes the next result.
         let result: unknown
         const chain = {
           order: () => chain,
+          range: () => chain,
           then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => {
             result ??= mocks.queue.shift() ?? mocks.result
             return Promise.resolve(result).then(resolve, reject)

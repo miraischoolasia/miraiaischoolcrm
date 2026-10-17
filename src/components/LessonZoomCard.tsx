@@ -135,7 +135,7 @@ export function LessonZoomCard({
               </span>
               <span className="flex gap-2">
                 {recording.bunnyUrl && (
-                  <a href={recording.bunnyUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-sky-700 underline underline-offset-2">
+                  <a href={recording.bunnyUrl} target="_blank" rel="noopener" className="text-xs font-semibold text-sky-700 underline underline-offset-2">
                     Watch
                   </a>
                 )}

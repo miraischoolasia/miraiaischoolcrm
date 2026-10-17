@@ -1,5 +1,6 @@
 import type { Classroom, Schedule, Student, Teacher, TrialBooking } from '../types/domain'
 import { cleanHoaTitle, describeHoaSlot } from './hoaSlots'
+import { getStudentClassIds } from './roster'
 
 // One class a student is signed up for, as the side panel of the chat shows it.
 export type StudentClassLine = {
@@ -22,15 +23,19 @@ type Sources = {
   today: string
 }
 
-// The classes a student attends: the weekly times of the class they are in, and the HOA class they
+// The classes a student attends: the weekly times of each class they are in, and the HOA class they
 // booked (the next one, else the last).
 export function classesOfStudent({ student, classrooms, schedules, teachers, trialBookings, today }: Sources): StudentClassLine[] {
   const teacherName = (id: number | null | undefined) =>
     id === null || id === undefined ? null : (teachers.find((teacher) => teacher.id === id)?.fullName ?? null)
   const lines: StudentClassLine[] = []
 
-  const classroom = student.classroomId === null ? undefined : classrooms.find((entry) => entry.id === student.classroomId)
-  if (classroom) {
+  // A student can take several subjects: each class they are in, main class first.
+  for (const classroomId of getStudentClassIds(student)) {
+    const classroom = classrooms.find((entry) => entry.id === classroomId)
+    if (!classroom) {
+      continue
+    }
     const weekly = schedules
       .filter(
         (schedule) =>

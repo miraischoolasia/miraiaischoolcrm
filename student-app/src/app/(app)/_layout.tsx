@@ -5,17 +5,29 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { LiveProvider } from '@/lib/live'
 import { useSession } from '@/lib/session'
+import { fetchClassVideos } from '@/lib/videos'
+import { useEffect, useState } from 'react'
 import { colors, Loading, Screen } from '@/ui/kit'
 import { LiveQuestionBanner } from '@/ui/LiveQuestionCard'
 import { TermsScreen } from '@/ui/TermsScreen'
 
-// The three tabs, as one bar at the bottom on phones and on the web. A
-// question the teacher pops shows on Home; the other tabs get a bar for it.
+// The tabs, as one bar at the bottom on phones and on the web. A question
+// the teacher pops shows on Home; the other tabs get a bar for it. Videos
+// shows only when one of the child's classes has videos.
 export default function AppLayout() {
   const insets = useSafeAreaInsets()
   const pathname = usePathname()
   const router = useRouter()
-  const { branding, onboarding } = useSession()
+  const { branding, onboarding, child } = useSession()
+  const [hasVideos, setHasVideos] = useState(false)
+  const studentId = child?.studentId ?? null
+  useEffect(() => {
+    setHasVideos(false)
+    if (studentId === null) return
+    fetchClassVideos(studentId)
+      .then((classes) => setHasVideos(classes.some((entry) => entry.videos.length > 0 || entry.closed_months.length > 0)))
+      .catch(() => setHasVideos(false))
+  }, [studentId])
   // A parent agrees to the school's terms before the app opens.
   if (onboarding === null) {
     return (
@@ -38,6 +50,11 @@ export default function AppLayout() {
         <TabTrigger name="home" href="/" asChild>
           <TabButton label="Home" icon="🏠" />
         </TabTrigger>
+        {hasVideos && (
+          <TabTrigger name="videos" href="/videos" asChild>
+            <TabButton label="Videos" icon="🎬" />
+          </TabTrigger>
+        )}
         <TabTrigger name="progress" href="/progress" asChild>
           <TabButton label="Progress" icon="📈" />
         </TabTrigger>

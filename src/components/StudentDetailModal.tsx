@@ -77,7 +77,9 @@ type StudentDetailModalProps = {
   parentName?: string | null
   // This student's make-up plans plus whole-class ones for their classroom.
   makeupPlans?: MakeupPlan[]
-  onArrangeMakeup?: () => void
+  // The student's weekly classes a make-up can be for (a student can take several).
+  makeupClasses?: { id: number; name: string }[]
+  onArrangeMakeup?: (classroomId: number) => void
   onEditMakeup?: (planId: number) => void
   // Left out when the account may not edit students.
   onEdit?: () => void
@@ -137,6 +139,7 @@ export function StudentDetailModal({
   attendance = NO_ATTENDANCE,
   parentName = null,
   makeupPlans = NO_PLANS,
+  makeupClasses = NO_MAKEUP_CLASSES,
   onArrangeMakeup,
   onEditMakeup,
   onEdit,
@@ -635,19 +638,13 @@ export function StudentDetailModal({
               ))}
             </Card>
 
-            {(makeupPlans.length > 0 || onArrangeMakeup) && (
+            {(makeupPlans.length > 0 || (onArrangeMakeup && makeupClasses.length > 0)) && (
               <Card
                 title="Make-ups"
                 note="Missed classes made up with extra minutes. Records only - classes remaining are not changed."
                 action={
-                  onArrangeMakeup ? (
-                    <button
-                      type="button"
-                      onClick={onArrangeMakeup}
-                      className="shrink-0 rounded-xl bg-[#fc0c97] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
-                    >
-                      Arrange Make-up
-                    </button>
+                  onArrangeMakeup && makeupClasses.length > 0 ? (
+                    <MakeupButton classes={makeupClasses} onArrange={onArrangeMakeup} />
                   ) : undefined
                 }
               >
@@ -1122,6 +1119,45 @@ function ClassStartField({
           {error}
         </p>
       )}
+    </div>
+  )
+}
+
+const NO_MAKEUP_CLASSES: { id: number; name: string }[] = []
+
+// "Arrange Make-up"; with several classes, first which class it is for.
+function MakeupButton({
+  classes,
+  onArrange,
+}: {
+  classes: { id: number; name: string }[]
+  onArrange: (classroomId: number) => void
+}) {
+  const [classroomId, setClassroomId] = useState(classes[0].id)
+  const picked = classes.some((entry) => entry.id === classroomId) ? classroomId : classes[0].id
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      {classes.length > 1 && (
+        <select
+          aria-label="Make-up for class"
+          value={picked}
+          onChange={(event) => setClassroomId(Number(event.target.value))}
+          className="max-w-[12rem] rounded-xl border border-slate-200 px-2 py-1.5 text-sm"
+        >
+          {classes.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {entry.name}
+            </option>
+          ))}
+        </select>
+      )}
+      <button
+        type="button"
+        onClick={() => onArrange(picked)}
+        className="rounded-xl bg-[#fc0c97] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
+      >
+        Arrange Make-up
+      </button>
     </div>
   )
 }

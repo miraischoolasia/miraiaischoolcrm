@@ -1,5 +1,6 @@
 import { weekdayLabels } from './schedule'
 import { formatClockTime } from './teacherAgenda'
+import { getStudentClassIds } from './roster'
 import type { StudentRow } from './studentRows'
 import type { Classroom, Schedule, TrialBooking } from '../types/domain'
 
@@ -90,7 +91,7 @@ export function buildTeacherClasses({
         }
       }
     } else {
-      students = studentRows.filter((row) => row.student.isActive && row.student.classroomId === classroom.id)
+      students = studentRows.filter((row) => row.student.isActive && getStudentClassIds(row.student).includes(classroom.id))
     }
     students.sort((a, b) => a.student.name.localeCompare(b.student.name))
     const first = Math.min(

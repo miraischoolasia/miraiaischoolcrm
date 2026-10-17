@@ -10,6 +10,7 @@ import { formatZoomTime } from '../../lib/enrolMessage'
 import { buildFormUrl } from '../../lib/forms'
 import { cleanHoaTitle, describeHoaSlot, type HoaSlot } from '../../lib/hoaSlots'
 import { MAX_NOTE } from '../../lib/leadProgrammeSteps'
+import { getStudentClassIds } from '../../lib/roster'
 import { getOfferedPackages, planEnrollment } from '../../lib/packages'
 import { DEFAULT_MESSAGE_TEMPLATE, fillTemplate, type Programme, type ProgrammeStep } from '../../lib/programmes'
 import type { Form, Lead, Student } from '../../types/domain'
@@ -88,8 +89,7 @@ export function ProgrammePanel({ lead, crm, programme, userName, onWriteMessage,
     const names = new Set(lead.children.map((entry) => (entry.name ?? '').trim().toLowerCase()).filter(Boolean))
     return crm.students.filter(
       (student) =>
-        student.classroomId !== null &&
-        classIds.has(student.classroomId) &&
+        getStudentClassIds(student).some((id) => classIds.has(id)) &&
         (phone !== null ? canonicalPhone(student.phone) === phone : names.has(student.name.trim().toLowerCase())),
     )
   }, [crm.classrooms, crm.students, lead.children, lead.phone, programme.id, programme.outcome])
@@ -484,13 +484,17 @@ function EnrolClassStep({
   return (
     <Step number={number} done={enrolled.length > 0} title={title}>
       {enrolled.map((student) => {
-        const classroom = crm.classrooms.find((entry) => entry.id === student.classroomId)
+        // Every class the student is in (a student can take several subjects).
+        const classNames = getStudentClassIds(student)
+          .map((id) => crm.classrooms.find((entry) => entry.id === id)?.name)
+          .filter(Boolean)
+          .join(', ')
         const pkg = crm.packages.find((entry) => entry.id === student.packageId)
         return (
           <div key={student.id} className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-emerald-900">
             <span className="block font-medium">{student.name}</span>
             <span className="block">
-              {classroom?.name ?? 'No class'}
+              {classNames || 'No class'}
               {pkg ? ` · ${pkg.name}` : ''} · until {formatDate(student.lessonExpiryDate)}
             </span>
             <button type="button" onClick={() => crm.onOpenStudent(student.id)} className="mt-0.5 font-medium text-[#be185d] hover:underline">

@@ -216,7 +216,7 @@ export function ClassVideosSection({
                           <a
                             href={videoEmbedUrl(video)}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener"
                             className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                           >
                             Watch <ArrowSquareOut size={12} aria-hidden="true" />

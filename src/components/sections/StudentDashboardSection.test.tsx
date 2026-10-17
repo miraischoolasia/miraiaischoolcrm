@@ -46,6 +46,51 @@ function renderSection(students: Student[], extra: Extra = {}) {
 }
 
 describe('StudentDashboardSection', () => {
+  it('lists a student in every class they take, and finds them by any of their classes', async () => {
+    const room = (id: number, name: string) =>
+      ({ id, name, category: 'regular', ageGroup: '12-14 Years Old', programLevel: 'Form 2', teacherId: null, status: 'active', notes: null, archivedAt: null }) as Classroom
+    const classrooms = [room(1, 'MM Form 2'), room(2, 'SCI Form 2'), room(3, 'BM Form 2')]
+    const mei: Student = {
+      ...student,
+      id: 8,
+      name: 'Mei',
+      classroomId: 1,
+      classPeriods: [
+        { classroomId: 1, startDate: null, endDate: null },
+        { classroomId: 2, startDate: null, endDate: null },
+      ],
+    }
+    const ali: Student = { ...student, id: 9, name: 'Ali', classroomId: 3, classPeriods: [{ classroomId: 3, startDate: null, endDate: null }] }
+    renderSection([mei, ali], { classrooms })
+    const names = () => [...document.querySelectorAll('tbody tr')].map((row) => row.querySelector('button')?.textContent)
+
+    expect(within(document.querySelector('tbody') as HTMLElement).getByText('+1 more class')).toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByLabelText('Class'), '2')
+    expect(names()).toEqual(['Mei'])
+    await userEvent.selectOptions(screen.getByLabelText('Class'), '')
+    await userEvent.type(screen.getByPlaceholderText(/Search/), 'SCI')
+    expect(names()).toEqual(['Mei'])
+  })
+
+  it('shows 20 students a page, and a new search starts on the first page', async () => {
+    const many = Array.from({ length: 45 }, (_, i) => ({ ...student, id: i + 1, name: `Pupil ${String(i + 1).padStart(2, '0')}` }))
+    renderSection(many, {})
+    await userEvent.selectOptions(screen.getByDisplayValue(/Needs attention first/), 'name')
+    const names = () => [...document.querySelectorAll('tbody tr')].map((row) => row.querySelector('button')?.textContent)
+    expect(names()).toHaveLength(20)
+    expect(screen.getByText(/1–20 of 45/)).toBeInTheDocument()
+    expect(screen.getByText('Page 1 of 3')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(names()).toEqual(['Pupil 41', 'Pupil 42', 'Pupil 43', 'Pupil 44', 'Pupil 45'])
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
+
+    await userEvent.type(screen.getByPlaceholderText(/Search/), 'Pupil 1')
+    expect(names()).toHaveLength(10)
+    expect(screen.queryByRole('navigation', { name: 'Pages' })).not.toBeInTheDocument()
+  })
+
   it('renders both the mobile card list and the desktop table for the same data', () => {
     renderSection([student])
 

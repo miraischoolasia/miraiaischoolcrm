@@ -1,5 +1,6 @@
 import type { Student } from '../../types/domain'
 import { describeStudent } from '../../lib/studentLink'
+import { getStudentClassIds } from '../../lib/roster'
 import type { WhatsAppCrm } from './crm'
 
 type StudentCardProps = {
@@ -17,7 +18,11 @@ export function StudentCard({ student, crm, onUnlink, forStudent = false }: Stud
   const classroom = crm.classrooms.find((entry) => entry.id === student.classroomId)
   const classes = crm.classesOfStudent(student)
   const plan = crm.packages.find((entry) => entry.id === student.packageId)
-  const canMakeUp = crm.canBookMakeup && student.studentType === 'regular' && classroom?.category === 'regular'
+  // Any of the student's classes (they can take several) that has weekly lessons.
+  const canMakeUp =
+    crm.canBookMakeup &&
+    student.studentType === 'regular' &&
+    getStudentClassIds(student).some((id) => crm.classrooms.find((entry) => entry.id === id)?.category === 'regular')
   return (
     <section className="space-y-3 border-t border-pink-100 pt-4 text-xs">
       <div>

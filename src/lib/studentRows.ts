@@ -9,6 +9,7 @@ import { addDays } from './teacherAgenda'
 import type { StudentParent } from './studentParents'
 import { weekdayLabels } from './schedule'
 import type { Classroom, FilterKey, Package, Schedule, Student, Teacher, TrialBooking } from '../types/domain'
+import { getStudentClassIds } from './roster'
 
 export type StudentSort = 'attention' | 'name' | 'ends' | 'left'
 
@@ -21,6 +22,8 @@ export type StudentRow = {
   needsFollowUp: boolean
   rank: number
   classroom: Classroom | null
+  // Every class the student is in now, main class first (a student can take several subjects).
+  classrooms: Classroom[]
   // "Wed 16:00-17:30", the first weekly class of the student's classroom.
   slot: string | null
   teacherName: string | null
@@ -96,7 +99,10 @@ export function buildStudentRows({
     ) {
       issues.push({ label: 'Follow up after HOA', tone: 'warning', severity: 3 })
     }
-    const classroom = student.classroomId ? classroomById.get(student.classroomId) ?? null : null
+    const studentClassrooms = getStudentClassIds(student)
+      .map((id) => classroomById.get(id))
+      .filter((entry): entry is Classroom => entry !== undefined)
+    const classroom = student.classroomId ? classroomById.get(student.classroomId) ?? null : studentClassrooms[0] ?? null
     const schedule = classroom ? slotByClassroom.get(classroom.id) ?? null : null
     const teacherId = student.teacherId ?? schedule?.teacherId ?? classroom?.teacherId ?? null
 
@@ -109,6 +115,7 @@ export function buildStudentRows({
       needsFollowUp: student.isActive && issues.length > 0,
       rank: getAttentionRank(student.isActive, issues),
       classroom,
+      classrooms: studentClassrooms,
       slot:
         schedule && schedule.dayOfWeek !== null
           ? `${weekdayLabels[schedule.dayOfWeek].slice(0, 3)} ${schedule.startTime}-${schedule.endTime}`
@@ -126,7 +133,12 @@ export function buildStudentRows({
 
 export function filterStudentRows(
   rows: StudentRow[],
-  { type, followUpOnly, search }: { type: FilterKey; followUpOnly: boolean; search: string },
+  {
+    type,
+    followUpOnly,
+    search,
+    classroomId = null,
+  }: { type: FilterKey; followUpOnly: boolean; search: string; classroomId?: number | null },
 ) {
   const query = search.trim().toLowerCase()
 
@@ -142,6 +154,9 @@ export function filterStudentRows(
     if (followUpOnly && !row.needsFollowUp) {
       return false
     }
+    if (classroomId !== null && !row.classrooms.some((entry) => entry.id === classroomId)) {
+      return false
+    }
     if (!query) {
       return true
     }
@@ -151,7 +166,7 @@ export function filterStudentRows(
       `#${String(row.student.id).padStart(3, '0')}`,
       row.parent?.name,
       row.parent?.phone,
-      row.classroom?.name,
+      ...row.classrooms.map((entry) => entry.name),
     ]
       .filter(Boolean)
       .join(' ')

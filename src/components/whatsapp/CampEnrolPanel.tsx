@@ -11,6 +11,7 @@ import type { Form, Lead, LeadFormSubmission } from '../../types/domain'
 import type { WhatsAppCrm } from './crm'
 import { PanelSection } from './PanelSection'
 import { buttonClass, fieldClass, Problem, ReceiptStep, Step, ZoomStep } from './enrolSteps'
+import { getStudentClassIds } from '../../lib/roster'
 
 type CampEnrolPanelProps = {
   lead: Lead
@@ -240,7 +241,11 @@ export function CampEnrolPanel({ lead, crm, userName, onWriteMessage, forStudent
 
       <Step number={2} done={enrolled.length > 0} title="Put the child in a camp class">
         {enrolled.map((student) => {
-          const classroom = crm.classrooms.find((entry) => entry.id === student.classroomId)
+          // The camp class among the student's classes (they can be in several).
+          const classes = getStudentClassIds(student)
+            .map((id) => crm.classrooms.find((entry) => entry.id === id))
+            .filter((entry) => entry !== undefined)
+          const classroom = classes.find((entry) => entry.category === 'camp') ?? classes[0]
           return (
             <div key={student.id} className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-emerald-900">
               <span className="block font-medium">{student.name}</span>

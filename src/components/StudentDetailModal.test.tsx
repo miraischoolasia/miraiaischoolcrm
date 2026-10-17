@@ -240,6 +240,7 @@ describe('StudentDetailModal', () => {
       const onArrange = vi.fn()
       renderModal({
         onArrangeMakeup: onArrange,
+        makeupClasses: [{ id: 5, name: 'WED C002' }],
         makeupPlans: [{
           id: 3, classroomId: null, studentId: 1, missedDate: '2026-10-01', missedMinutes: 90, notes: null,
           sessions: [{ id: 1, sessionDate: '2026-10-08', extraMinutes: 30 }],
@@ -249,7 +250,23 @@ describe('StudentDetailModal', () => {
 
       expect(screen.getByText('Missed Oct 1, 2026 · 90 min · This student')).toBeInTheDocument()
       await userEvent.click(screen.getByRole('button', { name: 'Arrange Make-up' }))
-      expect(onArrange).toHaveBeenCalledTimes(1)
+      expect(onArrange).toHaveBeenCalledWith(5)
+    })
+
+    it('asks which class a make-up is for when the student takes several', async () => {
+      const onArrange = vi.fn()
+      renderModal({
+        onArrangeMakeup: onArrange,
+        makeupClasses: [
+          { id: 5, name: 'MM Form 2' },
+          { id: 6, name: 'SCI Form 2' },
+        ],
+      })
+      await openTab('Lessons')
+
+      await userEvent.selectOptions(screen.getByLabelText('Make-up for class'), '6')
+      await userEvent.click(screen.getByRole('button', { name: 'Arrange Make-up' }))
+      expect(onArrange).toHaveBeenCalledWith(6)
     })
   })
 

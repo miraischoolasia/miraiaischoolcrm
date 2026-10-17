@@ -2870,10 +2870,13 @@ function App() {
   // Student make-up: offer the classes they recently missed (latest
   // attendance revision says absent/leave, no plan yet), newest first, and
   // preselect the newest so the usual case is one click to save.
-  async function openStudentMakeup(student: Student) {
-    if (student.classroomId === null) {
+  // classroomId: which of the student's classes (a student can take several);
+  // the main class when left out. Only that class's missed lessons are offered.
+  async function openStudentMakeup(student: Student, classroomId: number | null = student.classroomId) {
+    if (classroomId === null) {
       return
     }
+    const scheduleClassroom = new Map(schedules.map((schedule) => [schedule.id, schedule.classroomId]))
 
     let missedOptions: { date: string; label: string }[] = []
 
@@ -2896,6 +2899,7 @@ function App() {
 
       missedOptions = rows
         .filter((row) => !isAttendedStatus(attendanceStatusOptions, row.status) && latestLogs.has(row.lessonLogId))
+        .filter((row) => scheduleClassroom.get(latestLogs.get(row.lessonLogId)!.scheduleId) === classroomId)
         .map((row) => ({ date: latestLogs.get(row.lessonLogId)!.lessonDate, status: row.status }))
         .filter((entry) => !plannedDates.has(entry.date))
         .sort((left, right) => right.date.localeCompare(left.date))
@@ -2910,7 +2914,7 @@ function App() {
     }
 
     openMakeupEditor({
-      classroomId: student.classroomId,
+      classroomId,
       planId: null,
       missedDate: missedOptions[0]?.date ?? todayString,
       studentId: student.id,
@@ -7189,14 +7193,15 @@ function App() {
           makeupPlans={makeupPlans.filter(
             (plan) =>
               plan.studentId === selectedStudentDetail.id ||
-              (plan.studentId === null && plan.classroomId === selectedStudentDetail.classroomId),
+              (plan.studentId === null && getStudentClassIds(selectedStudentDetail).includes(plan.classroomId)),
           )}
+          makeupClasses={getStudentClassIds(selectedStudentDetail)
+            .map((id) => classroomMap.get(id))
+            .filter((classroom): classroom is Classroom => classroom?.category === 'regular')
+            .map((classroom) => ({ id: classroom.id, name: classroom.name }))}
           onArrangeMakeup={
-            canEditCalendar &&
-            selectedStudentDetail.studentType === 'regular' &&
-            selectedStudentDetail.classroomId !== null &&
-            classroomMap.get(selectedStudentDetail.classroomId)?.category === 'regular'
-              ? () => void openStudentMakeup(selectedStudentDetail)
+            canEditCalendar && selectedStudentDetail.studentType === 'regular'
+              ? (classroomId) => void openStudentMakeup(selectedStudentDetail, classroomId)
               : undefined
           }
           onEditMakeup={canEditCalendar ? openMakeupPlan : undefined}

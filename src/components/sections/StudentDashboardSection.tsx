@@ -70,6 +70,7 @@ type StudentDashboardSectionProps = {
 }
 
 const NO_CLASSROOMS: Classroom[] = []
+const PAGE_SIZE = 20
 const NO_SCHEDULES: Schedule[] = []
 const NO_PACKAGES: Package[] = []
 const NO_BOOKINGS: TrialBooking[] = []
@@ -112,6 +113,8 @@ export function StudentDashboardSection({
 }: StudentDashboardSectionProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [sort, setSort] = useState<StudentSort>('attention')
+  const [page, setPage] = useState(0)
+  const [classFilter, setClassFilter] = useState<number | null>(null)
 
   const rows = useMemo(
     () =>
@@ -150,15 +153,34 @@ export function StudentDashboardSection({
   }, [programmes, rows])
 
   const visibleRows = sortStudentRows(
-    filterStudentRows(rows, { type: activeFilter, followUpOnly, search: searchTerm }),
+    filterStudentRows(rows, { type: activeFilter, followUpOnly, search: searchTerm, classroomId: classFilter }),
     sort,
   )
+  // A big school's list is read PAGE_SIZE students at a time.
+  const pageCount = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount - 1)
+  const pageRows = visibleRows.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)
+  const filterKey = `${activeFilter}|${followUpOnly}|${searchTerm}|${sort}|${classFilter}`
+  const [lastFilterKey, setLastFilterKey] = useState(filterKey)
+  if (filterKey !== lastFilterKey) {
+    // A new search, tab or sort starts again on the first page.
+    setLastFilterKey(filterKey)
+    setPage(0)
+  }
   const followUpCount = rows.filter((row) => row.needsFollowUp).length
   const activeCount = rows.filter((row) => row.student.isActive).length
   const untaggedCount = students.filter(
     (student) => student.studentType === 'regular' && student.isActive && !student.packageId,
   ).length
-  const isFiltered = activeFilter !== 'all' || followUpOnly || searchTerm.trim() !== ''
+  const isFiltered = activeFilter !== 'all' || followUpOnly || searchTerm.trim() !== '' || classFilter !== null
+  // The classes students are in, to pick one (a student can be in several).
+  const classOptions = useMemo(
+    () =>
+      classrooms
+        .filter((classroom) => classroom.status === 'active')
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [classrooms],
+  )
 
   // A click anywhere on a row opens the student, except on its own buttons.
   function openFromRow(event: React.MouseEvent, studentId: number) {
@@ -328,11 +350,26 @@ export function StudentDashboardSection({
               type="search"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search name, ID, parent or phone"
+              placeholder="Search name, ID, parent, phone or class"
               aria-label="Search students"
               className="w-full rounded-xl border border-slate-200 py-2 pl-9! pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#fc0c97] focus:outline-none"
             />
           </div>
+          {classOptions.length > 0 && (
+            <select
+              value={classFilter ?? ''}
+              onChange={(event) => setClassFilter(event.target.value ? Number(event.target.value) : null)}
+              aria-label="Class"
+              className="max-w-[14rem] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-[#fc0c97] focus:outline-none"
+            >
+              <option value="">All classes</option>
+              {classOptions.map((classroom) => (
+                <option key={classroom.id} value={classroom.id}>
+                  {classroom.name}
+                </option>
+              ))}
+            </select>
+          )}
           <select
             value={sort}
             onChange={(event) => setSort(event.target.value as StudentSort)}
@@ -346,7 +383,10 @@ export function StudentDashboardSection({
             ))}
           </select>
           <span className="ml-auto text-sm text-slate-500">
-            {visibleRows.length} of {rows.length} students
+            {visibleRows.length > PAGE_SIZE
+              ? `${currentPage * PAGE_SIZE + 1}–${currentPage * PAGE_SIZE + pageRows.length} of ${visibleRows.length}`
+              : visibleRows.length}
+            {visibleRows.length === rows.length ? ' students' : ` (${rows.length} students)`}
           </span>
         </div>
 
@@ -368,7 +408,7 @@ export function StudentDashboardSection({
         {!isLoading && visibleRows.length > 0 && (
           <>
             <ul className="divide-y divide-slate-200 border-t border-slate-200 md:hidden">
-              {visibleRows.map((row) => (
+              {pageRows.map((row) => (
                 <li
                   key={row.student.id}
                   onClick={(event) => openFromRow(event, row.student.id)}
@@ -437,7 +477,7 @@ export function StudentDashboardSection({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {visibleRows.map((row) => (
+                  {pageRows.map((row) => (
                     <tr
                       key={row.student.id}
                       onClick={(event) => openFromRow(event, row.student.id)}
@@ -483,6 +523,29 @@ export function StudentDashboardSection({
                 </tbody>
               </table>
             </div>
+            {pageCount > 1 && (
+              <nav aria-label="Pages" className="flex items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-sm">
+                <button
+                  type="button"
+                  disabled={currentPage === 0}
+                  onClick={() => setPage(currentPage - 1)}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
+                >
+                  Previous
+                </button>
+                <span className="text-slate-500">
+                  Page {currentPage + 1} of {pageCount}
+                </span>
+                <button
+                  type="button"
+                  disabled={currentPage >= pageCount - 1}
+                  onClick={() => setPage(currentPage + 1)}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </nav>
+            )}
           </>
         )}
       </section>
@@ -565,11 +628,15 @@ function ClassCell({ row, todayString }: { row: StudentRow; todayString: string 
   if (!row.classroom) {
     return <span className={secondary}>No class yet</span>
   }
+  // A student taking several subjects: the main class, then how many more (all of them on hover).
+  const others = row.classrooms.filter((entry) => entry.id !== row.classroom!.id)
   return (
     <>
       <div className={primary}>{row.classroom.name}</div>
-      <div className={secondary}>
-        {[row.slot, row.teacherName].filter(Boolean).join(' · ') || 'No weekly time yet'}
+      <div className={secondary} title={others.length > 0 ? row.classrooms.map((entry) => entry.name).join(', ') : undefined}>
+        {others.length > 0
+          ? `+${others.length} more ${others.length === 1 ? 'class' : 'classes'}`
+          : [row.slot, row.teacherName].filter(Boolean).join(' · ') || 'No weekly time yet'}
       </div>
     </>
   )
