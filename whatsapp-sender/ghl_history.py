@@ -14,6 +14,8 @@ Nothing here is sent to GoHighLevel or to anyone.
   python3 ghl_history.py --apply --recent 30    only chats whose last GoHighLevel message is from the last 30 minutes
                                                 (this is what the timer runs, so new messages follow within minutes)
   python3 ghl_history.py --contact <ghl id>     one contact only
+  python3 ghl_history.py --import-instagram    list the Instagram chats the CRM does not have yet (changes nothing)
+  python3 ghl_history.py --import-instagram --apply    make them (through the bridge) and add their messages
   python3 ghl_history.py --watch 3              keep running: every 3 seconds one call asks GoHighLevel which chats
                                                 changed, and only those are read and added (the service
                                                 eduhero-ghl-watch runs this)
@@ -22,6 +24,11 @@ Every added message has source_id "ghl:<GoHighLevel message id>" and content_att
 (stored as a JSON *string*, which is how Chatwoot's own store coder keeps it - an object makes its API answer 500), so a
 run can be repeated safely and the whole import can be removed with
   delete from messages where source_id like 'ghl:%' and content_attributes::text like '%ghl_import%';
+
+A person who never wrote back has no chat in the CRM (the bridge only hears replies). For Instagram the CRM makes those
+chats too: the watcher does it for every new Instagram chat, and --import-instagram does it for all that exist. The chat
+itself (contact and conversation) is made by the bridge (/ghl/ensure), so it is built exactly as a reply would build it;
+then this script fills in the messages.
 
 Settings (environment): GHL_TOKEN, ACCOUNT_ID, INBOX_ID, PAGE_INBOXES (as in ghl-bridge-eduhero.env), and
 POSTGRES_USERNAME / POSTGRES_DATABASE (as in chatwoot.env). GHL_LOCATION_ID is read from the first contact when unset.
@@ -57,6 +64,9 @@ PREFIX = "ghl:"
 MAX_TEXT = 4000
 SAME_MESSAGE_SECONDS = 180  # the CRM's own copy of a message and GoHighLevel's differ by a few seconds
 KINDS = ("TYPE_FACEBOOK", "TYPE_INSTAGRAM")
+# The chats of people who never wrote back that the CRM makes itself (only Instagram: those are asked for).
+IMPORT_KINDS = tuple(k.strip() for k in os.environ.get("IMPORT_KINDS", "TYPE_INSTAGRAM").split(",") if k.strip())
+BRIDGE_SERVICE = os.environ.get("BRIDGE_SERVICE", "ghl-bridge-eduhero")
 
 
 def read_page_inboxes(text):
@@ -127,6 +137,26 @@ def stamp(value):
     return moment.astimezone(datetime.timezone.utc).replace(tzinfo=None)
 
 
+def is_twin(old, direction, when, text, urls):
+    """Is this CRM message (a row of the CRM's own) the same message as GoHighLevel's?
+
+    Same direction, a few seconds apart, and the same words. A photo or voice message the CRM sent has no words and its file
+    is an attachment, while GoHighLevel's copy is the file's link: they match when the CRM message has a file and the words
+    left of GoHighLevel's (without the links) equal the CRM's (none, or the caption).
+    """
+    if old["message_type"] != direction:
+        return False
+    gap = abs((datetime.datetime.fromisoformat(old["created_at"]) - when).total_seconds())
+    if gap > SAME_MESSAGE_SECONDS:
+        return False
+    if squash(old["content"]) == squash(text):
+        return True
+    if urls and int(old.get("files") or 0) > 0:
+        words = squash(" ".join(line for line in text.splitlines() if line.strip() not in urls))
+        return squash(old["content"]) == words
+    return False
+
+
 def message_text(message):
     body = (message.get("body") or "").strip()
     template = message.get("customTemplate") if isinstance(message.get("customTemplate"), dict) else {}
@@ -149,6 +179,55 @@ def ghl_messages(conversation_id, max_pages=200, page_size=100):
         last = data.get("lastMessageId")
         if not batch or not data.get("nextPage") or not last:
             break
+    return found
+
+
+BRIDGE_ENSURE = (
+    "import json,os,sys,urllib.request as u;"
+    "r=u.Request('http://127.0.0.1:'+os.environ.get('PORT','9100')+'/ghl/ensure?key='+os.environ['BRIDGE_KEY'],"
+    "data=json.dumps({'contact_id':sys.argv[1],'name':sys.argv[2],'channel':sys.argv[3]}).encode(),"
+    "headers={'Content-Type':'application/json'});"
+    "print(u.urlopen(r,timeout=60).read().decode())"
+)
+
+
+def chat_name(chat):
+    return str(chat.get("contactName") or chat.get("fullName") or chat.get("email") or chat.get("phone") or "")[:100]
+
+
+def ensure_chat(contact_id, name, channel="IG"):
+    """Has the bridge make the CRM contact and conversation of a GoHighLevel person (no message). True when it did."""
+    out = subprocess.run(
+        ["docker", "compose", "-p", COMPOSE_PROJECT, "exec", "-T", BRIDGE_SERVICE, "python3", "-c", BRIDGE_ENSURE, contact_id, name, channel],
+        cwd=COMPOSE_DIR, capture_output=True, text=True, timeout=120,
+    )
+    if out.returncode != 0:
+        log("Could not make the chat of", name or contact_id, "-", (out.stderr or out.stdout)[-160:].strip())
+        return False
+    return True
+
+
+def missing_chats(location, by_contact, kinds=IMPORT_KINDS, limit=2000):
+    """GoHighLevel's chats of these kinds whose person the CRM does not have: {contact id: (name, [conversation ids])}.
+
+    Reads the location's chats newest first, 100 a page (the next page starts after the last one's date).
+    """
+    found: dict[str, tuple[str, list[str]]] = {}
+    after = None
+    for _ in range(max(1, limit // 100)):
+        query = {"locationId": location, "sortBy": "last_message_date", "sort": "desc", "limit": 100}
+        if after:
+            query["startAfterDate"] = after
+        page = ghl_get("/conversations/search?" + urllib.parse.urlencode(query)).get("conversations") or []
+        for chat in page:
+            contact = chat.get("contactId")
+            if contact and chat.get("lastMessageType") in kinds and contact not in by_contact:
+                name, ids = found.setdefault(contact, (chat_name(chat), []))
+                ids.append(chat["id"])
+        dates = [c.get("lastMessageDate") for c in page if isinstance(c.get("lastMessageDate"), (int, float))]
+        if len(page) < 100 or not dates:
+            break
+        after = min(dates)
     return found
 
 
@@ -200,7 +279,9 @@ def collect(by_contact, location, since=None, newest_page_only=False, settle=0, 
 
         newest_only = " order by id desc limit 100" if newest_page_only else ""
         existing = {c["conv"]: rows(
-            "select id, message_type, content, created_at, source_id from messages where conversation_id = %d and private = false%s" % (c["conv"], newest_only)
+            "select id, message_type, content, created_at, source_id, "
+            "(select count(*) from attachments a where a.message_id = messages.id) as files "
+            "from messages where conversation_id = %d and private = false%s" % (c["conv"], newest_only)
         ) for c in convs}
         taken = set()  # existing message ids already matched to one of theirs
         have_ids = {m["source_id"] for ms in existing.values() for m in ms if m["source_id"]}
@@ -215,7 +296,8 @@ def collect(by_contact, location, since=None, newest_page_only=False, settle=0, 
                 continue
             if PREFIX + message["id"] in have_ids:
                 continue
-            page = str(((message.get("meta") or {}).get("fb") or {}).get("pageId") or "")
+            meta = message.get("meta") or {}
+            page = str((meta.get("fb") or meta.get("ig") or {}).get("pageId") or "")
             inbox = PAGE_INBOXES.get(page, INBOX_ID)
             target = next((c for c in convs if c["inbox_id"] == inbox), None) or max(convs, key=lambda c: c["conv"])
             direction = 0 if message.get("direction") == "inbound" else 1
@@ -223,12 +305,12 @@ def collect(by_contact, location, since=None, newest_page_only=False, settle=0, 
             if settle and direction == 0 and (now - when).total_seconds() < settle:
                 unsettled.add(ghl_contact)
                 continue
+            urls = [a for a in (message.get("attachments") or []) if isinstance(a, str) and a.startswith("http")]
             twin = None
             for old in existing[target["conv"]]:
-                if old["id"] in taken or old["message_type"] != direction:
+                if old["id"] in taken:
                     continue
-                gap = abs((datetime.datetime.fromisoformat(old["created_at"]) - when).total_seconds())
-                if gap <= SAME_MESSAGE_SECONDS and squash(old["content"]) == squash(text):
+                if is_twin(old, direction, when, text, urls):
                     twin = old
                     break
             if twin is not None:
@@ -308,6 +390,7 @@ def watch(interval, catch_up_minutes=30, settle=30):
     follow({c: by_contact[c] for c in recent if c in by_contact}, known=recent)
     last_seen: dict[str, float] = {}
     retry: dict[str, float] = {}
+    skipped: dict[str, float] = {}  # a person whose chat could not be made: when to try again
     sweep: list[str] = []
     last_reload = time.time()
     first = True
@@ -328,6 +411,24 @@ def watch(interval, catch_up_minutes=30, settle=30):
                     conversations.setdefault(chat.get("contactId"), []).append(chat["id"])
                 last_seen[chat["id"]] = max(moved, last_seen.get(chat["id"], 0))
             first = False
+            # An Instagram person who never wrote back has no chat yet: make it, and read all their messages.
+            fresh = {}
+            for chat in found:
+                contact = chat.get("contactId")
+                if (
+                    contact and contact not in by_contact and chat.get("lastMessageType") in IMPORT_KINDS
+                    and skipped.get(contact, 0) <= started
+                ):
+                    fresh.setdefault(contact, []).append(chat["id"])
+                    if ensure_chat(contact, chat_name(chat)):
+                        log("Made the chat of", chat_name(chat) or contact)
+                    else:
+                        skipped[contact] = started + 300
+                        del fresh[contact]
+            if fresh:
+                by_contact = load_chats()
+                last_reload = started
+                follow({c: by_contact[c] for c in fresh if c in by_contact}, known=fresh)
             # A person the CRM has not met yet (the bridge is still making the chat), or a refresh now and then.
             if any(c not in by_contact for c in changed) or started - last_reload > 60:
                 by_contact = load_chats()
@@ -356,6 +457,7 @@ def main():
     parser.add_argument("--recent", type=int, default=0, help="only chats whose last message is newer than this many minutes")
     parser.add_argument("--contact", default="")
     parser.add_argument("--show", type=int, default=12, help="how many chats to list in the summary")
+    parser.add_argument("--import-instagram", action="store_true", help="also make the chats of Instagram people the CRM does not have")
     parser.add_argument("--watch", type=float, default=0, help="keep running and follow GoHighLevel every this many seconds")
     args = parser.parse_args()
     if not (GHL_TOKEN and PG_USER and PG_DB):
@@ -365,6 +467,28 @@ def main():
         return
 
     by_contact = load_chats()
+    if args.import_instagram:
+        location = LOCATION_ID
+        for contact in by_contact:
+            if location:
+                break
+            try:
+                location = (ghl_get("/contacts/" + contact, "2021-07-28").get("contact") or {}).get("locationId") or ""
+            except urllib.error.HTTPError:
+                continue
+        if not location:
+            sys.exit("GoHighLevel location is not known")
+        absent = missing_chats(location, by_contact)
+        log("Instagram chats the CRM does not have:", len(absent))
+        for contact, (name, ids) in list(absent.items())[: args.show]:
+            log(" ", name or contact)
+        if args.apply:
+            made = sum(1 for contact, (name, _ids) in absent.items() if ensure_chat(contact, name))
+            log("Chats made:", made, "of", len(absent))
+            by_contact = load_chats()
+        else:
+            log("Dry run: nothing was made. Run again with --apply to make them and add their messages.")
+            return
     if args.contact:
         by_contact = {k: v for k, v in by_contact.items() if k == args.contact}
     since = datetime.datetime.utcnow() - datetime.timedelta(minutes=args.recent) if args.recent else None

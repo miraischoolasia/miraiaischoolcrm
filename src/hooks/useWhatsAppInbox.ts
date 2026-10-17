@@ -15,6 +15,9 @@ import {
   type ChatwootMessage,
 } from '../lib/whatsappInbox'
 
+const SERVER_DOWN_MESSAGE =
+  'The inbox server is not answering right now, so these chats may be out of date and replies may not send. It usually comes back by itself.'
+
 const LIST_REFRESH_MS = 4_000
 const DONE_REFRESH_MS = 20_000
 const MESSAGES_REFRESH_MS = 3_000
@@ -140,7 +143,7 @@ export function useWhatsAppInbox(
         }
       } catch {
         if (!cancelled) {
-          setLoadError("Couldn't load WhatsApp chats. Check your connection and try again.")
+          setLoadError(SERVER_DOWN_MESSAGE)
         }
       } finally {
         if (!cancelled) {
@@ -154,12 +157,22 @@ export function useWhatsAppInbox(
     // again every few seconds only piles requests up and makes it slower.
     let listBusy = false
     let doneBusy = false
+    // The list quietly goes stale when the inbox server stops answering: two refreshes in a row that fail say so.
+    let failedRefreshes = 0
     const listTimer = window.setInterval(() => {
       if (!document.hidden && !listBusy) {
         listBusy = true
         refreshStatus('open')
-          .then(() => setLoadError(null))
-          .catch(() => undefined)
+          .then(() => {
+            failedRefreshes = 0
+            setLoadError(null)
+          })
+          .catch(() => {
+            failedRefreshes += 1
+            if (failedRefreshes >= 2 && !cancelled) {
+              setLoadError(SERVER_DOWN_MESSAGE)
+            }
+          })
           .finally(() => {
             listBusy = false
           })

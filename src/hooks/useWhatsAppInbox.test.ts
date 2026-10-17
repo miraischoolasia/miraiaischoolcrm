@@ -303,4 +303,49 @@ describe('useWhatsAppInbox with a slow server', () => {
     // A minute of refreshes with an answer that never arrives adds one request, not fifteen.
     expect(calls - afterFirstLoad).toBeLessThanOrEqual(2)
   })
+
+  it('says the inbox server is not answering after two refreshes in a row fail, and stops saying it when it answers', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    let down = false
+    const client = {
+      listConversations: vi.fn(async (status: string) => {
+        if (down) {
+          throw new Error('Failed to fetch')
+        }
+        return { conversations: [], totalCount: 0, status }
+      }),
+      listMessages: vi.fn(async () => []),
+      listContactConversations: vi.fn(async () => []),
+      markSeen: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ChatwootClient
+    const { result } = renderHook(() => useWhatsAppInbox(client, staff))
+    // The timers are faked, so waitFor cannot poll: let the first load settle by hand.
+    for (let turn = 0; turn < 10; turn += 1) {
+      await act(async () => {
+        await Promise.resolve()
+      })
+    }
+    expect(result.current.isLoading).toBe(false)
+    expect(result.current.loadError).toBeNull()
+
+    down = true
+    await act(async () => {
+      vi.advanceTimersByTime(4_000)
+      await Promise.resolve()
+    })
+    // One failed refresh is not yet "down".
+    expect(result.current.loadError).toBeNull()
+    await act(async () => {
+      vi.advanceTimersByTime(4_000)
+      await Promise.resolve()
+    })
+    expect(result.current.loadError).toMatch(/inbox server is not answering/)
+
+    down = false
+    await act(async () => {
+      vi.advanceTimersByTime(4_000)
+      await Promise.resolve()
+    })
+    expect(result.current.loadError).toBeNull()
+  })
 })

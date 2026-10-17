@@ -169,10 +169,11 @@ _location_id = ""
 
 
 def page_of(contact_id):
-    """The Facebook Page (id, name) a GoHighLevel contact writes to, read from the meta.fb of its messages.
+    """The Facebook Page or Instagram account (id, name) a GoHighLevel contact writes to, read from the meta.fb or
+    meta.ig of its messages.
 
-    A contact belongs to one Page, so the answer is remembered. Empty strings when it cannot be told (an
-    Instagram chat, GoHighLevel not answering): the chat then goes to the default inbox.
+    A contact belongs to one Page / account, so the answer is remembered. Empty strings when it cannot be told
+    (GoHighLevel not answering): the chat then goes to the default inbox.
     """
     global _location_id
     if contact_id in _pages:
@@ -191,10 +192,11 @@ def page_of(contact_id):
             return "", ""
         data = ghl_get(f"/conversations/{found[0]['id']}/messages?limit=10")
         for message in ((data.get("messages") or {}).get("messages") or []):
-            fb = (message.get("meta") or {}).get("fb") or {}
-            page_id = str(fb.get("pageId") or "")
+            meta = message.get("meta") or {}
+            account = meta.get("fb") or meta.get("ig") or {}
+            page_id = str(account.get("pageId") or "")
             if page_id:
-                _pages[contact_id] = (page_id, str(fb.get("pageName") or ""))
+                _pages[contact_id] = (page_id, str(account.get("pageName") or ""))
                 return _pages[contact_id]
     except Exception as error:  # noqa: BLE001 - the chat must arrive even when the Page cannot be told
         log("Could not tell the Page of a contact:", type(error).__name__)
@@ -237,25 +239,13 @@ def origin_of(contact_id):
     return _origins[contact_id]
 
 
-def handle_inbound(payload):
-    info = read_inbound(payload)
-    if not info["contact_id"] or not re.fullmatch(r"[A-Za-z0-9_-]{4,64}", info["contact_id"]):
-        return 400, {"ok": False, "error": "no contact id"}
-    if not info["text"] and not info["attachments"]:
-        return 200, {"ok": True, "ignored": "empty message"}
-    if info["message_id"]:
-        with _lock:
-            now = time.time()
-            for key in [k for k, at in _seen.items() if now - at > 3600]:
-                del _seen[key]
-            if info["message_id"] in _seen:
-                return 200, {"ok": True, "ignored": "already received"}
-            _seen[info["message_id"]] = now
-
+def ensure_chat(info):
+    """The Chatwoot contact and conversation of a GoHighLevel person, made when they do not exist yet: (contact, conversation id)."""
     contact = find_contact(info["contact_id"])
     attributes = {"ghl_contact_id": info["contact_id"], "ghl_channel": info["channel"]}
-    # Two Pages of one GoHighLevel account are two Messengers in the CRM: each goes to its own inbox.
-    page_id, page_name = page_of(info["contact_id"]) if info["channel"] == "FB" else ("", "")
+    # Two Pages of one GoHighLevel account are two Messengers in the CRM: each goes to its own inbox. An Instagram
+    # account is told the same way (its id sits in PAGE_INBOXES next to the Page ids).
+    page_id, page_name = page_of(info["contact_id"])
     inbox_id = PAGE_INBOXES.get(page_id, INBOX_ID)
     if page_id:
         attributes["ghl_page_id"] = page_id
@@ -277,12 +267,39 @@ def handle_inbound(payload):
         merged = {**(contact.get("additional_attributes") or {}), **attributes}
         if merged != (contact.get("additional_attributes") or {}):
             chatwoot("PUT", f"/contacts/{contact['id']}", {"additional_attributes": merged})
-    conversation_id = conversation_for(contact, inbox_id)
+    return contact, conversation_for(contact, inbox_id)
+
+
+def handle_inbound(payload):
+    info = read_inbound(payload)
+    if not info["contact_id"] or not re.fullmatch(r"[A-Za-z0-9_-]{4,64}", info["contact_id"]):
+        return 400, {"ok": False, "error": "no contact id"}
+    if not info["text"] and not info["attachments"]:
+        return 200, {"ok": True, "ignored": "empty message"}
+    if info["message_id"]:
+        with _lock:
+            now = time.time()
+            for key in [k for k, at in _seen.items() if now - at > 3600]:
+                del _seen[key]
+            if info["message_id"] in _seen:
+                return 200, {"ok": True, "ignored": "already received"}
+            _seen[info["message_id"]] = now
+
+    contact, conversation_id = ensure_chat(info)
 
     text = info["text"] or "[attachment]"
     if info["attachments"]:
         text = (info["text"] + "\n" if info["text"] else "") + "\n".join(info["attachments"])
     chatwoot("POST", f"/conversations/{conversation_id}/messages", {"content": text, "message_type": "incoming"})
+    return 200, {"ok": True, "conversation_id": conversation_id}
+
+
+def handle_ensure(payload):
+    """Makes the chat of a person (contact and conversation, no message) so the history importer can fill it in."""
+    info = read_inbound(payload)
+    if not info["contact_id"] or not re.fullmatch(r"[A-Za-z0-9_-]{4,64}", info["contact_id"]):
+        return 400, {"ok": False, "error": "no contact id"}
+    _contact, conversation_id = ensure_chat(info)
     return 200, {"ok": True, "conversation_id": conversation_id}
 
 
@@ -400,6 +417,8 @@ class Handler(BaseHTTPRequestHandler):
                 status, body = handle_inbound(payload)
             elif parsed.path == "/ghl/out":
                 status, body = handle_outbound(payload)
+            elif parsed.path == "/ghl/ensure":
+                status, body = handle_ensure(payload)
             else:
                 status, body = 404, {"ok": False}
         except urllib.error.HTTPError as error:
