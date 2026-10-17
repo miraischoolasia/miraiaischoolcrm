@@ -6,6 +6,8 @@
 //             the lesson who has no link yet (each gets their own link, which
 //             the student app shows; no e-mail goes to anyone)
 //   start     a fresh host link to start the meeting (Zoom's host links expire)
+//   facebook_status / facebook_on / facebook_off
+//             stream the lesson to the school's Facebook Page (facebook.ts)
 // The meeting follows the school's Zoom options (Class Settings > Zoom) and is
 // hosted by the teacher's own Zoom account, or when it is full at that time by
 // another of the school's (Class Settings > Zoom).
@@ -14,9 +16,14 @@
 //   ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET   a Server-to-Server OAuth app
 //   ZOOM_HOST_USER          the Zoom user who hosts when the school lists no accounts, default "me"
 //   ZOOM_REGISTRANT_DOMAIN  domain for the made-up sign-up addresses, default "students.example.com"
+//   FB_PAGE_ID, FB_PAGE_TOKEN  optional, for Facebook Live (facebook.ts)
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { meetingBody, registrantEmail, registrantNames, type MeetingOptions } from './logic.ts'
 import { zoomApi, zoomToken } from './zoomApi.ts'
+import { facebookConfigured, goLiveOnFacebook, stopFacebookLive } from './facebook.ts'
+
+const ACTIONS = ['prepare', 'start', 'facebook_status', 'facebook_on', 'facebook_off'] as const
+type Action = (typeof ACTIONS)[number]
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -54,7 +61,7 @@ Deno.serve(async (req) => {
   } catch {
     return jsonResponse({ ok: false, error: 'Invalid request body.' }, 400)
   }
-  const action = body.action === 'start' ? 'start' : body.action === 'prepare' ? 'prepare' : null
+  const action = (ACTIONS as readonly unknown[]).includes(body.action) ? (body.action as Action) : null
   const scheduleId = Number(body.scheduleId)
   const lessonDate = typeof body.lessonDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.lessonDate) ? body.lessonDate : null
   if (!action || !Number.isInteger(scheduleId) || !lessonDate) {
@@ -69,6 +76,7 @@ Deno.serve(async (req) => {
   })
   if (sessionError || !session) return jsonResponse({ ok: false, error: sessionError?.message ?? 'Lesson not found.' }, 403)
   const admin = createClient(supabaseUrl, serviceRoleKey)
+  if (action === 'facebook_status') return jsonResponse({ ok: true, configured: facebookConfigured() }, 200)
 
   try {
     const token = await zoomToken(accountId, clientId, clientSecret)
@@ -78,6 +86,25 @@ Deno.serve(async (req) => {
       if (!existing) return jsonResponse({ ok: false, error: 'Make the meeting first.' }, 409)
       const meeting = await zoomApi(token, `/meetings/${encodeURIComponent(existing.meeting_id)}`)
       return jsonResponse({ ok: true, startUrl: meeting.start_url ?? null }, 200)
+    }
+
+    if (action === 'facebook_on' || action === 'facebook_off') {
+      if (!existing) return jsonResponse({ ok: false, error: 'Make the meeting first.' }, 409)
+      const on = action === 'facebook_on'
+      if (on && !facebookConfigured()) {
+        return jsonResponse({ ok: false, error: 'Facebook is not connected for this school yet.' }, 503)
+      }
+      await admin.from('class_session_zoom').update({ fb_live_wanted: on, fb_live_error: null }).eq('session_id', session.id)
+      if (!on) {
+        await stopFacebookLive(admin, token, existing)
+        return jsonResponse({ ok: true, live: false }, 200)
+      }
+      const meeting = await zoomApi(token, `/meetings/${encodeURIComponent(existing.meeting_id)}`)
+      if (meeting.status !== 'started') {
+        return jsonResponse({ ok: true, live: false, note: 'It goes live on Facebook as soon as you start Zoom.' }, 200)
+      }
+      await goLiveOnFacebook(admin, token, existing)
+      return jsonResponse({ ok: true, live: true }, 200)
     }
 
     let meeting = existing

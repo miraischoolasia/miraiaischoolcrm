@@ -1982,6 +1982,11 @@ export type Database = {
           created_at: string
           updated_at: string
           host_user: string | null
+          fb_live_wanted: boolean
+          fb_live_id: string | null
+          fb_live_url: string | null
+          fb_live_error: string | null
+          fb_live_started_at: string | null
         }
         Insert: {
           session_id: number
@@ -2040,6 +2045,11 @@ export type Database = {
           user_name: string | null
           joined_at: string
           left_at: string | null
+          leave_reason: string | null
+          dropped: boolean
+          is_host: boolean
+          stranger_cleared_at: string | null
+          stranger_cleared_by: number | null
           created_at: string
         }
         Insert: {
@@ -2050,6 +2060,11 @@ export type Database = {
           user_name?: string | null
           joined_at: string
           left_at?: string | null
+          leave_reason?: string | null
+          dropped?: boolean
+          is_host?: boolean
+          stranger_cleared_at?: string | null
+          stranger_cleared_by?: number | null
           created_at?: string
         }
         Update: {
@@ -2059,6 +2074,44 @@ export type Database = {
           participant_uuid?: string
           user_name?: string | null
           joined_at?: string
+          left_at?: string | null
+          leave_reason?: string | null
+          dropped?: boolean
+          is_host?: boolean
+          stranger_cleared_at?: string | null
+          stranger_cleared_by?: number | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      zoom_waiting: {
+        Row: {
+          id: number
+          session_id: number
+          student_id: number | null
+          participant_uuid: string
+          user_name: string | null
+          entered_at: string
+          left_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: never
+          session_id: number
+          student_id?: number | null
+          participant_uuid: string
+          user_name?: string | null
+          entered_at: string
+          left_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: never
+          session_id?: number
+          student_id?: number | null
+          participant_uuid?: string
+          user_name?: string | null
+          entered_at?: string
           left_at?: string | null
           created_at?: string
         }
@@ -3072,6 +3125,19 @@ export type Database = {
       set_zoom_attendance: {
         Args: {
           p_present_percent: number
+        }
+        Returns: undefined
+      }
+      set_zoom_room_rules: {
+        Args: {
+          p_drop_grace_seconds: number
+          p_late_minutes: number
+        }
+        Returns: undefined
+      }
+      clear_zoom_stranger: {
+        Args: {
+          p_participation_id: number
         }
         Returns: undefined
       }

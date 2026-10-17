@@ -6,7 +6,12 @@ import { supabase } from './supabase'
 
 export type LessonZoom = {
   sessionId: number | null
-  meeting: { meetingId: string; joinUrl: string | null; host: string | null } | null
+  meeting: {
+    meetingId: string
+    joinUrl: string | null
+    host: string | null
+    facebook: { wanted: boolean; live: boolean; url: string | null; error: string | null }
+  } | null
   // Children with a link of their own.
   linked: number
 }
@@ -22,17 +27,24 @@ export async function fetchLessonZoom(scheduleId: number, lessonDate: string): P
     .maybeSingle()
   if (!session) return empty
   const [{ data: zoom }, { count }] = await Promise.all([
-    supabase.from('class_session_zoom').select('meeting_id, join_url, host_user').eq('session_id', session.id).maybeSingle(),
+    supabase.from('class_session_zoom').select('meeting_id, join_url, host_user, fb_live_wanted, fb_live_id, fb_live_url, fb_live_error').eq('session_id', session.id).maybeSingle(),
     supabase.from('class_session_zoom_links').select('student_id', { count: 'exact', head: true }).eq('session_id', session.id),
   ])
   return {
     sessionId: session.id,
-    meeting: zoom ? { meetingId: zoom.meeting_id, joinUrl: zoom.join_url, host: zoom.host_user } : null,
+    meeting: zoom
+      ? {
+          meetingId: zoom.meeting_id,
+          joinUrl: zoom.join_url,
+          host: zoom.host_user,
+          facebook: { wanted: zoom.fb_live_wanted, live: zoom.fb_live_id !== null, url: zoom.fb_live_url, error: zoom.fb_live_error },
+        }
+      : null,
     linked: count ?? 0,
   }
 }
 
-async function callZoom(action: 'prepare' | 'start', scheduleId: number, lessonDate: string) {
+async function callZoom(action: 'prepare' | 'start' | 'facebook_status' | 'facebook_on' | 'facebook_off', scheduleId: number, lessonDate: string) {
   if (!supabase) return { error: 'Supabase is not configured.', data: null }
   const { data, error } = await supabase.functions.invoke('zoom-lesson', { body: { action, scheduleId, lessonDate } })
   if (error) {
@@ -69,4 +81,15 @@ export async function fetchLessonZoomMinutes(scheduleId: number, lessonDate: str
   const { data, error } = await supabase.rpc('lesson_zoom_minutes', { p_schedule_id: scheduleId, p_lesson_date: lessonDate })
   if (error) throw new Error(error.message)
   return (data ?? []).map((row) => ({ studentId: row.student_id, minutes: row.minutes, countsAsPresent: row.counts_as_present }))
+}
+
+// Is Facebook Live connected for this school (its Page secrets are set)?
+export async function facebookLiveConfigured(scheduleId: number, lessonDate: string) {
+  const { data } = await callZoom('facebook_status', scheduleId, lessonDate)
+  return Boolean(data?.configured)
+}
+
+export async function setFacebookLive(scheduleId: number, lessonDate: string, on: boolean) {
+  const { error, data } = await callZoom(on ? 'facebook_on' : 'facebook_off', scheduleId, lessonDate)
+  return { error, note: (data?.note as string | undefined) ?? null }
 }

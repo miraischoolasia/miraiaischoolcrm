@@ -15,6 +15,7 @@ import {
 } from '../../lib/questions'
 import { useAgeGroups } from '../../lib/ageGroups'
 import type { Subject } from '../../lib/subjects'
+import { SpeakQuestionButton } from './SpeakQuestionButton'
 
 const inputClass =
   'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#fc0c97]'
@@ -154,6 +155,21 @@ export function QuestionEditorModal({
             </div>
           </fieldset>
         </div>
+
+        <SpeakQuestionButton
+          ageGroup={draft.ageGroups.length === 1 ? draft.ageGroups[0] : null}
+          onDraft={(spoken) =>
+            setDraft((current) => ({
+              ...current,
+              kind: spoken.kind,
+              prompt: spoken.prompt,
+              options: spoken.kind === 'choice' ? spoken.options : current.options,
+              acceptedAnswers: spoken.acceptedAnswers.length > 0 ? spoken.acceptedAnswers : current.acceptedAnswers,
+              timeLimitSeconds: spoken.timeLimitSeconds,
+              explanation: spoken.explanation ?? current.explanation,
+            }))
+          }
+        />
 
         <label className="block space-y-1.5">
           <span className="text-sm font-semibold text-slate-900">Question</span>

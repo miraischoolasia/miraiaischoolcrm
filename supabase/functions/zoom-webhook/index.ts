@@ -5,11 +5,14 @@
 //
 // Set up in the school's Zoom app (Event Subscriptions), pointing at this
 // function, with the events meeting.participant_joined,
-// meeting.participant_left and recording.completed.
+// meeting.participant_left, meeting.participant_joined_waiting_room,
+// meeting.participant_left_waiting_room, meeting.started, meeting.ended and
+// recording.completed (meeting.started / ended run Facebook Live).
 //
 // Secret: ZOOM_WEBHOOK_SECRET (the app's "Secret Token"). No login: every event
 // must carry Zoom's signature (only the address check is answered without one).
 import {
+  isDroppedLeave,
   readParticipantEvent,
   readRecordingEvent,
   studentIdFromEmail,
@@ -66,6 +69,29 @@ Deno.serve(async (req) => {
     .maybeSingle()
   if (!meeting) return json({ ok: true, ignored: true })
 
+  if (event === 'meeting.started' || event === 'meeting.ended') {
+    const { data: zoom } = await admin.from('class_session_zoom').select('*').eq('session_id', meeting.session_id).maybeSingle()
+    const starting = event === 'meeting.started'
+    if (zoom && (starting ? zoom.fb_live_wanted && !zoom.fb_live_id : zoom.fb_live_id)) {
+      const accountId = Deno.env.get('ZOOM_ACCOUNT_ID')
+      const clientId = Deno.env.get('ZOOM_CLIENT_ID')
+      const clientSecret = Deno.env.get('ZOOM_CLIENT_SECRET')
+      const { zoomToken } = await import('../zoom-lesson/zoomApi.ts')
+      const { goLiveOnFacebook, stopFacebookLive } = await import('../zoom-lesson/facebook.ts')
+      const work = (async () => {
+        const token = accountId && clientId && clientSecret ? await zoomToken(accountId, clientId, clientSecret) : null
+        if (starting) {
+          if (token) await goLiveOnFacebook(admin, token, zoom)
+        } else await stopFacebookLive(admin, token, zoom)
+      })().catch((problem) => console.error('facebook live', problem instanceof Error ? problem.message : problem))
+      // Answered first: Zoom only waits 3 seconds.
+      const runtime = (globalThis as { EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void } }).EdgeRuntime
+      if (runtime) runtime.waitUntil(work)
+      else await work
+    }
+    return json({ ok: true })
+  }
+
   const participant = readParticipantEvent(event, message.payload)
   if (participant) {
     let studentId: number | null = null
@@ -80,6 +106,14 @@ Deno.serve(async (req) => {
     }
     studentId ??= studentIdFromEmail(participant.email)
 
+    const closeWaiting = async (at: string) => {
+      let query = admin.from('zoom_waiting').update({ left_at: at }).eq('session_id', meeting.session_id).is('left_at', null).lte('entered_at', at)
+      query = studentId
+        ? query.or(`participant_uuid.eq."${participant.participantUuid.replace(/"/g, '')}",student_id.eq.${studentId}`)
+        : query.eq('participant_uuid', participant.participantUuid)
+      await query
+    }
+
     if (participant.kind === 'joined') {
       await admin.from('zoom_participation').upsert(
         {
@@ -88,10 +122,13 @@ Deno.serve(async (req) => {
           participant_uuid: participant.participantUuid,
           user_name: participant.userName,
           joined_at: participant.at,
+          is_host: participant.isHost,
         },
         { onConflict: 'session_id,participant_uuid,joined_at', ignoreDuplicates: true },
       )
-    } else {
+      // Admitted from the waiting room.
+      await closeWaiting(participant.at)
+    } else if (participant.kind === 'left') {
       const { data: open } = await admin
         .from('zoom_participation')
         .select('id')
@@ -102,7 +139,25 @@ Deno.serve(async (req) => {
         .order('joined_at', { ascending: false })
         .limit(1)
         .maybeSingle()
-      if (open) await admin.from('zoom_participation').update({ left_at: participant.at }).eq('id', open.id)
+      if (open) {
+        await admin
+          .from('zoom_participation')
+          .update({ left_at: participant.at, leave_reason: participant.leaveReason, dropped: isDroppedLeave(participant.leaveReason) })
+          .eq('id', open.id)
+      }
+    } else if (participant.kind === 'waiting') {
+      await admin.from('zoom_waiting').upsert(
+        {
+          session_id: meeting.session_id,
+          student_id: studentId,
+          participant_uuid: participant.participantUuid,
+          user_name: participant.userName,
+          entered_at: participant.at,
+        },
+        { onConflict: 'session_id,participant_uuid,entered_at', ignoreDuplicates: true },
+      )
+    } else {
+      await closeWaiting(participant.at)
     }
     return json({ ok: true })
   }

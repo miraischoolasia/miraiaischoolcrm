@@ -2,8 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Lightning, MagnifyingGlass, Robot, X } from '@phosphor-icons/react'
 import { ModalShell } from './ModalShell'
 import { LessonZoomCard } from './LessonZoomCard'
+import { LessonRoomCard } from './LessonRoomCard'
+import { LessonReportModal } from './LessonReportModal'
+import { QuestionEditorModal } from './questions/QuestionEditorModal'
 import { cn } from '../lib/cn'
-import { fetchQuestions, fitsClassroom, questionKindLabels, type Question } from '../lib/questions'
+import { emptyQuestionDraft, fetchQuestions, fitsClassroom, questionKindLabels, saveQuestion, type Question } from '../lib/questions'
+import { fetchSubjects, type Subject } from '../lib/subjects'
 import {
   answerText,
   askAiToMark,
@@ -80,6 +84,9 @@ export function LiveQuestionsPanel({
   const [onlyFits, setOnlyFits] = useState(Boolean(classroom))
   const [timeLimit, setTimeLimit] = useState(0)
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [showReport, setShowReport] = useState(false)
+  const [writing, setWriting] = useState(false)
+  const [subjects, setSubjects] = useState<Subject[]>([])
   const aiAsked = useRef(new Set<number>())
 
   const load = useCallback(async (id: number) => {
@@ -197,10 +204,49 @@ export function LiveQuestionsPanel({
             {title} · {lessonDate}
           </p>
         </div>
-        <button type="button" onClick={onClose} aria-label="Close" className="rounded-full p-2 text-slate-500 hover:bg-slate-100">
-          <X size={18} aria-hidden="true" />
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          {sessionId && (
+            <button type="button" onClick={() => setShowReport(true)} className={secondaryButton}>
+              Lesson report
+            </button>
+          )}
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-full p-2 text-slate-500 hover:bg-slate-100">
+            <X size={18} aria-hidden="true" />
+          </button>
+        </div>
       </div>
+      {writing && (
+        <QuestionEditorModal
+          title="New question"
+          subjects={subjects}
+          initial={{
+            ...emptyQuestionDraft(),
+            subjectId: classroom?.subjectId ?? null,
+            ageGroups: classroom ? [classroom.ageGroup] : [],
+          }}
+          onClose={() => setWriting(false)}
+          onSave={async (draft) => {
+            const problem = await saveQuestion(null, draft)
+            if (!problem) {
+              setSearch('')
+              const list = await fetchQuestions().catch(() => null)
+              if (list) setBank(list.filter((question) => !question.isArchived))
+            }
+            return problem
+          }}
+        />
+      )}
+      {showReport && sessionId && (
+        <LessonReportModal
+          sessionId={sessionId}
+          scheduleId={scheduleId}
+          lessonDate={lessonDate}
+          title={title}
+          questions={questions}
+          answers={answers}
+          onClose={() => setShowReport(false)}
+        />
+      )}
 
       <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
         {error && (
@@ -212,6 +258,7 @@ export function LiveQuestionsPanel({
         {!sessionId && !error && <p className="text-sm text-slate-500">Opening the lesson…</p>}
 
         {sessionId && <LessonZoomCard scheduleId={scheduleId} lessonDate={lessonDate} rosterCount={rosterCount} />}
+        {sessionId && <LessonRoomCard sessionId={sessionId} />}
 
         {current && (
           <section aria-label="Question now" className="rounded-2xl border border-slate-200 p-4">
@@ -286,7 +333,19 @@ export function LiveQuestionsPanel({
         )}
 
         <section aria-label="Pop a question" className="rounded-2xl border border-slate-200 p-4">
-          <h3 className="text-base font-semibold text-slate-900">Pop a question</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-base font-semibold text-slate-900">Pop a question</h3>
+            <button
+              type="button"
+              onClick={() => {
+                setWriting(true)
+                if (subjects.length === 0) void fetchSubjects().then(setSubjects).catch(() => setSubjects([]))
+              }}
+              className={secondaryButton}
+            >
+              New question
+            </button>
+          </div>
           <p className="text-sm text-slate-500">It shows at once in the student app; popping another one closes this one.</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <label className="relative min-w-[180px] flex-1">

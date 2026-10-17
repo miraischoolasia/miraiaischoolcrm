@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   meetingBody,
+  isDroppedLeave,
   readParticipantEvent,
   readRecordingEvent,
   registrantEmail,
@@ -81,5 +82,51 @@ describe('Zoom lessons', () => {
         object: { id: 123, uuid: 'rec==', share_url: 'https://zoom.us/rec/share/x', recording_play_passcode: 'pw', duration: 58 },
       }),
     ).toMatchObject({ meetingId: '123', recordingUuid: 'rec==', shareUrl: 'https://zoom.us/rec/share/x', passcode: 'pw', durationMinutes: 58 })
+  })
+
+  it('reads leave reasons, the host and the waiting room', () => {
+    const host = readParticipantEvent('meeting.participant_joined', {
+      object: { id: 9, host_id: 'H1', participant: { id: 'H1', participant_uuid: 'h', join_time: '2026-10-21T12:29:00Z' } },
+    })
+    expect(host).toMatchObject({ kind: 'joined', isHost: true, leaveReason: null })
+    const dropped = readParticipantEvent('meeting.participant_left', {
+      object: {
+        id: 9,
+        host_id: 'H1',
+        participant: { id: 'P2', participant_uuid: 'u2', leave_time: '2026-10-21T13:00:00Z', leave_reason: 'left the meeting. Reason : Network connection error' },
+      },
+    })
+    expect(dropped).toMatchObject({ kind: 'left', isHost: false, leaveReason: 'left the meeting. Reason : Network connection error' })
+    const waiting = readParticipantEvent(
+      'meeting.participant_joined_waiting_room',
+      { object: { id: 9, participant: { participant_uuid: 'u3', user_name: 'Kid', registrant_id: '' } } },
+      '2026-10-21T12:31:00Z',
+    )
+    expect(waiting).toMatchObject({ kind: 'waiting', at: '2026-10-21T12:31:00Z', registrantId: null })
+    expect(readParticipantEvent('meeting.participant_left_waiting_room', { object: { id: 9, participant: { participant_uuid: 'u3', date_time: '2026-10-21T12:32:00Z' } } })).toMatchObject({
+      kind: 'left_waiting',
+      at: '2026-10-21T12:32:00Z',
+    })
+  })
+
+  it('tells a dropped connection from pressing Leave', () => {
+    expect(isDroppedLeave('left the meeting. Reason : Network connection error')).toBe(true)
+    expect(isDroppedLeave('left the meeting with Unknown Failover Reason')).toBe(true)
+    expect(isDroppedLeave('left the meeting')).toBe(false)
+    expect(isDroppedLeave('left the meeting. Reason : Removed by host.')).toBe(false)
+    expect(isDroppedLeave('left the meeting. Reason : Host ended the meeting.')).toBe(false)
+    expect(isDroppedLeave(null)).toBe(false)
+  })
+})
+
+describe('Facebook stream address', () => {
+  it('splits the server from the key', async () => {
+    const { splitStreamUrl } = await import('../../supabase/functions/zoom-lesson/logic')
+    expect(splitStreamUrl('rtmps://live-api-s.facebook.com:443/rtmp/FB-123-0-Abc?s_bl=1')).toEqual({
+      streamUrl: 'rtmps://live-api-s.facebook.com:443/rtmp/',
+      streamKey: 'FB-123-0-Abc?s_bl=1',
+    })
+    expect(splitStreamUrl('rtmps://x/rtmp/')).toBeNull()
+    expect(splitStreamUrl('nothing')).toBeNull()
   })
 })

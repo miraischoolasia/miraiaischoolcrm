@@ -1197,4 +1197,45 @@ set local role authenticated;
 select pg_temp.fails($$select * from public.legacy_ids$$, 'permission denied', 'nobody signed in reads the import ids');
 reset role;
 
+-- Who is in the lesson, strangers, waiting room, late leaves (20261023100000) ---
+reset role;
+insert into public.zoom_participation (session_id, student_id, participant_uuid, user_name, joined_at, left_at, is_host) values
+  ((select id from lq_ids where name = 'zsession'), null, 'host1', 'Teacher', '2026-10-21 14:50+08', null, true),
+  ((select id from lq_ids where name = 'zsession'), null, 'x1', 'Uncle Lim', '2026-10-21 15:05+08', null, false);
+insert into public.zoom_waiting (session_id, student_id, participant_uuid, user_name, entered_at)
+values ((select id from lq_ids where name = 'zsession'), 9301, 'w1', 'Ali', '2026-10-21 15:24+08');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select pg_temp.ok((select count(*) from public.zoom_waiting) = 1, 'the teacher sees the waiting room');
+select pg_temp.ok((select minutes from public.lesson_zoom_minutes(9201, '2026-10-21') where student_id = 9301) = 50, 'a normal leave counts as reported');
+select pg_temp.fails($$select public.clear_zoom_stranger((select id from public.zoom_participation where participant_uuid = 'p1'))$$, 'not found', 'a child''s own join is not a stranger');
+select pg_temp.fails($$select public.clear_zoom_stranger((select id from public.zoom_participation where participant_uuid = 'host1'))$$, 'not found', 'the host is not a stranger');
+select pg_temp.fails($$select public.set_zoom_room_rules(240, 5)$$, 'only admin', 'a teacher cannot change the late rules');
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select pg_temp.ok((select count(*) from public.zoom_waiting) = 0, 'another teacher does not see the waiting room');
+select pg_temp.fails($$select public.clear_zoom_stranger(1)$$, 'not found', 'another teacher cannot clear the notice');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok((select count(*) from public.zoom_waiting) = 0, 'a child does not see the waiting room');
+reset role;
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+-- the id is read as postgres-visible data through the teacher's own policy
+select public.clear_zoom_stranger((select id from public.zoom_participation where participant_uuid = 'x1'));
+select pg_temp.ok((select stranger_cleared_at is not null from public.zoom_participation where participant_uuid = 'x1'), 'the teacher clears a stranger notice');
+-- Ali's second stay ended by a dropped connection, reported at 15:50
+reset role;
+update public.zoom_participation set dropped = true, leave_reason = 'Network connection error' where participant_uuid = 'p2';
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+set local role authenticated;
+select pg_temp.fails($$select public.set_zoom_room_rules(901, 5)$$, '0 to 900', 'grace is at most 15 minutes');
+select pg_temp.fails($$select public.set_zoom_room_rules(0, 121)$$, '0 to 120', 'late is at most 2 hours');
+select pg_temp.ok((select minutes from public.lesson_zoom_minutes(9201, '2026-10-21') where student_id = 9301) = 50, 'no grace until the school sets it');
+select public.set_zoom_room_rules(600, 7);
+select pg_temp.ok((select minutes from public.lesson_zoom_minutes(9201, '2026-10-21') where student_id = 9301) = 40, 'a dropped leave ends the grace earlier');
+select pg_temp.ok((select (value ->> 'present_percent')::int = 90 and (value ->> 'late_minutes')::int = 7 from public.app_settings where key = 'zoom_attendance'), 'the late rules keep the percent');
+select public.set_zoom_attendance(80);
+select pg_temp.ok((select (value ->> 'drop_grace_seconds')::int = 600 from public.app_settings where key = 'zoom_attendance'), 'the percent keeps the late rules');
+select public.set_zoom_room_rules(3600 / 4, 5);
+select pg_temp.ok((select minutes from public.lesson_zoom_minutes(9201, '2026-10-21') where student_id = 9301) = 35, 'the most grace still counts the rest of the stay');
+
 rollback;

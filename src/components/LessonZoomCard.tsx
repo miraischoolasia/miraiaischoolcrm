@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { VideoCamera } from '@phosphor-icons/react'
-import { fetchLessonZoom, lessonZoomHostUrl, prepareLessonZoom, type LessonZoom } from '../lib/zoomLessons'
+import { facebookLiveConfigured, fetchLessonZoom, lessonZoomHostUrl, prepareLessonZoom, setFacebookLive, type LessonZoom } from '../lib/zoomLessons'
 import { fetchLessonRecordings, recordingAction, recordingStatusLabels, type LessonRecording } from '../lib/recordings'
 
 // The lesson's own Zoom meeting: make it (each child gets a link of their own
@@ -19,6 +19,8 @@ export function LessonZoomCard({
   const [error, setError] = useState<string | null>(null)
   const [problems, setProblems] = useState<string[]>([])
   const [recordings, setRecordings] = useState<LessonRecording[]>([])
+  const [facebookReady, setFacebookReady] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
 
   const load = useCallback(() => {
     fetchLessonZoom(scheduleId, lessonDate)
@@ -39,6 +41,30 @@ export function LessonZoomCard({
   }
 
   useEffect(load, [load])
+
+  const hasMeeting = Boolean(zoom?.meeting)
+  useEffect(() => {
+    if (hasMeeting) void facebookLiveConfigured(scheduleId, lessonDate).then(setFacebookReady)
+  }, [hasMeeting, lessonDate, scheduleId])
+
+  // While Facebook Live waits for Zoom to start, look again now and then.
+  const waitingForFacebook = Boolean(zoom?.meeting?.facebook.wanted && !zoom.meeting.facebook.live && !zoom.meeting.facebook.error)
+  useEffect(() => {
+    if (!waitingForFacebook) return
+    const poll = setInterval(load, 10000)
+    return () => clearInterval(poll)
+  }, [load, waitingForFacebook])
+
+  async function toggleFacebook(on: boolean) {
+    setBusy(true)
+    setError(null)
+    setNote(null)
+    const result = await setFacebookLive(scheduleId, lessonDate, on)
+    setBusy(false)
+    setError(result.error)
+    setNote(result.note)
+    load()
+  }
 
   async function prepare() {
     setBusy(true)
@@ -116,6 +142,36 @@ export function LessonZoomCard({
             ? `Meeting ${zoom.meeting.meetingId}${zoom.meeting.host ? ` on ${zoom.meeting.host}` : ''} · ${zoom.linked} of ${rosterCount} children have their own link in the student app.`
             : 'Each child gets a link of their own in the student app; Zoom then tells the attendance form who was there.'}
       </p>
+      {zoom?.meeting && facebookReady && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-sm">
+          <label className="flex items-center gap-2 text-slate-700">
+            <input
+              type="checkbox"
+              checked={zoom.meeting.facebook.wanted}
+              disabled={busy}
+              onChange={(event) => void toggleFacebook(event.target.checked)}
+            />
+            Live on Facebook
+          </label>
+          <span className="text-xs">
+            {zoom.meeting.facebook.live ? (
+              <>
+                <span className="font-semibold text-rose-600">● Live now</span>
+                {zoom.meeting.facebook.url && (
+                  <a href={zoom.meeting.facebook.url} target="_blank" rel="noopener" className="ml-2 font-semibold text-sky-700 underline underline-offset-2">
+                    Open
+                  </a>
+                )}
+              </>
+            ) : zoom.meeting.facebook.error ? (
+              <span className="text-rose-700">{zoom.meeting.facebook.error}</span>
+            ) : zoom.meeting.facebook.wanted ? (
+              <span className="text-slate-500">Goes live when you start Zoom</span>
+            ) : null}
+          </span>
+        </div>
+      )}
+      {note && <p className="mt-1 text-xs text-slate-500">{note}</p>}
       {error && (
         <p role="alert" className="mt-2 text-sm text-red-700">
           {error}

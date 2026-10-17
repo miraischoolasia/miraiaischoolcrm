@@ -105,33 +105,58 @@ export async function urlValidationAnswer(secret: string, plainToken: string) {
 }
 
 export type ParticipantEvent = {
-  kind: 'joined' | 'left'
+  kind: 'joined' | 'left' | 'waiting' | 'left_waiting'
   meetingId: string
   participantUuid: string
   userName: string | null
   email: string | null
   registrantId: string | null
   at: string
+  // Zoom's own words for a leave, e.g. "left the meeting. Reason : Network connection error"
+  leaveReason: string | null
+  // The meeting's host (the teacher's Start as host), not a child or a stranger.
+  isHost: boolean
 }
 
-export function readParticipantEvent(event: string, payload: unknown): ParticipantEvent | null {
-  if (event !== 'meeting.participant_joined' && event !== 'meeting.participant_left') return null
+const PARTICIPANT_EVENTS: Record<string, ParticipantEvent['kind']> = {
+  'meeting.participant_joined': 'joined',
+  'meeting.participant_left': 'left',
+  'meeting.participant_joined_waiting_room': 'waiting',
+  'meeting.participant_left_waiting_room': 'left_waiting',
+}
+
+export function readParticipantEvent(event: string, payload: unknown, receivedAt = new Date().toISOString()): ParticipantEvent | null {
+  const kind = PARTICIPANT_EVENTS[event]
+  if (!kind) return null
   const object = (payload as { object?: Record<string, unknown> } | null)?.object
   const participant = object?.participant as Record<string, unknown> | undefined
   if (!object || !participant) return null
-  const kind = event === 'meeting.participant_joined' ? 'joined' : 'left'
-  const at = String((kind === 'joined' ? participant.join_time : participant.leave_time) ?? '')
+  const leaving = kind === 'left' || kind === 'left_waiting'
+  const timeField = leaving ? participant.leave_time : participant.join_time
+  const at = String(timeField || participant.date_time || (kind === 'joined' ? '' : receivedAt))
   const uuid = String(participant.participant_uuid ?? participant.user_id ?? participant.id ?? '')
   if (!object.id || !uuid || !at) return null
+  const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value : null)
+  const hostId = text(object.host_id)
   return {
     kind,
     meetingId: String(object.id),
     participantUuid: uuid,
-    userName: typeof participant.user_name === 'string' ? participant.user_name : null,
-    email: typeof participant.email === 'string' ? participant.email : null,
-    registrantId: typeof participant.registrant_id === 'string' ? participant.registrant_id : null,
+    userName: text(participant.user_name),
+    email: text(participant.email),
+    registrantId: text(participant.registrant_id),
     at,
+    leaveReason: leaving ? text(participant.leave_reason)?.slice(0, 300) ?? null : null,
+    isHost: !!hostId && (participant.id === hostId || participant.user_id === hostId),
   }
+}
+
+// A leave that Zoom only noticed after its time-out (the connection dropped:
+// a closed browser tab, lost Wi-Fi), rather than the child pressing Leave or
+// the teacher removing them / ending the meeting.
+export function isDroppedLeave(reason: string | null | undefined) {
+  if (!reason) return false
+  return /network|connection|internet|failover|time ?out|timed out|unknown|lost/i.test(reason)
 }
 
 export type RecordingEvent = {
@@ -160,4 +185,15 @@ export function readRecordingEvent(event: string, payload: unknown): RecordingEv
     startedAt: typeof object.start_time === 'string' ? object.start_time : null,
     durationMinutes: typeof object.duration === 'number' ? object.duration : null,
   }
+}
+
+// Facebook gives one RTMPS address; Zoom wants the server part and the key
+// apart (the key is everything after /rtmp/).
+export function splitStreamUrl(secureStreamUrl: string) {
+  const marker = secureStreamUrl.indexOf('/rtmp/')
+  if (marker < 0) return null
+  const at = marker + '/rtmp/'.length
+  const streamUrl = secureStreamUrl.slice(0, at)
+  const streamKey = secureStreamUrl.slice(at)
+  return streamKey ? { streamUrl, streamKey } : null
 }
