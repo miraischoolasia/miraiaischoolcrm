@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getClassroomRosterOn, getCurrentClassPeriod, isInClassroomOn } from './roster'
+import { getClassroomRosterOn, getCurrentClassPeriod, getExtraClassIds, getStudentClassIds, isInClassroomOn } from './roster'
 import type { Student } from '../types/domain'
 
 const student = (id: number, name: string, extra: Partial<Student>): Student => ({
@@ -53,5 +53,27 @@ describe('getCurrentClassPeriod', () => {
   it('is the open stay in the class they are in now', () => {
     expect(getCurrentClassPeriod(chong)).toEqual({ classroomId: 8, startDate: '2026-10-01', endDate: null })
     expect(getCurrentClassPeriod(branson)).toBeNull()
+  })
+})
+
+describe('several classes', () => {
+  const both = student(50, 'Mei', {
+    classPeriods: [
+      { classroomId: 8, startDate: null, endDate: null },
+      { classroomId: 12, startDate: '2026-10-05', endDate: null },
+      { classroomId: 10, startDate: null, endDate: '2026-09-01' },
+    ],
+  })
+
+  it('lists the main class and every open extra class, not the ones left', () => {
+    expect(getStudentClassIds(both)).toEqual([8, 12])
+    expect(getExtraClassIds(both)).toEqual([12])
+    expect(getExtraClassIds(branson)).toEqual([])
+  })
+
+  it('puts the student on the roster of each class', () => {
+    expect(isInClassroomOn(both, 12, '2026-10-06')).toBe(true)
+    expect(isInClassroomOn(both, 8, '2026-10-06')).toBe(true)
+    expect(isInClassroomOn(both, 12, '2026-10-04')).toBe(false)
   })
 })

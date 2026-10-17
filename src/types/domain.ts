@@ -5,6 +5,7 @@ export type AppSection =
   | 'calendar'
   | 'classrooms'
   | 'questions'
+  | 'videos'
   | 'students'
   | 'teachers'
   | 'leads'

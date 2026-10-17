@@ -2582,6 +2582,69 @@ export type Database = {
         }
         Relationships: []
       }
+      classroom_teacher_libraries: {
+        Row: { classroom_id: number; teacher_id: number; library_id: number }
+        Insert: { classroom_id: number; teacher_id: number; library_id: number }
+        Update: { classroom_id?: number; teacher_id?: number; library_id?: number }
+        Relationships: []
+      }
+      class_videos: {
+        Row: {
+          id: number
+          classroom_id: number
+          teacher_id: number | null
+          title: string
+          description: string | null
+          year: number
+          month: number
+          lesson_date: string | null
+          bunny_library_id: string
+          bunny_video_id: string
+          status: 'uploading' | 'processing' | 'ready' | 'failed'
+          source: 'upload' | 'zoom' | 'import'
+          recording_id: number | null
+          views: number
+          legacy_id: string | null
+          is_archived: boolean
+          created_by: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: { id?: never; classroom_id: number; title: string; year: number; month: number; bunny_library_id: string; bunny_video_id: string }
+        Update: { id?: never }
+        Relationships: []
+      }
+      student_video_access: {
+        Row: {
+          id: number
+          student_id: number
+          classroom_id: number
+          year: number
+          month: number
+          starts_on: string | null
+          ends_on: string | null
+          created_by: number | null
+          created_at: string
+        }
+        Insert: { id?: never; student_id: number; classroom_id: number; year: number; month: number }
+        Update: { id?: never }
+        Relationships: []
+      }
+      class_video_progress: {
+        Row: {
+          student_id: number
+          video_id: number
+          watch_percentage: number
+          watch_seconds: number
+          rewatch_count: number
+          opened_at: string
+          last_watched_at: string
+          completed_at: string | null
+        }
+        Insert: { student_id: number; video_id: number }
+        Update: { watch_percentage?: number }
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: {
@@ -3048,6 +3111,53 @@ export type Database = {
       set_late_feedback_edit: {
         Args: {
           p_open: boolean
+        }
+        Returns: undefined
+      }
+      add_student_to_classroom: {
+        Args: { p_student_id: number; p_classroom_id: number }
+        Returns: undefined
+      }
+      remove_student_from_classroom: {
+        Args: { p_student_id: number; p_classroom_id: number }
+        Returns: undefined
+      }
+      set_class_video_settings: {
+        Args: { p_month_access: boolean }
+        Returns: undefined
+      }
+      set_classroom_teacher_library: {
+        Args: { p_classroom_id: number; p_teacher_id: number; p_library_id: number | null }
+        Returns: undefined
+      }
+      can_manage_class_videos: {
+        Args: { p_classroom_id: number }
+        Returns: boolean
+      }
+      update_class_video: {
+        Args: {
+          p_id: number
+          p_title: string
+          p_description: string | null
+          p_year: number
+          p_month: number
+          p_lesson_date: string | null
+        }
+        Returns: Database['public']['Tables']['class_videos']['Row']
+      }
+      set_class_video_archived: {
+        Args: { p_id: number; p_archived: boolean }
+        Returns: undefined
+      }
+      set_student_video_access: {
+        Args: {
+          p_student_id: number
+          p_classroom_id: number
+          p_year: number
+          p_month: number
+          p_granted: boolean
+          p_starts_on?: string | null
+          p_ends_on?: string | null
         }
         Returns: undefined
       }

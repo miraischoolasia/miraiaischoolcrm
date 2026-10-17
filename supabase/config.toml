@@ -435,3 +435,6 @@ verify_jwt = false
 # so a fake notice changes nothing. Signed-in staff use it for Check / Send again.
 [functions.recording-bunny]
 verify_jwt = false
+
+[functions.class-videos]
+verify_jwt = true

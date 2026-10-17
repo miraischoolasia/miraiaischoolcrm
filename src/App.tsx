@@ -29,6 +29,7 @@ import {
   GraduationCap,
   IdentificationBadge,
   Exam,
+  FilmStrip,
   Brain,
   BookBookmark,
   Lightning,
@@ -183,9 +184,9 @@ import { useProgrammes } from './hooks/useProgrammes'
 import { AutomationsSection } from './components/sections/AutomationsSection'
 import { WhatsAppOpenProvider, type WhatsAppTarget } from './components/WhatsAppLink'
 import type { LeadFormValues, WhatsAppCrm } from './components/whatsapp/crm'
-import { describeHoaSlot, upcomingHoaSlots, type HoaSlot } from './lib/hoaSlots'
 import { todaysFollowUps } from './lib/followUps'
 import { FollowUpReminders } from './components/whatsapp/FollowUpReminders'
+import { describeHoaSlot, upcomingHoaSlots, type HoaSlot } from './lib/hoaSlots'
 import { classesOfStudent } from './lib/studentClasses'
 import { findLeadsByPhone, sameNumberMessage } from './lib/chatLink'
 import { getChatwootUrl } from './lib/chatwoot'
@@ -209,6 +210,7 @@ import { LeadStagesModal } from './components/modals/LeadStagesModal'
 import { useLeadStages } from './hooks/useLeadStages'
 import { PackagesModal, type PackageDraft } from './components/modals/PackagesModal'
 import { QuestionBankSection } from './components/sections/QuestionBankSection'
+import { ClassVideosSection } from './components/sections/ClassVideosSection'
 import { fetchSubjects, saveSubject, type Subject } from './lib/subjects'
 import {
   AgeGroupsContext,
@@ -240,9 +242,9 @@ import { TrialBookingModal } from './components/modals/TrialBookingModal'
 import { CancelledOccurrenceModal } from './components/modals/CancelledOccurrenceModal'
 import { CalendarItemModal } from './components/modals/CalendarItemModal'
 import { useCalendarItems } from './hooks/useCalendarItems'
+import { useFollowUpReminders } from './hooks/useFollowUpReminders'
 import { useLeadChannels } from './hooks/useLeadChannels'
 import { mergeLeads } from './lib/leadChannels'
-import { useFollowUpReminders } from './hooks/useFollowUpReminders'
 import { upcomingZoomSlots } from './lib/zoomSlots'
 import { MOCK_SOCIAL_CHANNELS, MOCK_SOCIAL_LEADS } from './lib/mockSocialLeads'
 
@@ -262,7 +264,7 @@ import { getDragBlockReason, getTimeFromDate, getTrialSlotsOnDate } from './lib/
 import { describeClashes, findTeacherClashes, type ClashCandidate } from './lib/clash'
 import { closeCalendarMorePopover } from './lib/calendarPopover'
 import { hasPermission } from './lib/permissions'
-import { getClassroomRosterOn } from './lib/roster'
+import { getClassroomRosterOn, getStudentClassIds } from './lib/roster'
 import {
   getOfferedPackages,
   getRenewalStartDate,
@@ -710,14 +712,13 @@ function App() {
   const classroomStudentMap = useMemo(() => {
     const nextMap = new Map<number, Student[]>()
 
+    // A student taking several subjects is in each of their classes.
     for (const student of students) {
-      if (!student.classroomId) {
-        continue
+      for (const classroomId of getStudentClassIds(student)) {
+        const existing = nextMap.get(classroomId) ?? []
+        existing.push(student)
+        nextMap.set(classroomId, existing)
       }
-
-      const existing = nextMap.get(student.classroomId) ?? []
-      existing.push(student)
-      nextMap.set(student.classroomId, existing)
     }
 
     return nextMap
@@ -830,6 +831,8 @@ function App() {
     if (isTeacherAccount || can('classrooms')) sections.push('classrooms')
     // Every teacher keeps questions for class; an admin sees all of them.
     if (isTeacherAccount || isAdmin) sections.push('questions')
+    // A class's videos: whoever sees the classes (each teacher manages their own classes' videos).
+    if (isTeacherAccount || can('classrooms')) sections.push('videos')
     // The courses the school signs parents up for: an admin makes them, so the page is the admin's.
     if (isAdmin) sections.push('programmes')
     if (can('students')) sections.push('students')
@@ -882,9 +885,6 @@ function App() {
   }, [])
   // Only when the school's own WhatsApp page is there to open; otherwise the button opens wa.me.
   const canOpenWhatsAppChat = allowedSections.includes('whatsapp') && Boolean(whatsAppApiUrl && whatsAppUser)
-  const {
-    leadIdsWithForms,
-    submissions: editingLeadFormSubmissions,
   // Follow-ups whose time has come ring for the person they are for (cards in the corner of the screen).
   const followUpReminders = useFollowUpReminders(calendarItems.items, currentSession?.teacherId ?? null)
   function openFollowUpChat(leadId: number) {
@@ -895,6 +895,9 @@ function App() {
       openEditLeadModal(leadId)
     }
   }
+  const {
+    leadIdsWithForms,
+    submissions: editingLeadFormSubmissions,
     isLoading: isLoadingEditingLeadForms,
   } = useLeadFormAnswers(can('leads'), leads, editingLeadId)
   const [focusFormAnswers, setFocusFormAnswers] = useState(false)
@@ -1382,6 +1385,22 @@ function App() {
     return null
   }
 
+  // Puts the open student in one more class, or takes them out of one.
+  async function handleStudentClass(action: 'add' | 'remove', classroomId: number) {
+    if (!supabase || !selectedStudentDetailId) {
+      return 'Not connected.'
+    }
+    const { error } = await supabase.rpc(
+      action === 'add' ? 'add_student_to_classroom' : 'remove_student_from_classroom',
+      { p_student_id: selectedStudentDetailId, p_classroom_id: classroomId },
+    )
+    if (error) {
+      return getErrorMessage(error, action === 'add' ? 'Failed to add the class.' : 'Failed to remove the class.')
+    }
+    await Promise.all([refreshStudentsAndLogs(), refreshAdminActivities()])
+    return null
+  }
+
   async function handleChangePackage(change: PackageChange) {
     if (!supabase || !selectedStudentDetailId) {
       return
@@ -1845,6 +1864,7 @@ function App() {
       { key: 'calendar', label: 'Calendar', icon: CalendarBlank },
       { key: 'classrooms', label: 'My Classroom', icon: Chalkboard },
       { key: 'questions', label: 'Question Bank', icon: Exam },
+      { key: 'videos', label: 'Class Videos', icon: FilmStrip },
       { key: 'programmes', label: 'Programmes', icon: BookBookmark },
       { key: 'students', label: 'Students', icon: GraduationCap },
       { key: 'teachers', label: 'My Team', icon: IdentificationBadge },
@@ -4274,6 +4294,13 @@ function App() {
     onCancelHoa: cancelHoaFromChat,
     onEnrolCamp: enrolCampFromChat,
     onEnrolStudent: enrolStudentFromChat,
+    followUps: {
+      items: calendarItems.items,
+      meId: currentSession?.teacherId ?? null,
+      save: (draft) => calendarItems.save(null, draft),
+      done: (id) => calendarItems.setDone(id, true),
+      remove: (id) => calendarItems.remove(id),
+    },
     leadOptions,
     canEditLeads: can('leads', 'edit'),
     canEditStudents: can('students', 'edit'),
@@ -4294,13 +4321,6 @@ function App() {
     zoomSlots: upcomingZoomSlots(calendarItems.items, new Date()),
     leadChannels: leadChannels.rows,
     // A chat that became a lead here: read the leads and the chats again.
-    followUps: {
-      items: calendarItems.items,
-      meId: currentSession?.teacherId ?? null,
-      save: (draft) => calendarItems.save(null, draft),
-      done: (id) => calendarItems.setDone(id, true),
-      remove: (id) => calendarItems.remove(id),
-    },
     refreshLeadChannels: () => {
       void leadChannels.refresh()
       void refreshLeads().catch(() => undefined)
@@ -5997,6 +6017,12 @@ function App() {
     <main className="compact-admin min-h-screen bg-white pb-20 text-slate-900 lg:pb-0">
       {confirmDialog}
       {toastHost}
+      <FollowUpReminders
+        due={followUpReminders.due}
+        onOpen={openFollowUpChat}
+        onDone={(id) => calendarItems.setDone(id, true)}
+        onSnooze={followUpReminders.snooze}
+      />
       {calendarItemEditor && (
         <CalendarItemModal
           item={calendarItemEditor.item}
@@ -6017,12 +6043,6 @@ function App() {
                   }
                   return problem
                 }
-      <FollowUpReminders
-        due={followUpReminders.due}
-        onOpen={openFollowUpChat}
-        onDone={(id) => calendarItems.setDone(id, true)}
-        onSnooze={followUpReminders.snooze}
-      />
               : undefined
           }
         />
@@ -6142,7 +6162,7 @@ function App() {
                     ? 'Calendar Board'
                     : activeSection === 'classrooms'
                       ? 'Classroom Board'
-                      : activeSection === 'questions'
+                      : activeSection === 'questions' || activeSection === 'videos'
                       ? 'Classroom Board'
                       : activeSection === 'programmes'
                         ? 'Settings'
@@ -6169,6 +6189,8 @@ function App() {
                       ? 'My Classroom'
                       : activeSection === 'questions'
                       ? 'Question Bank'
+                      : activeSection === 'videos'
+                      ? 'Class Videos'
                       : activeSection === 'programmes'
                         ? 'Programmes'
                       : activeSection === 'teachers'
@@ -6209,6 +6231,7 @@ function App() {
                     title="When on, teachers can edit attendance and feedback of past classes, not only within 24 hours."
                     className={cn(
                       'flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-60',
+                      activeSection === 'whatsapp' && 'max-sm:hidden',
                       lateFeedbackEdit
                         ? 'border-amber-300 bg-amber-50 text-amber-800'
                         : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
@@ -6231,7 +6254,6 @@ function App() {
                     Edit past feedback: {lateFeedbackEdit ? 'On' : 'Off'}
                   </button>
                 ) : (
-                      activeSection === 'whatsapp' && 'max-sm:hidden',
                   lateFeedbackEdit && (
                     <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800">
                       Past feedback can be edited now
@@ -6376,6 +6398,8 @@ function App() {
                 }}
                 onOpenLeads={() => setActiveSection('leads')}
                 onOpenLeadTasks={openFollowUpModal}
+                followUps={todaysFollowUps(calendarItems.items, currentSession?.teacherId ?? null, new Date())}
+                onOpenFollowUp={openFollowUpChat}
                 onOpenForms={() => setActiveSection('forms')}
                 onOpenWhatsApp={() => setActiveSection('whatsapp')}
                 onOpenAutomations={() => setActiveSection('automations')}
@@ -6398,8 +6422,6 @@ function App() {
                     },
                     { label: 'Visible Teachers', value: visibleTeacherCount, tone: 'brand' },
                   ]}
-                followUps={todaysFollowUps(calendarItems.items, currentSession?.teacherId ?? null, new Date())}
-                onOpenFollowUp={openFollowUpChat}
                 />
 
                 {/* Not overflow-hidden: FullCalendar's "+more" box has to be able to
@@ -6867,6 +6889,14 @@ function App() {
               />
             )}
 
+            {visibleSection === 'videos' && (
+              <ClassVideosSection
+                classrooms={visibleClassrooms}
+                students={students}
+                teacherNames={new Map(Array.from(teacherMap.entries()).map(([id, teacher]) => [id, teacher.fullName]))}
+              />
+            )}
+
             {visibleSection === 'programmes' && <ProgrammesSection canEdit={isAdmin} state={programmes} />}
 
             {visibleSection === 'forms' && (
@@ -7181,6 +7211,8 @@ function App() {
           }
           packages={packages}
           onSetClassStart={can('students', 'edit') ? handleSetClassStart : undefined}
+          onAddClass={can('students', 'edit') ? (id) => handleStudentClass('add', id) : undefined}
+          onRemoveClass={can('students', 'edit') ? (id) => handleStudentClass('remove', id) : undefined}
           onEdit={
             can('students', 'edit')
               ? () => {

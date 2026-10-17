@@ -35,3 +35,23 @@ export function getCurrentClassPeriod(student: Student) {
     ) ?? null
   )
 }
+
+// Every class the student is in now (or is booked to join): the main class
+// plus any extra class with an open stay.
+export function getStudentClassIds(student: Student) {
+  const ids = new Set<number>()
+  if (student.classroomId) {
+    ids.add(student.classroomId)
+  }
+  for (const period of student.classPeriods ?? []) {
+    if (period.endDate === null) {
+      ids.add(period.classroomId)
+    }
+  }
+  return [...ids]
+}
+
+// The classes the student is in besides the main one.
+export function getExtraClassIds(student: Student) {
+  return getStudentClassIds(student).filter((id) => id !== student.classroomId)
+}

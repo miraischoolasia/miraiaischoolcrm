@@ -31,25 +31,76 @@ function zoomSecrets() {
   return accountId && clientId && clientSecret ? { accountId, clientId, clientSecret } : null
 }
 
-// The library of the lesson's class, with its key (server only).
+// The Bunny library for a class: the teacher's own one for that class, else
+// the class's. With its key (server only).
+export async function classLibrary(admin: SupabaseClient, classroomId: number | null, teacherId: number | null) {
+  if (!classroomId) return null
+  let libraryRowId: number | null = null
+  if (teacherId) {
+    const { data: own } = await admin
+      .from('classroom_teacher_libraries')
+      .select('library_id')
+      .eq('classroom_id', classroomId)
+      .eq('teacher_id', teacherId)
+      .maybeSingle()
+    libraryRowId = own?.library_id ?? null
+  }
+  if (!libraryRowId) {
+    const { data: classroom } = await admin.from('classrooms').select('recording_library_id').eq('id', classroomId).maybeSingle()
+    libraryRowId = classroom?.recording_library_id ?? null
+  }
+  if (!libraryRowId) return null
+  const { data } = await admin.from('recording_libraries').select('library_id, api_key, collection_id').eq('id', libraryRowId).maybeSingle()
+  return data
+}
+
+// The lesson's class and its library.
 async function libraryFor(admin: SupabaseClient, sessionId: number) {
   const { data: session } = await admin
     .from('class_sessions')
-    .select('lesson_date, classroom_id, schedule_id')
+    .select('lesson_date, classroom_id, schedule_id, teacher_id')
     .eq('id', sessionId)
     .maybeSingle()
   if (!session) return { session: null, className: null, library: null }
   const [{ data: classroom }, { data: schedule }] = await Promise.all([
     session.classroom_id
-      ? admin.from('classrooms').select('name, recording_library_id').eq('id', session.classroom_id).maybeSingle()
+      ? admin.from('classrooms').select('name').eq('id', session.classroom_id).maybeSingle()
       : Promise.resolve({ data: null }),
     admin.from('schedules').select('title').eq('id', session.schedule_id).maybeSingle(),
   ])
-  const library = classroom?.recording_library_id
-    ? (await admin.from('recording_libraries').select('library_id, api_key, collection_id').eq('id', classroom.recording_library_id).maybeSingle())
-        .data
-    : null
+  const library = await classLibrary(admin, session.classroom_id, session.teacher_id)
   return { session, className: classroom?.name ?? schedule?.title ?? null, library }
+}
+
+// A Zoom recording that is ready on Bunny also becomes one of the class's videos.
+async function addClassVideo(admin: SupabaseClient, row: Row) {
+  const { data: session } = await admin
+    .from('class_sessions')
+    .select('lesson_date, classroom_id, teacher_id, schedule_id')
+    .eq('id', row.session_id)
+    .maybeSingle()
+  if (!session?.classroom_id || !row.bunny_library_id || !row.bunny_video_id) return
+  const [{ data: classroom }, { data: schedule }] = await Promise.all([
+    admin.from('classrooms').select('name').eq('id', session.classroom_id).maybeSingle(),
+    admin.from('schedules').select('title').eq('id', session.schedule_id).maybeSingle(),
+  ])
+  const [year, month] = String(session.lesson_date).split('-').map(Number)
+  await admin.from('class_videos').upsert(
+    {
+      classroom_id: session.classroom_id,
+      teacher_id: session.teacher_id,
+      title: `${schedule?.title ?? classroom?.name ?? 'Lesson'} · ${session.lesson_date}`.slice(0, 300),
+      year,
+      month,
+      lesson_date: session.lesson_date,
+      bunny_library_id: row.bunny_library_id,
+      bunny_video_id: row.bunny_video_id,
+      status: 'ready',
+      source: 'zoom',
+      recording_id: row.id,
+    },
+    { onConflict: 'bunny_library_id,bunny_video_id', ignoreDuplicates: true },
+  )
 }
 
 // Asks Bunny to fetch the video from Zoom. zoomAuth: Zoom's download token, or an API token.
@@ -148,6 +199,7 @@ export async function checkBunny(admin: SupabaseClient, row: Row) {
     }
     if (state !== 'ready') return 'sent'
     await save(admin, row.id, { bunny_status: 'ready', bunny_detail: null })
+    await addClassVideo(admin, { ...row, bunny_status: 'ready' })
 
     const { data: settings } = await admin.from('app_settings').select('value').eq('key', 'zoom_recordings').maybeSingle()
     const deleteZoom = (settings?.value as { delete_zoom_after_upload?: unknown } | null)?.delete_zoom_after_upload !== false

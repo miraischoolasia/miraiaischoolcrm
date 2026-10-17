@@ -26,6 +26,7 @@ import { PathwaySection } from './PathwaySection'
 import { PointsCard } from './PointsCard'
 import { AiReportCard } from './AiReportCard'
 import { AppLoginsCard } from './AppLoginsCard'
+import { ExtraClassesField } from './ExtraClassesField'
 import type { RewardLevel } from '../lib/rewards'
 import { PerformanceRadarChart } from './PerformanceRadarChart'
 import { WhatsAppLink } from './WhatsAppLink'
@@ -90,6 +91,9 @@ type StudentDetailModalProps = {
   // class began). Resolves to an error message, or null when saved. Left
   // out without Students edit.
   onSetClassStart?: (startDate: string | null) => Promise<string | null>
+  // Adding the student to another class, or taking them out of one.
+  onAddClass?: (classroomId: number) => Promise<string | null>
+  onRemoveClass?: (classroomId: number) => Promise<string | null>
 }
 
 const NO_IDS: number[] = []
@@ -141,6 +145,8 @@ export function StudentDetailModal({
   packages = NO_PACKAGES,
   onChangePackage,
   onSetClassStart,
+  onAddClass,
+  onRemoveClass,
 }: StudentDetailModalProps) {
   const [tab, setTab] = useState<TabKey>('overview')
   const [copied, setCopied] = useState(false)
@@ -473,6 +479,16 @@ export function StudentDetailModal({
                   {assignedClassroom && (
                     <div className="mt-3 border-t border-slate-200 pt-3">
                       <ClassStartField student={student} onSave={onSetClassStart} />
+                    </div>
+                  )}
+                  {student.studentType === 'regular' && (
+                    <div className="mt-3 border-t border-slate-200 pt-3">
+                      <ExtraClassesField
+                        student={student}
+                        classrooms={classrooms}
+                        onAdd={onAddClass}
+                        onRemove={onRemoveClass}
+                      />
                     </div>
                   )}
                   {earlierClasses.length > 0 && (

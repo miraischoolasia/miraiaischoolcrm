@@ -1092,5 +1092,97 @@ set local role authenticated;
 select pg_temp.ok(exists (select 1 from jsonb_array_elements(public.portal_home(9301) -> 'lessons') e
   where e ->> 'date' = '2026-10-14' and e -> 'recording' ->> 'url' = 'https://zoom.us/rec/share/oct14'), 'until then Zoom''s copy plays');
 
+-- Several classes and class videos (20261022100000) ----------------------------
+reset role;
+with x as (insert into public.class_videos (classroom_id, teacher_id, title, year, month, bunny_library_id, bunny_video_id) values (9101, 9002, 'Loops June', 2026, 6, '123456', 'vid-june') returning id) insert into lq_ids select 'v1', id from x;
+with x as (insert into public.class_videos (classroom_id, teacher_id, title, year, month, bunny_library_id, bunny_video_id) values (9101, 9002, 'Loops July', 2026, 7, '123456', 'vid-july') returning id) insert into lq_ids select 'v2', id from x;
+insert into public.class_videos (classroom_id, title, year, month, bunny_library_id, bunny_video_id, is_archived) values (9101, 'Old', 2026, 6, '123456', 'vid-old', true);
+with x as (insert into public.class_videos (classroom_id, teacher_id, title, year, month, bunny_library_id, bunny_video_id) values (9102, 9003, 'Class B June', 2026, 6, '123456', 'vid-b') returning id) insert into lq_ids select 'v4', id from x;
+-- Ali is back in class A as his main class for these checks.
+update public.students set classroom_id = 9101 where id = 9301;
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+set local role authenticated;
+select pg_temp.ok((select count(*) from public.class_videos) = 0, 'a child reads no video rows directly');
+select pg_temp.ok(jsonb_array_length(public.portal_class_videos(9301)) = 1
+  and jsonb_array_length(public.portal_class_videos(9301) -> 0 -> 'videos') = 2, 'without month access the child sees the class''s shown videos (not archived ones)');
+select pg_temp.fails($$select public.portal_class_videos(9302)$$, 'not found', 'not another child''s videos');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select pg_temp.fails($$select public.set_class_video_settings(true)$$, 'only admin', 'a teacher cannot turn on month access');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select public.set_class_video_settings(true);
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok(jsonb_array_length(public.portal_class_videos(9301) -> 0 -> 'videos') = 0
+  and jsonb_array_length(public.portal_class_videos(9301) -> 0 -> 'closed_months') = 2, 'with month access on, closed months show as closed');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000d');
+select public.set_student_video_access(9301, 9101, 2026, 6, true);
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok((public.portal_class_videos(9301) -> 0 -> 'videos' -> 0 ->> 'title') = 'Loops June'
+  and jsonb_array_length(public.portal_class_videos(9301) -> 0 -> 'videos') = 1, 'an opened month shows its videos');
+select pg_temp.login('00000000-0000-0000-0000-00000000000d');
+select public.set_student_video_access(9301, 9101, 2026, 6, true, '2020-01-01', '2020-01-31');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok(jsonb_array_length(public.portal_class_videos(9301) -> 0 -> 'videos') = 0, 'access that ended is closed again');
+select pg_temp.login('00000000-0000-0000-0000-00000000000d');
+select public.set_student_video_access(9301, 9101, 2026, 6, true);
+select pg_temp.fails($$select public.set_student_video_access(9301, 9101, 2026, 6, true, '2026-02-01', '2026-01-01')$$, 'end after', 'access must end after it starts');
+
+-- Progress
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select public.portal_save_video_progress(9301, (select id from lq_ids where name = 'v1'), 30, 100, true);
+select public.portal_save_video_progress(9301, (select id from lq_ids where name = 'v1'), 95, 400, false);
+select public.portal_save_video_progress(9301, (select id from lq_ids where name = 'v1'), 10, 20, true);
+select pg_temp.fails(format('select public.portal_save_video_progress(9301, %s, 10, 10, true)', (select id from lq_ids where name = 'v2')), 'not found', 'no progress on a closed month');
+select pg_temp.ok((public.portal_class_videos(9301) -> 0 -> 'videos' -> 0 ->> 'completed')::boolean, 'the app sees the video as finished');
+reset role;
+select pg_temp.ok((select watch_percentage = 95 and watch_seconds = 400 and rewatch_count = 1 and completed_at is not null from public.class_video_progress where video_id = (select id from lq_ids where name = 'v1'))
+  and (select views from public.class_videos where id = (select id from lq_ids where name = 'v1')) = 2, 'progress keeps the furthest point; views and re-watches count');
+
+-- Who manages a class's videos
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select pg_temp.ok((public.update_class_video((select id from lq_ids where name = 'v1'), 'Loops (June)', 'Repeat blocks', 2026, 6, '2026-06-10')).title = 'Loops (June)', 'the class teacher edits a video');
+select pg_temp.ok((select count(*) from public.class_video_progress) >= 1, 'the class teacher sees who watched');
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select pg_temp.fails(format('select public.set_class_video_archived(%s, true)', (select id from lq_ids where name = 'v1')), 'not found', 'another teacher cannot manage it');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select public.set_classroom_teacher_library(9101, 9003, (select id from lq_ids where name = 'lib'));
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select public.set_class_video_archived((select id from lq_ids where name = 'v2'), true);
+reset role;
+select pg_temp.ok((select is_archived from public.class_videos where id = (select id from lq_ids where name = 'v2')), 'a teacher with their own library for the class manages its videos');
+
+-- Several classes
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select pg_temp.fails($$select public.add_student_to_classroom(9301, 9102)$$, 'may edit students', 'a plain teacher cannot change classes');
+select pg_temp.login('00000000-0000-0000-0000-00000000000d');
+select public.add_student_to_classroom(9301, 9102);
+select pg_temp.fails($$select public.add_student_to_classroom(9301, 9102)$$, 'already in this class', 'not twice in one class');
+reset role;
+select pg_temp.ok((select classroom_id from public.students where id = 9301) = 9101
+  and public.is_in_classroom_on(9301, 9101, (timezone('Asia/Kuala_Lumpur', now()))::date)
+  and public.is_in_classroom_on(9301, 9102, (timezone('Asia/Kuala_Lumpur', now()))::date), 'the student is in both classes; the main class stays');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+set local role authenticated;
+select pg_temp.ok(jsonb_array_length(public.portal_class_videos(9301)) = 2, 'the app lists both classes');
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select pg_temp.ok(exists (select 1 from public.students where id = 9301), 'the other class''s teacher sees the student');
+select pg_temp.login('00000000-0000-0000-0000-00000000000d');
+select public.remove_student_from_classroom(9301, 9102);
+reset role;
+select pg_temp.ok(not public.is_in_classroom_on(9301, 9102, (timezone('Asia/Kuala_Lumpur', now()))::date), 'taking the student out of the extra class');
+select pg_temp.login('00000000-0000-0000-0000-00000000000d');
+set local role authenticated;
+select public.add_student_to_classroom(9301, 9102);
+select public.remove_student_from_classroom(9301, 9101);
+reset role;
+select pg_temp.ok((select classroom_id from public.students where id = 9301) = 9102
+  and not public.is_in_classroom_on(9301, 9101, (timezone('Asia/Kuala_Lumpur', now()))::date)
+  and (select count(*) from public.student_classroom_periods where student_id = 9301 and classroom_id = 9102 and end_date is null) = 1,
+  'leaving the main class makes the other class the main one, without a second stay');
+
 reset role;
 rollback;

@@ -10,6 +10,7 @@
 // wants it (Class Settings > Recordings), deleted from Zoom.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { checkBunny, resendToBunny } from '../zoom-lesson/bunny.ts'
+import { CLASS_VIDEO_ROW, checkClassVideo } from '../class-videos/videos.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -42,8 +43,11 @@ Deno.serve(async (req) => {
   // Bunny's notice.
   if (typeof body.VideoGuid === 'string' && body.VideoGuid) {
     const { data: row } = await admin.from('class_session_recordings').select(ROW).eq('bunny_video_id', body.VideoGuid).maybeSingle()
-    if (!row) return json({ ok: true, ignored: true })
-    return json({ ok: true, status: await checkBunny(admin, row) })
+    if (row) return json({ ok: true, status: await checkBunny(admin, row) })
+    // A teacher's own upload to a class.
+    const { data: video } = await admin.from('class_videos').select(CLASS_VIDEO_ROW).eq('bunny_video_id', body.VideoGuid).limit(1).maybeSingle()
+    if (!video) return json({ ok: true, ignored: true })
+    return json({ ok: true, status: await checkClassVideo(admin, video) })
   }
 
   // A teacher's Check / Send again: the database decides who may.

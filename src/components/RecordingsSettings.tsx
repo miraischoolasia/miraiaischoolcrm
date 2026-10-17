@@ -10,19 +10,32 @@ import {
   setClassroomRecordingLibrary,
   type RecordingLibrary,
 } from '../lib/recordings'
+import {
+  fetchMonthAccessOn,
+  fetchTeacherLibraries,
+  saveMonthAccessOn,
+  setTeacherLibrary,
+  type TeacherLibrary,
+} from '../lib/classVideos'
 
 type ClassRow = { id: number; name: string; libraryId: number | null }
+type TeacherRow = { id: number; name: string }
 type Draft = { id: number | null; name: string; libraryId: string; apiKey: string; collectionId: string }
 
 const emptyDraft: Draft = { id: null, name: '', libraryId: '', apiKey: '', collectionId: '' }
 const input = 'mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm'
 
 // Class Settings > Recordings: the school's Bunny Stream libraries, which class
-// goes to which, and whether Zoom's copy is deleted once Bunny has the video.
+// goes to which (and a teacher's own library for a class), whether Zoom's copy
+// is deleted once Bunny has the video, and month access for class videos.
 export function RecordingsSettings() {
   const [libraries, setLibraries] = useState<RecordingLibrary[] | null>(null)
   const [classes, setClasses] = useState<ClassRow[]>([])
   const [deleteZoom, setDeleteZoom] = useState<boolean | null>(null)
+  const [monthAccess, setMonthAccess] = useState<boolean | null>(null)
+  const [teacherLibraries, setTeacherLibraries] = useState<TeacherLibrary[]>([])
+  const [teachers, setTeachers] = useState<TeacherRow[]>([])
+  const [own, setOwn] = useState({ classroomId: '', teacherId: '', libraryId: '' })
   const [draft, setDraft] = useState<Draft | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -30,12 +43,17 @@ export function RecordingsSettings() {
 
   const load = useCallback(async () => {
     try {
-      const [list, rows, flag] = await Promise.all([
+      const [list, rows, flag, monthFlag, ownLibraries, teacherRows] = await Promise.all([
         fetchRecordingLibraries(),
         supabase
           ? supabase.from('classrooms').select('id, name, recording_library_id').eq('status', 'active').order('name')
           : Promise.resolve({ data: [] }),
         fetchDeleteZoomAfterUpload(),
+        fetchMonthAccessOn(),
+        fetchTeacherLibraries(),
+        supabase
+          ? supabase.from('teachers').select('id, full_name').eq('is_active', true).eq('role', 'teacher').order('full_name')
+          : Promise.resolve({ data: [] }),
       ])
       setLibraries(list)
       setClasses(
@@ -46,6 +64,9 @@ export function RecordingsSettings() {
         })),
       )
       setDeleteZoom(flag)
+      setMonthAccess(monthFlag)
+      setTeacherLibraries(ownLibraries)
+      setTeachers(((teacherRows.data ?? []) as { id: number; full_name: string }[]).map((row) => ({ id: row.id, name: row.full_name })))
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load.')
     }
@@ -230,6 +251,112 @@ export function RecordingsSettings() {
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {monthAccess !== null && (
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={monthAccess}
+            disabled={busy}
+            onChange={(event) => void run(saveMonthAccessOn(event.target.checked))}
+            className="mt-1 h-4 w-4 accent-[#fc0c97]"
+          />
+          <span>
+            <span className="font-semibold text-slate-800">Class videos by month access</span>
+            <span className="block text-slate-500">
+              On: a student sees a month's videos only after that month is opened for them (Class Videos → a month → Open for).
+              Off: every student in the class sees all its videos.
+            </span>
+          </span>
+        </label>
+      )}
+
+      {libraries && libraries.length > 0 && classes.length > 0 && teachers.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="text-base font-semibold text-slate-900">A teacher's own library for a class</h3>
+          <p className="text-xs text-slate-500">
+            When several teachers teach one class, each can keep their videos in their own library. Their uploads and Zoom
+            recordings for that class go there instead of the class's library, and they may manage the class's videos.
+          </p>
+          {teacherLibraries.length > 0 && (
+            <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+              {teacherLibraries.map((row) => (
+                <li key={`${row.classroomId}-${row.teacherId}`} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
+                  <span>
+                    <span className="font-semibold text-slate-800">{classes.find((entry) => entry.id === row.classroomId)?.name ?? 'A class'}</span>
+                    <span className="text-slate-500">
+                      {' '}
+                      · {teachers.find((entry) => entry.id === row.teacherId)?.name ?? 'A teacher'} ·{' '}
+                      {libraries.find((entry) => entry.id === row.libraryId)?.name ?? 'A library'}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void run(setTeacherLibrary(row.classroomId, row.teacherId, null))}
+                    className="text-xs font-semibold text-rose-700 underline underline-offset-2 disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={own.classroomId}
+              aria-label="Class"
+              onChange={(event) => setOwn({ ...own, classroomId: event.target.value })}
+              className="rounded-xl border border-slate-200 px-2 py-1 text-sm"
+            >
+              <option value="">Class…</option>
+              {classes.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.name}
+                </option>
+              ))}
+            </select>
+            <select
+              value={own.teacherId}
+              aria-label="Teacher"
+              onChange={(event) => setOwn({ ...own, teacherId: event.target.value })}
+              className="rounded-xl border border-slate-200 px-2 py-1 text-sm"
+            >
+              <option value="">Teacher…</option>
+              {teachers.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.name}
+                </option>
+              ))}
+            </select>
+            <select
+              value={own.libraryId}
+              aria-label="Library"
+              onChange={(event) => setOwn({ ...own, libraryId: event.target.value })}
+              className="rounded-xl border border-slate-200 px-2 py-1 text-sm"
+            >
+              <option value="">Library…</option>
+              {libraries.map((library) => (
+                <option key={library.id} value={library.id}>
+                  {library.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={busy || !own.classroomId || !own.teacherId || !own.libraryId}
+              onClick={() =>
+                void run(setTeacherLibrary(Number(own.classroomId), Number(own.teacherId), Number(own.libraryId))).then(
+                  (ok) => ok && setOwn({ classroomId: '', teacherId: '', libraryId: '' }),
+                )
+              }
+              className="rounded-xl bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              Save
+            </button>
+          </div>
         </section>
       )}
     </div>

@@ -126,12 +126,12 @@ describe('account permissions', () => {
     expect(screen.queryByRole('button', { name: /Convert/ })).not.toBeInTheDocument()
   })
 
-  it('keeps a plain teacher on Today, Calendar, My Classroom and Question Bank, starting on Today', async () => {
+  it('keeps a plain teacher on Today, Calendar, My Classroom, Question Bank and Class Videos, starting on Today', async () => {
     await signInAs('teacher', {})
 
     expect(await screen.findByText(/^Good (morning|afternoon|evening),/)).toBeInTheDocument()
     expect(screen.queryByText('Calendar ready')).not.toBeInTheDocument()
-    expect(navLabels()).toEqual(['Today', 'Calendar', 'My Classroom', 'Question Bank'])
+    expect(navLabels()).toEqual(['Today', 'Calendar', 'My Classroom', 'Question Bank', 'Class Videos'])
   })
 
   it('shows a teacher their own day first, with a way on to the full calendar', async () => {
@@ -166,7 +166,7 @@ describe('account permissions', () => {
   it('adds the ticked modules to a teacher account', async () => {
     await signInAs('teacher', { leads: { level: 'edit', delete: true } })
 
-    expect(navLabels()).toEqual(['Today', 'Calendar', 'Marketing', 'My Classroom', 'Question Bank'])
+    expect(navLabels()).toEqual(['Today', 'Calendar', 'Marketing', 'My Classroom', 'Question Bank', 'Class Videos'])
   })
 
   it('loads the activity log only when it is opened, one day at a time', async () => {
