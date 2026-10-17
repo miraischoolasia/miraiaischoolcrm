@@ -1,0 +1,57 @@
+name: Inbox server watch
+
+# Every 5 minutes: does the server behind the WhatsApp / Messenger / Instagram inbox answer?
+# When it does not (twice in a row), one issue is opened, which emails everyone watching this repository.
+# When it answers again the issue is closed. GitHub may start a run a few minutes late.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Ask each address
+        id: check
+        run: |
+          # An address that is up answers 200/401/403/404 (the gateway hides everything it does not serve).
+          # Cloudflare's 52x/530, a timeout (000) or a 5xx from the origin mean the server behind it is gone.
+          check() {
+            for attempt in 1 2; do
+              code=$(curl -s -o /dev/null -m 15 -w '%{http_code}' "$1" || true)
+              case "$code" in 200|401|403|404) echo "up $1 ($code)"; return 0;; esac
+              sleep 10
+            done
+            echo "DOWN $1 ($code)"
+            return 1
+          }
+          down=""
+          check https://wa.miraischool.asia/health || down="$down wa.miraischool.asia"
+          check https://wa.eduhero.com.my/ghl/health || down="$down wa.eduhero.com.my"
+          echo "down=$(echo $down)" >> "$GITHUB_OUTPUT"
+
+      - name: Open or close the outage issue
+        env:
+          DOWN: ${{ steps.check.outputs.down }}
+        run: |
+          gh label create outage --color B60205 --description "The inbox server is not answering" --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --label outage --state open --json number --jq '.[0].number // empty')
+          if [ -n "$DOWN" ]; then
+            if [ -z "$open" ]; then
+              gh issue create --repo "$GITHUB_REPOSITORY" --label outage \
+                --title "Inbox server is not answering: $DOWN" \
+                --body "Not answering at $(date -u '+%Y-%m-%d %H:%M UTC'): $DOWN.
+
+          The WhatsApp, Messenger and Instagram inbox cannot be read or answered until it is back. This issue closes itself when it answers again. If it stays down, check the VPS in Hostinger hPanel (Start / Restart) and ask Hostinger support about maintenance."
+            fi
+          elif [ -n "$open" ]; then
+            gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "Answering again at $(date -u '+%Y-%m-%d %H:%M UTC')."
+            gh issue close "$open" --repo "$GITHUB_REPOSITORY"
+          fi
