@@ -11,6 +11,23 @@ export type ConversationPage = {
 
 export type Sender = { id: number; name: string }
 
+// A request that gets no answer must end, or a message waiting on it would sit "sending" for ever and a refresh
+// that never comes back would stop all the later ones.
+const REQUEST_TIMEOUT_MS = 30_000
+const UPLOAD_TIMEOUT_MS = 120_000
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch (failure) {
+    throw controller.signal.aborted ? new Error('The inbox server did not answer in time') : failure
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
 export type ChatwootClient = ReturnType<typeof createChatwootClient>
 
 export function createChatwootClient(
@@ -20,14 +37,14 @@ export function createChatwootClient(
 ) {
   const base = `${apiUrl}/api/v1/accounts/${accountId}`
 
-  async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  async function request<T>(path: string, init: RequestInit = {}, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
     // The gateway lets a request through only for someone signed in who may see Leads.
     const token = await getAccessToken()
     const headers = new Headers(init.headers)
     if (token) {
       headers.set('Authorization', `Bearer ${token}`)
     }
-    const response = await fetch(`${base}${path}`, { ...init, headers })
+    const response = await fetchWithTimeout(`${base}${path}`, { ...init, headers }, timeoutMs)
     if (!response.ok) {
       throw new Error(`WhatsApp inbox request failed (${response.status})`)
     }
@@ -42,7 +59,7 @@ export function createChatwootClient(
     if (token) {
       headers.set('Authorization', `Bearer ${token}`)
     }
-    const response = await fetch(`${apiUrl}/wa${path}`, { method: 'POST', headers, body: JSON.stringify(body) })
+    const response = await fetchWithTimeout(`${apiUrl}/wa${path}`, { method: 'POST', headers, body: JSON.stringify(body) }, REQUEST_TIMEOUT_MS)
     if (!response.ok) {
       throw new Error(`WhatsApp phone request failed (${response.status})`)
     }
@@ -95,7 +112,7 @@ export function createChatwootClient(
       for (const file of input.files) {
         form.append('attachments[]', file, file.name)
       }
-      return request<ChatwootMessage>(path, { method: 'POST', body: form })
+      return request<ChatwootMessage>(path, { method: 'POST', body: form }, UPLOAD_TIMEOUT_MS)
     },
 
     // Adds to the chat a message that WhatsApp has already sent (a location, a poll, a sticker). The
@@ -126,7 +143,7 @@ export function createChatwootClient(
       form.append('content_attributes[crm_sender][id]', String(input.sender.id))
       form.append('content_attributes[crm_sender][name]', input.sender.name)
       form.append('attachments[]', input.file, input.file.name)
-      return request<ChatwootMessage>(path, { method: 'POST', body: form })
+      return request<ChatwootMessage>(path, { method: 'POST', body: form }, UPLOAD_TIMEOUT_MS)
     },
 
     // Hides a message for the whole team (Chatwoot keeps it, marked as deleted).

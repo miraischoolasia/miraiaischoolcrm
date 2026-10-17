@@ -40,6 +40,7 @@ const message = (patch: Partial<ChatwootMessage>): ChatwootMessage => ({
 describe('canonicalPhone', () => {
   it('treats 012-345 6789 and +60 12-345 6789 as the same number', () => {
     expect(canonicalPhone('012-345 6789')).toBe('60123456789')
+    expect(canonicalPhone('0060 12-345 6789')).toBe('60123456789')
     expect(canonicalPhone('+60 12-345 6789')).toBe('60123456789')
   })
 

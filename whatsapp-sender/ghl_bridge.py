@@ -251,6 +251,10 @@ def ensure_chat(info):
         attributes["ghl_page_id"] = page_id
         attributes["ghl_page_name"] = page_name
     attributes.update(origin_of(info["contact_id"]))
+    if not page_id:
+        # Not cached and not hidden: the importer (ghl_history.py --watch) reads the Page again within a minute, writes it
+        # on the contact and moves the chat to its Page's inbox.
+        log("Page of", info["contact_id"], "not known yet; chat goes to inbox", inbox_id, "until the importer fixes it")
     if contact is None:
         created = chatwoot(
             "POST",

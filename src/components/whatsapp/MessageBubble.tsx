@@ -163,6 +163,8 @@ type MessageBubbleProps = {
   idConfirms?: boolean
   // For a message that never left this computer: remove it from the chat.
   onDismiss?: () => void
+  // Sends a message that did not go out again (with the ones held back behind it).
+  onRetry?: () => void
   extras?: BubbleExtras
   actions?: BubbleActions
 }
@@ -174,6 +176,7 @@ export function MessageBubble({
   nowSeconds,
   idConfirms = true,
   onDismiss,
+  onRetry,
   extras = {},
   actions = {},
 }: MessageBubbleProps) {
@@ -193,7 +196,7 @@ export function MessageBubble({
   const isNote = message.private
   const sender = getSenderLabel(message)
   const local = message.local
-  const sendState = local ? (local === 'cancelled' ? 'failed' : 'sending') : getSendState(message, nowSeconds, idConfirms)
+  const sendState = local ? (local === 'cancelled' || local === 'failed' ? 'failed' : 'sending') : getSendState(message, nowSeconds, idConfirms)
   const text = (extras.editedText ?? message.content ?? '').trim()
   const deletedForEveryone = extras.deletedForEveryone === true
   const special = parseSpecialMessage(text)
@@ -445,7 +448,14 @@ export function MessageBubble({
           </div>
         )}
         {local === 'queued' && (
-          <div className="mt-1 text-[11px] text-slate-500">Waiting for the message above to be sent first.</div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-slate-500">
+            <span>Waiting for the message above to be sent first.</span>
+            {onDismiss && (
+              <button type="button" onClick={onDismiss} className="underline hover:text-slate-700">
+                Remove
+              </button>
+            )}
+          </div>
         )}
         {sendState === 'failed' && (
           <div
@@ -454,9 +464,18 @@ export function MessageBubble({
           >
             <span className="flex items-center gap-1">
               <WarningCircle size={13} aria-hidden="true" />
-              {local === 'cancelled' ? 'Not sent. The message before it did not go through.' : 'Failed to send'}
+              {local === 'cancelled'
+                ? 'Not sent yet. A message before it did not go through.'
+                : local === 'failed'
+                  ? 'Not sent. It did not go through.'
+                  : 'Failed to send'}
             </span>
-            {local === 'cancelled' && onDismiss && (
+            {local && onRetry && (
+              <button type="button" onClick={onRetry} className="underline hover:text-red-800">
+                Try again
+              </button>
+            )}
+            {local && onDismiss && (
               <button type="button" onClick={onDismiss} className="underline hover:text-red-800">
                 Remove
               </button>

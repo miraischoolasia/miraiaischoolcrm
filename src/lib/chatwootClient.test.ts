@@ -79,3 +79,25 @@ describe('createChatwootClient', () => {
     await expect(client.listMessages(7)).rejects.toThrow('403')
   })
 })
+
+describe('a request that gets no answer', () => {
+  it('ends after a while instead of waiting for ever', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+          }),
+      ),
+    )
+    const client = createChatwootClient('https://gateway.test', '1', async () => null)
+    const result = client.listMessages(5).catch((failure: Error) => failure.message)
+
+    await vi.advanceTimersByTimeAsync(31_000)
+
+    expect(await result).toBe('The inbox server did not answer in time')
+    vi.useRealTimers()
+  })
+})

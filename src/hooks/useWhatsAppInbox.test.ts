@@ -300,8 +300,9 @@ describe('useWhatsAppInbox with a slow server', () => {
       await Promise.resolve()
     })
 
-    // A minute of refreshes with an answer that never arrives adds one request, not fifteen.
-    expect(calls - afterFirstLoad).toBeLessThanOrEqual(2)
+    // A minute of refreshes with an answer that never arrives adds a few requests (the open list, the done list, and
+    // the one look at the later pages every half minute), not fifteen.
+    expect(calls - afterFirstLoad).toBeLessThanOrEqual(3)
   })
 
   it('says the inbox server is not answering after two refreshes in a row fail, and stops saying it when it answers', async () => {

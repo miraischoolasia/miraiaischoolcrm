@@ -44,6 +44,8 @@ export type CalendarItemDraft = {
   zoomLink: string
   assigneeId: number | null
   isDone: boolean
+  // The lead a task is a follow-up for (set from the Inbox); the calendar form leaves it alone.
+  leadId?: number | null
 }
 
 export function emptyItemDraft(date: string, kind: CalendarItemKind = 'task'): CalendarItemDraft {
@@ -61,6 +63,7 @@ export function draftOfItem(item: CalendarItem): CalendarItemDraft {
     zoomLink: item.zoomLink ?? '',
     assigneeId: item.assigneeId,
     isDone: item.isDone,
+    leadId: item.leadId,
   }
 }
 
@@ -148,6 +151,7 @@ function payloadOf(draft: CalendarItemDraft) {
     zoom_link: draft.kind === 'meeting' ? draft.zoomLink.trim() || null : null,
     assignee_id: draft.assigneeId,
     is_done: draft.kind === 'task' ? draft.isDone : false,
+    ...(draft.leadId !== undefined ? { lead_id: draft.leadId } : {}),
   }
 }
 

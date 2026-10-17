@@ -20,6 +20,16 @@ describe('normalizePhoneInput', () => {
     expect(normalizePhoneInput('60123456789')).toBe('60123456789')
   })
 
+  it('reads the international prefix, a missing 0 and a Singapore number properly', () => {
+    expect(normalizePhoneInput('0060 12-345 6789')).toBe('60123456789')
+    // Without the 0 it is still a Malaysian mobile number, never a US +1 number.
+    expect(normalizePhoneInput('12-345 6789')).toBe('60123456789')
+    expect(normalizePhoneInput('11-1234 5678')).toBe('601112345678')
+    expect(normalizePhoneInput('9123 4567')).toBe('6591234567')
+    // Another country's full number is left as it was written.
+    expect(normalizePhoneInput('+62 812 3456 7890')).toBe('6281234567890')
+  })
+
   it('refuses what cannot be a number', () => {
     expect(normalizePhoneInput('12345')).toBeNull()
     expect(normalizePhoneInput('abc')).toBeNull()

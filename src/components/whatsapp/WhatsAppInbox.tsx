@@ -61,6 +61,7 @@ import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
 import { AutomationQueueDialog } from './AutomationQueueDialog'
 import { NewChatDialog } from './NewChatDialog'
+import { FollowUpButton, FollowUpChip } from './FollowUpButton'
 import { NumbersDialog, type AssignableStaff } from './NumbersDialog'
 import type { WhatsAppNumber, WhatsAppNumberDraft } from '../../lib/whatsappNumbers'
 import { QuickReplyManager } from './QuickReplyManager'
@@ -1004,7 +1005,7 @@ export function WhatsAppInbox({
             onClick={() => changeCategory(key)}
             aria-pressed={selected}
             className={cn(
-              'inline-flex h-10 items-center gap-2 rounded-xl border px-3.5 text-sm font-semibold transition',
+              'inline-flex h-10 items-center gap-1.5 rounded-xl border px-2.5 text-[13px] font-semibold transition sm:gap-2 sm:px-3.5 sm:text-sm',
               selected
                 ? 'border-slate-900 bg-slate-900 text-white'
                 : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
@@ -1065,6 +1066,7 @@ export function WhatsAppInbox({
         isLoading={inbox.isLoading}
         loadError={inbox.loadError}
         canLoadMore={tab === 'done' ? inbox.canLoadMore.resolved : inbox.canLoadMore.open}
+        isLoadingMore={tab === 'done' ? inbox.isLoadingMore.resolved : inbox.isLoadingMore.open}
         onTab={setTab}
         onTag={setTagId}
         onSource={setSourceId}
@@ -1111,6 +1113,7 @@ export function WhatsAppInbox({
             onLoadOlder={() => void inbox.loadOlder()}
             onSend={inbox.send}
             onDismissUnsent={inbox.dismissUnsent}
+            onRetryUnsent={inbox.retryUnsent}
             onSetOwner={(person) => setHandler(inbox.selected!, person)}
             onSetStatus={(status) => void inbox.setStatus(inbox.selected!.id, status)}
             onMarkUnread={() => void inbox.markUnread(inbox.selected!.id)}
@@ -1120,6 +1123,24 @@ export function WhatsAppInbox({
             draftRequest={draftRequest}
             messageEvents={messageEvents.events}
             onSendSpecial={messageEvents.sendSpecial}
+            followUpControl={
+              crm.followUps && crm.canEditLeads ? (
+                <FollowUpButton
+                  key={inbox.selected.id}
+                  leadId={leadIdOf(inbox.selected)}
+                  leadName={getChatIdentity(inbox.selected.meta.sender, chatLabelOf(inbox.selected), inbox.selected.meta.channel).title}
+                  items={crm.followUps.items}
+                  people={staff}
+                  meId={crm.followUps.meId}
+                  onSave={crm.followUps.save}
+                  onDone={crm.followUps.done}
+                  onRemove={crm.followUps.remove}
+                />
+              ) : undefined
+            }
+            followUpChip={
+              crm.followUps ? <FollowUpChip leadId={leadIdOf(inbox.selected)} items={crm.followUps.items} /> : undefined
+            }
             pinned={inbox.selected.custom_attributes?.crm_pinned === true}
             onTogglePin={() => void inbox.togglePinned(inbox.selected!.id)}
             starredIds={inbox.selected.custom_attributes?.crm_starred ?? []}

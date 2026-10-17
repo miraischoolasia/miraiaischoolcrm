@@ -1,3 +1,4 @@
+import type { CalendarItem, CalendarItemDraft } from '../../lib/calendarItems'
 import type { HoaSlot } from '../../lib/hoaSlots'
 import type { Programme } from '../../lib/programmes'
 import type { StudentClassLine } from '../../lib/studentClasses'
@@ -85,6 +86,17 @@ export type WhatsAppCrm = {
     packageId: number
     startDate: string
   }) => Promise<string | null>
+  // Follow-ups: tasks on the calendar tied to a lead (the Follow up button beside the message box). Left out, the
+  // button is not shown.
+  followUps?: {
+    // The calendar items this person can see (the page picks a lead's own out of them).
+    items: CalendarItem[]
+    // Who the signed-in person is, so they are reminded unless another is picked.
+    meId: number | null
+    save: (draft: CalendarItemDraft) => Promise<string | null>
+    done: (id: number) => Promise<string | null>
+    remove: (id: number) => Promise<string | null>
+  }
   // Make-up classes are arranged with the calendar's permission.
   canBookMakeup: boolean
   // existingLeadId is set when no lead was made because the number already has one.

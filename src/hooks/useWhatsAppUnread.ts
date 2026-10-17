@@ -9,9 +9,14 @@ import {
   isOnAllowedNumber,
   isRecentlyOverdue,
   onePerParent,
+  type ChatwootConversation,
 } from '../lib/whatsappInbox'
 
 const REFRESH_MS = 10_000
+// Chatwoot's page size; the chats on pages 2 to 4 are read again every third round (about 30 seconds).
+const PAGE_SIZE = 25
+const MAX_PAGES = 4
+const DEEP_EVERY = 3
 
 // Counts chats nobody has looked at for the sidebar badge, and tells the team
 // when a new message arrives (sound and a desktop pop-up), wherever they are in
@@ -28,15 +33,33 @@ export function useWhatsAppUnread(client: ChatwootClient | null, allowedInboxIds
       return
     }
     let cancelled = false
+    let round = 0
+    const deepChats = { current: [] as ChatwootConversation[] }
 
     async function refresh() {
       try {
-        const { conversations: everyChat } = await client!.listConversations('open', 1)
+        const first = await client!.listConversations('open', 1)
+        const everyChat = first.conversations
         const conversations = onePerParent(everyChat.filter((entry) => isOnAllowedNumber(entry, allowedInboxIds)))
         if (cancelled) {
           return
         }
-        setUnread(countUnread(conversations))
+        // The badge counts the chats beyond the first page too (a few pages of them, read less often).
+        if (round % DEEP_EVERY === 0 && (first.totalCount ?? 0) > PAGE_SIZE) {
+          const pages = Math.min(MAX_PAGES, Math.ceil(first.totalCount / PAGE_SIZE))
+          try {
+            const more = await Promise.all(Array.from({ length: pages - 1 }, (_, index) => client!.listConversations('open', index + 2)))
+            deepChats.current = more.flatMap((page) => page.conversations)
+          } catch {
+            // Keep what was counted last time.
+          }
+        } else if ((first.totalCount ?? 0) <= PAGE_SIZE) {
+          deepChats.current = []
+        }
+        round += 1
+        const onFirstPage = new Set(everyChat.map((entry) => entry.id))
+        const counted = [...everyChat, ...deepChats.current.filter((entry) => !onFirstPage.has(entry.id))]
+        setUnread(countUnread(onePerParent(counted.filter((entry) => isOnAllowedNumber(entry, allowedInboxIds)))))
 
         // A chat that has just passed 30 minutes unanswered rings once. The first look
         // only records who is already late, so opening the page is not a burst of alerts.

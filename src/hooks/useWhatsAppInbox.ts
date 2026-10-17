@@ -21,6 +21,7 @@ const SERVER_DOWN_MESSAGE =
 const LIST_REFRESH_MS = 4_000
 const DONE_REFRESH_MS = 20_000
 const MESSAGES_REFRESH_MS = 3_000
+const DEEP_REFRESH_MS = 30_000
 
 function mergeConversations(current: Map<number, ChatwootConversation>, incoming: ChatwootConversation[]) {
   const next = new Map(current)
@@ -55,7 +56,7 @@ type OutboxItem = {
   previewUrls: string[]
   isPrivate: boolean
   replyTo?: number
-  state: 'queued' | 'sending' | 'cancelled'
+  state: 'queued' | 'sending' | 'failed' | 'cancelled'
   createdAt: number
 }
 
@@ -195,16 +196,54 @@ export function useWhatsAppInbox(
     }
   }, [client, refreshStatus, updateLoadMore])
 
+  // One request at a time: a second press while the first is on its way (or the Unread tab filling itself) would
+  // ask for the same page twice and then skip one.
+  const loadingMore = useRef({ open: false, resolved: false })
+  const [isLoadingMore, setIsLoadingMore] = useState({ open: false, resolved: false })
   const loadMore = useCallback(
     async (status: 'open' | 'resolved') => {
-      const page = await client.listConversations(status, nextPage.current[status])
-      nextPage.current[status] += 1
-      setConversationMap((current) => mergeConversations(current, page.conversations))
-      totals.current[status] = page.totalCount
-      updateLoadMore()
+      if (loadingMore.current[status]) {
+        return
+      }
+      loadingMore.current[status] = true
+      setIsLoadingMore((current) => ({ ...current, [status]: true }))
+      try {
+        const page = await client.listConversations(status, nextPage.current[status])
+        nextPage.current[status] += 1
+        setConversationMap((current) => mergeConversations(current, page.conversations))
+        totals.current[status] = page.totalCount
+        updateLoadMore()
+      } catch {
+        setActionError("Couldn't load more chats. Try again in a moment.")
+      } finally {
+        loadingMore.current[status] = false
+        setIsLoadingMore((current) => ({ ...current, [status]: false }))
+      }
     },
     [client, updateLoadMore],
   )
+
+  // The chats beyond the first page are not refreshed every few seconds, so they would keep an old unread count,
+  // owner and status until a reload. They are read again now and then.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.hidden || loadingMore.current.open) {
+        return
+      }
+      const loadedPages = nextPage.current.open - 1
+      if (loadedPages < 2) {
+        return
+      }
+      loadingMore.current.open = true
+      Promise.all(Array.from({ length: loadedPages - 1 }, (_, index) => client.listConversations('open', index + 2)))
+        .then((pages) => setConversationMap((current) => mergeConversations(current, pages.flatMap((page) => page.conversations))))
+        .catch(() => undefined)
+        .finally(() => {
+          loadingMore.current.open = false
+        })
+    }, DEEP_REFRESH_MS)
+    return () => window.clearInterval(timer)
+  }, [client])
 
   // `readNow` are the parent's messages the team has just read; the phone is told too, so its
   // unread dot goes away. Not every chat can be reached that way, and the CRM does not wait for it.
@@ -516,7 +555,12 @@ export function useWhatsAppInbox(
       const deadline = Date.now() + CONFIRM_TIMEOUT_MS
       while (Date.now() < deadline) {
         await sleep(CONFIRM_POLL_MS)
-        const latest = await client.listMessages(conversationId)
+        // The message is already posted: a poll that fails (a blip in the connection) is no reason to say it
+        // did not go through, so the next poll tries again until the time is up.
+        const latest = await client.listMessages(conversationId).catch(() => null)
+        if (latest === null) {
+          continue
+        }
         const message = latest.find((item) => item.id === messageId)
         if (message) {
           if (selectedRef.current === conversationId) {
@@ -542,12 +586,50 @@ export function useWhatsAppInbox(
     [client],
   )
 
+  // After a request that ended with an error, the message may still have been taken by the server (the answer
+  // got lost). It is looked for in the chat so it is not sent a second time.
+  const findPosted = useCallback(
+    async (conversationId: number, item: OutboxItem): Promise<ChatwootMessage | null> => {
+      try {
+        const latest = await client.listMessages(conversationId)
+        return (
+          latest.find(
+            (message) =>
+              message.message_type === 1 &&
+              Boolean(message.private) === item.isPrivate &&
+              (message.content ?? '').trim() === item.content.trim() &&
+              (message.attachments?.length ?? 0) === item.files.length &&
+              message.created_at >= item.createdAt - 5,
+          ) ?? null
+        )
+      } catch {
+        return null
+      }
+    },
+    [client],
+  )
+
   const runQueue = useCallback(
     async (conversationId: number) => {
       if (running.current.has(conversationId)) {
         return
       }
       running.current.add(conversationId)
+      // The message that failed stays on the screen with its text, so it can be tried again; the ones behind it wait.
+      const holdBack = (failedId: number | null, text: string) => {
+        changeOutbox((items) =>
+          items.map((entry) => {
+            if (entry.conversationId !== conversationId) {
+              return entry
+            }
+            if (entry.tempId === failedId) {
+              return { ...entry, state: 'failed' }
+            }
+            return entry.state === 'queued' ? { ...entry, state: 'cancelled' } : entry
+          }),
+        )
+        setActionError(text)
+      }
       try {
         for (;;) {
           const item = outboxRef.current.find((entry) => entry.conversationId === conversationId && entry.state === 'queued')
@@ -555,45 +637,74 @@ export function useWhatsAppInbox(
             return
           }
           changeOutbox((items) => items.map((entry) => (entry.tempId === item.tempId ? { ...entry, state: 'sending' } : entry)))
+          let sent: ChatwootMessage | null = null
           try {
-            const sent = await client.sendMessage(conversationId, {
+            sent = await client.sendMessage(conversationId, {
               content: item.content,
               isPrivate: item.isPrivate,
               files: item.files,
               sender: currentUser,
               replyTo: item.replyTo,
             })
-            dropOutboxItems((entry) => entry.tempId === item.tempId)
-            if (selectedRef.current === conversationId) {
-              setMessages((current) => mergeMessages(current, [sent]))
-            }
-            if (!item.isPrivate) {
-              const conversation = mapRef.current.get(conversationId)
-              patchConversation(conversationId, { waiting_since: 0 })
-              // The first person to reply takes the chat, so two people don't answer it.
-              if (conversation && getOwner(conversation) === null) {
-                void setOwner(conversationId, currentUser)
-              }
-              await waitUntilSent(conversationId, sent.id)
-            }
           } catch {
-            // Nothing behind a message that did not go out may jump ahead of it.
-            changeOutbox((items) =>
-              items.map((entry) =>
-                entry.conversationId === conversationId && (entry.tempId === item.tempId || entry.state === 'queued')
-                  ? { ...entry, state: 'cancelled' }
-                  : entry,
-              ),
-            )
-            setActionError('A message did not go through, so the ones after it were not sent.')
-            return
+            // The answer may only have got lost on the way back.
+            sent = await findPosted(conversationId, item)
+            if (sent === null) {
+              holdBack(item.tempId, 'A message did not go through. Press "Try again" on it, or remove it. The ones after it are waiting.')
+              return
+            }
+          }
+          dropOutboxItems((entry) => entry.tempId === item.tempId)
+          if (selectedRef.current === conversationId) {
+            setMessages((current) => mergeMessages(current, [sent!]))
+          }
+          if (!item.isPrivate) {
+            const conversation = mapRef.current.get(conversationId)
+            patchConversation(conversationId, { waiting_since: 0 })
+            // The first person to reply takes the chat, so two people don't answer it.
+            if (conversation && getOwner(conversation) === null) {
+              void setOwner(conversationId, currentUser)
+            }
+            try {
+              await waitUntilSent(conversationId, sent.id)
+            } catch (failure) {
+              // The message itself is posted (it is in the chat, with its own mark), so it must not be sent again;
+              // only the ones behind it are held back.
+              holdBack(
+                null,
+                failure instanceof Error && failure.message === 'timeout'
+                  ? 'WhatsApp has not confirmed the last message yet. Look at the chat before you send it again; the messages after it are waiting.'
+                  : 'The last message did not go through, so the ones after it were not sent.',
+              )
+              return
+            }
           }
         }
       } finally {
         running.current.delete(conversationId)
       }
     },
-    [changeOutbox, client, currentUser, dropOutboxItems, patchConversation, setOwner, waitUntilSent],
+    [changeOutbox, client, currentUser, dropOutboxItems, findPosted, patchConversation, setOwner, waitUntilSent],
+  )
+
+  // Puts a message that did not go out (and the ones held back behind it) in the queue again, in the same order.
+  const retryUnsent = useCallback(
+    (tempId: number) => {
+      const target = outboxRef.current.find((entry) => entry.tempId === tempId)
+      if (!target) {
+        return
+      }
+      setActionError(null)
+      changeOutbox((items) =>
+        items.map((entry) =>
+          entry.conversationId === target.conversationId && entry.tempId >= tempId && (entry.state === 'failed' || entry.state === 'cancelled')
+            ? { ...entry, state: 'queued' }
+            : entry,
+        ),
+      )
+      void runQueue(target.conversationId)
+    },
+    [changeOutbox, runQueue],
   )
 
   const send = useCallback(
@@ -626,6 +737,20 @@ export function useWhatsAppInbox(
     },
     [changeOutbox, runQueue, selectedId],
   )
+
+  // Messages still waiting or on their way are only on this computer: closing or refreshing the page now would lose them.
+  const hasUnsent = outbox.length > 0
+  useEffect(() => {
+    if (!hasUnsent) {
+      return undefined
+    }
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [hasUnsent])
 
   const dismissUnsent = useCallback(
     (tempId: number) => dropOutboxItems((item) => item.tempId === tempId),
@@ -680,11 +805,13 @@ export function useWhatsAppInbox(
       const result = await startChat(client, input)
       if (result.error === null) {
         await Promise.all([refreshStatus('open'), refreshStatus('resolved')])
+        // An older chat is not on the pages that were refreshed; it is fetched by its id so it opens.
+        await loadMissingConversations([result.conversationId])
         setSelectedId(result.conversationId)
       }
       return result
     },
-    [client, refreshStatus],
+    [client, refreshStatus, loadMissingConversations],
   )
 
   return {
@@ -702,6 +829,7 @@ export function useWhatsAppInbox(
     loadError,
     actionError,
     canLoadMore,
+    isLoadingMore,
     loadMore,
     setOwner,
     markUnread,
@@ -712,6 +840,7 @@ export function useWhatsAppInbox(
     setChatRole,
     setStatus,
     send,
+    retryUnsent,
     // Waits until WhatsApp has accepted a message that was just posted to a chat.
     waitUntilSent,
     dismissUnsent,

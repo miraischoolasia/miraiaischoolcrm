@@ -146,3 +146,32 @@ describe('MessageBubble links to files', () => {
     expect(screen.getByText('https://x.test/page')).toBeInTheDocument()
   })
 })
+
+describe('MessageBubble when a message did not go out', () => {
+  const waiting = (local: ChatwootMessage['local']): ChatwootMessage => ({ ...ours, id: -3, source_id: undefined, local })
+
+  it('says it did not go through and offers Try again and Remove', async () => {
+    const onRetry = vi.fn()
+    const onDismiss = vi.fn()
+    render(
+      <MessageBubble message={waiting('failed')} avatar={null} showAvatar={false} nowSeconds={1_790_000_100} extras={{}} actions={{}} onRetry={onRetry} onDismiss={onDismiss} />,
+    )
+
+    expect(screen.getByText('Not sent. It did not go through.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    expect(onRetry).toHaveBeenCalledTimes(1)
+    expect(onDismiss).toHaveBeenCalledTimes(1)
+  })
+
+  it('says a message held back is not sent yet, and a waiting one can be removed', () => {
+    const { rerender } = render(
+      <MessageBubble message={waiting('cancelled')} avatar={null} showAvatar={false} nowSeconds={1_790_000_100} extras={{}} actions={{}} onRetry={vi.fn()} />,
+    )
+    expect(screen.getByText('Not sent yet. A message before it did not go through.')).toBeInTheDocument()
+
+    rerender(<MessageBubble message={waiting('queued')} avatar={null} showAvatar={false} nowSeconds={1_790_000_100} extras={{}} actions={{}} onDismiss={vi.fn()} />)
+    expect(screen.getByText('Waiting for the message above to be sent first.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument()
+  })
+})

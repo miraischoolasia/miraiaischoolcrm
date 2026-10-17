@@ -31,6 +31,8 @@ type ComposerProps = {
   onClearReply?: () => void
   // Sends a location, contact, poll or sticker; resolves to null when it went out, else what to tell the person.
   onSendSpecial?: (message: SpecialMessage) => Promise<string | null>
+  // The Follow up button, shown beside the voice button (only when the chat has a lead to follow up).
+  followUpControl?: React.ReactNode
   // Called as the team writes a reply, so the parent can be shown "typing...".
   onTyping?: () => void
   // A reply the AI suggests for the parent's last message. It is shown in grey where the text would
@@ -107,6 +109,7 @@ export function Composer({
   replyTo = null,
   onClearReply,
   onSendSpecial,
+  followUpControl,
   onTyping,
   aiSuggestion = null,
   aiLoading = false,
@@ -468,8 +471,8 @@ ${draftRequest.text}` : draftRequest.text))
           </button>
         </div>
       ) : (
-        <div className="flex items-end gap-1.5 sm:gap-2">
-          <div className="relative min-w-0 flex-1">
+        <div className="flex flex-wrap items-end gap-1.5 sm:flex-nowrap sm:gap-2">
+          <div className="relative min-w-0 basis-full sm:flex-1 sm:basis-0">
           {showSuggestion && aiSuggestion ? (
             <div
               role="button"
@@ -614,11 +617,12 @@ ${draftRequest.text}` : draftRequest.text))
           >
             <Microphone size={18} />
           </button>
+          {followUpControl}
           <button
             type="button"
             onClick={() => void submit()}
             disabled={isLoadingMedia}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#fc0c97] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[#e00a87] disabled:opacity-60 sm:px-4"
+            className="inline-flex items-center max-sm:ml-auto gap-1.5 rounded-lg bg-[#fc0c97] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[#e00a87] disabled:opacity-60 sm:px-4"
           >
             <PaperPlaneTilt size={16} weight="fill" aria-hidden="true" />
             <span className="max-sm:sr-only">{mode === 'note' ? 'Save note' : 'Send'}</span>

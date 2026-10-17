@@ -12,6 +12,7 @@ import type { StudentRow } from '../../lib/studentRows'
 import { describeClassTiming, formatClockTime, type AgendaItem, type TeacherAgenda } from '../../lib/teacherAgenda'
 import { parseLocalDate } from '../../domain/studentStatus'
 import type { Lead } from '../../types/domain'
+import type { FollowUpRow } from '../../lib/followUps'
 import { TeamRepliesCard, type TeamRepliesCardProps } from './TeamRepliesCard'
 
 const PREVIEW = 5
@@ -46,6 +47,9 @@ export type AdminHomeSectionProps = {
   onOpenFollowUpStudents: () => void
   onOpenLeads: () => void
   onOpenLeadTasks: (leadId: number) => void
+  // The signed-in person's Follow-up reminders from the Inbox that are due today or late; Open goes to that chat.
+  followUps?: FollowUpRow[]
+  onOpenFollowUp?: (leadId: number) => void
   onOpenForms: () => void
   onOpenWhatsApp: () => void
   onOpenAutomations: () => void
@@ -141,6 +145,8 @@ export function AdminHomeSection({
   onOpenFollowUpStudents,
   onOpenLeads,
   onOpenLeadTasks,
+  followUps = [],
+  onOpenFollowUp,
   onOpenForms,
   onOpenWhatsApp,
   onOpenAutomations,
@@ -346,18 +352,40 @@ export function AdminHomeSection({
           </Block>
         )}
 
-        {(leadTasks || unreadForms !== null) && (
+        {(leadTasks || unreadForms !== null || followUps.length > 0) && (
           <Block
             id="admin-leads-title"
             title="Leads"
             summary={
               leadTasks
-                ? leadTasks.length === 0
+                ? leadTasks.length + followUps.length === 0
                   ? 'No lead tasks due.'
-                  : `${plural(leadTasks.length, 'task')} due or late`
-                : 'New form submissions'
+                  : `${plural(leadTasks.length + followUps.length, 'task')} due or late`
+                : followUps.length > 0
+                  ? `${plural(followUps.length, 'follow-up')} due or late`
+                  : 'New form submissions'
             }
           >
+            {followUps.length > 0 && (
+              <ul className="divide-y divide-slate-200" aria-label="Follow-ups due">
+                {followUps.slice(0, PREVIEW).map((row) => (
+                  <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-900">{row.title}</div>
+                      <div className="text-xs text-slate-500">{row.notes ? `${row.when} · ${row.notes}` : row.when}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Chip tone={row.late ? 'bad' : 'warn'}>{row.late ? 'Late' : 'Due today'}</Chip>
+                      {onOpenFollowUp && (
+                        <button type="button" onClick={() => onOpenFollowUp(row.leadId)} className={secondaryButton}>
+                          Open chat
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
             {leadTasks && leadTasks.length > 0 && (
               <ul className="divide-y divide-slate-200">
                 {leadTasks.slice(0, PREVIEW).map((task) => {

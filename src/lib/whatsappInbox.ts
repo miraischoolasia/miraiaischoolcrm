@@ -29,7 +29,8 @@ export type ChatwootMessage = {
   // accepted it, so an empty one on a message we sent means "still sending".
   source_id?: string | null
   // Only on messages still on this computer, waiting their turn to be sent.
-  local?: 'queued' | 'sending' | 'cancelled'
+  // failed: this message did not go out; cancelled: it was held back because one before it did not.
+  local?: 'queued' | 'sending' | 'failed' | 'cancelled'
   attachments?: ChatwootAttachment[]
   content_attributes?: {
     crm_sender?: { id?: number | string; name?: string }

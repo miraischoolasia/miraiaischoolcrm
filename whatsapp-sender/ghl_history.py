@@ -16,6 +16,9 @@ Nothing here is sent to GoHighLevel or to anyone.
   python3 ghl_history.py --contact <ghl id>     one contact only
   python3 ghl_history.py --import-instagram    list the Instagram chats the CRM does not have yet (changes nothing)
   python3 ghl_history.py --import-instagram --apply    make them (through the bridge) and add their messages
+  python3 ghl_history.py --import-instagram --days 30  only the chats with a message in the last 30 days
+  python3 ghl_history.py --fix-pages           list the chats that sit in the wrong inbox or have no Page on the contact (changes nothing)
+  python3 ghl_history.py --fix-pages --apply   write the Page on the contact and move the chat to its Page's inbox
   python3 ghl_history.py --watch 3              keep running: every 3 seconds one call asks GoHighLevel which chats
                                                 changed, and only those are read and added (the service
                                                 eduhero-ghl-watch runs this)
@@ -207,10 +210,11 @@ def ensure_chat(contact_id, name, channel="IG"):
     return True
 
 
-def missing_chats(location, by_contact, kinds=IMPORT_KINDS, limit=2000):
+def missing_chats(location, by_contact, kinds=IMPORT_KINDS, limit=2000, newer_than_ms=0):
     """GoHighLevel's chats of these kinds whose person the CRM does not have: {contact id: (name, [conversation ids])}.
 
     Reads the location's chats newest first, 100 a page (the next page starts after the last one's date).
+    newer_than_ms: only chats whose last message is newer than this (a time in milliseconds), and reading stops there.
     """
     found: dict[str, tuple[str, list[str]]] = {}
     after = None
@@ -221,14 +225,112 @@ def missing_chats(location, by_contact, kinds=IMPORT_KINDS, limit=2000):
         page = ghl_get("/conversations/search?" + urllib.parse.urlencode(query)).get("conversations") or []
         for chat in page:
             contact = chat.get("contactId")
+            moved = chat.get("lastMessageDate")
+            if newer_than_ms and isinstance(moved, (int, float)) and moved < newer_than_ms:
+                continue
             if contact and chat.get("lastMessageType") in kinds and contact not in by_contact:
                 name, ids = found.setdefault(contact, (chat_name(chat), []))
                 ids.append(chat["id"])
         dates = [c.get("lastMessageDate") for c in page if isinstance(c.get("lastMessageDate"), (int, float))]
-        if len(page) < 100 or not dates:
+        if len(page) < 100 or not dates or (newer_than_ms and min(dates) < newer_than_ms):
             break
         after = min(dates)
     return found
+
+
+def page_of_conversation(conversation_id):
+    """(page id, page name) a GoHighLevel chat writes to, read from the meta.fb / meta.ig of its newest messages."""
+    data = ghl_get("/conversations/%s/messages?limit=10" % conversation_id)
+    for message in ((data.get("messages") or {}).get("messages") or []):
+        account = (message.get("meta") or {}).get("fb") or (message.get("meta") or {}).get("ig") or {}
+        if account.get("pageId"):
+            return str(account["pageId"]), str(account.get("pageName") or "")
+    return "", ""
+
+
+_page_failed: dict[str, float] = {}  # a person whose Page could not be told: when to ask again
+
+
+def fix_pages(location, apply, quiet=False):
+    """Chats whose contact has no Page written, or that sit in another inbox than their Page's (PAGE_INBOXES).
+
+    A chat made before the bridge could tell the Page (or when GoHighLevel did not answer) went to the default inbox and
+    shows as that inbox's Page in the CRM. This reads the Page from GoHighLevel, writes it on the contact
+    (ghl_page_id / ghl_page_name) and moves a chat that has no other chat in the right inbox. Only a chat of one
+    conversation per person is moved; the rest are listed.
+
+    quiet: for the watcher, which runs this every minute: says something only when it changed something, and does not
+    ask again within an hour about a person GoHighLevel could not place.
+    """
+    chats = rows(
+        "select ct.id as contact, ct.name, ct.identifier, ct.additional_attributes->>'ghl_page_id' as page_id, "
+        "ct.additional_attributes->>'ghl_page_name' as page_name, c.id as conv, c.inbox_id "
+        "from conversations c join contacts ct on ct.id = c.contact_id "
+        "where c.account_id = %d and ct.identifier like 'ghl:%%' order by c.id" % ACCOUNT_ID
+    )
+    by_person = collections.defaultdict(list)
+    for chat in chats:
+        by_person[chat["identifier"][len(PREFIX):]].append(chat)
+    plans, skipped, failed = [], [], []
+    for ghl_contact, convs in by_person.items():
+        page_id, page_name = convs[0]["page_id"] or "", convs[0]["page_name"] or ""
+        if not page_id and quiet and _page_failed.get(ghl_contact, 0) > time.time():
+            continue
+        if not page_id:
+            try:
+                found = ghl_get("/conversations/search?" + urllib.parse.urlencode({"locationId": location, "contactId": ghl_contact})).get("conversations") or []
+                page_id, page_name = page_of_conversation(found[0]["id"]) if found else ("", "")
+            except Exception as error:  # noqa: BLE001 - one person failing must not stop the rest
+                failed.append((convs[0]["name"], "%s %s" % (type(error).__name__, str(error)[:60])))
+                _page_failed[ghl_contact] = time.time() + 3600
+                continue
+            if not page_id:
+                failed.append((convs[0]["name"], "GoHighLevel does not say which Page"))
+                _page_failed[ghl_contact] = time.time() + 3600
+                continue
+        target = PAGE_INBOXES.get(page_id, INBOX_ID)
+        wrong = [c for c in convs if c["inbox_id"] != target]
+        if convs[0]["page_id"] and not wrong:
+            continue
+        if wrong and len(convs) > 1:
+            skipped.append((convs[0]["name"], "%d chats, left as they are" % len(convs)))
+        moving = [c["conv"] for c in wrong] if len(convs) == 1 else []
+        if moving or not convs[0]["page_id"]:
+            plans.append((convs[0]["contact"], convs[0]["name"], page_id, page_name, moving, target, not convs[0]["page_id"]))
+    if quiet and not plans:
+        return
+    log("chats to fix:", len(plans), "| not found:", len(failed), "| left alone:", len(skipped))
+    kinds = collections.Counter(("page written" if p[6] else "") + (" + moved to inbox %d" % p[5] if p[4] else "") for p in plans)
+    for kind, count in kinds.items():
+        log("  %s: %d" % (kind.strip(" +") or "nothing", count))
+    for name, why in (failed + skipped)[:8]:
+        log("  -", name, "-", why)
+    if not apply or not plans:
+        if not apply:
+            log("Dry run: nothing was changed. Run again with --apply.")
+        return
+    statements = ["begin;"]
+    for contact, _name, page_id, page_name, moving, target, write_page in plans:
+        if write_page:
+            attributes = json.dumps({"ghl_page_id": page_id, "ghl_page_name": page_name})
+            statements.append(
+                "update contacts set additional_attributes = coalesce(additional_attributes, '{}'::jsonb) || %s::jsonb, updated_at = now() where id = %d;"
+                % (quote(attributes), contact)
+            )
+        for conv in moving:
+            statements.append(
+                "insert into contact_inboxes (contact_id, inbox_id, source_id, created_at, updated_at) "
+                "select %d, %d, gen_random_uuid()::text, now(), now() where not exists "
+                "(select 1 from contact_inboxes where contact_id = %d and inbox_id = %d);" % (contact, target, contact, target)
+            )
+            statements.append(
+                "update conversations set inbox_id = %d, contact_inbox_id = (select id from contact_inboxes where contact_id = %d and inbox_id = %d limit 1), "
+                "updated_at = now() where id = %d;" % (target, contact, target, conv)
+            )
+            statements.append("update messages set inbox_id = %d where conversation_id = %d;" % (target, conv))
+    statements.append("commit;")
+    psql("\n".join(statements))
+    log("Done:", len(plans), "chats fixed.")
 
 
 def load_chats():
@@ -393,6 +495,7 @@ def watch(interval, catch_up_minutes=30, settle=30):
     skipped: dict[str, float] = {}  # a person whose chat could not be made: when to try again
     sweep: list[str] = []
     last_reload = time.time()
+    last_fix = 0.0
     first = True
     while True:
         started = time.time()
@@ -411,6 +514,11 @@ def watch(interval, catch_up_minutes=30, settle=30):
                     conversations.setdefault(chat.get("contactId"), []).append(chat["id"])
                 last_seen[chat["id"]] = max(moved, last_seen.get(chat["id"], 0))
             first = False
+            # A chat that has no Page written, or sits in another inbox than its Page's (GoHighLevel did not say which
+            # Page when the chat was made): read the Page again, write it and move the chat. Once a minute.
+            if started - last_fix > 60:
+                last_fix = started
+                fix_pages(location, True, quiet=True)
             # An Instagram person who never wrote back has no chat yet: make it, and read all their messages.
             fresh = {}
             for chat in found:
@@ -458,6 +566,8 @@ def main():
     parser.add_argument("--contact", default="")
     parser.add_argument("--show", type=int, default=12, help="how many chats to list in the summary")
     parser.add_argument("--import-instagram", action="store_true", help="also make the chats of Instagram people the CRM does not have")
+    parser.add_argument("--fix-pages", action="store_true", help="write the Page on contacts that have none and move chats to their Page's inbox")
+    parser.add_argument("--days", type=int, default=0, help="with --import-instagram: only chats with a message in the last this many days")
     parser.add_argument("--watch", type=float, default=0, help="keep running and follow GoHighLevel every this many seconds")
     args = parser.parse_args()
     if not (GHL_TOKEN and PG_USER and PG_DB):
@@ -467,6 +577,19 @@ def main():
         return
 
     by_contact = load_chats()
+    if args.fix_pages:
+        location = LOCATION_ID
+        for contact in by_contact:
+            if location:
+                break
+            try:
+                location = (ghl_get("/contacts/" + contact, "2021-07-28").get("contact") or {}).get("locationId") or ""
+            except urllib.error.HTTPError:
+                continue
+        if not location:
+            sys.exit("GoHighLevel location is not known")
+        fix_pages(location, args.apply)
+        return
     if args.import_instagram:
         location = LOCATION_ID
         for contact in by_contact:
@@ -478,7 +601,7 @@ def main():
                 continue
         if not location:
             sys.exit("GoHighLevel location is not known")
-        absent = missing_chats(location, by_contact)
+        absent = missing_chats(location, by_contact, newer_than_ms=int((time.time() - args.days * 86400) * 1000) if args.days else 0)
         log("Instagram chats the CRM does not have:", len(absent))
         for contact, (name, ids) in list(absent.items())[: args.show]:
             log(" ", name or contact)

@@ -184,6 +184,8 @@ import { AutomationsSection } from './components/sections/AutomationsSection'
 import { WhatsAppOpenProvider, type WhatsAppTarget } from './components/WhatsAppLink'
 import type { LeadFormValues, WhatsAppCrm } from './components/whatsapp/crm'
 import { describeHoaSlot, upcomingHoaSlots, type HoaSlot } from './lib/hoaSlots'
+import { todaysFollowUps } from './lib/followUps'
+import { FollowUpReminders } from './components/whatsapp/FollowUpReminders'
 import { classesOfStudent } from './lib/studentClasses'
 import { findLeadsByPhone, sameNumberMessage } from './lib/chatLink'
 import { getChatwootUrl } from './lib/chatwoot'
@@ -240,6 +242,7 @@ import { CalendarItemModal } from './components/modals/CalendarItemModal'
 import { useCalendarItems } from './hooks/useCalendarItems'
 import { useLeadChannels } from './hooks/useLeadChannels'
 import { mergeLeads } from './lib/leadChannels'
+import { useFollowUpReminders } from './hooks/useFollowUpReminders'
 import { upcomingZoomSlots } from './lib/zoomSlots'
 import { MOCK_SOCIAL_CHANNELS, MOCK_SOCIAL_LEADS } from './lib/mockSocialLeads'
 
@@ -797,7 +800,8 @@ function App() {
   const canEditCalendar = can('calendar', 'edit')
   const canDeleteCalendar = can('calendar', 'delete')
   // Tasks, Zoom meetings and events on the calendar, beside the classes.
-  const calendarItems = useCalendarItems(Boolean(authUserId) && can('calendar'), currentSession?.teacherId ?? null)
+  // Also read by someone who only works the leads, for the Follow up button in the Inbox.
+  const calendarItems = useCalendarItems(Boolean(authUserId) && (can('calendar') || can('leads')), currentSession?.teacherId ?? null)
   const [calendarItemEditor, setCalendarItemEditor] = useState<{ item: CalendarItem | null; date: string } | null>(null)
   // The chats each lead has: WhatsApp numbers, Messenger Pages, Instagram.
   const leadChannels = useLeadChannels(Boolean(authUserId) && can('leads'))
@@ -881,6 +885,16 @@ function App() {
   const {
     leadIdsWithForms,
     submissions: editingLeadFormSubmissions,
+  // Follow-ups whose time has come ring for the person they are for (cards in the corner of the screen).
+  const followUpReminders = useFollowUpReminders(calendarItems.items, currentSession?.teacherId ?? null)
+  function openFollowUpChat(leadId: number) {
+    const lead = leads.find((entry) => entry.id === leadId)
+    if (lead?.phone && canOpenWhatsAppChat) {
+      openWhatsAppChat({ phone: lead.phone, name: lead.fullName, leadId })
+    } else {
+      openEditLeadModal(leadId)
+    }
+  }
     isLoading: isLoadingEditingLeadForms,
   } = useLeadFormAnswers(can('leads'), leads, editingLeadId)
   const [focusFormAnswers, setFocusFormAnswers] = useState(false)
@@ -4280,6 +4294,13 @@ function App() {
     zoomSlots: upcomingZoomSlots(calendarItems.items, new Date()),
     leadChannels: leadChannels.rows,
     // A chat that became a lead here: read the leads and the chats again.
+    followUps: {
+      items: calendarItems.items,
+      meId: currentSession?.teacherId ?? null,
+      save: (draft) => calendarItems.save(null, draft),
+      done: (id) => calendarItems.setDone(id, true),
+      remove: (id) => calendarItems.remove(id),
+    },
     refreshLeadChannels: () => {
       void leadChannels.refresh()
       void refreshLeads().catch(() => undefined)
@@ -5996,6 +6017,12 @@ function App() {
                   }
                   return problem
                 }
+      <FollowUpReminders
+        due={followUpReminders.due}
+        onOpen={openFollowUpChat}
+        onDone={(id) => calendarItems.setDone(id, true)}
+        onSnooze={followUpReminders.snooze}
+      />
               : undefined
           }
         />
@@ -6162,8 +6189,14 @@ function App() {
                 </h1>
               </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-                <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600">
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:gap-3">
+                {/* On a phone the Inbox needs the room: the date and the past-feedback switch are not about chats. */}
+                <div
+                  className={cn(
+                    'rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600',
+                    activeSection === 'whatsapp' && 'max-sm:hidden',
+                  )}
+                >
                   Local Date: {formatDate(todayString)}
                 </div>
                 {isAdmin ? (
@@ -6198,6 +6231,7 @@ function App() {
                     Edit past feedback: {lateFeedbackEdit ? 'On' : 'Off'}
                   </button>
                 ) : (
+                      activeSection === 'whatsapp' && 'max-sm:hidden',
                   lateFeedbackEdit && (
                     <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800">
                       Past feedback can be edited now
@@ -6364,6 +6398,8 @@ function App() {
                     },
                     { label: 'Visible Teachers', value: visibleTeacherCount, tone: 'brand' },
                   ]}
+                followUps={todaysFollowUps(calendarItems.items, currentSession?.teacherId ?? null, new Date())}
+                onOpenFollowUp={openFollowUpChat}
                 />
 
                 {/* Not overflow-hidden: FullCalendar's "+more" box has to be able to

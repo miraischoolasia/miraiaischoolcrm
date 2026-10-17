@@ -45,6 +45,8 @@ type ChatPanelProps = {
   onLoadOlder: () => void
   onSend: (input: SendInput) => Promise<boolean>
   onDismissUnsent: (tempId: number) => void
+  // Puts a message that did not go out (and the ones held back behind it) in the queue again.
+  onRetryUnsent?: (tempId: number) => void
   onSetOwner: (owner: Sender | null) => void
   onSetStatus: (status: 'open' | 'resolved') => void
   // Puts the chat back as not opened yet and closes it.
@@ -65,6 +67,9 @@ type ChatPanelProps = {
   onEditMessage?: (message: ChatwootMessage, text: string) => Promise<boolean>
   onDeleteMessage?: (message: ChatwootMessage) => Promise<boolean>
   onSendSpecial?: (message: SpecialMessage) => Promise<string | null>
+  // The Follow up button for the message box, and a line under the header with the next follow-up.
+  followUpControl?: React.ReactNode
+  followUpChip?: React.ReactNode
   // Shows the parent we are typing; called as the team writes a reply.
   onTyping?: () => void
   // Pinned chats stay at the top of the list, for the whole team.
@@ -121,6 +126,7 @@ export function ChatPanel({
   onLoadOlder,
   onSend,
   onDismissUnsent,
+  onRetryUnsent,
   onSetOwner,
   onSetStatus,
   onMarkUnread,
@@ -136,6 +142,8 @@ export function ChatPanel({
   onEditMessage,
   onDeleteMessage,
   onSendSpecial,
+  followUpControl,
+  followUpChip,
   onTyping,
   pinned = false,
   onTogglePin,
@@ -293,9 +301,9 @@ export function ChatPanel({
             </span>
           </span>
         </button>
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+        <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto sm:flex-wrap sm:justify-end">
           {/* Who is looking after this chat. The select itself is invisible and covers the pill. */}
-          <label className="relative flex h-9 w-[168px] cursor-pointer items-center gap-2 rounded-full border border-pink-200/80 bg-white pl-1.5 pr-3 shadow-sm transition hover:border-pink-300 focus-within:ring-2 focus-within:ring-[#fc0c97]/40">
+          <label className="relative flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-2 sm:w-[168px] sm:flex-none rounded-full border border-pink-200/80 bg-white pl-1.5 pr-3 shadow-sm transition hover:border-pink-300 focus-within:ring-2 focus-within:ring-[#fc0c97]/40">
             {owner ? (
               <Avatar initials={getInitials(owner.name)} tone={staffTone(owner.name)} size="sm" />
             ) : (
@@ -304,7 +312,7 @@ export function ChatPanel({
               </span>
             )}
             <span className="min-w-0 flex-1 leading-tight">
-              <span className="block text-[10px] font-medium uppercase tracking-wider text-slate-400">Handled by</span>
+              <span className="block text-[10px] font-medium uppercase tracking-wider text-slate-400 max-sm:hidden">Handled by</span>
               <span className={cn('block truncate text-[13px] font-medium', owner ? 'text-slate-900' : 'text-slate-500')}>
                 {owner?.name ?? 'No one yet'}
               </span>
@@ -328,7 +336,7 @@ export function ChatPanel({
               ))}
             </select>
           </label>
-          <div className="flex items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1.5">
             <button
               type="button"
               onClick={onOpenDetails}
@@ -367,7 +375,7 @@ export function ChatPanel({
             onClick={() => onSetStatus(done ? 'open' : 'resolved')}
             title={done ? 'Put this chat back in the open list' : 'Close this chat; it comes back when the parent writes again'}
             className={cn(
-              'inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-[13px] font-semibold shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fc0c97]/40',
+              'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] sm:px-4 font-semibold shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fc0c97]/40',
               done
                 ? 'border border-pink-200/80 bg-white text-slate-700 hover:border-pink-300'
                 : 'bg-slate-900 text-white hover:bg-slate-800',
@@ -463,6 +471,7 @@ export function ChatPanel({
                 nowSeconds={nowSeconds}
                 idConfirms={confirmsBySource(conversation.meta.sender)}
                 onDismiss={message.local ? () => onDismissUnsent(-message.id) : undefined}
+                onRetry={message.local && onRetryUnsent ? () => onRetryUnsent(-message.id) : undefined}
                 extras={extrasFor(message)}
                 actions={{
                   onReply: message.local ? undefined : () => setReplyTo({ conversationId: conversation.id, message }),
@@ -516,6 +525,7 @@ export function ChatPanel({
           {actionError}
         </p>
       )}
+      {followUpChip}
       {identity.isGroup && (
         <p className="border-t border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-800">
           This is a WhatsApp group. Everyone in it reads your reply.
@@ -533,6 +543,7 @@ export function ChatPanel({
         replyTo={replying ? { id: replying.id, author: authorOf(replying), text: describeMessage(replying) } : null}
         onClearReply={() => setReplyTo(null)}
         onSendSpecial={onSendSpecial}
+        followUpControl={followUpControl}
         onTyping={onTyping}
         aiSuggestion={ai.suggestion ? { text: ai.suggestion.text, note: ai.suggestion.note } : null}
         aiLoading={ai.isLoading}

@@ -44,8 +44,11 @@ describe('fileProblem', () => {
     )
   })
 
-  it('leaves photos, voice notes and documents to the inbox server limit', () => {
-    expect(fileProblem({ name: 'poster.png', type: 'image/png', size: 60 * MB })).toBeNull()
-    expect(fileProblem({ name: 'fees.pdf', type: 'application/pdf', size: 60 * MB })).toBeNull()
+  it('lets any other file up to 40 MB through and stops a bigger one before it fails on the server', () => {
+    expect(fileProblem({ name: 'fees.pdf', type: 'application/pdf', size: 40 * MB })).toBeNull()
+    expect(fileProblem({ name: 'poster.png', type: 'image/png', size: 12 * MB })).toBeNull()
+    expect(fileProblem({ name: 'fees.pdf', type: 'application/pdf', size: 60 * MB })).toBe(
+      '"fees.pdf" is 60.0 MB. A file can be at most 40 MB. Make it smaller first.',
+    )
   })
 })

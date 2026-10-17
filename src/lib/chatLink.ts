@@ -12,6 +12,9 @@ export function canonicalPhone(value: string | null | undefined) {
   if (digits.length < 8) {
     return null
   }
+  if (digits.startsWith('00')) {
+    return digits.slice(2)
+  }
   if (digits.startsWith('0')) {
     return `60${digits.slice(1)}`
   }

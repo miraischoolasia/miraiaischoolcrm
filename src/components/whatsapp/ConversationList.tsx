@@ -34,6 +34,20 @@ const tabs: { key: InboxTab; label: string; icon: Icon }[] = [
   { key: 'done', label: 'Done', icon: CheckCircle },
 ]
 
+// What an empty tab says: each tab is empty for a different reason.
+function emptyText(tab: InboxTab, moreToLoad: boolean) {
+  if (moreToLoad) {
+    return 'None in the chats loaded so far. Press "Load older chats" to look further back.'
+  }
+  if (tab === 'done') {
+    return 'No finished chats yet. A chat you press Done on moves here, and comes back when the parent writes again.'
+  }
+  if (tab === 'unread') {
+    return "You're all caught up. There are no unread chats."
+  }
+  return 'Nothing here. New messages from parents will show up here.'
+}
+
 // A tag or source to filter by, already worded for the menu (with how many chats it has).
 export type FilterChoice = { id: number; label: string }
 
@@ -80,6 +94,8 @@ type ConversationListProps = {
   isLoading: boolean
   loadError: string | null
   canLoadMore: boolean
+  // A page of older chats is on its way.
+  isLoadingMore?: boolean
   className?: string
   onTab: (tab: InboxTab) => void
   onTag: (tagId: number | null) => void
@@ -188,6 +204,7 @@ export function ConversationList({
   isLoading,
   loadError,
   canLoadMore,
+  isLoadingMore = false,
   className,
   onTab,
   onTag,
@@ -274,8 +291,7 @@ export function ConversationList({
               {label}
               {key === 'unread' && count > 0 && (
                 <span title="Chats nobody has opened yet" className={railBadge}>
-                  {count > 99 ? '99+' : count}
-                  {hasMoreOpen ? '+' : ''}
+                  {count > 99 ? '99+' : `${count}${hasMoreOpen ? '+' : ''}`}
                 </span>
               )}
             </button>
@@ -482,7 +498,9 @@ export function ConversationList({
         {loadError && <p className="p-4 text-sm text-red-600">{loadError}</p>}
         {!isLoading && !loadError && conversations.length === 0 && (
           <p className="p-4 text-sm text-slate-500">
-            {search || tagId !== null || sourceId !== null || kind || ownerId !== null || inboxId !== null ? 'No chats match.' : 'Nothing here. New messages from parents will show up here.'}
+            {search || tagId !== null || sourceId !== null || kind || ownerId !== null || inboxId !== null
+              ? 'No chats match.'
+              : emptyText(tab, canLoadMore)}
           </p>
         )}
         {conversations.map((conversation) => {
@@ -630,9 +648,10 @@ export function ConversationList({
           <button
             type="button"
             onClick={onLoadMore}
-            className="w-full px-3 py-3 text-sm font-medium text-[#be185d] hover:bg-slate-50"
+            disabled={isLoadingMore}
+            className="w-full px-3 py-3 text-sm font-medium text-[#be185d] hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
           >
-            Load older chats
+            {isLoadingMore ? 'Loading...' : 'Load older chats'}
           </button>
         )}
       </div>

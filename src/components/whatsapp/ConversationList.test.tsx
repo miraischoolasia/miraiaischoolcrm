@@ -268,3 +268,54 @@ describe('ConversationList filter button', () => {
     expect(screen.getByLabelText('Filter by tag')).toBeInTheDocument()
   })
 })
+
+const baseProps: React.ComponentProps<typeof ConversationList> = {
+  conversations: [],
+  counts: { chats: 0, unread: 0, done: 0 },
+  hasMoreOpen: false,
+  tab: 'chats',
+  search: '',
+  tagId: null,
+  sourceId: null,
+  tags: [],
+  sources: [],
+  snippets: new Map(),
+  selectedId: null,
+  nowSeconds: NOW,
+  overdueCount: 0,
+  isLoading: false,
+  loadError: null,
+  canLoadMore: false,
+  onTab: vi.fn(),
+  onTag: vi.fn(),
+  onSource: vi.fn(),
+  onSearch: vi.fn(),
+  onSelect: vi.fn(),
+  onLoadMore: vi.fn(),
+  onNewChat: vi.fn(),
+}
+
+describe('ConversationList when there is nothing to show', () => {
+  it('says what each tab means when it is empty', () => {
+    const { rerender } = render(
+      <ConversationList {...baseProps} conversations={[]} counts={{ chats: 0, unread: 0, done: 0 }} tab="done" />,
+    )
+    expect(screen.getByText(/No finished chats yet/)).toBeInTheDocument()
+
+    rerender(<ConversationList {...baseProps} conversations={[]} counts={{ chats: 0, unread: 0, done: 0 }} tab="unread" />)
+    expect(screen.getByText(/all caught up/)).toBeInTheDocument()
+  })
+
+  it('points to "Load older chats" instead of saying there is nothing, when more chats are still to load', () => {
+    render(<ConversationList {...baseProps} conversations={[]} counts={{ chats: 0, unread: 0, done: 0 }} canLoadMore />)
+
+    expect(screen.getByText(/None in the chats loaded so far/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Load older chats' })).toBeInTheDocument()
+  })
+
+  it('shows Loading... on the button while a page is on its way', () => {
+    render(<ConversationList {...baseProps} conversations={[chat(1, 'Mei', 60)]} canLoadMore isLoadingMore />)
+
+    expect(screen.getByRole('button', { name: 'Loading...' })).toBeDisabled()
+  })
+})
