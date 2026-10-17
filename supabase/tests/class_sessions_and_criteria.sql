@@ -1238,4 +1238,33 @@ select pg_temp.ok((select (value ->> 'drop_grace_seconds')::int = 600 from publi
 select public.set_zoom_room_rules(3600 / 4, 5);
 select pg_temp.ok((select minutes from public.lesson_zoom_minutes(9201, '2026-10-21') where student_id = 9301) = 35, 'the most grace still counts the rest of the stay');
 
+-- A class's teachers (20261023200000) -------------------------------------------
+reset role;
+-- Ali's main class is now 9102 (Ben's); Ben also has his own library for 9101 (above).
+select pg_temp.ok(exists (select 1 from public.classroom_teachers where classroom_id = 9101 and teacher_id = 9003), 'a teacher given a library for a class teaches it');
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+set local role authenticated;
+select pg_temp.ok(exists (select 1 from public.classrooms where id = 9101), 'Ben sees the class he teaches without being its main teacher');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select pg_temp.ok(not exists (select 1 from public.classrooms where id = 9102), 'Amy does not see a class she does not teach');
+select pg_temp.fails($$select public.set_classroom_teachers(9102, array[9003, 9002]::bigint[])$$, 'may edit classes', 'a teacher cannot change a class''s teachers');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select public.set_classroom_teachers(9102, array[9003, 9002]::bigint[]);
+select pg_temp.fails($$select public.set_classroom_teachers(9102, array[9004]::bigint[])$$, 'teaching accounts', 'a staff account cannot teach');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select pg_temp.ok(exists (select 1 from public.classrooms where id = 9102)
+  and exists (select 1 from public.students where id = 9301), 'a second teacher sees the class and its students');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select public.set_classroom_teachers(9102, array[9002]::bigint[]);
+reset role;
+select pg_temp.ok((select teacher_id from public.classrooms where id = 9102) = 9002, 'when the main teacher is taken off, the first one listed becomes main');
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+set local role authenticated;
+select pg_temp.ok(not exists (select 1 from public.classrooms where id = 9102), 'a teacher taken off a class no longer sees it');
+reset role;
+update public.classrooms set teacher_id = 9003 where id = 9102;
+select pg_temp.ok((select array_agg(teacher_id order by teacher_id) from public.classroom_teachers where classroom_id = 9102) = array[9003]::bigint[],
+  'a new main teacher replaces the old one');
+
+
 rollback;

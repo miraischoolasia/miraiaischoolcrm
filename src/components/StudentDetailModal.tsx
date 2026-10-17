@@ -17,7 +17,7 @@ import {
   sortStatuses,
 } from '../lib/attendanceStatuses'
 import { buildPathway } from '../lib/pathway'
-import { getCurrentClassPeriod } from '../lib/roster'
+import { getCurrentClassPeriod, getStudentClassIds } from '../lib/roster'
 import { weekdayLabels } from '../lib/schedule'
 import { buildStudentLessons, type StudentLesson } from '../lib/studentLessons'
 import { ExpiryCell } from './ExpiryCell'
@@ -27,6 +27,7 @@ import { PointsCard } from './PointsCard'
 import { AiReportCard } from './AiReportCard'
 import { AppLoginsCard } from './AppLoginsCard'
 import { ExtraClassesField } from './ExtraClassesField'
+import { StudentVideosTab } from './StudentVideosTab'
 import type { RewardLevel } from '../lib/rewards'
 import { PerformanceRadarChart } from './PerformanceRadarChart'
 import { WhatsAppLink } from './WhatsAppLink'
@@ -45,7 +46,7 @@ import type {
   Teacher,
 } from '../types/domain'
 
-type TabKey = 'overview' | 'progress' | 'lessons' | 'billing'
+type TabKey = 'overview' | 'progress' | 'lessons' | 'videos' | 'billing'
 
 type StudentDetailModalProps = {
   classrooms: Classroom[]
@@ -93,6 +94,10 @@ type StudentDetailModalProps = {
   // class began). Resolves to an error message, or null when saved. Left
   // out without Students edit.
   onSetClassStart?: (startDate: string | null) => Promise<string | null>
+  // The school has class videos: a Videos tab shows what the student watched
+  // and which months are open for them (canEditVideoAccess: open and close them).
+  showVideos?: boolean
+  canEditVideoAccess?: boolean
   // Adding the student to another class, or taking them out of one.
   onAddClass?: (classroomId: number) => Promise<string | null>
   onRemoveClass?: (classroomId: number) => Promise<string | null>
@@ -140,6 +145,8 @@ export function StudentDetailModal({
   parentName = null,
   makeupPlans = NO_PLANS,
   makeupClasses = NO_MAKEUP_CLASSES,
+  showVideos = false,
+  canEditVideoAccess = false,
   onArrangeMakeup,
   onEditMakeup,
   onEdit,
@@ -255,6 +262,7 @@ export function StudentDetailModal({
         { key: 'overview', label: 'Overview' },
         { key: 'progress', label: 'Progress' },
         { key: 'lessons', label: 'Lessons' },
+        ...(showVideos ? [{ key: 'videos' as const, label: 'Videos' }] : []),
         ...(isBilled ? [{ key: 'billing' as const, label: 'Billing' }] : []),
       ]
 
@@ -687,6 +695,16 @@ export function StudentDetailModal({
               </Card>
             )}
           </>
+        )}
+
+        {tab === 'videos' && showVideos && (
+          <StudentVideosTab
+            studentId={student.id}
+            classrooms={getStudentClassIds(student)
+              .map((id) => classrooms.find((classroom) => classroom.id === id))
+              .filter((classroom) => classroom !== undefined)}
+            canEdit={canEditVideoAccess}
+          />
         )}
 
         {tab === 'billing' && isBilled && (

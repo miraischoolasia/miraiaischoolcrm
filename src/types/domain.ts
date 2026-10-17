@@ -167,6 +167,9 @@ export type Classroom = {
   programmeId?: number | null
   // What the class studies (Coding, Maths, ...), or null. Undefined before the migration.
   subjectId?: number | null
+  // Everyone who teaches the class, the main teacher (teacherId) included.
+  // Undefined before the class teachers migration.
+  teacherIds?: number[]
 }
 
 export type Teacher = {

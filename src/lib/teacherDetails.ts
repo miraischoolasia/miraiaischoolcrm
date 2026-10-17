@@ -1,6 +1,7 @@
 import { weekdayLabels } from './schedule'
 import { formatClockTime } from './teacherAgenda'
 import { getStudentClassIds } from './roster'
+import { teachesClassroom } from './classroomTeachers'
 import type { StudentRow } from './studentRows'
 import type { Classroom, Schedule, TrialBooking } from '../types/domain'
 
@@ -53,7 +54,7 @@ export function buildTeacherClasses({
   )
   const classroomIds = new Set(mine.map((schedule) => schedule.classroomId as number))
   for (const classroom of classrooms) {
-    if (classroom.teacherId === teacherId) {
+    if (teachesClassroom(classroom, teacherId)) {
       classroomIds.add(classroom.id)
     }
   }

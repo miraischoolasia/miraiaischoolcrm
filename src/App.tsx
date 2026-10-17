@@ -265,6 +265,8 @@ import { describeClashes, findTeacherClashes, type ClashCandidate } from './lib/
 import { closeCalendarMorePopover } from './lib/calendarPopover'
 import { hasPermission } from './lib/permissions'
 import { getClassroomRosterOn, getStudentClassIds } from './lib/roster'
+import { teachesClassroom } from './lib/classroomTeachers'
+import { fetchHasClassVideos } from './lib/classVideos'
 import {
   getOfferedPackages,
   getRenewalStartDate,
@@ -544,6 +546,8 @@ function App() {
   const [calendarTeacherFilter, setCalendarTeacherFilter] = useState<number | 'all'>('all')
 
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null)
+  // A school with class videos gets a Videos tab on the student page.
+  const [hasClassVideos, setHasClassVideos] = useState(false)
   const [selectedStudentDetailId, setSelectedStudentDetailId] = useState<number | null>(
     null,
   )
@@ -841,6 +845,18 @@ function App() {
     return sections
   }, [can, isAdmin, isTeacherAccount])
   const visibleSection = allowedSections.includes(activeSection) ? activeSection : null
+  useEffect(() => {
+    if (!currentSession) return
+    let cancelled = false
+    fetchHasClassVideos()
+      .then((has) => {
+        if (!cancelled) setHasClassVideos(has)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [currentSession])
   const [hasOpenedWhatsApp, setHasOpenedWhatsApp] = useState(false)
   useEffect(() => {
     if (visibleSection === 'whatsapp') {
@@ -1746,7 +1762,8 @@ function App() {
       return classrooms
     }
 
-    return classrooms.filter((classroom) => classroom.teacherId === currentSession.teacherId)
+    // Every class this teacher teaches, not only those where they are the main teacher.
+    return classrooms.filter((classroom) => teachesClassroom(classroom, currentSession.teacherId))
   }, [classrooms, currentSession, seesAllClasses])
 
   const calendarEvents = useMemo(
@@ -6736,6 +6753,9 @@ function App() {
                 setSelectedClassroomId={setSelectedClassroomId}
                 teacherMap={teacherMap}
                 todayString={todayString}
+                subjects={subjects}
+                assignableTeachers={can('classrooms', 'edit') ? assignableTeachers : undefined}
+                onTeachersChanged={refreshClassrooms}
               />
             )}
 
@@ -7216,6 +7236,8 @@ function App() {
           }
           packages={packages}
           onSetClassStart={can('students', 'edit') ? handleSetClassStart : undefined}
+          showVideos={hasClassVideos}
+          canEditVideoAccess={can('students', 'edit')}
           onAddClass={can('students', 'edit') ? (id) => handleStudentClass('add', id) : undefined}
           onRemoveClass={can('students', 'edit') ? (id) => handleStudentClass('remove', id) : undefined}
           onEdit={

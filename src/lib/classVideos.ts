@@ -376,3 +376,65 @@ export async function uploadClassVideo(
   const done = await classVideoAction(id, 'uploaded')
   return done.error
 }
+
+// One student's videos: the classes they are in, each class's videos (shown
+// ones), the months opened for them, and how far they watched.
+export type StudentVideoData = {
+  videos: Pick<ClassVideo, 'id' | 'classroomId' | 'title' | 'year' | 'month' | 'lessonDate'>[]
+  access: (VideoAccess & { classroomId: number })[]
+  progress: VideoProgress[]
+}
+
+export async function fetchStudentVideoData(studentId: number, classroomIds: number[]): Promise<StudentVideoData> {
+  if (!supabase || classroomIds.length === 0) return { videos: [], access: [], progress: [] }
+  const videos: StudentVideoData['videos'] = []
+  // A student in many classes can have thousands of videos; read them in pages.
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from('class_videos')
+      .select('id, classroom_id, title, year, month, lesson_date')
+      .in('classroom_id', classroomIds)
+      .eq('status', 'ready')
+      .eq('is_archived', false)
+      .order('id')
+      .range(from, from + 999)
+    if (error) throw new Error(error.message)
+    videos.push(...(data ?? []).map((row) => ({ id: row.id, classroomId: row.classroom_id, title: row.title, year: row.year, month: row.month, lessonDate: row.lesson_date })))
+    if ((data ?? []).length < 1000) break
+  }
+  const [access, progress] = await Promise.all([
+    supabase.from('student_video_access').select('classroom_id, year, month, starts_on, ends_on').eq('student_id', studentId),
+    supabase
+      .from('class_video_progress')
+      .select('student_id, video_id, watch_percentage, rewatch_count, completed_at, last_watched_at')
+      .eq('student_id', studentId),
+  ])
+  if (access.error) throw new Error(access.error.message)
+  if (progress.error) throw new Error(progress.error.message)
+  return {
+    videos,
+    access: (access.data ?? []).map((row) => ({
+      studentId,
+      classroomId: row.classroom_id,
+      year: row.year,
+      month: row.month,
+      startsOn: row.starts_on,
+      endsOn: row.ends_on,
+    })),
+    progress: (progress.data ?? []).map((row) => ({
+      studentId: row.student_id,
+      videoId: row.video_id,
+      percentage: Number(row.watch_percentage),
+      completed: row.completed_at !== null,
+      rewatches: row.rewatch_count,
+      lastWatchedAt: row.last_watched_at,
+    })),
+  }
+}
+
+// Does the school have any class videos? (The student page shows a Videos tab only then.)
+export async function fetchHasClassVideos() {
+  if (!supabase) return false
+  const { count, error } = await supabase.from('class_videos').select('id', { count: 'exact', head: true })
+  return !error && (count ?? 0) > 0
+}

@@ -216,7 +216,19 @@ export async function fetchClassroomsFromSupabase() {
     throw error
   }
 
-  return (data ?? []).map(mapClassroomRow)
+  // A class can have several teachers. Before that migration there is no list.
+  const teachers = await supabase.from('classroom_teachers').select('classroom_id, teacher_id')
+  const teacherIds = new Map<number, number[]>()
+  for (const row of teachers.error ? [] : (teachers.data ?? [])) {
+    teacherIds.set(row.classroom_id, [...(teacherIds.get(row.classroom_id) ?? []), row.teacher_id])
+  }
+  return (data ?? []).map((row) => {
+    const classroom = mapClassroomRow(row)
+    if (!teachers.error) {
+      classroom.teacherIds = teacherIds.get(classroom.id) ?? (classroom.teacherId ? [classroom.teacherId] : [])
+    }
+    return classroom
+  })
 }
 
 // Includes archived (inactive) teachers so history still shows their names

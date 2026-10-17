@@ -2635,6 +2635,12 @@ export type Database = {
         }
         Relationships: []
       }
+      classroom_teachers: {
+        Row: { classroom_id: number; teacher_id: number; created_at: string }
+        Insert: { classroom_id: number; teacher_id: number }
+        Update: { classroom_id?: number; teacher_id?: number }
+        Relationships: []
+      }
       classroom_teacher_libraries: {
         Row: { classroom_id: number; teacher_id: number; library_id: number }
         Insert: { classroom_id: number; teacher_id: number; library_id: number }
@@ -3195,6 +3201,14 @@ export type Database = {
       set_classroom_teacher_library: {
         Args: { p_classroom_id: number; p_teacher_id: number; p_library_id: number | null }
         Returns: undefined
+      }
+      set_classroom_teachers: {
+        Args: { p_classroom_id: number; p_teacher_ids: number[] }
+        Returns: undefined
+      }
+      my_classroom_ids: {
+        Args: Record<string, never>
+        Returns: number[]
       }
       can_manage_class_videos: {
         Args: { p_classroom_id: number }

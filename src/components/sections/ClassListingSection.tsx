@@ -7,6 +7,9 @@ import { weekdayLabels } from '../../lib/schedule'
 import { ExpiryCell } from '../ExpiryCell'
 import { StatusChip } from '../StatusChip'
 import { BrandMascot } from '../BrandMascot'
+import { ClassTeachersField } from '../ClassTeachersField'
+import { classroomTeacherIds } from '../../lib/classroomTeachers'
+import type { Subject } from '../../lib/subjects'
 import {
   ArrowCounterClockwise,
   CalendarBlank,
@@ -53,6 +56,11 @@ type ClassListingSectionProps = {
   setSelectedClassroomId: (classroomId: number) => void
   teacherMap: Map<number, Teacher>
   todayString: string
+  // What each class studies, to list a level's classes by subject.
+  subjects?: Subject[]
+  // Who can be one of a class's teachers; left out for a login that may not change classes.
+  assignableTeachers?: Teacher[]
+  onTeachersChanged?: () => Promise<void> | void
 }
 
 export function ClassListingSection({
@@ -77,6 +85,9 @@ export function ClassListingSection({
   setSelectedClassroomId,
   teacherMap,
   todayString,
+  subjects = NO_SUBJECTS,
+  assignableTeachers,
+  onTeachersChanged,
 }: ClassListingSectionProps) {
   // The school's age groups; one a class still uses stays as a tab.
   const schoolAgeGroups = useAgeGroups()
@@ -99,6 +110,32 @@ export function ClassListingSection({
         (classroom) => classroom.ageGroup === selectedAgeGroup &&
           (category === 'all' || classroom.category === category),
       )
+  // A level's classes by subject (subjects in the school's order), then by name.
+  const subjectById = new Map(subjects.map((subject) => [subject.id, subject]))
+  const subjectGroups: { key: string; name: string | null; classrooms: Classroom[] }[] = []
+  for (const classroom of [...filteredClassrooms].sort((a, b) => {
+    const left = subjectById.get(a.subjectId ?? -1)
+    const right = subjectById.get(b.subjectId ?? -1)
+    return (
+      (left ? 0 : 1) - (right ? 0 : 1) ||
+      (left?.sortOrder ?? 0) - (right?.sortOrder ?? 0) ||
+      (left?.name ?? '').localeCompare(right?.name ?? '') ||
+      a.name.localeCompare(b.name)
+    )
+  })) {
+    const subject = subjectById.get(classroom.subjectId ?? -1) ?? null
+    const key = subject ? String(subject.id) : 'none'
+    const group = subjectGroups.find((entry) => entry.key === key)
+    if (group) group.classrooms.push(classroom)
+    else subjectGroups.push({ key, name: subject?.name ?? null, classrooms: [classroom] })
+  }
+  const showSubjects = subjectGroups.some((group) => group.name !== null)
+  const teacherNames = (classroom: Classroom) =>
+    classroomTeacherIds(classroom)
+      .map((id) => teacherMap.get(id)?.fullName)
+      .filter(Boolean)
+      .join(', ')
+
   const selectedClassroom =
     filteredClassrooms.find((classroom) => classroom.id === selectedClassroomId) ??
     filteredClassrooms[0] ??
@@ -276,7 +313,14 @@ export function ClassListingSection({
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {filteredClassrooms.map((classroom) => {
+                    {subjectGroups.map((group) => (
+                      <div key={group.key} className="space-y-2">
+                        {showSubjects && (
+                          <div className="pt-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+                            {group.name ?? 'No subject'} · {group.classrooms.length}
+                          </div>
+                        )}
+                    {group.classrooms.map((classroom) => {
                       const summary = getClassSummary(classroom.id)
                       const roster = classroomStudentMap.get(classroom.id) ?? []
                       const selected = selectedClassroom?.id === classroom.id
@@ -302,8 +346,7 @@ export function ClassListingSection({
                             {classroom.name}{classroom.category === 'trial' && <span className="ml-2 text-xs text-[#be185d]">Trial Class</span>}{classroom.category === 'camp' && <span className="ml-2 text-xs text-emerald-700">Camp Class</span>}
                           </div>
                           <div className="mt-1 text-sm text-slate-500">
-                            {teacherMap.get(classroom.teacherId ?? -1)?.fullName ??
-                              'Unassigned teacher'}
+                            {teacherNames(classroom) || 'Unassigned teacher'}
                           </div>
                           <div className="mt-2 flex items-center gap-2">
                             <span className="text-xs font-medium text-slate-500">
@@ -321,6 +364,8 @@ export function ClassListingSection({
                         </button>
                       )
                     })}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -333,13 +378,19 @@ export function ClassListingSection({
                         {selectedClassroom.name}{selectedClassroom.category === 'trial' && <span className="ml-2 text-xs text-[#be185d]">Trial Class</span>}{selectedClassroom.category === 'camp' && <span className="ml-2 text-xs text-emerald-700">Camp Class</span>}
                       </h3>
                       <div className="mt-1 text-sm text-slate-500">
-                        Teacher:{' '}
-                        {teacherMap.get(selectedClassroom.teacherId ?? -1)?.fullName ??
-                          'Unassigned'}
-                        {' • '}
                         {selectedClassroom.ageGroup}
+                        {subjectById.get(selectedClassroom.subjectId ?? -1) && ` • ${subjectById.get(selectedClassroom.subjectId ?? -1)!.name}`}
                         {' • '}
                         {selectedClassroom.programLevel}
+                      </div>
+                      <div className="mt-2">
+                        <ClassTeachersField
+                          key={selectedClassroom.id}
+                          classroom={selectedClassroom}
+                          teacherMap={teacherMap}
+                          assignableTeachers={assignableTeachers}
+                          onSaved={onTeachersChanged}
+                        />
                       </div>
                       {selectedClassroom.notes && (
                         <p className="mt-3 max-w-3xl text-sm text-slate-500">
@@ -765,3 +816,5 @@ export function ClassListingSection({
     </div>
   )
 }
+
+const NO_SUBJECTS: Subject[] = []
