@@ -7,8 +7,8 @@
 // function, with the events meeting.participant_joined,
 // meeting.participant_left and recording.completed.
 //
-// Secret: ZOOM_WEBHOOK_SECRET (the app's "Secret Token"). No login: every call
-// must carry Zoom's signature.
+// Secret: ZOOM_WEBHOOK_SECRET (the app's "Secret Token"). No login: every event
+// must carry Zoom's signature (only the address check is answered without one).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
   readParticipantEvent,
@@ -37,6 +37,14 @@ Deno.serve(async (req) => {
     return json({ ok: false }, 400)
   }
 
+  // Zoom checks the address when it is saved (the check may come unsigned):
+  // the answer is the token signed with the secret, which proves we hold it.
+  if (message.event === 'endpoint.url_validation') {
+    const plainToken = String(message.payload?.plainToken ?? '')
+    if (!plainToken) return json({ ok: false }, 400)
+    return json(await urlValidationAnswer(secret, plainToken))
+  }
+
   const signed = await verifyZoomSignature({
     secret,
     body: raw,
@@ -44,11 +52,6 @@ Deno.serve(async (req) => {
     signature: req.headers.get('x-zm-signature'),
   })
   if (!signed) return json({ ok: false }, 401)
-
-  if (message.event === 'endpoint.url_validation') {
-    const plainToken = String(message.payload?.plainToken ?? '')
-    return json(await urlValidationAnswer(secret, plainToken))
-  }
 
   const event = message.event ?? ''
   const admin = createClient(supabaseUrl, serviceRoleKey)
