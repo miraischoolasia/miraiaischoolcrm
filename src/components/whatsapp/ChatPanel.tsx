@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from 'react'
 import type { VariableValues } from '../../lib/quickReplies'
-import { ArrowBendUpRight, ArrowCounterClockwise, ArrowDown, CaretDown, CaretLeft, CaretUp, CheckCircle, EnvelopeSimple, Info, MagnifyingGlass, PushPin, UserCircle, X } from '@phosphor-icons/react'
+import { ArrowBendUpRight, ArrowCounterClockwise, CaretDown, CaretLeft, CheckCircle, EnvelopeSimple, Info, PushPin, UserCircle } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import type { Sender } from '../../lib/chatwootClient'
 import type { SendInput } from '../../hooks/useWhatsAppInbox'
@@ -11,7 +11,6 @@ import {
   getInitials,
   getOwner,
   getSenderLabel,
-  socialKindOf,
   type ChatwootConversation,
   type ChatwootMessage,
 } from '../../lib/whatsappInbox'
@@ -20,9 +19,7 @@ import type { Draft } from '../../lib/draft'
 import { Avatar } from './Avatar'
 import { Composer } from './Composer'
 import { MessageBubble, type BubbleAvatar, type BubbleExtras } from './MessageBubble'
-import { ImageViewer } from './ImageViewer'
-import { findMessageMatches } from '../../lib/chatSearch'
-import { isSticker, summarizeMessage } from '../../lib/specialMessages'
+import { summarizeMessage } from '../../lib/specialMessages'
 import { NO_EVENTS, waIdOf, type MessageEvents, type SpecialMessage } from '../../lib/waActions'
 import { isEditCopy, withoutEditHeading } from '../../lib/editCopy'
 import { isCheckingReaction } from '../../lib/reactionPreview'
@@ -86,8 +83,6 @@ type ChatPanelProps = {
   // Turns on the grey AI reply suggestion for this chat, with what the AI may know about the child.
   // Left out where the feature is not wanted (people who cannot edit leads).
   aiContext?: AiDraftContext | null
-  // Where a reply goes out from (the WhatsApp number, or the Page), shown above the message box.
-  sendingFrom?: string | null
 }
 
 // The round icon buttons at the top of a chat.
@@ -156,7 +151,6 @@ export function ChatPanel({
   onToggleStar,
   onForward,
   aiContext = null,
-  sendingFrom = null,
 }: ChatPanelProps) {
   const identity = getChatIdentity(conversation.meta.sender, leadName, conversation.meta.channel)
   // The grey reply suggestion; asked for only when the box is empty and the parent wrote last.
@@ -199,53 +193,9 @@ export function ChatPanel({
       return next.length > 0 ? { conversationId: conversation.id, ids: next } : null
     })
   const replying = replyTo?.conversationId === conversation.id ? replyTo.message : null
-  useEffect(() => {
-    if (!pickedIds) {
-      return undefined
-    }
-    const leave = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setPicked(null)
-      }
-    }
-    window.addEventListener('keydown', leave)
-    return () => window.removeEventListener('keydown', leave)
-  }, [pickedIds])
   const scroller = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
   const lastConversation = useRef<number | null>(null)
-  const lastIncomingId = useRef(0)
-  const flashTimer = useRef<number | null>(null)
-  const dropCount = useRef(0)
-
-  // Looking for words in this chat.
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [chatQuery, setChatQuery] = useState('')
-  const [hitPosition, setHitPosition] = useState(0)
-  // A message the person was just taken to (the one a quote answers); it glows for a moment.
-  const [flashId, setFlashId] = useState<number | null>(null)
-  const [viewer, setViewer] = useState<number | null>(null)
-  // Files being dragged over the chat, and the ones dropped.
-  const [dragging, setDragging] = useState(false)
-  const [dropped, setDropped] = useState<{ id: number; files: File[] } | null>(null)
-  // Scrolled away from the newest message, and how many parent messages came in meanwhile.
-  const [away, setAway] = useState(false)
-  const [newCount, setNewCount] = useState(0)
-  // How many messages were unread when the chat was opened: the line "N unread messages" is drawn above them.
-  const unreadWhenOpened = (chat: ChatwootConversation) =>
-    chat.status === 'resolved' || chat.custom_attributes?.crm_marked_unread ? 0 : chat.unread_count
-  const [opened, setOpened] = useState({ id: conversation.id, unread: unreadWhenOpened(conversation) })
-  if (opened.id !== conversation.id) {
-    setOpened({ id: conversation.id, unread: unreadWhenOpened(conversation) })
-    setSearchOpen(false)
-    setChatQuery('')
-    setHitPosition(0)
-    setFlashId(null)
-    setViewer(null)
-    setDropped(null)
-    setAway(false)
-    setNewCount(0)
-  }
   // Ticks so a message that waits too long for WhatsApp gets a warning.
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000))
 
@@ -260,40 +210,17 @@ export function ChatPanel({
       return
     }
     const changedChat = lastConversation.current !== conversation.id
-    const newestIncoming = messages.reduce((newest, entry) => (entry.message_type === 0 && entry.id > newest ? entry.id : newest), 0)
-    if (changedChat) {
-      // Like WhatsApp, a chat with unread messages opens at the line that says so; the others at the newest message.
-      const divider = messages.length > 0 ? element.querySelector('[data-unread-divider]') : null
-      if (divider) {
-        stickToBottom.current = false
-        divider.scrollIntoView?.({ block: 'start' })
-      } else {
-        stickToBottom.current = true
-        element.scrollTop = element.scrollHeight
-      }
-      lastIncomingId.current = newestIncoming
-    } else {
-      if (stickToBottom.current) {
-        element.scrollTop = element.scrollHeight
-      } else if (newestIncoming > lastIncomingId.current) {
-        const fresh = messages.filter((entry) => entry.message_type === 0 && entry.id > lastIncomingId.current).length
-        setNewCount((count) => count + fresh)
-      }
-      lastIncomingId.current = Math.max(lastIncomingId.current, newestIncoming)
+    if (changedChat || stickToBottom.current) {
+      element.scrollTop = element.scrollHeight
     }
     if (messages.length > 0) {
       lastConversation.current = conversation.id
     }
   }, [conversation.id, messages, waitingMessages])
 
-  useEffect(
-    () => () => {
-      if (flashTimer.current !== null) {
-        window.clearTimeout(flashTimer.current)
-      }
-    },
-    [],
-  )
+  useEffect(() => {
+    stickToBottom.current = true
+  }, [conversation.id])
 
   let lastDay = ''
   let lastRun = ''
@@ -313,116 +240,12 @@ export function ChatPanel({
     return message.message_type === 1 ? (getSenderLabel(message) ?? 'You') : identity.title
   }
 
-  function quotedOf(message: ChatwootMessage) {
-    const attributes = message.content_attributes
-    return (
-      (attributes?.in_reply_to ? byId.get(attributes.in_reply_to) : undefined) ??
-      (attributes?.in_reply_to_external_id ? byWaId.get(attributes.in_reply_to_external_id) : undefined)
-    )
-  }
-
-  // The words a message shows (an edited text counts as it is now).
-  function textOf(message: ChatwootMessage) {
-    const waId = waIdOf(message.source_id)
-    const edited = waId ? changedText(message, messageEvents.edits.get(waId) ?? messageEvents.texts.get(waId)) : null
-    return (edited ?? message.content ?? '').trim()
-  }
-
-  // Scrolls to a message of this chat, when it is loaded.
-  function scrollToMessage(id: number) {
-    const target = scroller.current?.querySelector(`[data-message-id="${id}"]`)
-    if (!target) {
-      return false
-    }
-    stickToBottom.current = false
-    target.scrollIntoView?.({ block: 'center' })
-    return true
-  }
-
-  function jumpTo(id: number) {
-    if (!scrollToMessage(id)) {
-      return
-    }
-    setFlashId(id)
-    if (flashTimer.current !== null) {
-      window.clearTimeout(flashTimer.current)
-    }
-    flashTimer.current = window.setTimeout(() => setFlashId(null), 1600)
-  }
-
-  function scrollToNewest() {
-    const element = scroller.current
-    if (!element) {
-      return
-    }
-    stickToBottom.current = true
-    setNewCount(0)
-    if (element.scrollTo) {
-      element.scrollTo({ top: element.scrollHeight, behavior: 'smooth' })
-    } else {
-      element.scrollTop = element.scrollHeight
-    }
-  }
-
-  // The messages that hold the searched words, oldest first. Hidden ones (reactions, copies of edits) are not searched.
-  const searchable = [...messages, ...waitingMessages].filter((entry) => {
-    const waId = waIdOf(entry.source_id)
-    return !(waId && messageEvents.reactionIds.has(waId)) && !(isEditCopy(entry.content) && waId && idsOfOriginals.has(waId))
-  })
-  const hits = searchOpen ? findMessageMatches(searchable, chatQuery, textOf) : []
-  const hitAt = hits.length > 0 ? Math.min(Math.max(hitPosition, 0), hits.length - 1) : 0
-  const currentHitId = hits.length > 0 ? hits[hitAt] : null
-  const lastHitScrolled = useRef<number | null>(null)
-  useEffect(() => {
-    if (currentHitId === null) {
-      lastHitScrolled.current = null
-      return
-    }
-    if (lastHitScrolled.current !== currentHitId) {
-      lastHitScrolled.current = currentHitId
-      scrollToMessage(currentHitId)
-    }
-    // scrollToMessage only reads refs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentHitId])
-  function stepHit(direction: -1 | 1) {
-    if (hits.length > 0) {
-      setHitPosition((hitAt + direction + hits.length) % hits.length)
-    }
-  }
-
-  // The photos of this chat, oldest first, for the viewer.
-  const photos = messages.flatMap((entry) => {
-    const waId = waIdOf(entry.source_id)
-    if (entry.content_attributes?.deleted || (waId && messageEvents.deleted.has(waId))) {
-      return []
-    }
-    return (entry.attachments ?? [])
-      .filter((attachment) => attachment.file_type === 'image' && !isSticker(attachment))
-      .map((attachment) => ({
-        id: attachment.id,
-        src: attachment.data_url,
-        label: `${authorOf(entry)}, ${new Date(entry.created_at * 1000).toLocaleString()}`,
-      }))
-  })
-  const viewerIndex = viewer === null ? -1 : photos.findIndex((photo) => photo.id === viewer)
-
-  // The first of the messages that were unread when the chat was opened.
-  const incomingOrder = messages.filter((entry) => entry.message_type === 0 && !entry.private).sort((a, b) => a.created_at - b.created_at || a.id - b.id)
-  const firstUnreadId =
-    opened.id === conversation.id && opened.unread > 0 && incomingOrder.length > 0
-      ? incomingOrder[Math.max(0, incomingOrder.length - opened.unread)].id
-      : null
-
-  const channelLabel = socialKindOf(conversation.meta.channel, conversation.meta.sender) === 'messenger'
-    ? 'Messenger'
-    : socialKindOf(conversation.meta.channel, conversation.meta.sender) === 'instagram'
-      ? 'Instagram'
-      : 'WhatsApp'
-
   function extrasFor(message: ChatwootMessage): BubbleExtras {
     const waId = waIdOf(message.source_id)
-    const quoted = quotedOf(message)
+    const attributes = message.content_attributes
+    const quoted =
+      (attributes?.in_reply_to ? byId.get(attributes.in_reply_to) : undefined) ??
+      (attributes?.in_reply_to_external_id ? byWaId.get(attributes.in_reply_to_external_id) : undefined)
     const ours = message.message_type === 1 && !message.private && !message.local && waId !== null
     const age = nowSeconds - message.created_at
     return {
@@ -433,13 +256,8 @@ export function ChatPanel({
       canEdit: ours && !message.attachments?.length && Boolean(message.content?.trim()) && age < EDIT_WINDOW_SECONDS,
       canDelete: ours && age < DELETE_WINDOW_SECONDS,
       starred: starredIds.includes(message.id),
-      highlight: searchOpen ? chatQuery : undefined,
-      channelLabel,
-      authorName: authorOf(message),
     }
   }
-
-  const hasFiles = (event: React.DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes('Files')
 
   function avatarFor(message: ChatwootMessage): BubbleAvatar | null {
     if (message.message_type === 0) {
@@ -453,42 +271,7 @@ export function ChatPanel({
   }
 
   return (
-    <div
-      className={cn('relative flex min-h-0 min-w-0 flex-col bg-slate-50', className)}
-      onDragEnter={(event) => {
-        if (hasFiles(event) && !pickedIds) {
-          event.preventDefault()
-          setDragging(true)
-        }
-      }}
-      onDragOver={(event) => {
-        if (hasFiles(event) && !pickedIds) {
-          event.preventDefault()
-          setDragging(true)
-        }
-      }}
-      onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-          setDragging(false)
-        }
-      }}
-      onDrop={(event) => {
-        if (!hasFiles(event)) {
-          return
-        }
-        event.preventDefault()
-        setDragging(false)
-        if (!pickedIds && event.dataTransfer.files.length > 0) {
-          dropCount.current += 1
-          setDropped({ id: dropCount.current, files: Array.from(event.dataTransfer.files) })
-        }
-      }}
-    >
-      {dragging && (
-        <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-lg border-2 border-dashed border-[#fc0c97] bg-pink-50/90 text-base font-semibold text-[#be185d]">
-          Drop files to attach them to your message
-        </div>
-      )}
+    <div className={cn('flex min-h-0 min-w-0 flex-col bg-slate-50', className)}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-pink-100 bg-pink-50 px-3 py-2.5 sm:px-4">
         <button
           type="button"
@@ -563,16 +346,6 @@ export function ChatPanel({
             >
               <Info size={16} />
             </button>
-            <button
-              type="button"
-              onClick={() => setSearchOpen((open) => !open)}
-              aria-label="Search in this chat"
-              aria-pressed={searchOpen}
-              title="Search for words in this chat"
-              className={cn(HEADER_ICON_BUTTON, searchOpen && 'border-[#fc0c97] text-[#fc0c97] hover:text-[#fc0c97]')}
-            >
-              <MagnifyingGlass size={16} />
-            </button>
             {onTogglePin && (
               <button
                 type="button"
@@ -614,62 +387,11 @@ export function ChatPanel({
         </div>
       </div>
 
-      {searchOpen && (
-        <div role="search" className="flex flex-wrap items-center gap-2 border-b border-pink-100 bg-white px-3 py-2">
-          <MagnifyingGlass size={16} aria-hidden="true" className="shrink-0 text-slate-400" />
-          <input
-            type="search"
-            autoFocus
-            value={chatQuery}
-            onChange={(event) => {
-              setChatQuery(event.target.value)
-              // Starts at the newest match.
-              setHitPosition(Number.MAX_SAFE_INTEGER)
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                stepHit(event.shiftKey ? 1 : -1)
-              } else if (event.key === 'Escape') {
-                event.stopPropagation()
-                setSearchOpen(false)
-              }
-            }}
-            placeholder="Search in this chat"
-            aria-label="Search in this chat"
-            className="min-w-[8rem] flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-[#fc0c97]"
-          />
-          <span aria-live="polite" className="shrink-0 text-xs text-slate-500">
-            {chatQuery.trim() === '' ? '' : hits.length === 0 ? 'No messages found' : `${hitAt + 1} of ${hits.length}`}
-          </span>
-          <button type="button" onClick={() => stepHit(-1)} disabled={hits.length === 0} aria-label="Previous match, older" title="Older match" className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-40">
-            <CaretUp size={16} />
-          </button>
-          <button type="button" onClick={() => stepHit(1)} disabled={hits.length === 0} aria-label="Next match, newer" title="Newer match" className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-40">
-            <CaretDown size={16} />
-          </button>
-          <button type="button" onClick={() => setSearchOpen(false)} aria-label="Close the search" title="Close (Esc)" className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100">
-            <X size={16} />
-          </button>
-          {hasOlder && (
-            <button type="button" onClick={onLoadOlder} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100">
-              Only the messages loaded so far are searched. Load earlier messages
-            </button>
-          )}
-        </div>
-      )}
-
-      <div className="relative flex min-h-0 flex-1 flex-col">
       <div
         ref={scroller}
         onScroll={(event) => {
           const element = event.currentTarget
-          const distance = element.scrollHeight - element.scrollTop - element.clientHeight
-          stickToBottom.current = distance < 80
-          setAway(distance > 240)
-          if (distance < 80) {
-            setNewCount(0)
-          }
+          stickToBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80
         }}
         className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4"
       >
@@ -716,27 +438,14 @@ export function ChatPanel({
           const canPick = Boolean(onForward) && !message.local && !message.private
           const isPicked = pickedIds?.includes(message.id) ?? false
           return (
-            <div key={message.id} data-message-id={message.id}>
+            <div key={message.id}>
               {showDay && (
                 <div className="my-3 text-center">
                   <span className="rounded-full bg-slate-200/70 px-3 py-0.5 text-[11px] font-medium text-slate-600">{day}</span>
                 </div>
               )}
-              {message.id === firstUnreadId && (
-                <div data-unread-divider className="my-3 flex items-center gap-3 text-[11px] font-semibold text-[#be185d]">
-                  <span className="h-px flex-1 bg-pink-200" />
-                  {opened.unread} unread {opened.unread === 1 ? 'message' : 'messages'}
-                  <span className="h-px flex-1 bg-pink-200" />
-                </div>
-              )}
               <div
-                className={cn(
-                  'transition-colors duration-500',
-                  pickedIds && canPick && 'flex cursor-pointer items-start gap-2 rounded-lg',
-                  isPicked && 'bg-pink-50',
-                  flashId === message.id && 'rounded-lg bg-yellow-100',
-                  currentHitId === message.id && 'rounded-lg bg-yellow-50 ring-1 ring-yellow-300',
-                )}
+                className={cn(pickedIds && canPick && 'flex cursor-pointer items-start gap-2 rounded-lg', isPicked && 'bg-pink-50')}
                 onClickCapture={(event) => {
                   if (pickedIds && canPick) {
                     event.preventDefault()
@@ -770,11 +479,8 @@ export function ChatPanel({
                   onEdit: onEditMessage ? (text) => onEditMessage(message, text) : undefined,
                   onDelete: onDeleteMessage ? () => onDeleteMessage(message) : undefined,
                   onStar: onToggleStar && !message.local ? () => onToggleStar(message) : undefined,
-                  // Like WhatsApp: Forward first turns on picking (with this message ticked), then the Forward button below sends.
-                  onForward: canPick ? () => togglePicked(message.id) : undefined,
+                  onForward: canPick ? () => onForward?.([message]) : undefined,
                   onSelect: canPick ? () => togglePicked(message.id) : undefined,
-                  onJumpToQuote: quotedOf(message) ? () => jumpTo((quotedOf(message) as ChatwootMessage).id) : undefined,
-                  onOpenImage: message.local ? undefined : (attachmentId) => setViewer(attachmentId),
                 }}
               />
               </div>
@@ -783,32 +489,6 @@ export function ChatPanel({
           )
         })}
       </div>
-      {away && (
-        <button
-          type="button"
-          onClick={scrollToNewest}
-          aria-label={newCount > 0 ? `Scroll to the newest message, ${newCount} new` : 'Scroll to the newest message'}
-          title="Go to the newest message"
-          className="absolute bottom-3 right-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-lg hover:bg-slate-50"
-        >
-          <ArrowDown size={18} />
-          {newCount > 0 && (
-            <span className="absolute -top-2 left-1/2 min-w-5 -translate-x-1/2 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white">
-              {newCount > 99 ? '99+' : newCount}
-            </span>
-          )}
-        </button>
-      )}
-      </div>
-
-      {viewer !== null && viewerIndex >= 0 && (
-        <ImageViewer
-          images={photos.map((photo) => ({ src: photo.src, label: photo.label }))}
-          index={viewerIndex}
-          onIndex={(next) => setViewer(photos[next]?.id ?? null)}
-          onClose={() => setViewer(null)}
-        />
-      )}
 
       {pickedIds && onForward && (
         <div className="flex items-center justify-between gap-2 border-t border-pink-100 bg-pink-50 px-4 py-2 text-sm">
@@ -851,7 +531,6 @@ export function ChatPanel({
           This is a WhatsApp group. Everyone in it reads your reply.
         </p>
       )}
-      <div className={pickedIds && onForward ? 'hidden' : undefined}>
       <Composer
         key={conversation.id}
         onSend={sendAndRecord}
@@ -859,8 +538,6 @@ export function ChatPanel({
         variables={quickReplyValues}
         onManageQuickReplies={onManageQuickReplies}
         draftRequest={draftRequest}
-        droppedFiles={dropped}
-        sendingFrom={sendingFrom}
         draft={draft}
         onDraftChange={onDraftChange}
         replyTo={replying ? { id: replying.id, author: authorOf(replying), text: describeMessage(replying) } : null}
@@ -877,7 +554,6 @@ export function ChatPanel({
         onAiUse={ai.markUsed}
         onAiDismiss={ai.dismiss}
       />
-      </div>
     </div>
   )
 }

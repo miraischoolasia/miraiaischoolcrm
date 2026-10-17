@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { getTodayString } from './domain/studentStatus'
 import { addMonths } from './lib/packages'
+import { openMenu } from './test/openMenu'
 
 const today = getTodayString()
 
@@ -91,7 +92,7 @@ async function openRenewal() {
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'admin-1' } }))
   await userEvent.click((await screen.findAllByRole('button', { name: 'Calendar' }))[0])
   await screen.findByText('Calendar ready')
-  await userEvent.click(screen.getAllByRole('button', { name: /^Students$/ })[0])
+  await openMenu('Student List')
   await userEvent.click(within(await screen.findByRole('table')).getByRole('button', { name: /Renew/ }))
   return within(await screen.findByRole('dialog'))
 }
@@ -198,7 +199,7 @@ describe('adding a student with a package', () => {
     await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'admin-1' } }))
     await userEvent.click((await screen.findAllByRole('button', { name: 'Calendar' }))[0])
     await screen.findByText('Calendar ready')
-    await userEvent.click(screen.getAllByRole('button', { name: /^Students$/ })[0])
+    await openMenu('Student List')
     await userEvent.click(await screen.findByRole('button', { name: /Add Student/ }))
     const dialog = within(await screen.findByRole('dialog'))
 
@@ -232,7 +233,7 @@ describe('adding a student with a package', () => {
     await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'admin-1' } }))
     await userEvent.click((await screen.findAllByRole('button', { name: 'Calendar' }))[0])
     await screen.findByText('Calendar ready')
-    await userEvent.click(screen.getAllByRole('button', { name: /^Students$/ })[0])
+    await openMenu('Student List')
     await userEvent.click(await screen.findByRole('button', { name: /Add Student/ }))
     const dialog = within(await screen.findByRole('dialog'))
 

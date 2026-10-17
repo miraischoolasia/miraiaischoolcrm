@@ -3,27 +3,6 @@ import { Pause, Play } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { formatDuration, loadPeaks, pseudoPeaks } from '../../lib/waveform'
 
-// Like WhatsApp: the speed button goes 1x, 1.5x, 2x and round again, and the choice is kept for the next voice message.
-const SPEEDS = [1, 1.5, 2]
-const SPEED_KEY = 'whatsapp-voice-speed'
-
-function readSpeed() {
-  try {
-    const saved = Number(window.localStorage.getItem(SPEED_KEY))
-    return SPEEDS.includes(saved) ? saved : 1
-  } catch {
-    return 1
-  }
-}
-
-function writeSpeed(speed: number) {
-  try {
-    window.localStorage.setItem(SPEED_KEY, String(speed))
-  } catch {
-    // Private windows can refuse storage; the speed just is not remembered.
-  }
-}
-
 type WaveformPlayerProps = {
   src: string
   // Keeps the bars steady when the real sound can't be read.
@@ -39,20 +18,7 @@ export function WaveformPlayer({ src, seed, className }: WaveformPlayerProps) {
   const [duration, setDuration] = useState(0)
   const [current, setCurrent] = useState(0)
   const [playing, setPlaying] = useState(false)
-  const [speed, setSpeed] = useState(readSpeed)
   const audio = useRef<HTMLAudioElement>(null)
-
-  useEffect(() => {
-    if (audio.current) {
-      audio.current.playbackRate = speed
-    }
-  }, [speed, src])
-
-  function changeSpeed() {
-    const next = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]
-    setSpeed(next)
-    writeSpeed(next)
-  }
 
   useEffect(() => {
     let cancelled = false
@@ -98,7 +64,7 @@ export function WaveformPlayer({ src, seed, className }: WaveformPlayerProps) {
   }
 
   return (
-    <div className={cn('flex w-[270px] max-w-full items-center gap-2', className)}>
+    <div className={cn('flex w-[230px] max-w-full items-center gap-2', className)}>
       <audio
         ref={audio}
         src={src}
@@ -110,11 +76,7 @@ export function WaveformPlayer({ src, seed, className }: WaveformPlayerProps) {
           }
         }}
         onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)}
-        onPlay={(event) => {
-          // Some browsers go back to normal speed when a new play starts.
-          event.currentTarget.playbackRate = speed
-          setPlaying(true)
-        }}
+        onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => {
           setPlaying(false)
@@ -148,18 +110,6 @@ export function WaveformPlayer({ src, seed, className }: WaveformPlayerProps) {
       <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-slate-500">
         {formatDuration(playing || current > 0 ? current : duration)}
       </span>
-      <button
-        type="button"
-        onClick={changeSpeed}
-        aria-label={`Playback speed ${speed}x. Press to change`}
-        title="Playback speed"
-        className={cn(
-          'w-9 shrink-0 rounded-full border px-1 py-0.5 text-[11px] font-semibold tabular-nums',
-          speed === 1 ? 'border-slate-200 text-slate-500 hover:bg-slate-50' : 'border-emerald-600 bg-emerald-600 text-white',
-        )}
-      >
-        {speed}x
-      </button>
     </div>
   )
 }

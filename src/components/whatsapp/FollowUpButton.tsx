@@ -109,11 +109,11 @@ export function FollowUpButton({ leadId, leadName, items, people, meId, onSave, 
         title={leadId === null ? 'Save this chat as a lead first, then you can set a follow-up' : 'Follow up: set a day and time to be reminded'}
         aria-expanded={open}
         className={cn(
-          'relative rounded-lg border p-1.5 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40',
+          'relative rounded-lg border p-2 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 sm:p-2.5',
           mine.length > 0 ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100' : 'border-slate-200 text-slate-600',
         )}
       >
-        <BellRinging size={16} />
+        <BellRinging size={18} />
         {mine.length > 0 && (
           <span
             aria-hidden="true"

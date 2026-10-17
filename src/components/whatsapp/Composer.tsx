@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AddressBook, ChartBarHorizontal, FileText, Image as ImageIcon, Lightning, MapPin, Microphone, PaperPlaneTilt, Paperclip, Plus, Smiley, Sparkle, Sticker, Trash, VideoCamera, X } from '@phosphor-icons/react'
-import type { Icon } from '@phosphor-icons/react'
+import { PlusCircle, FileText, Image as ImageIcon, Lightning, Microphone, PaperPlaneTilt, Paperclip, Smiley, Sparkle, Trash, VideoCamera, X } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { useAutoGrow } from '../../hooks/useAutoGrow'
 import { useVoiceRecorder } from '../../hooks/useVoiceRecorder'
@@ -24,8 +23,6 @@ type ComposerProps = {
   onManageQuickReplies?: () => void
   // Text written for the box from elsewhere (the enrol steps). Each new id adds its text once.
   draftRequest?: { id: number; text: string } | null
-  // Files dropped on the chat from outside. Each new id adds its files once, as if they were picked.
-  droppedFiles?: { id: number; files: File[] } | null
   // What was left unsent in this chat, and where to report changes to it (null once nothing is left).
   draft?: Draft | null
   onDraftChange?: (draft: Draft | null) => void
@@ -51,8 +48,6 @@ type ComposerProps = {
   // The grey text was used / put away.
   onAiUse?: () => void
   onAiDismiss?: () => void
-  // Where the reply goes out from: the WhatsApp number, or the Page. Shown so nobody answers from the wrong one.
-  sendingFrom?: string | null
 }
 
 const SPECIAL_CHOICES: { kind: SpecialKind; label: string }[] = [
@@ -61,13 +56,6 @@ const SPECIAL_CHOICES: { kind: SpecialKind; label: string }[] = [
   { kind: 'poll', label: 'Poll' },
   { kind: 'sticker', label: 'Sticker' },
 ]
-
-const SPECIAL_ICONS: Record<SpecialKind, Icon> = {
-  location: MapPin,
-  contact: AddressBook,
-  poll: ChartBarHorizontal,
-  sticker: Sticker,
-}
 
 function formatSeconds(total: number) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
@@ -116,7 +104,6 @@ export function Composer({
   variables,
   onManageQuickReplies,
   draftRequest,
-  droppedFiles,
   draft = null,
   onDraftChange,
   replyTo = null,
@@ -132,10 +119,8 @@ export function Composer({
   onAiSuggest,
   onAiUse,
   onAiDismiss,
-  sendingFrom = null,
 }: ComposerProps) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuBox = useRef<HTMLDivElement>(null)
+  const [specialMenu, setSpecialMenu] = useState(false)
   const [special, setSpecial] = useState<SpecialKind | null>(null)
   const [mode, setMode] = useState<'reply' | 'note'>(draft?.mode ?? 'reply')
   const [text, setText] = useState(draft?.text ?? '')
@@ -148,8 +133,6 @@ export function Composer({
   const textarea = useRef<HTMLTextAreaElement>(null)
   useAutoGrow(textarea, text)
   // The grey suggestion only shows while the box is empty and the person is writing a reply.
-  // Like WhatsApp: the microphone while there is nothing to send, the send button once there is.
-  const showMic = mode === 'reply' && text.trim() === '' && queue.length === 0 && files.length === 0
   const showSuggestion = Boolean(aiSuggestion) && mode === 'reply' && text === '' && queue.length === 0 && files.length === 0
   const focusAfterUse = useRef(false)
   useEffect(() => {
@@ -215,38 +198,6 @@ ${draftRequest.text}` : draftRequest.text))
     }
     setHint(refused.length > 0 ? refused.join(' ') : null)
   }
-
-  const lastDrop = useRef<number | null>(droppedFiles?.id ?? null)
-  useEffect(() => {
-    if (!droppedFiles || droppedFiles.id === lastDrop.current) {
-      return
-    }
-    lastDrop.current = droppedFiles.id
-    addFiles(droppedFiles.files)
-  }, [droppedFiles])
-
-  // The "+" menu closes on a click anywhere else, or Escape.
-  useEffect(() => {
-    if (!menuOpen) {
-      return undefined
-    }
-    const close = (event: MouseEvent) => {
-      if (!menuBox.current?.contains(event.target as Node)) {
-        setMenuOpen(false)
-      }
-    }
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', close)
-    document.addEventListener('keydown', escape)
-    return () => {
-      document.removeEventListener('mousedown', close)
-      document.removeEventListener('keydown', escape)
-    }
-  }, [menuOpen])
 
   // Puts the emoji where the cursor is, and leaves the cursor after it.
   function addEmoji(emoji: string) {
@@ -380,29 +331,20 @@ ${draftRequest.text}` : draftRequest.text))
             type="button"
             onClick={() => setMode(key)}
             className={cn(
-              'whitespace-nowrap border-b-2 pb-1 transition',
+              'border-b-2 pb-1 transition',
               mode === key ? 'border-[#fc0c97] text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700',
             )}
           >
             {label}
           </button>
         ))}
-        {sendingFrom && (
-          <span
-            title="This reply goes out from here"
-            className="ml-auto inline-flex min-w-0 max-w-[60%] items-center gap-1 truncate rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800 ring-1 ring-sky-100"
-          >
-            <span className="shrink-0 text-sky-600 max-sm:hidden">Sending from</span>
-            <span className="truncate">{sendingFrom}</span>
-          </span>
-        )}
         {onAiSuggest && aiAvailable && mode === 'reply' && !showSuggestion && text === '' && (
           <button
             type="button"
             onClick={onAiSuggest}
             disabled={aiLoading}
             aria-label="Suggest a reply"
-            className={cn("inline-flex items-center gap-1 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60", !sendingFrom && "ml-auto")}
+            className="ml-auto inline-flex items-center gap-1 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
           >
             <Sparkle size={13} weight="fill" className="text-[#fc0c97]" aria-hidden="true" />
             {aiLoading ? 'Writing a reply…' : 'Suggest a reply'}
@@ -511,7 +453,7 @@ ${draftRequest.text}` : draftRequest.text))
             onClick={voice.discard}
             aria-label="Cancel voice message"
             title="Cancel voice message"
-            className="rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50"
+            className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 sm:p-2.5"
           >
             <Trash size={18} />
           </button>
@@ -529,86 +471,8 @@ ${draftRequest.text}` : draftRequest.text))
           </button>
         </div>
       ) : (
-        <div className="relative flex items-end gap-1 rounded-3xl border border-slate-200 bg-white px-1.5 py-1 focus-within:border-[#fc0c97]">
-          <div ref={menuBox} className="relative shrink-0">
-            <button
-              type="button"
-              onClick={() => setMenuOpen((open) => !open)}
-              aria-label="Attach and more"
-              title="Attach a file, quick replies and more"
-              aria-expanded={menuOpen}
-              aria-haspopup="menu"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-            >
-              <Plus size={20} className={cn('transition-transform', menuOpen && 'rotate-45')} />
-            </button>
-            {menuOpen && (
-              <ul
-                role="menu"
-                className="absolute bottom-full left-0 z-30 mb-2 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white py-1.5 shadow-lg"
-              >
-                {[
-                  { label: 'Photo, video or file', icon: Paperclip, run: () => fileInput.current?.click(), aria: 'Attach a photo, video or file' },
-                  { label: 'Quick replies', icon: Lightning, run: () => (pickerOpen ? setPickerOpen(false) : openPicker()), aria: 'Quick replies' },
-                  ...(onSendSpecial && mode === 'reply'
-                    ? SPECIAL_CHOICES.map((choice) => ({
-                        label: choice.label,
-                        icon: SPECIAL_ICONS[choice.kind],
-                        run: () => setSpecial(choice.kind),
-                        aria: choice.label,
-                      }))
-                    : []),
-                ].map((item) => (
-                  <li key={item.label} role="none">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      aria-label={item.aria}
-                      onClick={() => {
-                        setMenuOpen(false)
-                        item.run()
-                      }}
-                      className="flex w-full items-center gap-3 px-3.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                    >
-                      <item.icon size={18} className="shrink-0 text-slate-500" aria-hidden="true" />
-                      {item.label}
-                    </button>
-                  </li>
-                ))}
-                {followUpControl && (
-                  <li role="none" className="flex items-center gap-3 px-3.5 py-1.5 text-sm text-slate-700">
-                    {followUpControl}
-                    Follow up
-                  </li>
-                )}
-              </ul>
-            )}
-          </div>
-          <input
-            ref={fileInput}
-            type="file"
-            multiple
-            hidden
-            onChange={(event) => {
-              if (event.target.files) {
-                addFiles(event.target.files)
-              }
-              event.target.value = ''
-            }}
-          />
-          <button
-            type="button"
-            data-emoji-toggle
-            onClick={() => setEmojiOpen((open) => !open)}
-            aria-label="Add an emoji"
-            aria-expanded={emojiOpen}
-            title="Add an emoji"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-          >
-            <Smiley size={20} />
-          </button>
-          {emojiOpen && <EmojiPicker onPick={addEmoji} onClose={() => setEmojiOpen(false)} />}
-          <div className="relative min-w-0 flex-1">
+        <div className="flex flex-wrap items-end gap-1.5 sm:flex-nowrap sm:gap-2">
+          <div className="relative min-w-0 basis-full sm:flex-1 sm:basis-0">
           {showSuggestion && aiSuggestion ? (
             <div
               role="button"
@@ -624,7 +488,7 @@ ${draftRequest.text}` : draftRequest.text))
                   onAiDismiss?.()
                 }
               }}
-              className="min-h-[36px] w-full cursor-pointer whitespace-pre-wrap py-2 pl-1 pr-8 text-sm leading-5 text-slate-400 outline-none"
+              className="min-h-[40px] w-full cursor-pointer whitespace-pre-wrap rounded-lg border border-slate-200 py-2 pl-3 pr-16 text-sm leading-5 text-slate-400 outline-none focus:border-[#fc0c97]"
             >
               {aiSuggestion.text}
             </div>
@@ -653,7 +517,7 @@ ${draftRequest.text}` : draftRequest.text))
             }}
             placeholder={mode === 'note' ? 'Write a note for your team' : 'Write a message'}
             aria-label={mode === 'note' ? 'Private note' : 'Message to parent'}
-            className="max-h-40 min-h-[36px] w-full resize-none bg-transparent py-2 pl-1 pr-1 text-sm leading-5 outline-none"
+            className="min-h-[40px] w-full resize-none rounded-lg border border-slate-200 py-2 pl-3 pr-10 text-sm leading-5 outline-none focus:border-[#fc0c97]"
           />
           )}
           {showSuggestion && (
@@ -662,34 +526,107 @@ ${draftRequest.text}` : draftRequest.text))
               onClick={onAiDismiss}
               aria-label="Dismiss the suggested reply"
               title="Dismiss"
-              className="absolute right-0 top-2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              className="absolute right-9 top-2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
             >
               <X size={14} />
             </button>
           )}
+          <button
+            type="button"
+            data-emoji-toggle
+            onClick={() => setEmojiOpen((open) => !open)}
+            aria-label="Add an emoji"
+            aria-expanded={emojiOpen}
+            title="Add an emoji"
+            className="absolute bottom-1.5 right-1.5 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          >
+            <Smiley size={20} />
+          </button>
+          {emojiOpen && <EmojiPicker onPick={addEmoji} onClose={() => setEmojiOpen(false)} />}
           </div>
-          {showMic ? (
-            <button
-              type="button"
-              onClick={() => void voice.start()}
-              aria-label="Record a voice message"
-              title="Record a voice message"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-            >
-              <Microphone size={20} />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void submit()}
-              disabled={isLoadingMedia}
-              aria-label={mode === 'note' ? 'Save note' : 'Send'}
-              title={mode === 'note' ? 'Save note' : 'Send'}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#fc0c97] text-white transition hover:bg-[#e00a87] disabled:opacity-60"
-            >
-              <PaperPlaneTilt size={18} weight="fill" aria-hidden="true" />
-            </button>
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            hidden
+            onChange={(event) => {
+              if (event.target.files) {
+                addFiles(event.target.files)
+              }
+              event.target.value = ''
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => (pickerOpen ? setPickerOpen(false) : openPicker())}
+            aria-label="Quick replies"
+            title="Quick replies (or type / )"
+            aria-expanded={pickerOpen}
+            className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 sm:p-2.5"
+          >
+            <Lightning size={18} />
+          </button>
+          {onSendSpecial && mode === 'reply' && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setSpecialMenu((open) => !open)}
+                aria-label="Send a location, contact, poll or sticker"
+                title="Location, contact, poll, sticker"
+                aria-expanded={specialMenu}
+                className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 sm:p-2.5"
+              >
+                <PlusCircle size={18} />
+              </button>
+              {specialMenu && (
+                <ul className="absolute bottom-full right-0 z-20 mb-2 w-36 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg" role="menu">
+                  {SPECIAL_CHOICES.map((choice) => (
+                    <li key={choice.kind} role="none">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setSpecialMenu(false)
+                          setSpecial(choice.kind)
+                        }}
+                        className="block w-full px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-pink-50"
+                      >
+                        {choice.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            aria-label="Attach a photo, video or file"
+            title="Attach a photo, video or file"
+            className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 sm:p-2.5"
+          >
+            <Paperclip size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={() => void voice.start()}
+            aria-label="Record a voice message"
+            title="Record a voice message"
+            className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 sm:p-2.5"
+          >
+            <Microphone size={18} />
+          </button>
+          {followUpControl}
+          <button
+            type="button"
+            onClick={() => void submit()}
+            disabled={isLoadingMedia}
+            className="inline-flex items-center max-sm:ml-auto gap-1.5 rounded-lg bg-[#fc0c97] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[#e00a87] disabled:opacity-60 sm:px-4"
+          >
+            <PaperPlaneTilt size={16} weight="fill" aria-hidden="true" />
+            <span className="max-sm:sr-only">{mode === 'note' ? 'Save note' : 'Send'}</span>
+          </button>
         </div>
       )}
 
@@ -708,6 +645,9 @@ ${draftRequest.text}` : draftRequest.text))
       )}
       {aiError && !showSuggestion && text === '' && mode === 'reply' && (
         <p className="mt-1.5 text-[11px] text-slate-500">{aiError}</p>
+      )}
+      {voice.state !== 'recording' && (
+        <p className="mt-1.5 hidden text-[11px] text-slate-400 sm:block">Enter to send. Ctrl+Enter for a new line.</p>
       )}
     </div>
   )

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { getTodayString } from './domain/studentStatus'
 import type { AccountPermissions, TeacherRole } from './types/domain'
+import { openMenu } from './test/openMenu'
 
 const mocks = vi.hoisted(() => ({
   listener: null as null | ((event: string, session: unknown) => void),
@@ -81,10 +82,23 @@ async function signInAs(role: TeacherRole, permissions: AccountPermissions) {
   await screen.findByText(/Workspace$/)
 }
 
+// The menu's top level: Today and the group headings (not the pages inside a group).
 const navLabels = () =>
-  within(document.querySelector('aside nav') as HTMLElement)
+  Array.from(document.querySelectorAll('aside nav > button, aside nav > div > button[aria-expanded]')).map(
+    (button) => button.textContent,
+  )
+
+// Every page in the side menu, with each group opened.
+async function menuPages() {
+  const nav = within(document.querySelector('aside nav') as HTMLElement)
+  for (const group of nav.queryAllByRole('button', { expanded: false })) {
+    await userEvent.click(group)
+  }
+  return nav
     .getAllByRole('button')
+    .filter((button) => !button.hasAttribute('aria-expanded'))
     .map((button) => button.textContent)
+}
 
 describe('account permissions', () => {
   beforeEach(() => {
@@ -102,9 +116,9 @@ describe('account permissions', () => {
   it('shows only the ticked modules, and leads without edit are view-only', async () => {
     await signInAs('staff', { leads: { level: 'view' }, activity: { level: 'view' } })
 
-    // Everybody starts on Today; Leads sits in the Marketing group.
-    expect(navLabels()).toEqual(['Today', 'Marketing', 'Activity Log'])
-    await userEvent.click(screen.getAllByRole('button', { name: /^Leads$/ })[0])
+    // Everybody starts on Today; Leads sits in Marketing, the log in Admin.
+    expect(navLabels()).toEqual(['Today', 'Marketing', 'Admin'])
+    await openMenu(/^Leads$/)
     expect((await screen.findAllByRole('button', { name: 'View' })).length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: /Add Lead/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Delete lead' })).not.toBeInTheDocument()
@@ -118,7 +132,7 @@ describe('account permissions', () => {
 
   it('gives edit without delete: add and convert need their ticks', async () => {
     await signInAs('staff', { leads: { level: 'edit' } })
-    await userEvent.click(screen.getAllByRole('button', { name: /^Leads$/ })[0])
+    await openMenu(/^Leads$/)
 
     expect(await screen.findByRole('button', { name: /Add Lead/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Delete lead' })).not.toBeInTheDocument()
@@ -126,12 +140,13 @@ describe('account permissions', () => {
     expect(screen.queryByRole('button', { name: /Convert/ })).not.toBeInTheDocument()
   })
 
-  it('keeps a plain teacher on Today, Calendar, My Classroom, Question Bank and Class Videos, starting on Today', async () => {
+  it('keeps a plain teacher on Today and Teaching (Calendar, My Classroom, Class Videos, Question Bank), starting on Today', async () => {
     await signInAs('teacher', {})
 
     expect(await screen.findByText(/^Good (morning|afternoon|evening),/)).toBeInTheDocument()
     expect(screen.queryByText('Calendar ready')).not.toBeInTheDocument()
-    expect(navLabels()).toEqual(['Today', 'Calendar', 'My Classroom', 'Question Bank', 'Class Videos'])
+    expect(navLabels()).toEqual(['Today', 'Teaching'])
+    expect(await menuPages()).toEqual(['Today', 'Calendar', 'My Classroom', 'Class Videos', 'Question Bank'])
   })
 
   it('shows a teacher their own day first, with a way on to the full calendar', async () => {
@@ -166,14 +181,14 @@ describe('account permissions', () => {
   it('adds the ticked modules to a teacher account', async () => {
     await signInAs('teacher', { leads: { level: 'edit', delete: true } })
 
-    expect(navLabels()).toEqual(['Today', 'Calendar', 'Marketing', 'My Classroom', 'Question Bank', 'Class Videos'])
+    expect(navLabels()).toEqual(['Today', 'Marketing', 'Teaching'])
   })
 
   it('loads the activity log only when it is opened, one day at a time', async () => {
     await signInAs('staff', { activity: { level: 'view' }, leads: { level: 'view' } })
     expect(mocks.activityForDay).not.toHaveBeenCalled()
 
-    await userEvent.click(screen.getAllByRole('button', { name: 'Activity Log' })[0])
+    await openMenu('Activity Log')
 
     expect(await screen.findByRole('heading', { name: /Today/ })).toBeInTheDocument()
     expect(mocks.activityForDay).toHaveBeenCalledTimes(1)

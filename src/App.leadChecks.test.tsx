@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { getTodayString } from './domain/studentStatus'
+import { openMenu } from './test/openMenu'
 
 const mocks = vi.hoisted(() => ({
   listener: null as null | ((event: string, session: unknown) => void),
@@ -85,7 +86,7 @@ async function openLeads() {
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'user-4' } }))
   await screen.findByText(/Workspace$/)
-  await userEvent.click(screen.getAllByRole('button', { name: /^Leads$/ })[0])
+  await openMenu(/^Leads$/)
   return within(await screen.findByRole('table'))
 }
 

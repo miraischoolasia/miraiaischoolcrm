@@ -21,7 +21,6 @@ import {
   Chalkboard,
   House,
   ClockCounterClockwise,
-  CaretDown,
   CaretDoubleLeft,
   CaretDoubleRight,
   ClipboardText,
@@ -29,11 +28,12 @@ import {
   GraduationCap,
   IdentificationBadge,
   Exam,
+  GearSix,
+  Package as PackageIcon,
   FilmStrip,
   Brain,
   BookBookmark,
   Lightning,
-  Megaphone,
   WarningCircle,
   WhatsappLogo,
 } from '@phosphor-icons/react'
@@ -211,6 +211,7 @@ import { useLeadStages } from './hooks/useLeadStages'
 import { PackagesModal, type PackageDraft } from './components/modals/PackagesModal'
 import { QuestionBankSection } from './components/sections/QuestionBankSection'
 import { ClassVideosSection } from './components/sections/ClassVideosSection'
+import { MobileNav, SideNav, type NavEntry, type NavGroupKey } from './components/AppNav'
 import { fetchSubjects, saveSubject, type Subject } from './lib/subjects'
 import {
   AgeGroupsContext,
@@ -286,7 +287,8 @@ import {
   type MakeupEntry,
 } from './lib/makeup'
 
-type NavItem = { key: AppSection; label: string; icon: Icon; group?: 'marketing' }
+// The menu's order (AppNav groups them).
+const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'ai-knowledge', 'calendar', 'classrooms', 'videos', 'questions', 'students', 'programmes', 'packages', 'teachers', 'class-settings', 'activity']
 
 // The shared WhatsApp inbox only shows up once its address is set.
 const chatwootUrl = getChatwootUrl(import.meta.env.VITE_CHATWOOT_URL)
@@ -301,32 +303,6 @@ function readSidebarCollapsed() {
   } catch {
     return false
   }
-}
-
-function UnreadBadge({
-  count,
-  noun = 'new submissions',
-  corner = false,
-}: {
-  count: number
-  noun?: string
-  // On a menu that shows only icons, the number sits on the icon's corner.
-  corner?: boolean
-}) {
-  if (count <= 0) {
-    return null
-  }
-  return (
-    <span
-      aria-label={`${count} ${noun}`}
-      className={cn(
-        'min-w-5 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white',
-        corner ? 'absolute right-1 top-0.5 min-w-4 px-1 text-[10px]' : 'ml-2',
-      )}
-    >
-      {count > 99 ? '99+' : count}
-    </span>
-  )
 }
 
 // True when a fresh read of the data is the same as what the page already shows.
@@ -517,7 +493,6 @@ function App() {
   const [activeSection, setActiveSection] = useState<AppSection>('calendar')
   // The teacher whose details (classes and students) are open on My Team.
   const [teacherDetailsId, setTeacherDetailsId] = useState<number | null>(null)
-  const [isMarketingOpen, setIsMarketingOpen] = useState(false)
   // The menu can shrink to icons so the page beside it (the WhatsApp inbox) gets the room.
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readSidebarCollapsed)
 
@@ -1872,52 +1847,56 @@ function App() {
     }
   }, [activeVisibleClassrooms, selectedAgeGroup, selectedClassroomId])
 
-  const navItems: NavItem[] = (
-    [
-      { key: 'home', label: 'Today', icon: House },
-      { key: 'leads', label: 'Leads', icon: Funnel, group: 'marketing' },
-      { key: 'whatsapp', label: 'Inbox', icon: WhatsappLogo, group: 'marketing' },
-      { key: 'automations', label: 'Automations', icon: Lightning, group: 'marketing' },
-      { key: 'ai-knowledge', label: 'AI Knowledge', icon: Brain, group: 'marketing' },
-      { key: 'forms', label: 'Forms', icon: ClipboardText, group: 'marketing' },
-      { key: 'calendar', label: 'Calendar', icon: CalendarBlank },
-      { key: 'classrooms', label: 'My Classroom', icon: Chalkboard },
-      { key: 'questions', label: 'Question Bank', icon: Exam },
-      { key: 'videos', label: 'Class Videos', icon: FilmStrip },
-      { key: 'programmes', label: 'Programmes', icon: BookBookmark },
-      { key: 'students', label: 'Students', icon: GraduationCap },
-      { key: 'teachers', label: 'My Team', icon: IdentificationBadge },
-      { key: 'activity', label: 'Activity Log', icon: ClockCounterClockwise },
-    ] satisfies NavItem[]
-  ).filter((item) => allowedSections.includes(item.key))
-
-  const marketingNavItems = navItems.filter((item) => item.group === 'marketing')
-
-  function renderDesktopNavButton(item: NavItem) {
-    const active = activeSection === item.key
-    return (
-      <button
-        key={item.key}
-        type="button"
-        onClick={() => setActiveSection(item.key)}
-        title={isSidebarCollapsed ? item.label : undefined}
-        aria-label={isSidebarCollapsed ? item.label : undefined}
-        className={cn(
-          'relative flex w-full items-center rounded-lg py-2 text-left text-sm font-medium transition',
-          isSidebarCollapsed ? 'justify-center px-0' : 'px-3',
-          active
-            ? 'bg-white text-[#be185d]'
-            : 'text-white/70 hover:bg-white/5 hover:text-white',
-        )}
-      >
-        <item.icon size={isSidebarCollapsed ? 22 : 18} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
-        {!isSidebarCollapsed && <span className="ml-3 flex-1">{item.label}</span>}
-        {item.key === 'forms' && <UnreadBadge count={unreadFormSubmissions} corner={isSidebarCollapsed} />}
-        {item.key === 'whatsapp' && (
-          <UnreadBadge count={unreadWhatsApp} noun="chats waiting" corner={isSidebarCollapsed} />
-        )}
-      </button>
+  // The menu: Today, then Marketing, Teaching, Students and Admin (see AppNav).
+  const navEntries: NavEntry[] = [
+    ...(
+      [
+        { key: 'home', label: 'Today', icon: House },
+        { key: 'leads', label: 'Leads', icon: Funnel, group: 'marketing' },
+        { key: 'whatsapp', label: 'Inbox', icon: WhatsappLogo, group: 'marketing' },
+        { key: 'automations', label: 'Automations', icon: Lightning, group: 'marketing' },
+        { key: 'forms', label: 'Forms', icon: ClipboardText, group: 'marketing' },
+        { key: 'ai-knowledge', label: 'AI Knowledge', icon: Brain, group: 'marketing' },
+        { key: 'calendar', label: 'Calendar', icon: CalendarBlank, group: 'teaching' },
+        { key: 'classrooms', label: 'My Classroom', icon: Chalkboard, group: 'teaching' },
+        { key: 'videos', label: 'Class Videos', icon: FilmStrip, group: 'teaching' },
+        { key: 'questions', label: 'Question Bank', icon: Exam, group: 'teaching' },
+        { key: 'students', label: 'Student List', icon: GraduationCap, group: 'students' },
+        { key: 'programmes', label: 'Programmes', icon: BookBookmark, group: 'students' },
+        { key: 'teachers', label: 'My Team', icon: IdentificationBadge, group: 'admin' },
+        { key: 'activity', label: 'Activity Log', icon: ClockCounterClockwise, group: 'admin' },
+      ] satisfies { key: AppSection; label: string; icon: Icon; group?: NavGroupKey }[]
     )
+      .filter((item) => allowedSections.includes(item.key))
+      .map((item) => ({
+        id: item.key,
+        label: item.label,
+        icon: item.icon,
+        group: 'group' in item ? item.group : undefined,
+        section: item.key,
+        badge:
+          item.key === 'forms'
+            ? { count: unreadFormSubmissions, noun: 'new submissions' }
+            : item.key === 'whatsapp'
+              ? { count: unreadWhatsApp, noun: 'chats waiting' }
+              : undefined,
+      })),
+    // Windows that used to sit behind a button on a page.
+    ...(isAdmin
+      ? [
+          { id: 'packages', label: 'Packages', icon: PackageIcon, group: 'students' as const, onSelect: () => setIsPackagesOpen(true) },
+          { id: 'class-settings', label: 'Class Settings', icon: GearSix, group: 'admin' as const, onSelect: openClassSettings },
+        ]
+      : []),
+  ]
+  // Students sit before Programmes and Packages; My Team before Class Settings and the log.
+  navEntries.sort(
+    (a, b) => NAV_ORDER.indexOf(a.id) - NAV_ORDER.indexOf(b.id),
+  )
+
+  function selectNav(entry: NavEntry) {
+    if (entry.section) setActiveSection(entry.section)
+    else entry.onSelect?.()
   }
 
   // What the open attendance form rates: every switched-on criterion, plus
@@ -6157,48 +6136,7 @@ function App() {
           </div>
           )}
 
-          <nav className={cn('flex-1 space-y-1', isSidebarCollapsed ? 'px-2 pt-3' : 'px-3')}>
-            {navItems
-              .filter((item) => !item.group && (item.key === 'home' || item.key === 'calendar'))
-              .map((item) => renderDesktopNavButton(item))}
-            {marketingNavItems.length > 0 && isSidebarCollapsed && (
-              <div className="space-y-1 border-y border-white/10 py-1">
-                {marketingNavItems.map((item) => renderDesktopNavButton(item))}
-              </div>
-            )}
-            {marketingNavItems.length > 0 && !isSidebarCollapsed && (
-              <div>
-                <button
-                  type="button"
-                  aria-expanded={isMarketingOpen}
-                  onClick={() => setIsMarketingOpen((open) => !open)}
-                  className={cn(
-                    'flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium transition',
-                    !isMarketingOpen && marketingNavItems.some((item) => item.key === activeSection)
-                      ? 'bg-white/10 text-white'
-                      : 'text-white/70 hover:bg-white/5 hover:text-white',
-                  )}
-                >
-                  <Megaphone size={18} aria-hidden="true" />
-                  <span className="ml-3 flex-1">Marketing</span>
-                  {!isMarketingOpen && <UnreadBadge count={unreadFormSubmissions} />}
-                  <CaretDown
-                    size={14}
-                    aria-hidden="true"
-                    className={cn('transition', isMarketingOpen && 'rotate-180')}
-                  />
-                </button>
-                {isMarketingOpen && (
-                  <div className="mt-1 space-y-1 border-l border-white/10 pl-3 ml-5">
-                    {marketingNavItems.map((item) => renderDesktopNavButton(item))}
-                  </div>
-                )}
-              </div>
-            )}
-            {navItems
-              .filter((item) => !item.group && item.key !== 'home' && item.key !== 'calendar')
-              .map((item) => renderDesktopNavButton(item))}
-          </nav>
+          <SideNav entries={navEntries} activeSection={activeSection} collapsed={isSidebarCollapsed} onSelect={selectNav} />
 
           {!isSidebarCollapsed && brand.usesMiraiArt && (
             <div className="border-t border-white/10 px-6 py-5 text-xs text-white/50">
@@ -7600,43 +7538,7 @@ function App() {
         )
       })()}
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-2 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur lg:hidden">
-        <div className="mx-auto flex max-w-xl gap-1 overflow-x-auto">
-          {navItems.map((item) => {
-            const active = activeSection === item.key
-            return (
-              <button
-                key={`mobile-${item.key}`}
-                type="button"
-                onClick={() => setActiveSection(item.key as AppSection)}
-                className={cn(
-                  'flex min-w-fit flex-1 flex-col items-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold transition',
-                  active
-                    ? 'bg-[#fff1f8] text-[#be185d]'
-                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800',
-                )}
-              >
-                <span className="relative">
-                  <item.icon size={20} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
-                  {item.key === 'forms' && unreadFormSubmissions > 0 && (
-                    <span
-                      aria-label={`${unreadFormSubmissions} new submissions`}
-                      className="absolute -right-1.5 -top-1 h-2.5 w-2.5 rounded-full bg-[#fc0c97]"
-                    />
-                  )}
-                  {item.key === 'whatsapp' && unreadWhatsApp > 0 && (
-                    <span
-                      aria-label={`${unreadWhatsApp} chats waiting`}
-                      className="absolute -right-1.5 -top-1 h-2.5 w-2.5 rounded-full bg-[#fc0c97]"
-                    />
-                  )}
-                </span>
-                {item.label}
-              </button>
-            )
-          })}
-        </div>
-      </nav>
+      <MobileNav entries={navEntries} activeSection={activeSection} onSelect={selectNav} />
     </main>
     </WhatsAppOpenProvider>
     </ProgramLevelsContext.Provider>

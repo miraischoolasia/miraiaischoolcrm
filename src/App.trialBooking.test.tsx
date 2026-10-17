@@ -2,6 +2,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { openMenu } from './test/openMenu'
 
 const mocks = vi.hoisted(() => ({
   listener: null as null | ((event: string, session: unknown) => void),
@@ -474,7 +475,7 @@ describe('trial slots on the calendar', () => {
     mocks.converted = true
     await signIn()
 
-    await userEvent.click(screen.getAllByRole('button', { name: /^Students$/ })[0])
+    await openMenu('Student List')
 
     const table = await screen.findByRole('table')
     expect(within(table).getAllByText('Aiden')).toHaveLength(1)
@@ -484,7 +485,7 @@ describe('trial slots on the calendar', () => {
   it('still lists a trial child whose lead is not converted yet', async () => {
     await signIn()
 
-    await userEvent.click(screen.getAllByRole('button', { name: /^Students$/ })[0])
+    await openMenu('Student List')
 
     expect(within(await screen.findByRole('table')).getAllByText('Aiden')).toHaveLength(1)
   })

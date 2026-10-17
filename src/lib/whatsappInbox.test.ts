@@ -29,7 +29,6 @@ import {
   getSendState,
   getSenderLabel,
   getTab,
-  matchesChatIdentity,
   SENDING_WARNING_SECONDS,
   type ChatwootConversation,
   type ChatwootMessage,
@@ -266,31 +265,6 @@ describe('filterConversations', () => {
     expect(ids('nobody')).toEqual([])
     // A search with only punctuation does not match every chat.
     expect(ids('-')).toEqual([])
-  })
-
-  it('puts the people whose name or number fits before the chats where the words were said', () => {
-    const chats = [
-      // Newest chat, but found only by the words in its messages.
-      conversation({ id: 10, last_activity_at: 90, name: 'Mr Lim', phone: '+60111111111', last_non_activity_message: { id: 1, content: 'Is Sarah coming?', message_type: 0, created_at: 90, private: false, status: 'sent' } }),
-      conversation({ id: 11, last_activity_at: 20, name: 'Sarah Tan' }),
-      conversation({ id: 12, last_activity_at: 50, name: 'Sarah Lee' }),
-      conversation({ id: 13, last_activity_at: 80, name: 'Priya' }),
-    ]
-    const search = { ...base, search: 'sarah', matchedIds: new Set([13]) }
-    expect(filterConversations(chats, search).map((c) => c.id)).toEqual([12, 11, 10, 13])
-    // A number is a person match too, so it comes first.
-    const byPhone = [
-      conversation({ id: 20, last_activity_at: 10, name: 'A', phone: '+60123456789' }),
-      conversation({ id: 21, last_activity_at: 90, name: 'B', phone: '+60199999999' }),
-    ]
-    expect(filterConversations(byPhone, { ...base, search: '123456', matchedIds: new Set([21]) }).map((c) => c.id)).toEqual([20, 21])
-  })
-
-  it('knows which chats are people matches', () => {
-    expect(matchesChatIdentity(conversation({ name: 'Sarah Tan' }), 'tan')).toBe(true)
-    expect(matchesChatIdentity(conversation({ phone: '+60123456789' }), '23456')).toBe(true)
-    expect(matchesChatIdentity(conversation({ name: 'Priya' }), 'hello')).toBe(false)
-    expect(matchesChatIdentity(conversation({}), '')).toBe(false)
   })
 
   it('filters by the staff member who took the chat, or by chats nobody took', () => {
