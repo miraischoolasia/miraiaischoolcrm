@@ -260,3 +260,91 @@ export function parseModelReply(raw: string): DraftResult | null {
   }
   return null
 }
+
+// ---------------------------------------------------------------------------------------------------
+// Explaining a reply (admin only): why the team answered the way it did instead of the AI's draft.
+
+export type LessonInput = {
+  // The chat up to the parent message the draft answered, oldest first.
+  thread: DraftMessage[]
+  // What the AI drafted, and what the team really sent.
+  draft: string
+  sent: string
+}
+
+export const MAX_LESSON_THREAD = 12
+
+export function validateLessonInput(body: unknown): { ok: true; value: LessonInput } | { ok: false; error: string } {
+  if (!body || typeof body !== 'object') {
+    return { ok: false, error: 'Invalid request body.' }
+  }
+  const source = body as Record<string, unknown>
+  const thread: DraftMessage[] = []
+  for (const entry of Array.isArray(source.thread) ? source.thread.slice(-MAX_LESSON_THREAD) : []) {
+    if (!entry || typeof entry !== 'object') {
+      continue
+    }
+    const item = entry as Record<string, unknown>
+    const text = typeof item.text === 'string' ? scrub(item.text.trim()).slice(0, MAX_TEXT) : ''
+    if (text !== '' && (item.from === 'parent' || item.from === 'team')) {
+      thread.push({ from: item.from, text })
+    }
+  }
+  const sent = typeof source.sent === 'string' ? scrub(source.sent.trim()).slice(0, 4000) : ''
+  const draft = typeof source.draft === 'string' ? scrub(source.draft.trim()).slice(0, 4000) : ''
+  if (thread.length === 0 || sent === '') {
+    return { ok: false, error: 'The chat and the reply the team sent are required.' }
+  }
+  return { ok: true, value: { thread, draft, sent } }
+}
+
+export function buildLessonSystemPrompt(schoolName: string = DEFAULT_SCHOOL_NAME): string {
+  return `你在帮 ${schoolName.trim() || DEFAULT_SCHOOL_NAME} 的管理员整理「回复规则」。你会看到一段聊天记录（旧 → 新，最后一条是家长的）、AI 写的草稿，和同事真正发出去的回复。
+
+任务：判断同事为什么这样回，而不是像 AI 草稿那样回，写成 1 到 3 句「以后遇到这种情况该怎么回」的规则，管理员会把它放进知识库。
+
+规则：
+1. 要看整段聊天的前后文，不要只看家长最后一条。例如家长只回「OK」，要看 OK 是在回答前面哪一句，流程走到哪一步。
+2. 先写「什么情况下」（用聊天的前后文描述），再写「应该怎么回」。
+3. 只写这个例子里看得出来的。不要编造价钱、日期、资料或原因；真的看不出原因就写「看不出同事为什么这样回」。
+4. 写成一般规则，不要出现家长或孩子的名字。
+5. 用中文，口语、简短。
+6. 只输出一个 JSON 对象：{"lesson": "规则"}。不要输出其他东西。`
+}
+
+export function buildLessonUserPrompt(input: LessonInput): string {
+  const lines = ['聊天记录（旧 → 新）：']
+  for (const message of input.thread) {
+    lines.push(`${message.from === 'parent' ? '家长' : '我们'}：${message.text}`)
+  }
+  lines.push('', `AI 草稿：${input.draft === '' ? '（没有草稿）' : input.draft}`, '', `同事真正发出去的：${input.sent}`)
+  lines.push('', '请写出规则。')
+  return lines.join('\n')
+}
+
+// The sentences of the explanation, or null when the answer cannot be used.
+export function parseLesson(raw: string): string | null {
+  const text = raw.trim()
+  if (text === '') {
+    return null
+  }
+  const fenced = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+  const candidates = [fenced]
+  const start = fenced.indexOf('{')
+  const end = fenced.lastIndexOf('}')
+  if (start >= 0 && end > start) {
+    candidates.push(fenced.slice(start, end + 1))
+  }
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as Record<string, unknown>
+      const lesson = typeof parsed?.lesson === 'string' ? parsed.lesson.trim() : ''
+      if (lesson !== '') {
+        return lesson.slice(0, 600)
+      }
+    } catch {
+      // Try the next reading.
+    }
+  }
+  return null
+}

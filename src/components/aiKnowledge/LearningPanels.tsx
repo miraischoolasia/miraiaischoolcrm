@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { formatNoteTime } from './NoteEditor'
 import type { AiLearning } from '../../hooks/useAiLearning'
 import type { KnowledgeNote } from '../../lib/aiKnowledge'
@@ -11,9 +11,11 @@ import {
   autoCandidate,
   exampleBlock,
   percent,
+  requestLesson,
   type CategoryReport,
   type Example,
   type Gap,
+  type ThreadMessage,
 } from '../../lib/aiLearning'
 import { cn } from '../../lib/cn'
 
@@ -169,11 +171,15 @@ export function ExamplesPanel({
   notes,
   onTeach,
   onClose,
+  loadThread,
 }: {
   examples: Example[]
   notes: KnowledgeNote[]
   onTeach: (request: TeachRequest) => void
   onClose: (id: number) => Promise<string | null>
+  // Reads the chat before an example (the messages up to the parent's); without it only the parent's last
+  // message is shown.
+  loadThread?: LoadThread
 }) {
   if (examples.length === 0) {
     return (
@@ -187,34 +193,112 @@ export function ExamplesPanel({
   }
   return (
     <ul className="space-y-3">
-      {examples.map((example) => (
-        <ExampleRow key={example.id} example={example} notes={notes} onTeach={onTeach} onClose={onClose} />
+      {examples.map((example, index) => (
+        <ExampleRow
+          key={example.id}
+          example={example}
+          notes={notes}
+          onTeach={onTeach}
+          onClose={onClose}
+          loadThread={loadThread}
+          // The first few show their chat at once; the rest on a click, so a long list is not a burst of requests.
+          autoLoad={index < AUTO_LOADED_CHATS}
+        />
       ))}
     </ul>
   )
 }
+
+export type LoadThread = (chatId: number, lastMessageId: number) => Promise<ThreadMessage[]>
+
+const AUTO_LOADED_CHATS = 3
 
 function ExampleRow({
   example,
   notes,
   onTeach,
   onClose,
+  loadThread,
+  autoLoad,
 }: {
   example: Example
   notes: KnowledgeNote[]
   onTeach: (request: TeachRequest) => void
   onClose: (id: number) => Promise<string | null>
+  loadThread?: LoadThread
+  autoLoad: boolean
 }) {
   const [target, setTarget] = useState(() => defaultTarget(notes))
   const [problem, setProblem] = useState<string | null>(null)
+  // The chat before the reply. null: not read yet.
+  const [thread, setThread] = useState<ThreadMessage[] | null>(null)
+  const [isReadingChat, setIsReadingChat] = useState(false)
+  const [chatProblem, setChatProblem] = useState<string | null>(null)
+  // Why the team replied this way, in the admin's words (the AI can suggest it).
+  const [reason, setReason] = useState('')
+  const [isExplaining, setIsExplaining] = useState(false)
+
+  // Resolves to the chat, or null when it could not be read.
+  async function readChat(): Promise<ThreadMessage[] | null> {
+    if (thread) {
+      return thread
+    }
+    if (!loadThread) {
+      return null
+    }
+    setIsReadingChat(true)
+    setChatProblem(null)
+    try {
+      const loaded = await loadThread(example.chatId, example.lastMessageId)
+      setThread(loaded)
+      return loaded
+    } catch {
+      setChatProblem("Couldn't read the chat. Check the WhatsApp connection and try again.")
+      return null
+    } finally {
+      setIsReadingChat(false)
+    }
+  }
+
+  useEffect(() => {
+    if (autoLoad) {
+      void readChat()
+    }
+    // Only when the card first shows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function explain() {
+    setProblem(null)
+    setIsExplaining(true)
+    const chat =
+      (await readChat()) ?? (example.parentText ? [{ from: 'parent' as const, text: example.parentText }] : [])
+    const result = await requestLesson({ thread: chat, draft: example.draft, sent: example.sentText })
+    setIsExplaining(false)
+    if (result.error !== null) {
+      setProblem(result.error)
+      return
+    }
+    setReason(result.lesson)
+  }
 
   function teach() {
     const note = notes.find((entry) => String(entry.id) === target)
     onTeach({
       noteId: note?.id ?? null,
-      prefill: { body: appendTo(note, exampleBlock(example)) },
+      prefill: {
+        body: appendTo(
+          note,
+          exampleBlock({
+            thread: thread ?? undefined,
+            parentText: example.parentText,
+            sentText: example.sentText,
+            reason,
+          }),
+        ),
+      },
       banner:
-        'This is the reply the team sent. Take out names and anything that is only true for this one child before you save.',
+        'This is the chat, the reply the team sent and the reason. Take out names and anything that is only true for this one child before you save.',
       afterSave: () => onClose(example.id),
     })
   }
@@ -225,10 +309,44 @@ function ExampleRow({
         {CATEGORY_LABELS[example.category]} · {formatNoteTime(example.createdAt)} ·{' '}
         {example.outcome === 'edited' ? 'The team changed the draft' : 'The team wrote their own reply'}
       </p>
-      {example.parentText && (
-        <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          <span className="font-semibold">Parent:</span> {example.parentText}
-        </p>
+      {thread && thread.length > 0 ? (
+        <ol aria-label="The chat before the reply" className="space-y-1 rounded-lg bg-slate-50 px-3 py-2">
+          {thread.map((message, index) => (
+            <li
+              key={index}
+              className={cn(
+                'text-sm',
+                message.from === 'parent' ? 'text-slate-800' : 'text-emerald-800',
+                index === thread.length - 1 && 'font-medium',
+              )}
+            >
+              <span className="font-semibold">{message.from === 'parent' ? 'Parent' : 'Team'}:</span> {message.text}
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <div className="space-y-1">
+          {example.parentText && (
+            <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              <span className="font-semibold">Parent:</span> {example.parentText}
+            </p>
+          )}
+          {loadThread && (
+            <button
+              type="button"
+              disabled={isReadingChat}
+              onClick={() => void readChat()}
+              className="text-xs font-semibold text-[#fc0c97] hover:underline disabled:opacity-50"
+            >
+              {isReadingChat ? 'Reading the chat…' : 'Show the chat before this'}
+            </button>
+          )}
+          {chatProblem && (
+            <p role="alert" className="text-xs text-red-700">
+              {chatProblem}
+            </p>
+          )}
+        </div>
       )}
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="rounded-lg border border-slate-200 px-3 py-2">
@@ -239,6 +357,32 @@ function ExampleRow({
           <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Team sent</p>
           <p className="mt-1 whitespace-pre-wrap text-sm text-slate-900">{example.sentText}</p>
         </div>
+      </div>
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <label
+            htmlFor={`reason-${example.id}`}
+            className="text-xs font-semibold uppercase tracking-wide text-slate-500"
+          >
+            Why did the team reply this way?
+          </label>
+          <button
+            type="button"
+            disabled={isExplaining}
+            onClick={() => void explain()}
+            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {isExplaining ? 'Thinking…' : 'Ask the AI why'}
+          </button>
+        </div>
+        <textarea
+          id={`reason-${example.id}`}
+          value={reason}
+          rows={2}
+          placeholder="Write the rule in your own words, or ask the AI. It is saved in the note with the example."
+          onChange={(event) => setReason(event.target.value)}
+          className="mt-1 w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-[#fc0c97] focus:outline-none"
+        />
       </div>
       {problem && (
         <p role="alert" className="text-sm text-red-700">

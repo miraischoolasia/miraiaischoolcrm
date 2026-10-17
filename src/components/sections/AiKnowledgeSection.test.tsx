@@ -33,6 +33,12 @@ const learning = vi.hoisted(() => ({
 }))
 vi.mock('../../hooks/useAiLearning', () => ({ useAiLearning: () => learning.state }))
 
+const lesson = vi.hoisted(() => ({ request: vi.fn() }))
+vi.mock('../../lib/aiLearning', async (original) => ({
+  ...(await original<typeof import('../../lib/aiLearning')>()),
+  requestLesson: lesson.request,
+}))
+
 const note = (change: Partial<KnowledgeNote> = {}): KnowledgeNote => ({
   id: 1,
   title: '学校',
@@ -210,6 +216,8 @@ describe('learning from the chats', () => {
   const example = {
     id: 11,
     createdAt: '2026-10-13T02:00:00Z',
+    chatId: 3,
+    lastMessageId: 7,
     category: 'info',
     parentText: '你们有什么课？',
     draft: '妈咪，孩子几岁呢？',
@@ -294,5 +302,58 @@ describe('learning from the chats', () => {
     expect(screen.getByText('Could be sent without a person')).toBeInTheDocument()
     expect(screen.getByText('Always a person')).toBeInTheDocument()
     expect(screen.getByText(/Nothing is sent without a person today/)).toBeInTheDocument()
+  })
+
+  it('shows the chat before the reply, asks the AI why, and teaches with the chat and the reason', async () => {
+    learning.state.examples = [example]
+    lesson.request.mockReset().mockResolvedValue({ lesson: '家长同意价钱后，直接给一个时间确认。', error: null })
+    const loadThread = vi.fn().mockResolvedValue([
+      { from: 'team', text: 'HOA 现在优惠 RM38 哦' },
+      { from: 'parent', text: '你们有什么课？' },
+    ])
+    const user = userEvent.setup()
+    render(<AiKnowledgeSection canEdit loadThread={loadThread} />)
+    await user.click(screen.getByRole('tab', { name: 'Replies to learn from (1)' }))
+
+    const chat = await screen.findByRole('list', { name: 'The chat before the reply' })
+    expect(loadThread).toHaveBeenCalledWith(3, 7)
+    expect(chat).toHaveTextContent('Team: HOA 现在优惠 RM38 哦')
+    expect(chat).toHaveTextContent('Parent: 你们有什么课？')
+
+    await user.click(screen.getByRole('button', { name: 'Ask the AI why' }))
+    expect(lesson.request).toHaveBeenCalledWith({
+      thread: [
+        { from: 'team', text: 'HOA 现在优惠 RM38 哦' },
+        { from: 'parent', text: '你们有什么课？' },
+      ],
+      draft: '妈咪，孩子几岁呢？',
+      sent: '我们有 HOA 和 Holiday Camp 哦😊',
+    })
+    expect(await screen.findByDisplayValue('家长同意价钱后，直接给一个时间确认。')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Teach the AI this' }))
+    const box = screen.getByLabelText(/Text the AI reads/) as HTMLTextAreaElement
+    expect(box.value).toContain('例子（聊天记录 → 我们回）：')
+    expect(box.value).toContain('我们：HOA 现在优惠 RM38 哦')
+    expect(box.value).toContain('我们回：我们有 HOA 和 Holiday Camp 哦😊')
+    expect(box.value).toContain('原因：家长同意价钱后，直接给一个时间确认。')
+    expect(hook.state.save).not.toHaveBeenCalled()
+  })
+
+  it('says why the AI could not explain, and still lets the admin write the reason by hand', async () => {
+    learning.state.examples = [example]
+    lesson.request.mockReset().mockResolvedValue({ lesson: null, error: 'Only an admin can ask for an explanation.' })
+    const user = userEvent.setup()
+    render(<AiKnowledgeSection canEdit />)
+    await user.click(screen.getByRole('tab', { name: 'Replies to learn from (1)' }))
+    await user.click(screen.getByRole('button', { name: 'Ask the AI why' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Only an admin can ask for an explanation.')
+    // Without a connection to the chat, the parent's last message is what the AI is given.
+    expect(lesson.request).toHaveBeenCalledWith(
+      expect.objectContaining({ thread: [{ from: 'parent', text: '你们有什么课？' }] }),
+    )
+    await user.type(screen.getByPlaceholderText(/Write the rule in your own words/), '先确认时间')
+    await user.click(screen.getByRole('button', { name: 'Teach the AI this' }))
+    expect((screen.getByLabelText(/Text the AI reads/) as HTMLTextAreaElement).value).toContain('原因：先确认时间')
   })
 })

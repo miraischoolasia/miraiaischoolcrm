@@ -177,6 +177,7 @@ import { TeacherManagementSection } from './components/sections/TeacherManagemen
 import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
 import { AiKnowledgeSection } from './components/sections/AiKnowledgeSection'
+import { fetchThread } from './lib/aiLearning'
 import { ProgrammesSection } from './components/sections/ProgrammesSection'
 import { useProgrammes } from './hooks/useProgrammes'
 import { AutomationsSection } from './components/sections/AutomationsSection'
@@ -6810,7 +6811,16 @@ function App() {
               <AutomationsSection classrooms={classrooms} canEdit={isAdmin} leadOptions={leadOptions} />
             )}
 
-            {visibleSection === 'ai-knowledge' && <AiKnowledgeSection canEdit={isAdmin} />}
+            {visibleSection === 'ai-knowledge' && (
+              <AiKnowledgeSection
+                canEdit={isAdmin}
+                loadThread={
+                  whatsAppClient
+                    ? (chatId, lastMessageId) => fetchThread(whatsAppClient, chatId, lastMessageId)
+                    : undefined
+                }
+              />
+            )}
             {visibleSection === 'questions' && (
               <QuestionBankSection
                 currentTeacherId={currentSession?.teacherId ?? null}

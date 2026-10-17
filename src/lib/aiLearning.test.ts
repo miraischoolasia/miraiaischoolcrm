@@ -16,6 +16,7 @@ const row = (change: Partial<DraftRow> = {}): DraftRow => ({
   id: nextId++,
   createdAt: '2026-10-13T02:00:00Z',
   chatId: 1,
+  lastMessageId: 7,
   draft: '妈咪，孩子几岁呢？',
   skipped: false,
   staffNote: null,
@@ -119,5 +120,27 @@ describe('replies to learn from', () => {
       '例子（家长问 → 我们回）：\n家长：多少钱？\n我们：RM38 哦',
     )
     expect(exampleBlock({ parentText: null, sentText: 'RM38 哦' })).toBe('例子（家长问 → 我们回）：\n我们：RM38 哦')
+  })
+
+  it('teaches with the chat before the reply and the reason, not only the last parent message', () => {
+    expect(
+      exampleBlock({
+        thread: [
+          { from: 'team', text: 'HOA 现在优惠 RM38 哦' },
+          { from: 'parent', text: 'OK' },
+        ],
+        parentText: 'OK',
+        sentText: '10 月 18 日下午 4.30pm 可以吗？',
+        reason: '家长同意价钱后，直接给一个 calendar 上有位的时间确认，不再问星期几。',
+      }),
+    ).toBe(
+      [
+        '例子（聊天记录 → 我们回）：',
+        '我们：HOA 现在优惠 RM38 哦',
+        '家长：OK',
+        '我们回：10 月 18 日下午 4.30pm 可以吗？',
+        '原因：家长同意价钱后，直接给一个 calendar 上有位的时间确认，不再问星期几。',
+      ].join('\n'),
+    )
   })
 })

@@ -1,4 +1,6 @@
 import { supabase } from './supabase'
+import { conversationLine, messageOfFailure } from './aiDraft'
+import type { ChatwootClient } from './chatwootClient'
 
 // What the AI brain can learn from the team: its reminders about missing information, and the replies
 // the team really sent compared with what the AI drafted. Nothing here changes the AI by itself; an
@@ -26,6 +28,7 @@ export type DraftRow = {
   id: number
   createdAt: string
   chatId: number
+  lastMessageId: number
   draft: string | null
   skipped: boolean
   staffNote: string | null
@@ -44,6 +47,7 @@ type RawRow = {
   id: number
   created_at: string
   chat_id: number
+  last_message_id: number
   draft: string | null
   skipped: boolean
   staff_note: string | null
@@ -58,7 +62,7 @@ type RawRow = {
 }
 
 const COLUMNS =
-  'id, created_at, chat_id, draft, skipped, staff_note, missing_info, category, parent_text, sent_text, sent_at, accepted_at, gap_resolved_at, reviewed_at'
+  'id, created_at, chat_id, last_message_id, draft, skipped, staff_note, missing_info, category, parent_text, sent_text, sent_at, accepted_at, gap_resolved_at, reviewed_at'
 
 const CATEGORIES = Object.keys(CATEGORY_LABELS)
 // The most recent drafts the page looks at.
@@ -69,6 +73,7 @@ function rowOf(row: RawRow): DraftRow {
     id: row.id,
     createdAt: row.created_at,
     chatId: row.chat_id,
+    lastMessageId: row.last_message_id,
     draft: row.draft,
     skipped: row.skipped,
     staffNote: row.staff_note,
@@ -298,6 +303,9 @@ export function openGaps(rows: DraftRow[]): Gap[] {
 export type Example = {
   id: number
   createdAt: string
+  // Where the chat is, so the messages before the parent's can be read.
+  chatId: number
+  lastMessageId: number
   category: DraftCategory
   parentText: string | null
   draft: string
@@ -318,6 +326,8 @@ export function learnableExamples(rows: DraftRow[]): Example[] {
       found.push({
         id: row.id,
         createdAt: row.createdAt,
+        chatId: row.chatId,
+        lastMessageId: row.lastMessageId,
         category: row.category ?? 'other',
         parentText: row.parentText,
         draft: row.draft,
@@ -329,13 +339,81 @@ export function learnableExamples(rows: DraftRow[]): Example[] {
   return found
 }
 
-// The lines added to a note to teach the AI one example.
-export function exampleBlock(example: Pick<Example, 'parentText' | 'sentText'>): string {
-  const lines = ['例子（家长问 → 我们回）：']
-  if (example.parentText) {
-    lines.push(`家长：${example.parentText}`)
+// ---------------------------------------------------------------------------------------------------
+// The chat around an example
+
+// One message of the chat before the reply: who wrote it and the words.
+export type ThreadMessage = { from: 'parent' | 'team'; text: string }
+
+// How many messages before (and including) the parent's the page shows and teaches with.
+export const THREAD_LENGTH = 8
+
+// The messages of a chat up to and including the parent message the draft answered, read from Chatwoot.
+// A reply only makes sense next to what came before it ("OK" answers the question above it), so the
+// example shows several messages, not just the last one.
+export async function fetchThread(
+  client: Pick<ChatwootClient, 'listMessages'>,
+  chatId: number,
+  lastMessageId: number,
+): Promise<ThreadMessage[]> {
+  // Chatwoot answers with the 20 messages just before the id it is given.
+  const messages = await client.listMessages(chatId, lastMessageId + 1)
+  return messages
+    .filter((message) => message.id <= lastMessageId)
+    .sort((a, b) => a.id - b.id)
+    .flatMap((message) => conversationLine(message) ?? [])
+    .slice(-THREAD_LENGTH)
+}
+
+// What the AI is asked to explain: the chat, the draft it wrote and what the team sent instead.
+export type LessonRequest = { thread: ThreadMessage[]; draft: string; sent: string }
+
+// Asks the AI why the team replied the way it did, in one to three sentences an admin can put in a note.
+// Resolves to the sentences, or the reason it could not.
+export async function requestLesson(
+  request: LessonRequest,
+): Promise<{ lesson: string; error: null } | { lesson: null; error: string }> {
+  if (!supabase) {
+    return { lesson: null, error: 'Not connected to the database.' }
   }
-  lines.push(`我们：${example.sentText}`)
+  try {
+    const { data, error } = await supabase.functions.invoke('ai-draft', { body: { mode: 'lesson', ...request } })
+    if (error) {
+      return { lesson: null, error: await messageOfFailure(error) }
+    }
+    const answer = data as { ok?: boolean; error?: string; lesson?: string } | null
+    if (!answer || answer.ok !== true || typeof answer.lesson !== 'string' || answer.lesson.trim() === '') {
+      return { lesson: null, error: answer?.error || "Couldn't get an explanation. Try again in a moment." }
+    }
+    return { lesson: answer.lesson.trim(), error: null }
+  } catch (failure) {
+    return { lesson: null, error: await messageOfFailure(failure) }
+  }
+}
+
+// The lines added to a note to teach the AI one example: the chat before, what the team replied, and
+// the reason when one is known. A reply is only understood next to what came before it.
+export function exampleBlock(example: {
+  thread?: ThreadMessage[]
+  parentText?: string | null
+  sentText: string
+  reason?: string
+}): string {
+  const thread =
+    example.thread && example.thread.length > 0
+      ? example.thread
+      : example.parentText
+        ? [{ from: 'parent' as const, text: example.parentText }]
+        : []
+  const lines = [thread.length > 1 ? '例子（聊天记录 → 我们回）：' : '例子（家长问 → 我们回）：']
+  for (const message of thread) {
+    lines.push(`${message.from === 'parent' ? '家长' : '我们'}：${message.text}`)
+  }
+  lines.push(`${thread.length > 1 ? '我们回：' : '我们：'}${example.sentText}`)
+  const reason = example.reason?.trim()
+  if (reason) {
+    lines.push(`原因：${reason}`)
+  }
   return lines.join('\n')
 }
 

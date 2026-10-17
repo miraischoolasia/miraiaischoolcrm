@@ -11,10 +11,14 @@ import {
 import {
   buildSystemPrompt,
   buildUserPrompt,
+  buildLessonSystemPrompt,
+  buildLessonUserPrompt,
   lastParentText,
+  parseLesson,
   parseModelReply,
   scrub,
   validateInput,
+  validateLessonInput,
 } from '../../supabase/functions/ai-draft/logic'
 
 const client = vi.hoisted(() => ({
@@ -185,7 +189,12 @@ describe('what is asked', () => {
   })
 
   it('says there are no open classes when the calendar has none, and says nothing for an older page', () => {
-    const none = validateInput({ chatId: 1, lastMessageId: 2, messages: [{ from: 'parent', text: 'hi' }], openClasses: [] })
+    const none = validateInput({
+      chatId: 1,
+      lastMessageId: 2,
+      messages: [{ from: 'parent', text: 'hi' }],
+      openClasses: [],
+    })
     const older = validateInput({ chatId: 1, lastMessageId: 2, messages: [{ from: 'parent', text: 'hi' }] })
     if (!none.ok || !older.ok) {
       throw new Error('should be valid')
@@ -421,5 +430,47 @@ describe('the function side', () => {
 
   it('asks the model for the kind of question', () => {
     expect(buildSystemPrompt('')).toContain('"category"')
+  })
+})
+
+describe('explaining a reply (function side)', () => {
+  const body = {
+    thread: [
+      { from: 'team', text: 'HOA 现在优惠 RM38 哦' },
+      { from: 'parent', text: 'OK 012-345 6789' },
+    ],
+    draft: '好的妈咪😊 那星期六还是星期日呢？',
+    sent: '10 月 18 日下午 4.30pm 可以吗？',
+  }
+
+  it('checks the request and hides numbers again', () => {
+    expect(validateLessonInput(null)).toMatchObject({ ok: false })
+    expect(validateLessonInput({ ...body, thread: [] })).toMatchObject({ ok: false })
+    expect(validateLessonInput({ ...body, sent: '  ' })).toMatchObject({ ok: false })
+    const checked = validateLessonInput(body)
+    expect(checked).toMatchObject({ ok: true })
+    expect(checked.ok && checked.value.thread[1].text).toBe('OK [number]')
+    expect(checked.ok && checked.value.draft).toBe(body.draft)
+  })
+
+  it('asks for the reason from the whole chat, with the draft and what was sent', () => {
+    const checked = validateLessonInput(body)
+    if (!checked.ok) {
+      throw new Error('expected a valid request')
+    }
+    const prompt = buildLessonUserPrompt(checked.value)
+    expect(prompt).toContain('我们：HOA 现在优惠 RM38 哦')
+    expect(prompt).toContain('家长：OK [number]')
+    expect(prompt).toContain('AI 草稿：好的妈咪')
+    expect(prompt).toContain('同事真正发出去的：10 月 18 日')
+    expect(buildLessonSystemPrompt('Mirai AI School')).toContain('不要只看家长最后一条')
+  })
+
+  it('reads the explanation, also inside a code fence, and refuses nonsense', () => {
+    expect(parseLesson('{"lesson":"家长同意价钱后，直接给时间。"}')).toBe('家长同意价钱后，直接给时间。')
+    expect(parseLesson('```json\n{"lesson":"规则"}\n```')).toBe('规则')
+    expect(parseLesson('{"lesson":"  "}')).toBeNull()
+    expect(parseLesson('')).toBeNull()
+    expect(parseLesson('Sorry')).toBeNull()
   })
 })

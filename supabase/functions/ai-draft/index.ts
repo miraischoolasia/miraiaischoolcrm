@@ -6,6 +6,9 @@
 // (ai_knowledge_notes; the text bundled in knowledge.ts is used when there are no notes at all). The
 // answer is only a suggestion shown as grey text in the message box; nothing is sent from here.
 //
+// The same function also explains, for an admin, why the team replied the way it did instead of the
+// draft (mode 'lesson'); that answer is shown on the AI Knowledge page and is not stored.
+//
 // Secrets (set in Supabase, never in the browser):
 //   GEMINI_API_KEY   required
 //   GEMINI_MODEL     optional, default gemini-3.5-flash-lite
@@ -20,9 +23,13 @@ import {
   buildSystemPrompt,
   buildUserPrompt,
   composeKnowledge,
+  buildLessonSystemPrompt,
+  buildLessonUserPrompt,
   lastParentText,
+  parseLesson,
   parseModelReply,
   validateInput,
+  validateLessonInput,
 } from './logic.ts'
 
 const corsHeaders = {
@@ -79,6 +86,69 @@ async function loadKnowledge(admin: ReturnType<typeof createClient>, schoolName:
   )
 }
 
+// Asks Gemini one question and returns its text. Google sometimes hangs or answers "busy" for a moment, so
+// the request is tried twice (20 s, then 25 s); a wrong key or a bad request is not tried again. On failure the
+// error is a sentence for the team, with a short key-free reason.
+async function askGemini(
+  geminiKey: string,
+  model: string,
+  system: string,
+  user: string,
+  config: { temperature: number; maxOutputTokens: number },
+): Promise<{ ok: true; answer: string } | { ok: false; error: string }> {
+  const timeouts = [20000, 25000]
+  const retryable = [429, 500, 502, 503, 504]
+  for (let attempt = 0; attempt < timeouts.length; attempt += 1) {
+    const last = attempt === timeouts.length - 1
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: system }] },
+            contents: [{ role: 'user', parts: [{ text: user }] }],
+            generationConfig: { ...config, responseMimeType: 'application/json' },
+          }),
+          signal: AbortSignal.timeout(timeouts[attempt]),
+        },
+      )
+      if (!response.ok) {
+        const body = (await response.text()).slice(0, 600)
+        console.error('Gemini error', response.status, body.slice(0, 300))
+        if (!last && retryable.includes(response.status)) {
+          continue
+        }
+        return {
+          ok: false,
+          error: `The AI service did not answer (${whyGeminiFailed(response.status, body, geminiKey)}). Try again in a moment.`,
+        }
+      }
+      const data = await response.json()
+      const parts = data?.candidates?.[0]?.content?.parts
+      const answer = Array.isArray(parts)
+        ? parts
+            .filter((part: { thought?: boolean; text?: unknown }) => part && part.thought !== true)
+            .map((part: { text?: unknown }) => (typeof part.text === 'string' ? part.text : ''))
+            .join('')
+        : ''
+      return { ok: true, answer }
+    } catch (problem) {
+      console.error('Gemini request failed', problem instanceof Error ? problem.message : problem)
+      if (!last) {
+        continue
+      }
+      const reason =
+        problem instanceof Error
+          ? `${problem.name}: ${problem.message}`.slice(0, 160).split(geminiKey).join('***')
+          : 'unknown'
+      return { ok: false, error: `The AI service did not answer (${reason}). Try again in a moment.` }
+    }
+  }
+  return { ok: false, error: 'The AI service did not answer. Try again in a moment.' }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -125,6 +195,34 @@ Deno.serve(async (req) => {
   } catch {
     return jsonResponse({ ok: false, error: 'Invalid request body.' }, 400)
   }
+  // An admin asks why the team answered a chat the way it did; nothing is stored.
+  if ((body as { mode?: unknown } | null)?.mode === 'lesson') {
+    const { data: isAdmin } = await callerClient.rpc('is_admin')
+    if (isAdmin !== true) {
+      return jsonResponse({ ok: false, error: 'Only an admin can ask for an explanation.' }, 403)
+    }
+    const checked = validateLessonInput(body)
+    if (!checked.ok) {
+      return jsonResponse({ ok: false, error: checked.error }, 400)
+    }
+    const lessonSchool = Deno.env.get('SCHOOL_NAME')?.trim() || DEFAULT_SCHOOL_NAME
+    const lessonAnswer = await askGemini(
+      geminiKey,
+      Deno.env.get('GEMINI_MODEL') || DEFAULT_MODEL,
+      buildLessonSystemPrompt(lessonSchool),
+      buildLessonUserPrompt(checked.value),
+      { temperature: 0.2, maxOutputTokens: 512 },
+    )
+    if (!lessonAnswer.ok) {
+      return jsonResponse({ ok: false, error: lessonAnswer.error }, 502)
+    }
+    const lesson = parseLesson(lessonAnswer.answer)
+    if (!lesson) {
+      return jsonResponse({ ok: false, error: 'The AI gave an answer that could not be used. Try again.' }, 502)
+    }
+    return jsonResponse({ ok: true, lesson }, 200)
+  }
+
   const parsed = validateInput(body)
   if (!parsed.ok) {
     return jsonResponse({ ok: false, error: parsed.error }, 400)
@@ -173,62 +271,14 @@ Deno.serve(async (req) => {
   const knowledge = await loadKnowledge(admin, schoolName)
   const model = Deno.env.get('GEMINI_MODEL') || DEFAULT_MODEL
   const startedAt = Date.now()
-  // Google sometimes hangs or answers "busy" for a moment, so the request is tried twice (20 s, then 25 s).
-  // A wrong key or a bad request is not tried again.
-  const timeouts = [20000, 25000]
-  const retryable = [429, 500, 502, 503, 504]
-  let answer = ''
-  for (let attempt = 0; attempt < timeouts.length; attempt += 1) {
-    const last = attempt === timeouts.length - 1
-    try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: buildSystemPrompt(knowledge, schoolName) }] },
-            contents: [{ role: 'user', parts: [{ text: buildUserPrompt(input) }] }],
-            generationConfig: { temperature: 0.4, maxOutputTokens: 1024, responseMimeType: 'application/json' },
-          }),
-          signal: AbortSignal.timeout(timeouts[attempt]),
-        },
-      )
-      if (!response.ok) {
-        const body = (await response.text()).slice(0, 600)
-        console.error('Gemini error', response.status, body.slice(0, 300))
-        if (!last && retryable.includes(response.status)) {
-          continue
-        }
-        return jsonResponse(
-          {
-            ok: false,
-            error: `The AI service did not answer (${whyGeminiFailed(response.status, body, geminiKey)}). Try again in a moment.`,
-          },
-          502,
-        )
-      }
-      const data = await response.json()
-      const parts = data?.candidates?.[0]?.content?.parts
-      answer = Array.isArray(parts)
-        ? parts
-            .filter((part: { thought?: boolean; text?: unknown }) => part && part.thought !== true)
-            .map((part: { text?: unknown }) => (typeof part.text === 'string' ? part.text : ''))
-            .join('')
-        : ''
-      break
-    } catch (problem) {
-      console.error('Gemini request failed', problem instanceof Error ? problem.message : problem)
-      if (!last) {
-        continue
-      }
-      const reason =
-        problem instanceof Error
-          ? `${problem.name}: ${problem.message}`.slice(0, 160).split(geminiKey).join('***')
-          : 'unknown'
-      return jsonResponse({ ok: false, error: `The AI service did not answer (${reason}). Try again in a moment.` }, 502)
-    }
+  const asked = await askGemini(geminiKey, model, buildSystemPrompt(knowledge, schoolName), buildUserPrompt(input), {
+    temperature: 0.4,
+    maxOutputTokens: 1024,
+  })
+  if (!asked.ok) {
+    return jsonResponse({ ok: false, error: asked.error }, 502)
   }
+  const answer = asked.answer
 
   const result = parseModelReply(answer)
   if (!result) {

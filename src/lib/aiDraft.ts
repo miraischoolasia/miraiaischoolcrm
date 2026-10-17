@@ -61,6 +61,16 @@ function textOf(message: ChatwootMessage): string {
   return message.attachments && message.attachments.length > 0 ? '[photo, video, voice or file]' : ''
 }
 
+// A chat message as the AI reads it: who wrote it and the words (numbers and emails removed), or null
+// for notes, deleted messages and messages with nothing to read.
+export function conversationLine(message: ChatwootMessage): { from: 'parent' | 'team'; text: string } | null {
+  if (!isConversationMessage(message)) {
+    return null
+  }
+  const text = textOf(message)
+  return text ? { from: message.message_type === 0 ? 'parent' : 'team', text } : null
+}
+
 function isConversationMessage(message: ChatwootMessage): boolean {
   return (
     !message.private &&
@@ -131,7 +141,8 @@ export function buildDraftBody(
   }
 }
 
-async function messageOfFailure(failure: unknown): Promise<string> {
+// The sentence for a person when the AI function failed (its own reason when it gave one).
+export async function messageOfFailure(failure: unknown): Promise<string> {
   const fallback = "Couldn't get a reply suggestion. Try again in a moment."
   const context = (failure as { context?: unknown } | null)?.context
   if (context && typeof (context as Response).json === 'function') {

@@ -1,7 +1,13 @@
 import { useCallback, useMemo, useState } from 'react'
 import { CaretDown, CaretUp, Plus } from '@phosphor-icons/react'
 import { NoteEditor, formatNoteTime } from '../aiKnowledge/NoteEditor'
-import { ExamplesPanel, GapsPanel, ReportPanel, type TeachRequest } from '../aiKnowledge/LearningPanels'
+import {
+  ExamplesPanel,
+  GapsPanel,
+  ReportPanel,
+  type LoadThread,
+  type TeachRequest,
+} from '../aiKnowledge/LearningPanels'
 import { FlowSwitch } from '../automations/FlowSwitch'
 import { useAiKnowledge } from '../../hooks/useAiKnowledge'
 import { useAiLearning, type AiLearning } from '../../hooks/useAiLearning'
@@ -13,16 +19,25 @@ import { cn } from '../../lib/cn'
 type AiKnowledgeSectionProps = {
   // Only an admin can add, change, reorder or remove a note; others can read them.
   canEdit: boolean
+  // Reads the chat before an example reply (from Chatwoot); only where the inbox is connected.
+  loadThread?: LoadThread
 }
 
 // The school facts the AI reply drafts may use, as separate notes: the school, the way we talk, the
 // conversation steps, each course, the answers we have confirmed. Every note that is on is read by
 // the AI each time it writes a draft, so a saved change works from the next draft.
-export function AiKnowledgeSection({ canEdit }: AiKnowledgeSectionProps) {
+export function AiKnowledgeSection({ canEdit, loadThread }: AiKnowledgeSectionProps) {
   const knowledge = useAiKnowledge({ enabled: true })
   // What the AI still lacks and how its drafts are doing; only an admin can act on it.
   const learning = useAiLearning({ enabled: canEdit })
-  return <AiKnowledgeView canEdit={canEdit} knowledge={knowledge} learning={canEdit ? learning : undefined} />
+  return (
+    <AiKnowledgeView
+      canEdit={canEdit}
+      knowledge={knowledge}
+      learning={canEdit ? learning : undefined}
+      loadThread={loadThread}
+    />
+  )
 }
 
 type Tab = 'notes' | 'gaps' | 'examples' | 'report'
@@ -32,6 +47,7 @@ export function AiKnowledgeView({
   canEdit,
   knowledge,
   learning,
+  loadThread,
 }: AiKnowledgeSectionProps & {
   knowledge: ReturnType<typeof useAiKnowledge>
   learning?: AiLearning
@@ -214,6 +230,7 @@ export function AiKnowledgeView({
               notes={notes}
               onTeach={teach}
               onClose={(id) => closeWithNotice(() => learning.closeExample(id))}
+              loadThread={loadThread}
             />
           ) : (
             <ReportPanel report={learning.report} />
