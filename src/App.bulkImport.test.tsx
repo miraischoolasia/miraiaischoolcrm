@@ -2,7 +2,6 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { openMenu } from './test/openMenu'
 
 const mocks = vi.hoisted(() => ({
   listener: null as null | ((event: string, session: unknown) => void),
@@ -62,7 +61,7 @@ async function openBulkImportAndPickFile() {
   await userEvent.click((await screen.findAllByRole('button', { name: 'Calendar' }))[0])
   await screen.findByText('Calendar ready')
 
-  await openMenu(/^Leads$/)
+  await userEvent.click(screen.getAllByRole('button', { name: /^Leads$/ })[0])
   await userEvent.click(await screen.findByRole('button', { name: /Bulk Import/ }))
   await userEvent.upload(document.querySelector('input[type="file"]') as HTMLInputElement, csvFile())
   await screen.findByText('1 lead ready to import')

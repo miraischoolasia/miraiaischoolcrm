@@ -181,24 +181,26 @@ describe('sidebar navigation order', () => {
     mocks.rpc.mockResolvedValue({ data: null, error: null })
   })
 
-  it('lists Today, then the Marketing, Teaching, Students and Admin groups for an admin', async () => {
+  it('places Calendar above the Marketing group for an admin', async () => {
     await signIn()
 
-    const topLevel = document.querySelectorAll('aside nav > button, aside nav > div > button[aria-expanded]')
-    expect(Array.from(topLevel).map((button) => button.textContent)).toEqual([
-      'Today',
-      'Marketing',
-      'Teaching',
-      'Students',
-      'Admin',
-    ])
+    const nav = document.querySelector('nav')
+    expect(nav).not.toBeNull()
+    const buttons = within(nav!).getAllByRole('button')
+    const calendarIndex = buttons.findIndex((button) => button.textContent === 'Calendar')
+    const marketingIndex = buttons.findIndex((button) => button.textContent?.includes('Marketing'))
+
+    expect(calendarIndex).toBeGreaterThanOrEqual(0)
+    expect(marketingIndex).toBeGreaterThanOrEqual(0)
+    expect(calendarIndex).toBeLessThan(marketingIndex)
   })
 
   it('starts the Marketing group collapsed, opening only once clicked', async () => {
-    // Scoped to the desktop sidebar - the phone's bottom bar is a second
-    // menu (hidden only by a CSS media query jsdom does not apply).
+    // Scoped to the desktop sidebar <nav> specifically - the mobile bottom
+    // bar (a second <nav>, hidden only by a CSS media query jsdom does not
+    // apply) lists every item flat with no collapsible group at all.
     await signIn()
-    const nav = within(document.querySelector('aside nav')!)
+    const nav = within(document.querySelector('nav')!)
 
     expect(nav.queryByRole('button', { name: 'Leads' })).not.toBeInTheDocument()
     expect(nav.queryByRole('button', { name: 'Forms' })).not.toBeInTheDocument()

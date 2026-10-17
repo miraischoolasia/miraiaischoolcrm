@@ -24,6 +24,11 @@ import { meetingBody, registrantEmail, registrantNames, type MeetingOptions } fr
 import { zoomApi, zoomToken } from './zoomApi.ts'
 import { facebookConfigured, goLiveOnFacebook, stopFacebookLive } from './facebook.ts'
 
+// Children signed up to Zoom at the same time, and how long one call may
+// spend on it before handing the rest to the next call.
+const SIGN_UP_AT_ONCE = 5
+const SIGN_UP_BUDGET_MS = 90_000
+
 const ACTIONS = ['prepare', 'start', 'end', 'facebook_status', 'facebook_on', 'facebook_off'] as const
 type Action = (typeof ACTIONS)[number]
 
@@ -186,7 +191,9 @@ Deno.serve(async (req) => {
       meeting = saved
     }
 
-    // Sign up the children who have no link yet.
+    // Sign up the children who have no link yet: a few at a time (a class of
+    // 200 would take minutes one by one), stopping before the function's time
+    // runs out; the CRM asks again for the rest (`remaining`).
     const [{ data: roster }, { data: links }] = await Promise.all([
       caller.rpc('class_session_roster', { p_session_id: session.id }),
       admin.from('class_session_zoom_links').select('student_id').eq('session_id', session.id),
@@ -194,24 +201,45 @@ Deno.serve(async (req) => {
     const linked = new Set((links ?? []).map((row: { student_id: number }) => row.student_id))
     const waiting = ((roster ?? []) as { student_id: number; full_name: string }[]).filter((row) => !linked.has(row.student_id))
     const problems: string[] = []
-    for (const child of waiting) {
-      try {
-        const registrant = await zoomApi(token, `/meetings/${encodeURIComponent(meeting.meeting_id)}/registrants`, {
-          method: 'POST',
-          body: { email: registrantEmail(session.id, child.student_id, registrantDomain), ...registrantNames(child.full_name) },
-        })
-        const { error } = await admin.from('class_session_zoom_links').insert({
-          session_id: session.id,
-          student_id: child.student_id,
-          registrant_id: registrant.registrant_id ? String(registrant.registrant_id) : null,
-          join_url: String(registrant.join_url),
-        })
-        if (error) throw new Error(error.message)
-        linked.add(child.student_id)
-      } catch (problem) {
-        problems.push(`${child.full_name}: ${problem instanceof Error ? problem.message : 'failed'}`)
+    const startedAt = Date.now()
+    const signUp = async (child: { student_id: number; full_name: string }) => {
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          const registrant = await zoomApi(token, `/meetings/${encodeURIComponent(meeting.meeting_id)}/registrants`, {
+            method: 'POST',
+            body: { email: registrantEmail(session.id, child.student_id, registrantDomain), ...registrantNames(child.full_name) },
+          })
+          const { error } = await admin.from('class_session_zoom_links').insert({
+            session_id: session.id,
+            student_id: child.student_id,
+            registrant_id: registrant.registrant_id ? String(registrant.registrant_id) : null,
+            join_url: String(registrant.join_url),
+          })
+          if (error) throw new Error(error.message)
+          linked.add(child.student_id)
+          return
+        } catch (problem) {
+          const message = problem instanceof Error ? problem.message : 'failed'
+          // Zoom's "too many requests": wait a little and try again.
+          if (attempt < 2 && /429|too many|rate/i.test(message)) {
+            await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)))
+            continue
+          }
+          problems.push(`${child.full_name}: ${message}`)
+          return
+        }
       }
     }
+    let next = 0
+    const worker = async () => {
+      while (next < waiting.length && Date.now() - startedAt < SIGN_UP_BUDGET_MS) {
+        const child = waiting[next]
+        next += 1
+        await signUp(child)
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(SIGN_UP_AT_ONCE, waiting.length) }, worker))
+    const remaining = waiting.length - next
 
     return jsonResponse(
       {
@@ -221,6 +249,7 @@ Deno.serve(async (req) => {
         host: meeting.host_user ?? null,
         linked: linked.size,
         roster: (roster ?? []).length,
+        remaining,
         problems,
       },
       200,

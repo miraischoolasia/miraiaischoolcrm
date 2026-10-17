@@ -61,11 +61,24 @@ async function callZoom(action: 'prepare' | 'start' | 'end' | 'facebook_status' 
   return { error: null, data }
 }
 
-// Makes the meeting if there is none and signs up the children without a link.
-export async function prepareLessonZoom(scheduleId: number, lessonDate: string) {
-  const { error, data } = await callZoom('prepare', scheduleId, lessonDate)
-  if (error) return { error, problems: [] as string[] }
-  return { error: null, problems: (data.problems ?? []) as string[] }
+// Makes the meeting if there is none and signs up the children without a
+// link. A big class takes more than one call: it asks again while children
+// are left (up to `rounds` calls), telling `onProgress` how far it is.
+export async function prepareLessonZoom(
+  scheduleId: number,
+  lessonDate: string,
+  onProgress?: (linked: number, roster: number) => void,
+  rounds = 10,
+) {
+  let problems: string[] = []
+  for (let round = 0; round < rounds; round += 1) {
+    const { error, data } = await callZoom('prepare', scheduleId, lessonDate)
+    if (error) return { error, problems }
+    problems = (data.problems ?? []) as string[]
+    onProgress?.(Number(data.linked ?? 0), Number(data.roster ?? 0))
+    if (!Number(data.remaining)) break
+  }
+  return { error: null, problems }
 }
 
 // A fresh link for the host to start the meeting.

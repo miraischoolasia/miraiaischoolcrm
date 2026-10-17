@@ -36,6 +36,11 @@ const tools: { key: Tool; label: string; icon: typeof Timer }[] = [
   { key: 'notes', label: 'Notes', icon: NotePencil },
 ]
 
+// Many WhatsApp messages in a row can get the school's number blocked: one
+// tap reminds at most this many parents, a few seconds apart.
+const REMIND_AT_ONCE = 20
+const REMIND_GAP_MS = 3000
+
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('en-MY', { hour: 'numeric', minute: '2-digit' })
 
 // The teacher's screen for a live lesson, over the whole page (or in its own
@@ -229,15 +234,25 @@ export function LiveClassConsole({
   }
 
   const notHereIds = items.filter((child) => child.canRemind && child.state === 'not_yet' && !child.remindedAt).map((child) => child.studentId)
+  const [remindProgress, setRemindProgress] = useState<string | null>(null)
   async function remindAll() {
     setRemindingAll(true)
     const problems: string[] = []
-    for (const studentId of notHereIds) {
+    const batch = notHereIds.slice(0, REMIND_AT_ONCE)
+    for (const [index, studentId] of batch.entries()) {
+      setRemindProgress(`Sending ${index + 1} of ${batch.length}…`)
+      if (index > 0) await new Promise((resolve) => setTimeout(resolve, REMIND_GAP_MS))
       const problem = await remind(studentId)
       if (problem) problems.push(`${names.get(studentId) ?? studentId}: ${problem}`)
     }
+    setRemindProgress(null)
     setRemindingAll(false)
-    setError(problems.length > 0 ? problems.join(' · ') : null)
+    const left = notHereIds.length - batch.length
+    setError(
+      [problems.join(' · '), left > 0 ? `${left} more not reminded yet (at most ${REMIND_AT_ONCE} at a time); tap again.` : '']
+        .filter(Boolean)
+        .join(' ') || null,
+    )
   }
 
   async function endClass() {
@@ -317,7 +332,9 @@ export function LiveClassConsole({
               className="flex items-center gap-1 rounded-xl border border-emerald-300 px-3 py-1.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
             >
               <ChatCircleText size={16} aria-hidden="true" />
-              {remindingAll ? 'Sending…' : `Remind ${notHereIds.length} ${notHereIds.length === 1 ? 'parent' : 'parents'}`}
+              {remindingAll
+                ? (remindProgress ?? 'Sending…')
+                : `Remind ${Math.min(notHereIds.length, REMIND_AT_ONCE)} ${Math.min(notHereIds.length, REMIND_AT_ONCE) === 1 ? 'parent' : 'parents'}${notHereIds.length > REMIND_AT_ONCE ? ` of ${notHereIds.length}` : ''}`}
             </button>
           )}
           <button

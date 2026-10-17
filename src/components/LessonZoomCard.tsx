@@ -21,6 +21,7 @@ export function LessonZoomCard({
   const [recordings, setRecordings] = useState<LessonRecording[]>([])
   const [facebookReady, setFacebookReady] = useState(false)
   const [note, setNote] = useState<string | null>(null)
+  const [progress, setProgress] = useState<string | null>(null)
 
   const load = useCallback(() => {
     fetchLessonZoom(scheduleId, lessonDate)
@@ -69,7 +70,10 @@ export function LessonZoomCard({
   async function prepare() {
     setBusy(true)
     setError(null)
-    const result = await prepareLessonZoom(scheduleId, lessonDate)
+    const result = await prepareLessonZoom(scheduleId, lessonDate, (linked, roster) =>
+      setProgress(roster > 0 ? `Signing children up to Zoom: ${linked} of ${roster}…` : null),
+    )
+    setProgress(null)
     setBusy(false)
     setError(result.error)
     setProblems(result.problems)
@@ -172,6 +176,11 @@ export function LessonZoomCard({
         </div>
       )}
       {note && <p className="mt-1 text-xs text-slate-500">{note}</p>}
+      {progress && (
+        <p className="mt-1 text-xs text-sky-700" aria-live="polite">
+          {progress}
+        </p>
+      )}
       {error && (
         <p role="alert" className="mt-2 text-sm text-red-700">
           {error}

@@ -92,6 +92,17 @@ async function start() {
     return
   }
 
+  // Dev server only: /?demo=bigclass shows the live class grid with 200 made-up children.
+  if (import.meta.env.DEV && params.get('demo') === 'bigclass') {
+    const { BigClassDemo } = await import('./dev/BigClassDemo.tsx')
+    root.render(
+      <StrictMode>
+        <BigClassDemo />
+      </StrictMode>,
+    )
+    return
+  }
+
   // Dev server only: /?demo=programmes shows the Programmes page on made-up programmes held in the page.
   if (import.meta.env.DEV && params.get('demo') === 'programmes') {
     const { ProgrammesDemo } = await import('./dev/ProgrammesDemo.tsx')
