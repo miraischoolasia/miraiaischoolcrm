@@ -26,6 +26,7 @@ import { LeadHeader } from './LeadCard'
 import { EnrolPanel } from './EnrolPanel'
 import { CampEnrolPanel } from './CampEnrolPanel'
 import { ProgrammePanel } from './ProgrammePanel'
+import { ClassSignUp } from './ClassSignUp'
 import { ProgrammePicker } from './ProgrammePicker'
 import { useFollowedProgrammes } from '../../hooks/useFollowedProgrammes'
 import { activeProgrammes, type Programme } from '../../lib/programmes'
@@ -83,6 +84,8 @@ const TAB_ICONS: Record<PanelTab, { label: string; Icon: typeof UserCircle }> = 
   chat: { label: 'Chat notes', Icon: Star },
 }
 
+// An offer is one of Mirai's own courses (HOA class, Holiday Camp), or 'class': any class with an
+// enrolment flow, picked by grade, subject and class (the flow comes from the class).
 type Offer = { key: string; label: string; legacy: 'hoa' | 'camp' | null; programme: Programme | null }
 
 function ProgrammeSwitch({
@@ -136,7 +139,7 @@ function ProgrammeSwitch({
 
 // What the "sign up for another" line says: the one programme there is, or all of them.
 function enrolAnotherLabel(offers: Offer[], forStudent: boolean) {
-  const names = offers.map((entry) => (entry.legacy === 'hoa' ? 'HOA' : entry.label))
+  const names = offers.map((entry) => (entry.legacy === 'hoa' ? 'HOA' : entry.key === 'class' ? 'a class' : entry.label))
   if (names.length === 1) {
     return forStudent ? `Sign up for another ${offers[0].legacy === 'hoa' ? 'HOA class' : names[0]}` : `Enrol another child in ${names[0]}`
   }
@@ -244,19 +247,24 @@ export function DetailsPanel({
   // tests) offers Mirai's two, the HOA class and the Holiday Camp (when there is a camp package).
   const offers: Offer[] = useMemo(() => {
     if (crm.programmes) {
-      return activeProgrammes(crm.programmes).map((programme) => ({
-        key: String(programme.id),
-        label: programme.name,
-        legacy: programme.legacyKey,
-        programme,
-      }))
+      const active = activeProgrammes(crm.programmes)
+      const flowIds = new Set(active.filter((programme) => programme.legacyKey === null).map((programme) => programme.id))
+      const signUpClasses = crm.classrooms.some(
+        (classroom) => classroom.status === 'active' && classroom.programmeId !== null && classroom.programmeId !== undefined && flowIds.has(classroom.programmeId),
+      )
+      return [
+        ...active
+          .filter((programme) => programme.legacyKey !== null)
+          .map((programme) => ({ key: String(programme.id), label: programme.name, legacy: programme.legacyKey, programme })),
+        ...(signUpClasses ? [{ key: 'class', label: 'A class', legacy: null, programme: null }] : []),
+      ]
     }
     const hasCamp = crm.packages.some((pkg) => pkg.kind === 'camp' && pkg.isActive)
     return [
       { key: 'hoa', label: 'HOA class', legacy: 'hoa' as const, programme: null },
       ...(hasCamp ? [{ key: 'camp', label: 'Holiday Camp', legacy: 'camp' as const, programme: null }] : []),
     ]
-  }, [crm.programmes, crm.packages])
+  }, [crm.programmes, crm.packages, crm.classrooms])
   const [offerKey, setOfferKey] = useState<string | null>(null)
   const followedProgrammes = useFollowedProgrammes({
     leadId: lead?.id ?? null,
@@ -275,12 +283,14 @@ export function DetailsPanel({
         <ProgrammeSwitch offers={offers} current={offer?.key ?? ''} followed={followedProgrammes} onChange={setOfferKey} />
         {offer === null ? (
           <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
-            No programme to sign up for yet. An admin makes one in Programmes.
+            Nothing to sign up for yet. An admin picks an enrolment flow for each kind of class in Class Settings.
           </p>
         ) : offer.legacy === 'camp' ? (
           <CampEnrolPanel key={offer.key} {...shared} />
         ) : offer.legacy === 'hoa' ? (
           <EnrolPanel key={offer.key} {...shared} />
+        ) : offer.key === 'class' ? (
+          <ClassSignUp key={offer.key} {...shared} />
         ) : offer.programme ? (
           <ProgrammePanel key={offer.key} programme={offer.programme} {...shared} />
         ) : null}

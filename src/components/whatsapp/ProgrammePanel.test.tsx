@@ -142,7 +142,7 @@ describe('ProgrammePanel', () => {
     await userEvent.click(screen.getByRole('radio', { name: /Sat 17 Oct, 10:00 to 12:00/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Book this class' }))
 
-    expect(crm.listProgrammeSlots).toHaveBeenCalledWith(5)
+    expect(crm.listProgrammeSlots).toHaveBeenCalledWith(5, undefined)
     await waitFor(() => expect(crm.onBookHoa).toHaveBeenCalledWith(11, slot, { name: 'Ethan', age: 9, phone: '0123456789' }))
   })
 

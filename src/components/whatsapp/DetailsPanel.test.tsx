@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { Lead, LeadOption, Package, Student, TrialBooking } from '../../types/domain'
+import type { Classroom, Lead, LeadOption, Package, Student, TrialBooking } from '../../types/domain'
 import type { Person } from '../../lib/peopleApi'
 import type { ChatwootConversation, ChatwootMessage } from '../../lib/whatsappInbox'
 import type { SourceRule } from '../../lib/sourceRules'
@@ -1012,13 +1012,24 @@ describe('DetailsPanel programmes', () => {
     ...patch,
   })
 
-  function renderEnrol(programmes: Programme[]) {
+  const room = (id: number, name: string, ageGroup: string, subjectId: number | null, programmeId: number | null) =>
+    ({ id, name, ageGroup, subjectId, programmeId, status: 'active', category: 'regular', programLevel: '常规班', teacherId: null, notes: null, archivedAt: null }) as Classroom
+
+  function renderEnrol(programmes: Programme[], classrooms: Classroom[] = []) {
     render(
       <DetailsPanel
         conversation={conversation({ crm_lead_id: 11 })}
         messages={[firstMessage]}
         hasOlder={false}
-        crm={makeCrm({ leads: [lead], programmes })}
+        crm={makeCrm({
+          leads: [lead],
+          programmes,
+          classrooms,
+          subjects: [
+            { id: 1, name: 'MM', sortOrder: 10 },
+            { id: 2, name: 'SCI', sortOrder: 20 },
+          ],
+        })}
         sourceRules={[]}
         onLoadOlder={vi.fn()}
         onLinkLead={vi.fn()}
@@ -1028,25 +1039,31 @@ describe('DetailsPanel programmes', () => {
     )
   }
 
-  it("offers the school's own programme and nothing of Mirai's", async () => {
-    renderEnrol([programme(5, 'Maths tuition')])
+  it("signs a parent up by picking the class (grade, subject, class); the steps come from the class's flow", async () => {
+    renderEnrol(
+      [programme(5, 'Regular sign-up'), programme(6, 'Exam class sign-up')],
+      [room(31, 'MM Form 1', 'Form 1', 1, 5), room(32, 'SCI Form 1', 'Form 1', 2, 5), room(33, 'MM Form 2 备战班', 'Form 2', 1, 6)],
+    )
     await userEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
 
-    expect(screen.getByText('Steps of Maths tuition')).toBeInTheDocument()
-    expect(screen.queryByText('Enrol steps')).not.toBeInTheDocument()
+    expect(screen.getByText('Which class?')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'HOA class' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Holiday Camp' })).not.toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Grade' }), 'Form 2')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Subject' }), '1')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Class' }), '33')
+    expect(screen.getByText('Steps of Exam class sign-up')).toBeInTheDocument()
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Grade' }), 'Form 1')
+    expect(screen.queryByText(/Steps of/)).not.toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Class' }), '32')
+    expect(screen.getByText('Steps of Regular sign-up')).toBeInTheDocument()
   })
 
-  it('switches between the programmes that are on, and skips one that is off', async () => {
-    renderEnrol([programme(5, 'Maths tuition'), programme(6, 'English tuition'), programme(7, 'Old course', { isActive: false })])
+  it('offers only classes whose flow is on', async () => {
+    renderEnrol([programme(5, 'Regular sign-up'), programme(7, 'Old course', { isActive: false })], [room(31, 'MM Form 1', 'Form 1', 1, 5), room(34, 'Old class', 'Form 1', 1, 7)])
     await userEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
-
-    expect(screen.getByText('Steps of Maths tuition')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Old course' })).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'English tuition' }))
-    expect(screen.getByText('Steps of English tuition')).toBeInTheDocument()
-    expect(screen.queryByText('Steps of Maths tuition')).not.toBeInTheDocument()
+    const classes = Array.from((screen.getByRole('combobox', { name: 'Class' }) as HTMLSelectElement).options).map((option) => option.textContent)
+    expect(classes).toEqual(['Pick a class (1)', 'MM Form 1'])
   })
 
   it("keeps Mirai's HOA class on its own screen", async () => {
@@ -1057,34 +1074,19 @@ describe('DetailsPanel programmes', () => {
     expect(screen.queryByText(/Steps of/)).not.toBeInTheDocument()
   })
 
-  it('says there is no programme yet when the school has made none', async () => {
-    renderEnrol([])
+  it('offers the HOA class next to signing up for a class', async () => {
+    renderEnrol([programme(1, 'HOA class', { legacyKey: 'hoa' }), programme(5, 'Regular sign-up')], [room(31, 'MM Form 1', 'Form 1', 1, 5)])
     await userEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
-
-    expect(screen.getByText(/No programme to sign up for yet/)).toBeInTheDocument()
-    expect(screen.queryByText('Enrol steps')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'A class' }))
+    expect(screen.getByText('Which class?')).toBeInTheDocument()
   })
 
-  it('finds one of many programmes by searching, grouped by category, and opens its steps', async () => {
-    renderEnrol([
-      programme(5, 'Maths F1', { category: 'Form 1' }),
-      programme(6, 'English F1', { category: 'Form 1' }),
-      programme(7, 'Maths F2', { category: 'Form 2' }),
-      programme(8, 'Starter kit', { category: 'Products' }),
-      programme(9, 'Holiday talk'),
-    ])
+  it('says there is nothing to sign up for when no class has a flow', async () => {
+    renderEnrol([programme(5, 'Regular sign-up')])
     await userEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
 
-    await userEvent.click(screen.getByRole('button', { name: /Add programme/ }))
-    expect(screen.getByText('Form 1')).toBeInTheDocument()
-    expect(screen.getByText('Products')).toBeInTheDocument()
-    await userEvent.type(screen.getByRole('searchbox', { name: 'Search programmes' }), 'form 2')
-    expect(screen.queryByRole('button', { name: 'Starter kit' })).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Maths F2' }))
-
-    expect(screen.getByText('Steps of Maths F2')).toBeInTheDocument()
-    // The picked programme is now one of this lead's tabs.
-    expect(screen.getByRole('button', { name: 'Maths F2', pressed: true })).toBeInTheDocument()
+    expect(screen.getByText(/Nothing to sign up for yet/)).toBeInTheDocument()
+    expect(screen.queryByText('Enrol steps')).not.toBeInTheDocument()
   })
 
   it('has icons for Contact and Sign-up for a lead, and Chat notes only when there is something in them', async () => {

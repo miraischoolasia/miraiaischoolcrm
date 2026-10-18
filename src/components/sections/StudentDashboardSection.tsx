@@ -5,6 +5,8 @@ import { formatStudentAge, getStudentAge } from '../../lib/age'
 import { formatDate, getWorstFee, type StudentIssue } from '../../domain/studentStatus'
 import { studentFilterOptions } from '../../lib/constants'
 import type { Programme } from '../../lib/programmes'
+import type { Subject } from '../../lib/subjects'
+import { useAgeGroups } from '../../lib/ageGroups'
 import {
   buildStudentRows,
   filterStudentRows,
@@ -57,6 +59,8 @@ type StudentDashboardSectionProps = {
   // The school's programmes. A school with programmes of its own gets one tab for each, instead of the
   // HOA / Trial / Regular / Camp tabs.
   programmes?: Programme[]
+  // What classes study, for the subject filter.
+  subjects?: Subject[]
   // Opens the window that tags students with their current package.
   onOpenAssignPackages?: () => void
   // Admin only: opens the course packages settings.
@@ -101,7 +105,7 @@ export function StudentDashboardSection({
   trialBookings = NO_BOOKINGS,
   parents = NO_PARENTS,
   attendedStudentIds,
-  programmes,
+  subjects = NO_SUBJECTS,
   onOpenAssignPackages,
   onOpenPackages,
   onDeactivateStudent,
@@ -115,6 +119,8 @@ export function StudentDashboardSection({
   const [sort, setSort] = useState<StudentSort>('attention')
   const [page, setPage] = useState(0)
   const [classFilter, setClassFilter] = useState<number | null>(null)
+  const [gradeFilter, setGradeFilter] = useState<string | null>(null)
+  const [subjectFilter, setSubjectFilter] = useState<number | null>(null)
 
   const rows = useMemo(
     () =>
@@ -132,35 +138,28 @@ export function StudentDashboardSection({
     [students, packages, classrooms, schedules, teacherMap, trialBookings, parents, attendedStudentIds, todayString],
   )
 
-  // The tabs: the kinds of student, or one for each programme the school made (and one for the rest).
-  const tabs = useMemo(() => {
-    const own = (programmes ?? []).filter((programme) => programme.legacyKey === null && programme.isActive)
-    if (own.length === 0) {
-      return studentFilterOptions.map((option) => ({ ...option, count: (row: StudentRow) => option.key === 'all' || row.kind === option.key }))
-    }
-    const tabsOf: { key: FilterKey; label: string; count: (row: StudentRow) => boolean }[] = [
-      { key: 'all', label: 'All', count: () => true },
-      ...own.map((programme) => ({
-        key: `programme:${programme.id}` as FilterKey,
-        label: programme.name,
-        count: (row: StudentRow) => row.programmeId === programme.id,
-      })),
-    ]
-    if (rows.some((row) => row.programmeId === null)) {
-      tabsOf.push({ key: 'programme:none', label: 'Other', count: (row) => row.programmeId === null })
-    }
-    return tabsOf
-  }, [programmes, rows])
+  // The tabs: the kinds of student. Courses are found with the grade, subject and class filters.
+  const tabs = studentFilterOptions.map((option) => ({
+    ...option,
+    count: (row: StudentRow) => option.key === 'all' || row.kind === option.key,
+  }))
 
   const visibleRows = sortStudentRows(
-    filterStudentRows(rows, { type: activeFilter, followUpOnly, search: searchTerm, classroomId: classFilter }),
+    filterStudentRows(rows, {
+      type: activeFilter,
+      followUpOnly,
+      search: searchTerm,
+      classroomId: classFilter,
+      ageGroup: gradeFilter,
+      subjectId: subjectFilter,
+    }),
     sort,
   )
   // A big school's list is read PAGE_SIZE students at a time.
   const pageCount = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount - 1)
   const pageRows = visibleRows.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)
-  const filterKey = `${activeFilter}|${followUpOnly}|${searchTerm}|${sort}|${classFilter}`
+  const filterKey = `${activeFilter}|${followUpOnly}|${searchTerm}|${sort}|${classFilter}|${gradeFilter}|${subjectFilter}`
   const [lastFilterKey, setLastFilterKey] = useState(filterKey)
   if (filterKey !== lastFilterKey) {
     // A new search, tab or sort starts again on the first page.
@@ -172,7 +171,23 @@ export function StudentDashboardSection({
   const untaggedCount = students.filter(
     (student) => student.studentType === 'regular' && student.isActive && !student.packageId,
   ).length
-  const isFiltered = activeFilter !== 'all' || followUpOnly || searchTerm.trim() !== '' || classFilter !== null
+  const isFiltered =
+    activeFilter !== 'all' ||
+    followUpOnly ||
+    searchTerm.trim() !== '' ||
+    classFilter !== null ||
+    gradeFilter !== null ||
+    subjectFilter !== null
+  // The grades (age groups) and subjects the school's classes use, in the school's order.
+  const schoolAgeGroups = useAgeGroups()
+  const gradeOptions = useMemo(() => {
+    const used = new Set(classrooms.filter((classroom) => classroom.status === 'active').map((classroom) => classroom.ageGroup))
+    return [...schoolAgeGroups.filter((group) => used.has(group)), ...[...used].filter((group) => !schoolAgeGroups.includes(group))]
+  }, [classrooms, schoolAgeGroups])
+  const subjectOptions = useMemo(() => {
+    const used = new Set(classrooms.map((classroom) => classroom.subjectId ?? null))
+    return subjects.filter((subject) => used.has(subject.id)).sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
+  }, [classrooms, subjects])
   // The classes students are in, to pick one (a student can be in several).
   const classOptions = useMemo(
     () =>
@@ -355,6 +370,36 @@ export function StudentDashboardSection({
               className="w-full rounded-xl border border-slate-200 py-2 pl-9! pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#fc0c97] focus:outline-none"
             />
           </div>
+          {gradeOptions.length > 1 && (
+            <select
+              value={gradeFilter ?? ''}
+              onChange={(event) => setGradeFilter(event.target.value || null)}
+              aria-label="Grade"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-[#fc0c97] focus:outline-none"
+            >
+              <option value="">All grades</option>
+              {gradeOptions.map((group) => (
+                <option key={group} value={group}>
+                  {group}
+                </option>
+              ))}
+            </select>
+          )}
+          {subjectOptions.length > 0 && (
+            <select
+              value={subjectFilter ?? ''}
+              onChange={(event) => setSubjectFilter(event.target.value ? Number(event.target.value) : null)}
+              aria-label="Subject"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-[#fc0c97] focus:outline-none"
+            >
+              <option value="">All subjects</option>
+              {subjectOptions.map((subject) => (
+                <option key={subject.id} value={subject.id}>
+                  {subject.name}
+                </option>
+              ))}
+            </select>
+          )}
           {classOptions.length > 0 && (
             <select
               value={classFilter ?? ''}
@@ -797,3 +842,5 @@ function formatShortDate(dateString: string) {
 function formatMonth(dateString: string) {
   return formatDate(dateString).replace(/ \d{1,2},/, '')
 }
+
+const NO_SUBJECTS: Subject[] = []

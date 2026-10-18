@@ -138,7 +138,17 @@ export function filterStudentRows(
     followUpOnly,
     search,
     classroomId = null,
-  }: { type: FilterKey; followUpOnly: boolean; search: string; classroomId?: number | null },
+    ageGroup = null,
+    subjectId = null,
+  }: {
+    type: FilterKey
+    followUpOnly: boolean
+    search: string
+    classroomId?: number | null
+    // Any of the student's classes is of this grade / age group, or this subject.
+    ageGroup?: string | null
+    subjectId?: number | null
+  },
 ) {
   const query = search.trim().toLowerCase()
 
@@ -155,6 +165,12 @@ export function filterStudentRows(
       return false
     }
     if (classroomId !== null && !row.classrooms.some((entry) => entry.id === classroomId)) {
+      return false
+    }
+    if (ageGroup !== null && !row.classrooms.some((entry) => entry.ageGroup === ageGroup)) {
+      return false
+    }
+    if (subjectId !== null && !row.classrooms.some((entry) => entry.subjectId === subjectId)) {
       return false
     }
     if (!query) {

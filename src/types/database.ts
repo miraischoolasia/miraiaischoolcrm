@@ -2358,6 +2358,7 @@ export type Database = {
           is_active: boolean
           created_at: string
           updated_at: string
+          programme_id?: number | null
         }
         Insert: {
           name: string
@@ -3300,6 +3301,14 @@ export type Database = {
       set_classroom_teacher_library: {
         Args: { p_classroom_id: number; p_teacher_id: number; p_library_id: number | null }
         Returns: undefined
+      }
+      set_program_level_flow: {
+        Args: { p_name: string; p_programme_id: number | null }
+        Returns: undefined
+      }
+      classroom_enrol_flow: {
+        Args: { p_classroom_id: number }
+        Returns: number | null
       }
       set_classroom_teachers: {
         Args: { p_classroom_id: number; p_teacher_ids: number[] }

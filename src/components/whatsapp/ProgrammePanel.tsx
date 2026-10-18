@@ -27,6 +27,8 @@ type ProgrammePanelProps = {
   onWriteMessage: (text: string) => void
   // The student is the one writing: the message speaks to them.
   forStudent?: boolean
+  // The class the parent picked first (the class's flow is this programme): the class step offers only it.
+  presetClassroomId?: number
 }
 
 const FORM_CHOICE_KEY = 'whatsapp-enrol-form'
@@ -41,7 +43,7 @@ function readFormChoice() {
 // The steps of a programme the school made, in the order the school set them, with the message to the parent
 // written from the programme's own wording. The form, class, receipt and Zoom steps work as they do for HOA;
 // a step of the school's own is a tick with a note and a date.
-export function ProgrammePanel({ lead, crm, programme, userName, onWriteMessage, forStudent = false }: ProgrammePanelProps) {
+export function ProgrammePanel({ lead, crm, programme, userName, onWriteMessage, forStudent = false, presetClassroomId }: ProgrammePanelProps) {
   const enrolment = useLeadEnrolment(lead.id, userName)
   const own = useLeadProgrammeSteps(lead.id, userName)
   const canEdit = crm.canEditLeads
@@ -164,7 +166,19 @@ export function ProgrammePanel({ lead, crm, programme, userName, onWriteMessage,
               />
             )
           case 'class':
-            return <ClassStep key={step.id} number={number} title={step.title} lead={lead} crm={crm} programme={programme} bookings={bookings} enrolled={enrolled} />
+            return (
+              <ClassStep
+                key={step.id}
+                number={number}
+                title={step.title}
+                lead={lead}
+                crm={crm}
+                programme={programme}
+                bookings={bookings}
+                enrolled={enrolled}
+                presetClassroomId={presetClassroomId}
+              />
+            )
           case 'receipt':
             return <ReceiptStep key={step.id} number={number} title={step.title} enrolment={enrolment} canEdit={canEdit} />
           case 'zoom':
@@ -274,6 +288,7 @@ function ClassStep({
   programme,
   bookings,
   enrolled,
+  presetClassroomId,
 }: {
   number: number
   title: string
@@ -282,8 +297,9 @@ function ClassStep({
   programme: Programme
   bookings: WhatsAppCrm['trialBookings']
   enrolled: Student[]
+  presetClassroomId?: number
 }) {
-  const slots = useMemo(() => crm.listProgrammeSlots?.(programme.id) ?? [], [crm, programme.id])
+  const slots = useMemo(() => crm.listProgrammeSlots?.(programme.id, presetClassroomId) ?? [], [crm, programme.id, presetClassroomId])
   const [childIndex, setChildIndex] = useState(0)
   const [slotKey, setSlotKey] = useState<string | null>(null)
   const [showAll, setShowAll] = useState(false)
@@ -316,7 +332,17 @@ function ClassStep({
   }
 
   if (programme.outcome === 'enrol') {
-    return <EnrolClassStep number={number} title={title} lead={lead} crm={crm} programme={programme} enrolled={enrolled} />
+    return (
+      <EnrolClassStep
+        number={number}
+        title={title}
+        lead={lead}
+        crm={crm}
+        programme={programme}
+        enrolled={enrolled}
+        presetClassroomId={presetClassroomId}
+      />
+    )
   }
 
   return (
@@ -417,6 +443,7 @@ function EnrolClassStep({
   crm,
   programme,
   enrolled,
+  presetClassroomId,
 }: {
   number: number
   title: string
@@ -424,10 +451,17 @@ function EnrolClassStep({
   crm: WhatsAppCrm
   programme: Programme
   enrolled: Student[]
+  presetClassroomId?: number
 }) {
   const classes = useMemo(
-    () => crm.classrooms.filter((classroom) => classroom.programmeId === programme.id && classroom.status === 'active'),
-    [crm.classrooms, programme.id],
+    () =>
+      crm.classrooms.filter(
+        (classroom) =>
+          classroom.programmeId === programme.id &&
+          classroom.status === 'active' &&
+          (presetClassroomId === undefined || classroom.id === presetClassroomId),
+      ),
+    [crm.classrooms, programme.id, presetClassroomId],
   )
   const packages = useMemo(() => getOfferedPackages(crm.packages), [crm.packages])
   const [childIndex, setChildIndex] = useState(0)

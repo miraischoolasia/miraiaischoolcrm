@@ -11,8 +11,10 @@ type ClassroomModalProps = {
   editingClassroom: Classroom | null
   assignableTeachers: Teacher[]
   formState: ClassroomFormState
-  // The school's programmes (courses); a class can belong to one.
+  // The school's enrolment flows (programmes); a class follows its level's flow unless it names its own.
   programmes?: Programme[]
+  // The flow each class level follows, by level name (null: none).
+  levelFlowIds?: Map<string, number | null>
   // The school's subjects; the class's one picks the questions that fit it.
   subjects?: Subject[]
   saveError: string | null
@@ -31,6 +33,7 @@ export function ClassroomModal({
   assignableTeachers,
   formState,
   programmes = [],
+  levelFlowIds,
   subjects = [],
   saveError,
   isSaving,
@@ -103,13 +106,19 @@ export function ClassroomModal({
         <div className="grid gap-5 sm:grid-cols-2">
           {programmes.length > 0 && (
             <label className="space-y-2 sm:col-span-2">
-              <span className="text-sm font-semibold text-slate-700">Programme</span>
+              <span className="text-sm font-semibold text-slate-700">Enrolment flow</span>
               <select
                 value={formState.programmeId}
                 onChange={(event) => chooseProgramme(event.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900"
               >
-                <option value="">No programme</option>
+                <option value="">
+                  {levelFlowIds
+                    ? `Follow ${formState.programLevel || 'the class level'} (${
+                        programmes.find((entry) => entry.id === levelFlowIds.get(formState.programLevel))?.name ?? 'no flow'
+                      })`
+                    : 'No flow'}
+                </option>
                 {programmes.map((entry) => (
                   <option key={entry.id} value={entry.id}>
                     {entry.name}
@@ -122,7 +131,7 @@ export function ClassroomModal({
                   ? programme.outcome === 'booking'
                     ? 'The Inbox offers this class to parents of this programme to keep a place (a Trial Class).'
                     : 'The Inbox offers this class to parents of this programme to join as a student (a Regular Class).'
-                  : 'The programme this class is offered in when a parent is signed up in the Inbox.'}
+                  : 'The steps the team follows when a parent signs up for this class in the Inbox.'}
               </p>
             </label>
           )}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Eye, EyeSlash, Plus, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { cn } from '../../lib/cn'
@@ -28,7 +28,7 @@ export type AttendanceStatusDraft = Pick<AttendanceStatusOption, 'label' | 'atte
 
 type StatusChanges = Partial<AttendanceStatusDraft & Pick<AttendanceStatusOption, 'isActive'>>
 
-type Tab = 'criteria' | 'attendance' | 'rewards' | 'subjects' | 'ai' | 'live' | 'app' | 'zoom' | 'recordings'
+type Tab = 'criteria' | 'attendance' | 'rewards' | 'subjects' | 'flows' | 'ai' | 'live' | 'app' | 'zoom' | 'recordings'
 
 type ClassSettingsModalProps = {
   criteria: ReviewCriterion[]
@@ -57,6 +57,8 @@ type ClassSettingsModalProps = {
   programLevels: AgeGroupOption[]
   onSaveProgramLevel: (level: AgeGroupOption | null, changes: Partial<AgeGroupOption>) => Promise<string | null>
   onSaveZoomOptions: (options: ZoomMeetingOptions) => Promise<string | null>
+  // The enrolment flows: which flow each kind of class uses, and the flows themselves.
+  enrolFlows?: ReactNode
 }
 
 const inputClass =
@@ -93,6 +95,7 @@ export function ClassSettingsModal({
   programLevels,
   onSaveProgramLevel,
   onSaveZoomOptions,
+  enrolFlows,
 }: ClassSettingsModalProps) {
   const [tab, setTab] = useState<Tab>('criteria')
   const [error, setError] = useState<string | null>(null)
@@ -131,6 +134,7 @@ export function ClassSettingsModal({
               ['attendance', 'Attendance'],
               ['rewards', 'Rewards'],
               ['subjects', 'Class options'],
+              ['flows', 'Enrolment flows'],
               ['ai', 'AI analysis'],
               ['live', 'Live questions'],
               ['app', 'Student app'],
@@ -248,6 +252,8 @@ export function ClassSettingsModal({
             />
           </>
         )}
+
+        {tab === 'flows' && <div className="space-y-6">{enrolFlows}</div>}
 
         {tab === 'ai' && <AiReportSettings />}
 

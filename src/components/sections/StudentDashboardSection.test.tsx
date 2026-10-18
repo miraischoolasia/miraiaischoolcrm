@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { StudentDashboardSection } from './StudentDashboardSection'
 import type { Classroom, Package, Schedule, Student, Teacher } from '../../types/domain'
 import type { StudentParent } from '../../lib/studentParents'
-import type { Programme } from '../../lib/programmes'
 
 const student: Student = {
   id: 1,
@@ -158,34 +157,31 @@ describe('StudentDashboardSection', () => {
     expect(shown()).toEqual(['Six Months', 'Not Tagged'])
   })
 
-  describe('a school with programmes of its own', () => {
-    const programme = (id: number, name: string) =>
-      ({ id, name, legacyKey: null, isActive: true, outcome: 'enrol', steps: [] }) as unknown as Programme
-    const programmes = [programme(5, 'F1 SEJ'), programme(6, 'F2 SEJ')]
-    const room = (id: number, programmeId: number | null) => ({ id, name: `Room ${id}`, programmeId }) as unknown as Classroom
-    const classrooms = [room(1, 5), room(2, 6)]
+  describe('finding a course by grade and subject', () => {
+    const room = (id: number, name: string, ageGroup: string, subjectId: number) =>
+      ({ id, name, ageGroup, subjectId, status: 'active', category: 'regular' }) as unknown as Classroom
+    const classrooms = [room(1, 'MM Form 1', 'Form 1', 1), room(2, 'SCI Form 1', 'Form 1', 2), room(3, 'MM Form 2', 'Form 2', 1)]
+    const subjects = [
+      { id: 1, name: 'MM', sortOrder: 10, isActive: true },
+      { id: 2, name: 'SCI', sortOrder: 20, isActive: true },
+    ]
+    const inClasses = (ids: number[]) => ids.map((id) => ({ classroomId: id, startDate: null, endDate: null }))
     const kids: Student[] = [
-      { ...student, id: 21, name: 'In F1', classroomId: 1 },
-      { ...student, id: 22, name: 'In F2', classroomId: 2 },
-      { ...student, id: 23, name: 'No Class' },
+      { ...student, id: 21, name: 'Amy', classroomId: 1, classPeriods: inClasses([1, 2]) },
+      { ...student, id: 22, name: 'Ben', classroomId: 3, classPeriods: inClasses([3]) },
+      { ...student, id: 23, name: 'Cal', classroomId: 2, classPeriods: inClasses([2]) },
     ]
 
-    it('has one tab for each programme instead of HOA / Trial / Regular / Camp', () => {
-      renderSection(kids, { programmes, classrooms })
+    it('keeps the HOA / Trial / Regular / Camp tabs and filters by grade, then subject', async () => {
+      renderSection(kids, { classrooms, subjects })
+      expect(screen.getByRole('button', { name: /^Regular/ })).toBeInTheDocument()
 
-      const tabs = screen.getAllByRole('button', { pressed: false }).map((entry) => entry.textContent)
-      expect(tabs).toEqual(expect.arrayContaining(['F1 SEJ1', 'F2 SEJ1', 'Other1']))
-      expect(screen.queryByRole('button', { name: /^HOA/ })).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: /^Camp/ })).not.toBeInTheDocument()
-    })
-
-    it('lists the students of the programme picked', () => {
-      renderSection(kids, { programmes, classrooms, activeFilter: 'programme:6' })
-
-      expect(shown()).toEqual(['In F2'])
-      cleanup()
-      renderSection(kids, { programmes, classrooms, activeFilter: 'programme:none' })
-      expect(shown()).toEqual(['No Class'])
+      await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Grade' }), 'Form 1')
+      expect(shown().sort()).toEqual(['Amy', 'Cal'])
+      await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Subject' }), '1')
+      expect(shown()).toEqual(['Amy'])
+      await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Grade' }), '')
+      expect(shown().sort()).toEqual(['Amy', 'Ben'])
     })
   })
 

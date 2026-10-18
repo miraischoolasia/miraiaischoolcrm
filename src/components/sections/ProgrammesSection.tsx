@@ -71,8 +71,9 @@ export function ProgrammesView({ canEdit, state }: ProgrammesSectionProps & { st
   return (
     <section className="space-y-4">
       <p className="max-w-2xl text-sm text-slate-600">
-        A programme is a course you sign parents up for. Each one has its own steps in the Inbox panel, the message
-        written to the parent, and the classes that belong to it.
+        An enrolment flow is what the team does in the Inbox when a parent signs up for a class: the steps (the
+        form, the receipt, picking the class, Zoom), and the message to the parent. Above, pick which flow each kind of
+        class uses; a class can also use its own (Edit Class).
       </p>
       {state.error && (
         <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -104,11 +105,11 @@ export function ProgrammesView({ canEdit, state }: ProgrammesSectionProps & { st
         <p className="py-10 text-center text-sm text-slate-500">Loading…</p>
       ) : state.programmes.length === 0 ? (state.error ? null : (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
-          <p className="text-sm font-semibold text-slate-800">No programme yet</p>
+          <p className="text-sm font-semibold text-slate-800">No flow yet</p>
           <p className="mt-1 text-sm text-slate-500">
             {canEdit
-              ? 'Add the first one above, for example "Maths tuition". Then set its steps and the message to the parent.'
-              : 'An admin adds the programmes.'}
+              ? 'Add the first one above, for example "Regular sign-up". Then set its steps and the message to the parent.'
+              : 'An admin adds the flows.'}
           </p>
         </div>
       )) : (
@@ -120,13 +121,13 @@ export function ProgrammesView({ canEdit, state }: ProgrammesSectionProps & { st
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search a programme or category"
+              placeholder="Search a flow or category"
               aria-label="Search programmes"
               className="min-w-0 flex-1 bg-transparent text-slate-900 outline-none placeholder:text-slate-400"
             />
           </label>
         )}
-        {groups.length === 0 && <p className="py-6 text-center text-sm text-slate-500">No programme matches.</p>}
+        {groups.length === 0 && <p className="py-6 text-center text-sm text-slate-500">No flow matches.</p>}
         {groups.map((group) => (
         <div key={group.label || 'all'} className="space-y-2">
           {group.label && (
@@ -212,11 +213,11 @@ function NewProgramme({ full, onAdd }: { full: boolean; onAdd: (name: string) =>
       className="flex flex-wrap items-start gap-2"
     >
       <label className="min-w-[220px] flex-1">
-        <span className="sr-only">Name of the new programme</span>
+        <span className="sr-only">Name of the new flow</span>
         <input
           value={name}
           maxLength={MAX_NAME}
-          placeholder="Name of a new programme, e.g. Maths tuition"
+          placeholder="Name of a new flow, e.g. Regular sign-up"
           onChange={(event) => {
             setName(event.target.value)
             setProblem(null)
@@ -231,7 +232,7 @@ function NewProgramme({ full, onAdd }: { full: boolean; onAdd: (name: string) =>
       </label>
       <button type="submit" disabled={saving || full} className={`${primaryButton} flex items-center gap-1`}>
         <Plus size={14} weight="bold" aria-hidden="true" />
-        {saving ? 'Adding…' : 'Add programme'}
+        {saving ? 'Adding…' : 'Add flow'}
       </button>
     </form>
   )
@@ -377,7 +378,7 @@ function ProgrammeEditor({
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-slate-800">On</p>
-            <p className="text-xs text-slate-500">A programme that is off is not offered in the Inbox. Nothing already saved is lost.</p>
+            <p className="text-xs text-slate-500">A flow that is off is not used in the Inbox. Nothing already saved is lost.</p>
           </div>
           <FlowSwitch
             checked={isActive}

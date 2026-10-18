@@ -148,18 +148,18 @@ describe('ClassroomModal programme', () => {
     return onFieldChange
   }
 
-  it('has no Programme choice when the school has no programme', () => {
+  it('has no enrolment flow choice when the school has no flow', () => {
     renderWith([], '')
-    expect(screen.queryByRole('combobox', { name: /Programme/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: /Enrolment flow/ })).not.toBeInTheDocument()
     expect(screen.getByLabelText('Age Group')).toBeInTheDocument()
   })
 
   it('makes the class a regular class for a programme that enrols, and a trial class for one that keeps a place', async () => {
     const onFieldChange = renderWith([maths, trialCourse], '')
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /Programme/ }), '5')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /Enrolment flow/ }), '5')
     expect(onFieldChange).toHaveBeenCalledWith('programmeId', '5')
     expect(onFieldChange).toHaveBeenCalledWith('category', 'regular')
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /Programme/ }), '6')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /Enrolment flow/ }), '6')
     expect(onFieldChange).toHaveBeenCalledWith('category', 'trial')
   })
 

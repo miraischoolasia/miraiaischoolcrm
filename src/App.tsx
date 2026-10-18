@@ -32,7 +32,6 @@ import {
   Package as PackageIcon,
   FilmStrip,
   Brain,
-  BookBookmark,
   Lightning,
   WarningCircle,
   WhatsappLogo,
@@ -211,6 +210,7 @@ import { useLeadStages } from './hooks/useLeadStages'
 import { PackagesModal, type PackageDraft } from './components/modals/PackagesModal'
 import { QuestionBankSection } from './components/sections/QuestionBankSection'
 import { ClassVideosSection } from './components/sections/ClassVideosSection'
+import { EnrolFlowsSettings } from './components/EnrolFlowsSettings'
 import { MobileNav, SideNav, type NavEntry, type NavGroupKey } from './components/AppNav'
 import { fetchSubjects, saveSubject, type Subject } from './lib/subjects'
 import {
@@ -815,7 +815,6 @@ function App() {
     // A class's videos: whoever sees the classes (each teacher manages their own classes' videos).
     if (isTeacherAccount || can('classrooms')) sections.push('videos')
     // The courses the school signs parents up for: an admin makes them, so the page is the admin's.
-    if (isAdmin) sections.push('programmes')
     if (can('students')) sections.push('students')
     if (isAdmin) sections.push('teachers')
     if (can('activity')) sections.push('activity')
@@ -1862,7 +1861,6 @@ function App() {
         { key: 'videos', label: 'Class Videos', icon: FilmStrip, group: 'teaching' },
         { key: 'questions', label: 'Question Bank', icon: Exam, group: 'teaching' },
         { key: 'students', label: 'Student List', icon: GraduationCap, group: 'students' },
-        { key: 'programmes', label: 'Programmes', icon: BookBookmark, group: 'students' },
         { key: 'teachers', label: 'My Team', icon: IdentificationBadge, group: 'admin' },
         { key: 'activity', label: 'Activity Log', icon: ClockCounterClockwise, group: 'admin' },
       ] satisfies { key: AppSection; label: string; icon: Icon; group?: NavGroupKey }[]
@@ -4244,10 +4242,18 @@ function App() {
     return null
   }
 
+  // Each class with the enrolment flow its sign-ups follow: its own, else its level's.
+  const levelFlows = new Map(programLevels.map((level) => [level.name, level.flowId ?? null]))
+  const flowClassrooms = classrooms.map((classroom) =>
+    classroom.programmeId ? classroom : { ...classroom, programmeId: levelFlows.get(classroom.programLevel) ?? null },
+  )
+  const flowClassroomMap = new Map(flowClassrooms.map((classroom) => [classroom.id, classroom]))
+
   const whatsAppCrm: WhatsAppCrm = {
     leads,
     students,
-    classrooms,
+    classrooms: flowClassrooms,
+    subjects,
     packages,
     trialBookings,
     listHoaSlots: () => {
@@ -4263,11 +4269,11 @@ function App() {
       })
     },
     programmes: programmes.programmes,
-    listProgrammeSlots: (programmeId: number) => {
+    listProgrammeSlots: (programmeId: number, classroomId?: number) => {
       const now = new Date()
       return upcomingHoaSlots({
-        schedules: schedules,
-        classroomMap,
+        schedules: classroomId === undefined ? schedules : schedules.filter((schedule) => schedule.classroomId === classroomId),
+        classroomMap: flowClassroomMap,
         teachers,
         exceptions: scheduleExceptions,
         bookings: trialBookings,
@@ -4278,7 +4284,7 @@ function App() {
     },
     bookingProgrammeId: (booking: TrialBooking) => {
       const schedule = schedules.find((entry) => entry.id === booking.scheduleId)
-      return classroomMap.get(schedule?.classroomId ?? -1)?.programmeId ?? null
+      return flowClassroomMap.get(schedule?.classroomId ?? -1)?.programmeId ?? null
     },
     classesOfStudent: (student: Student) =>
       classesOfStudent({ student, classrooms, schedules, teachers, trialBookings, today: todayString }),
@@ -6749,6 +6755,7 @@ function App() {
                 parents={studentParents}
                 attendedStudentIds={attendedStudentIds}
                 programmes={programmes.programmes}
+                subjects={subjects}
                 onOpenAssignPackages={
                   can('students', 'edit')
                     ? () => {
@@ -6968,6 +6975,7 @@ function App() {
           assignableTeachers={assignableTeachers}
           formState={classroomFormState}
           programmes={programmes.programmes}
+          levelFlowIds={new Map(programLevels.map((level) => [level.name, level.flowId ?? null]))}
           subjects={subjects}
           saveError={classroomSaveError}
           isSaving={isSavingClassroom}
@@ -7102,6 +7110,19 @@ function App() {
             return failure
           }}
           onSaveZoomOptions={saveZoomOptions}
+          enrolFlows={
+            <>
+              <EnrolFlowsSettings
+                levels={programLevels}
+                programmes={programmes.programmes}
+                onChanged={async () => {
+                  const next = await loadProgramLevels()
+                  if (next) setProgramLevels(next)
+                }}
+              />
+              <ProgrammesSection canEdit={isAdmin} state={programmes} />
+            </>
+          }
         />
       )}
 

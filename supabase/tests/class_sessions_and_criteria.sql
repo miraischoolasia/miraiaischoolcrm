@@ -1315,4 +1315,20 @@ update public.classrooms set teacher_id = 9003 where id = 9102;
 select pg_temp.ok((select array_agg(teacher_id order by teacher_id) from public.classroom_teachers where classroom_id = 9102) = array[9003]::bigint[],
   'a new main teacher replaces the old one');
 
+-- Enrolment flows by class level (20261023300000) -------------------------------
+reset role;
+with x as (insert into public.programmes (name, outcome) values ('Regular sign-up', 'enrol') returning id) insert into lq_ids select 'flow', id from x;
+with x as (insert into public.programmes (name, outcome) values ('Exam class sign-up', 'enrol') returning id) insert into lq_ids select 'flow2', id from x;
+select pg_temp.ok(public.classroom_enrol_flow(9101) is null, 'a class with no flow of its own or of its level has none');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select pg_temp.fails(format('select public.set_program_level_flow(%L, %s)', (select program_level from public.classrooms where id = 9101), (select id from lq_ids where name = 'flow')), 'Only admin', 'a teacher cannot set a level''s flow');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select public.set_program_level_flow((select program_level from public.classrooms where id = 9101), (select id from lq_ids where name = 'flow'));
+select pg_temp.ok(public.classroom_enrol_flow(9101) = (select id from lq_ids where name = 'flow'), 'a class follows its level''s flow');
+select pg_temp.fails($$select public.set_program_level_flow('No such level', null)$$, 'not found', 'only a level that exists');
+reset role;
+update public.classrooms set programme_id = (select id from lq_ids where name = 'flow2') where id = 9101;
+select pg_temp.ok(public.classroom_enrol_flow(9101) = (select id from lq_ids where name = 'flow2'), 'a class''s own flow comes before its level''s');
+
 rollback;
