@@ -71,10 +71,12 @@ export type Home = {
 }
 
 // Login names become an internal email; the school never sees or sends mail.
-// A login name, or the e-mail a student used before (the old recordings
-// site): "ali@gmail.com" becomes the login "ali_gmail.com".
+// A login name such as the student code "S1234567" (any case), or the
+// address used on the old recordings site ("s1234567@eduhero-lms.app"),
+// whose part before the @ is the code.
 export function loginEmail(username: string) {
-  return `${username.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '_')}@portal.internal`
+  const name = username.trim().toLowerCase().split('@')[0]
+  return `${name.replace(/[^a-z0-9._-]/g, '_')}@portal.internal`
 }
 
 export const defaultBranding: Branding = { schoolName: '', accentColor: '#fc0c97' }

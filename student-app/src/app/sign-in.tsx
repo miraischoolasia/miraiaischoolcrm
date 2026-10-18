@@ -33,7 +33,7 @@ export default function SignIn() {
         </View>
         <Card style={{ gap: 12 }}>
           <View style={{ gap: 6 }}>
-            <Body>Login name or e-mail</Body>
+            <Body>Login name</Body>
             <TextInput
               value={username}
               onChangeText={setUsername}
@@ -41,7 +41,7 @@ export default function SignIn() {
               autoCorrect={false}
               autoComplete="username"
               keyboardType="email-address"
-              placeholder="e.g. ethan.lim"
+              placeholder="Your login name"
               accessibilityLabel="Login name"
               style={styles.input}
             />
