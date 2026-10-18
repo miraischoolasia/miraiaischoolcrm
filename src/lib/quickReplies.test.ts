@@ -3,6 +3,7 @@ import {
   checkQuickReplyFile,
   fillVariables,
   mediaKind,
+  mineFirst,
   moveItem,
   parseMedia,
   parseSteps,
@@ -153,5 +154,13 @@ describe('moveItem', () => {
     const list = ['a', 'b']
     expect(moveItem(list, 1, 1)).toBe(list)
     expect(moveItem(list, 0, 5)).toBe(list)
+  })
+})
+
+describe('mineFirst', () => {
+  it('puts the own replies of the person before those of the team, each in its own order', () => {
+    const reply = (id: number, ownerId: string | null) => ({ id, title: `r${id}`, steps: [], isActive: true, ownerId })
+    const list = [reply(1, null), reply(2, 'me'), reply(3, null), reply(4, 'me')]
+    expect(mineFirst(list).map((item) => item.id)).toEqual([2, 4, 1, 3])
   })
 })

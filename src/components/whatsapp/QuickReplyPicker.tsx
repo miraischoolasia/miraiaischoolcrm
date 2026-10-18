@@ -9,7 +9,6 @@ type QuickReplyPickerProps = {
   error: string | null
   onPick: (reply: QuickReply) => void
   onClose: () => void
-  // Only for people who may edit them.
   onManage?: () => void
 }
 
@@ -34,7 +33,7 @@ function MediaBadges({ reply }: { reply: QuickReply }) {
   )
 }
 
-// A search box over the team's quick replies, opened from the bolt button.
+// A search box over the person's own and the team's quick replies, opened from the bolt button.
 export function QuickReplyPicker({ replies, isLoading, error, onPick, onClose, onManage }: QuickReplyPickerProps) {
   const [query, setQuery] = useState('')
   const [highlighted, setHighlighted] = useState(0)
@@ -106,6 +105,11 @@ export function QuickReplyPicker({ replies, isLoading, error, onPick, onClose, o
             >
               <span className="flex items-center text-sm font-medium text-slate-900">
                 <span className="truncate">{reply.title}</span>
+                {reply.ownerId && (
+                  <span className="ml-2 shrink-0 rounded-full bg-pink-100 px-1.5 py-0.5 text-[10px] font-semibold text-[#be185d]">
+                    Mine
+                  </span>
+                )}
                 <MediaBadges reply={reply} />
               </span>
               {replyTexts(reply)[0] && (

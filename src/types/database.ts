@@ -573,6 +573,7 @@ export type Database = {
           steps: Json
           sort_order: number
           is_active: boolean
+          owner_id: string | null
           created_at: string
           updated_at: string
         }
@@ -584,6 +585,7 @@ export type Database = {
           steps?: Json
           sort_order?: number
           is_active?: boolean
+          owner_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -595,6 +597,7 @@ export type Database = {
           steps?: Json
           sort_order?: number
           is_active?: boolean
+          owner_id?: string | null
           created_at?: string
           updated_at?: string
         }

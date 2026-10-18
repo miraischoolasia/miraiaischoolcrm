@@ -25,10 +25,18 @@ export function quickReplyErrorMessage(error: unknown, fallback: string) {
   return message || fallback
 }
 
+async function currentUserId() {
+  const { data } = await requireSupabase().auth.getUser()
+  if (!data.user) {
+    throw new Error('Sign in again to save quick replies.')
+  }
+  return data.user.id
+}
+
 export async function fetchQuickReplies(): Promise<QuickReply[]> {
   const { data, error } = await requireSupabase()
     .from('quick_replies')
-    .select('id, title, steps, is_active')
+    .select('id, title, steps, is_active, owner_id')
     .order('sort_order', { ascending: true })
     .order('title', { ascending: true })
 
@@ -40,6 +48,7 @@ export async function fetchQuickReplies(): Promise<QuickReply[]> {
     title: row.title,
     steps: parseSteps(row.steps),
     isActive: row.is_active,
+    ownerId: row.owner_id ?? null,
   }))
 }
 
@@ -53,6 +62,8 @@ export type QuickReplyDraft = {
   title: string
   steps: QuickReplyDraftStep[]
   isActive: boolean
+  // A new reply that only its writer sees. Left out for the team's replies; an existing reply keeps its owner.
+  personal?: boolean
 }
 
 async function removeFiles(paths: string[]) {
@@ -66,6 +77,8 @@ async function removeFiles(paths: string[]) {
 export async function saveQuickReply(existing: QuickReply | null, draft: QuickReplyDraft) {
   const client = requireSupabase()
   const uploaded: QuickReplyMedia[] = []
+  // A personal reply keeps its files under the person's own folder, which nobody else can read.
+  const ownerId = existing ? (existing.ownerId ?? null) : draft.personal ? await currentUserId() : null
 
   try {
     const steps: QuickReplyStep[] = []
@@ -77,7 +90,7 @@ export async function saveQuickReply(existing: QuickReply | null, draft: QuickRe
       } else {
         const { file } = step
         const extension = file.name.includes('.') ? file.name.split('.').pop() : 'bin'
-        const path = `${crypto.randomUUID()}.${extension}`
+        const path = `${ownerId ? `u/${ownerId}/` : ''}${crypto.randomUUID()}.${extension}`
         const { error } = await client.storage.from(BUCKET).upload(path, file, { contentType: file.type })
         if (error) {
           throw error
@@ -95,13 +108,14 @@ export async function saveQuickReply(existing: QuickReply | null, draft: QuickRe
         throw error
       }
     } else {
-      // A new reply goes to the end of the list.
-      const { data: last } = await client
-        .from('quick_replies')
-        .select('sort_order')
+      // A new reply goes to the end of its own list (the person's, or the team's).
+      const scope = client.from('quick_replies').select('sort_order')
+      const { data: last } = await (ownerId ? scope.eq('owner_id', ownerId) : scope.is('owner_id', null))
         .order('sort_order', { ascending: false })
         .limit(1)
-      const { error } = await client.from('quick_replies').insert({ ...row, sort_order: (last?.[0]?.sort_order ?? 0) + 10 })
+      const { error } = await client
+        .from('quick_replies')
+        .insert({ ...row, owner_id: ownerId, sort_order: (last?.[0]?.sort_order ?? 0) + 10 })
       if (error) {
         throw error
       }
@@ -121,7 +135,7 @@ export async function saveQuickReply(existing: QuickReply | null, draft: QuickRe
   }
 }
 
-// Saves the order the team dragged the quick replies into, for everyone.
+// Saves the order the quick replies were dragged into (the team's for everyone, a person's own for them).
 export async function saveQuickReplyOrder(ids: number[]) {
   const client = requireSupabase()
   const results = await Promise.all(

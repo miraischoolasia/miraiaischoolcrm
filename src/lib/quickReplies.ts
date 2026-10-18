@@ -15,6 +15,8 @@ export type QuickReply = {
   // In the order they are sent.
   steps: QuickReplyStep[]
   isActive: boolean
+  // The person it belongs to: only they see it. Empty for the team's quick replies.
+  ownerId?: string | null
 }
 
 export const MAX_QUICK_REPLY_STEPS = 5
@@ -66,6 +68,11 @@ export function fillVariables(text: string, values: VariableValues) {
 // The {tags} still in the text, so a message is not sent with one in it.
 export function unfilledVariables(text: string) {
   return [...new Set((text.match(VARIABLE_PATTERN) ?? []).map((match) => match.toLowerCase()))]
+}
+
+// A person's own quick replies first, then the team's, each keeping the order it was dragged into.
+export function mineFirst(replies: QuickReply[]) {
+  return [...replies.filter((reply) => reply.ownerId), ...replies.filter((reply) => !reply.ownerId)]
 }
 
 // Active replies matching what was typed, titles that start with it first.

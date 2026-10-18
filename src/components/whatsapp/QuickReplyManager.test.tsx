@@ -15,7 +15,9 @@ const existing: QuickReply = {
 }
 const second: QuickReply = { id: 5, title: 'Fees', steps: [{ kind: 'text', text: 'RM100' }], isActive: true }
 
-function setup(replies: QuickReply[] = [existing]) {
+const mine: QuickReply = { id: 9, title: 'My hello', steps: [{ kind: 'text', text: 'Hi from me' }], isActive: true, ownerId: 'me' }
+
+function setup(replies: QuickReply[] = [existing], canEditTeam = true) {
   const onSave = vi.fn().mockResolvedValue(null)
   const onRemove = vi.fn().mockResolvedValue(null)
   const onReorder = vi.fn().mockResolvedValue(null)
@@ -24,6 +26,7 @@ function setup(replies: QuickReply[] = [existing]) {
       replies={replies}
       isLoading={false}
       loadError={null}
+      canEditTeam={canEditTeam}
       onClose={vi.fn()}
       onSave={onSave}
       onRemove={onRemove}
@@ -201,5 +204,51 @@ describe('QuickReplyManager', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
 
     await waitFor(() => expect(onRemove).toHaveBeenCalledWith(existing))
+  })
+
+  it('keeps the own replies of the person on their own tab, apart from the team ones', async () => {
+    setup([existing, mine])
+
+    expect(screen.getByText('Trial details')).toBeInTheDocument()
+    expect(screen.queryByText('My hello')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Mine' }))
+    expect(screen.getByText('My hello')).toBeInTheDocument()
+    expect(screen.queryByText('Trial details')).not.toBeInTheDocument()
+  })
+
+  it('saves a reply added on the Mine tab as a personal one', async () => {
+    const { onSave } = setup([existing, mine])
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Mine' }))
+    await userEvent.click(screen.getByRole('button', { name: /New quick reply/ }))
+    expect(screen.getByText('Only you see this. It is what you search for.')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText(/^Title/), 'Hello')
+    await userEvent.type(screen.getByLabelText('Row 1 text'), 'Hi')
+    await userEvent.click(screen.getByRole('button', { name: 'Save quick reply' }))
+
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(null, {
+        title: 'Hello',
+        steps: [{ kind: 'text', text: 'Hi' }],
+        isActive: true,
+        personal: true,
+      }),
+    )
+  })
+
+  it('lets someone who cannot edit leads change their own replies but only read the team ones', async () => {
+    setup([existing, mine], false)
+
+    // They start on their own list, where they can add and change.
+    expect(screen.getByRole('tab', { name: 'Mine' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('button', { name: 'Edit My hello' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /New quick reply/ })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Team' }))
+    expect(screen.getByText('Trial details')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit Trial details' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Delete Trial details' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /New quick reply/ })).not.toBeInTheDocument()
   })
 })

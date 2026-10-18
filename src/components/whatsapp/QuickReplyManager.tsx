@@ -30,6 +30,8 @@ type QuickReplyManagerProps = {
   replies: QuickReply[]
   isLoading: boolean
   loadError: string | null
+  // Whether the person may change the team's quick replies; their own they can always change.
+  canEditTeam?: boolean
   onClose: () => void
   // Each returns an error message, or null when it worked.
   onSave: (existing: QuickReply | null, draft: QuickReplyDraft) => Promise<string | null>
@@ -64,13 +66,17 @@ function rowsOf(reply: QuickReply | null): Row[] {
 
 function ReplyForm({
   existing,
+  personal,
   onCancel,
   onSave,
 }: {
   existing: QuickReply | null
+  // A new reply only its writer sees (an existing one keeps its owner).
+  personal: boolean
   onCancel: () => void
   onSave: QuickReplyManagerProps['onSave']
 }) {
+  const isMine = existing ? Boolean(existing.ownerId) : personal
   const [title, setTitle] = useState(existing?.title ?? '')
   const [rows, setRows] = useState<Row[]>(() => rowsOf(existing))
   const [isActive, setIsActive] = useState(existing?.isActive ?? true)
@@ -142,7 +148,7 @@ function ReplyForm({
     }
     setIsSaving(true)
     setError(null)
-    const problem = await onSave(existing, { title, steps, isActive })
+    const problem = await onSave(existing, { title, steps, isActive, ...(!existing && personal ? { personal: true } : {}) })
     setIsSaving(false)
     if (problem) {
       setError(problem)
@@ -163,7 +169,9 @@ function ReplyForm({
             placeholder="e.g. Trial class details"
             className={fieldClass}
           />
-          <span className="mt-1 block text-xs text-slate-500">Only your team sees this. It is what you search for.</span>
+          <span className="mt-1 block text-xs text-slate-500">
+            {isMine ? 'Only you see this. It is what you search for.' : 'Only your team sees this. It is what you search for.'}
+          </span>
         </label>
 
         <div className="space-y-3">
@@ -334,7 +342,20 @@ function ReplyForm({
 }
 
 // Where the team adds, changes, removes and orders quick replies.
-export function QuickReplyManager({ replies, isLoading, loadError, onClose, onSave, onRemove, onReorder }: QuickReplyManagerProps) {
+export function QuickReplyManager({
+  replies: allReplies,
+  isLoading,
+  loadError,
+  canEditTeam = true,
+  onClose,
+  onSave,
+  onRemove,
+  onReorder,
+}: QuickReplyManagerProps) {
+  // Whoever may change the team's list starts there; everyone else starts on their own.
+  const [tab, setTab] = useState<'mine' | 'team'>(canEditTeam ? 'team' : 'mine')
+  const replies = allReplies.filter((reply) => (tab === 'mine' ? Boolean(reply.ownerId) : !reply.ownerId))
+  const canChange = tab === 'mine' || canEditTeam
   const [editing, setEditing] = useState<QuickReply | 'new' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState<number | null>(null)
@@ -372,7 +393,9 @@ export function QuickReplyManager({ replies, isLoading, loadError, onClose, onSa
             </h2>
             {editing === null && (
               <p className="mt-2 text-sm text-slate-500">
-                Messages the team can send in two clicks, with photos or videos if you like. Drag them into the order you want.
+                {tab === 'mine'
+                  ? 'Your own messages, in two clicks, with photos or videos if you like. Only you see them. Drag them into the order you want.'
+                  : 'Messages the whole team can send in two clicks, with photos or videos if you like. Drag them into the order you want.'}
               </p>
             )}
           </div>
@@ -388,7 +411,12 @@ export function QuickReplyManager({ replies, isLoading, loadError, onClose, onSa
       </div>
 
       {editing !== null ? (
-        <ReplyForm existing={editing === 'new' ? null : editing} onCancel={() => setEditing(null)} onSave={onSave} />
+        <ReplyForm
+          existing={editing === 'new' ? null : editing}
+          personal={tab === 'mine'}
+          onCancel={() => setEditing(null)}
+          onSave={onSave}
+        />
       ) : (
         <div data-modal-body className="max-h-[70vh] min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-6 sm:px-8">
           {(error || loadError) && (
@@ -396,26 +424,52 @@ export function QuickReplyManager({ replies, isLoading, loadError, onClose, onSa
               {error ?? loadError}
             </p>
           )}
-          <button
-            type="button"
-            onClick={() => {
-              setError(null)
-              setEditing('new')
-            }}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white hover:bg-[#de0a84]"
-          >
-            <Plus size={14} aria-hidden="true" />
-            New quick reply
-          </button>
+          <div role="tablist" aria-label="Whose quick replies" className="flex gap-1 rounded-xl bg-slate-100 p-1">
+            {(['mine', 'team'] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={tab === value}
+                onClick={() => {
+                  setError(null)
+                  setTab(value)
+                }}
+                className={cn(
+                  'flex-1 rounded-lg px-3 py-1.5 text-sm font-semibold',
+                  tab === value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800',
+                )}
+              >
+                {value === 'mine' ? 'Mine' : 'Team'}
+              </button>
+            ))}
+          </div>
+          {canChange ? (
+            <button
+              type="button"
+              onClick={() => {
+                setError(null)
+                setEditing('new')
+              }}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white hover:bg-[#de0a84]"
+            >
+              <Plus size={14} aria-hidden="true" />
+              New quick reply
+            </button>
+          ) : (
+            <p className="text-sm text-slate-500">Only people who can edit leads change the team's quick replies.</p>
+          )}
           {isLoading && <p className="text-sm text-slate-500">Loading...</p>}
           {!isLoading && !loadError && replies.length === 0 && (
-            <p className="text-sm text-slate-500">None yet. Add the messages you send most often.</p>
+            <p className="text-sm text-slate-500">
+              {tab === 'mine' ? 'None of your own yet. Add the messages you send most often.' : 'None yet.'}
+            </p>
           )}
           <ul className="divide-y divide-slate-100">
             {replies.map((reply, index) => (
               <li
                 key={reply.id}
-                draggable
+                draggable={canChange}
                 aria-label={`Quick reply ${reply.title}`}
                 onDragStart={(event) => {
                   event.dataTransfer.effectAllowed = 'move'
@@ -441,13 +495,15 @@ export function QuickReplyManager({ replies, isLoading, loadError, onClose, onSa
                   over === index && dragging !== index && 'bg-pink-50',
                 )}
               >
-                <span
-                  className="mt-0.5 cursor-grab text-slate-400 active:cursor-grabbing"
-                  title="Drag to change the order"
-                  aria-hidden="true"
-                >
-                  <DotsSixVertical size={18} />
-                </span>
+                {canChange && (
+                  <span
+                    className="mt-0.5 cursor-grab text-slate-400 active:cursor-grabbing"
+                    title="Drag to change the order"
+                    aria-hidden="true"
+                  >
+                    <DotsSixVertical size={18} />
+                  </span>
+                )}
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                     <span className="truncate">{reply.title}</span>
@@ -470,25 +526,29 @@ export function QuickReplyManager({ replies, isLoading, loadError, onClose, onSa
                     ),
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError(null)
-                    setEditing(reply)
-                  }}
-                  aria-label={`Edit ${reply.title}`}
-                  className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
-                >
-                  <PencilSimple size={14} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void remove(reply)}
-                  aria-label={`Delete ${reply.title}`}
-                  className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-red-50 hover:text-red-700"
-                >
-                  <Trash size={14} />
-                </button>
+                {canChange && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setError(null)
+                        setEditing(reply)
+                      }}
+                      aria-label={`Edit ${reply.title}`}
+                      className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
+                    >
+                      <PencilSimple size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void remove(reply)}
+                      aria-label={`Delete ${reply.title}`}
+                      className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-red-50 hover:text-red-700"
+                    >
+                      <Trash size={14} />
+                    </button>
+                  </>
+                )}
               </li>
             ))}
           </ul>

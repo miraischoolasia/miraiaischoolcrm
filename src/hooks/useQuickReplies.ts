@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { QuickReply } from '../lib/quickReplies'
+import { mineFirst, type QuickReply } from '../lib/quickReplies'
 import {
   deleteQuickReply,
   fetchQuickReplies,
@@ -9,7 +9,7 @@ import {
   type QuickReplyDraft,
 } from '../lib/quickRepliesApi'
 
-// The team's quick replies. Loaded once, and again whenever the list is opened,
+// The team's quick replies and the person's own. Loaded once, and again whenever the list is opened,
 // so a reply someone else just added shows up.
 export function useQuickReplies(enabled: boolean) {
   const [replies, setReplies] = useState<QuickReply[]>([])
@@ -21,7 +21,7 @@ export function useQuickReplies(enabled: boolean) {
       return
     }
     try {
-      setReplies(await fetchQuickReplies())
+      setReplies(mineFirst(await fetchQuickReplies()))
       setError(null)
     } catch (problem) {
       setError(quickReplyErrorMessage(problem, "Couldn't load the quick replies."))
@@ -64,7 +64,13 @@ export function useQuickReplies(enabled: boolean) {
   // Shows the new order at once, then saves it; if that fails the saved order comes back.
   const reorder = useCallback(
     async (ids: number[]) => {
-      setReplies((current) => ids.flatMap((id) => current.find((reply) => reply.id === id) ?? []))
+      // Only the list that was dragged (the team's, or a person's own) changes order; the other keeps its place.
+      setReplies((current) =>
+        mineFirst([
+          ...ids.flatMap((id) => current.find((reply) => reply.id === id) ?? []),
+          ...current.filter((reply) => !ids.includes(reply.id)),
+        ]),
+      )
       try {
         await saveQuickReplyOrder(ids)
         return null

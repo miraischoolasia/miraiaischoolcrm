@@ -1199,7 +1199,7 @@ export function WhatsAppInbox({
             onMarkUnread={() => void inbox.markUnread(inbox.selected!.id)}
             quickReplies={quickReplies}
             quickReplyValues={quickReplyFill}
-            onManageQuickReplies={crm.canEditLeads ? () => setManagingReplies(true) : undefined}
+            onManageQuickReplies={() => setManagingReplies(true)}
             draftRequest={draftRequest}
             messageEvents={messageEvents.events}
             onSendSpecial={messageEvents.sendSpecial}
@@ -1421,6 +1421,7 @@ export function WhatsAppInbox({
           replies={quickReplies.replies}
           isLoading={quickReplies.isLoading}
           loadError={quickReplies.error}
+          canEditTeam={crm.canEditLeads}
           onClose={() => setManagingReplies(false)}
           onSave={quickReplies.save}
           onRemove={quickReplies.remove}
