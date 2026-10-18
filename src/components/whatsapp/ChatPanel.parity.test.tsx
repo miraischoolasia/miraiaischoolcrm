@@ -30,7 +30,12 @@ const message = (id: number, content: string, ageSeconds: number, extra: Partial
   ...extra,
 })
 
-function setup(messages: ChatwootMessage[], overrides: Partial<ChatwootConversation> = {}, hasOlder = false) {
+function setup(
+  messages: ChatwootMessage[],
+  overrides: Partial<ChatwootConversation> = {},
+  hasOlder = false,
+  extra: Partial<React.ComponentProps<typeof ChatPanel>> = {},
+) {
   const onLoadOlder = vi.fn()
   const view = render(
     <ChatPanel
@@ -50,6 +55,7 @@ function setup(messages: ChatwootMessage[], overrides: Partial<ChatwootConversat
       onMarkUnread={vi.fn()}
       quickReplies={{ replies: [], isLoading: false, error: null, reload: vi.fn().mockResolvedValue(undefined) }}
       quickReplyValues={{}}
+      {...extra}
     />,
   )
   return { ...view, onLoadOlder }
@@ -311,5 +317,19 @@ describe('the line that says how many messages are unread', () => {
       />,
     )
     expect(screen.getByText('2 unread messages')).toBeInTheDocument()
+  })
+})
+
+describe('Messenger and Instagram chats', () => {
+  it('offers no location, contact, poll or sticker, which only WhatsApp can send, but keeps files and quick replies', async () => {
+    const onSendSpecial = vi.fn().mockResolvedValue(null)
+    const { unmount } = setup([message(1, 'Hi', 100)], {}, false, { onSendSpecial })
+    await userEvent.click(screen.getByRole('button', { name: 'Attach and more' }))
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toContain('Location')
+    unmount()
+
+    setup([message(1, 'Hi', 100)], { meta: { channel: 'Channel::FacebookPage', sender: { id: 1, name: 'Mei', phone_number: null, identifier: null } } }, false, { onSendSpecial })
+    await userEvent.click(screen.getByRole('button', { name: 'Attach and more' }))
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Photo, video or file', 'Quick replies'])
   })
 })

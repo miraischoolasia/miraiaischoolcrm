@@ -339,7 +339,7 @@ describe('Composer AI suggestion', () => {
   it('disables the button while the reply is being written, and shows a failure quietly', () => {
     setupAi({ aiSuggestion: null, aiLoading: true })
     expect(screen.getByRole('button', { name: 'Suggest a reply' })).toBeDisabled()
-    expect(screen.getByText('Writing a reply…')).toBeInTheDocument()
+    expect(screen.getByText('Writing…')).toBeInTheDocument()
   })
 
   it('shows why there is no suggestion', () => {

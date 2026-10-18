@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { recordingToWav } from '../lib/audioWav'
 
 export type VoiceState = 'idle' | 'recording' | 'ready'
 
@@ -22,7 +23,12 @@ function extensionFor(mimeType: string) {
 
 // Records a voice message in the browser. The recording waits in "ready" so the
 // sender can listen to it before it goes out.
-export function useVoiceRecorder() {
+// asWav: for Messenger and Instagram, whose apps cannot play Chrome's webm/ogg recording; it is turned into a WAV.
+export function useVoiceRecorder({ asWav = false }: { asWav?: boolean } = {}) {
+  const asWavRef = useRef(asWav)
+  useEffect(() => {
+    asWavRef.current = asWav
+  })
   const [state, setState] = useState<VoiceState>('idle')
   const [seconds, setSeconds] = useState(0)
   const [file, setFile] = useState<File | null>(null)
@@ -125,12 +131,22 @@ export function useVoiceRecorder() {
       recorder.onstop = () => {
         const type = recorder.mimeType || mimeType || 'audio/webm'
         const blob = new Blob(chunksRef.current, { type })
-        const recorded = new File([blob], `voice-${Date.now()}.${extensionFor(type)}`, { type })
-        urlRef.current = URL.createObjectURL(blob)
-        setFile(recorded)
-        setPreviewUrl(urlRef.current)
-        setState('ready')
         releaseStream()
+        const finish = (finalBlob: Blob, name: string, finalType: string) => {
+          urlRef.current = URL.createObjectURL(finalBlob)
+          setFile(new File([finalBlob], name, { type: finalType }))
+          setPreviewUrl(urlRef.current)
+          setState('ready')
+        }
+        const stamp = Date.now()
+        if (!asWavRef.current) {
+          finish(blob, `voice-${stamp}.${extensionFor(type)}`, type)
+          return
+        }
+        // Messenger / Instagram: a WAV they can play. If the browser cannot convert it, the original still goes.
+        recordingToWav(blob)
+          .then((wav) => finish(wav, `voice-${stamp}.wav`, 'audio/wav'))
+          .catch(() => finish(blob, `voice-${stamp}.${extensionFor(type)}`, type))
       }
       recorder.start()
       setSeconds(0)

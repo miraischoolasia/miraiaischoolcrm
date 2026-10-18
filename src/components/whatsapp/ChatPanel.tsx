@@ -414,6 +414,7 @@ export function ChatPanel({
       ? incomingOrder[Math.max(0, incomingOrder.length - opened.unread)].id
       : null
 
+  const isSocialChat = socialKindOf(conversation.meta.channel, conversation.meta.sender) !== null
   const channelLabel = socialKindOf(conversation.meta.channel, conversation.meta.sender) === 'messenger'
     ? 'Messenger'
     : socialKindOf(conversation.meta.channel, conversation.meta.sender) === 'instagram'
@@ -865,7 +866,9 @@ export function ChatPanel({
         onDraftChange={onDraftChange}
         replyTo={replying ? { id: replying.id, author: authorOf(replying), text: describeMessage(replying) } : null}
         onClearReply={() => setReplyTo(null)}
-        onSendSpecial={onSendSpecial}
+        // Location, contact, poll and sticker go through WhatsApp only; Messenger and Instagram have no such messages here.
+        onSendSpecial={isSocialChat ? undefined : onSendSpecial}
+        voiceAsWav={isSocialChat}
         followUpControl={followUpControl}
         onTyping={onTyping}
         aiSuggestion={ai.suggestion ? { text: ai.suggestion.text, note: ai.suggestion.note } : null}

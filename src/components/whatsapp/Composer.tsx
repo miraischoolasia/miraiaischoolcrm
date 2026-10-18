@@ -53,6 +53,8 @@ type ComposerProps = {
   onAiDismiss?: () => void
   // Where the reply goes out from: the WhatsApp number, or the Page. Shown so nobody answers from the wrong one.
   sendingFrom?: string | null
+  // Messenger and Instagram chats: the voice message is made as a WAV, which their apps can play.
+  voiceAsWav?: boolean
 }
 
 const SPECIAL_CHOICES: { kind: SpecialKind; label: string }[] = [
@@ -133,6 +135,7 @@ export function Composer({
   onAiUse,
   onAiDismiss,
   sendingFrom = null,
+  voiceAsWav = false,
 }: ComposerProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuBox = useRef<HTMLDivElement>(null)
@@ -194,7 +197,7 @@ ${draftRequest.text}` : draftRequest.text))
   const [isLoadingMedia, setIsLoadingMedia] = useState(false)
   const { reload: reloadQuickReplies } = quickReplies
   const fileInput = useRef<HTMLInputElement>(null)
-  const voice = useVoiceRecorder()
+  const voice = useVoiceRecorder({ asWav: voiceAsWav })
   const sendVoiceWhenReady = useRef(false)
 
   // A voice message goes out the moment the recording stops.
@@ -402,10 +405,11 @@ ${draftRequest.text}` : draftRequest.text))
             onClick={onAiSuggest}
             disabled={aiLoading}
             aria-label="Suggest a reply"
-            className={cn("inline-flex items-center gap-1 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60", !sendingFrom && "ml-auto")}
+            title="Suggest a reply"
+            className={cn("inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60", !sendingFrom && "ml-auto")}
           >
             <Sparkle size={13} weight="fill" className="text-[#fc0c97]" aria-hidden="true" />
-            {aiLoading ? 'Writing a reply…' : 'Suggest a reply'}
+            {aiLoading ? 'Writing…' : 'Suggest reply'}
           </button>
         )}
       </div>
