@@ -19,6 +19,9 @@ export type PortalSettings = {
   accent_color: string
   student_sees: PortalVisibility
   parent_sees: PortalVisibility
+  // Where families open the app, and the message sent with a new login ({school} {child} {link} {logins}).
+  app_url: string
+  login_message: string
 }
 
 export const defaultPortalSettings: PortalSettings = {
@@ -26,6 +29,8 @@ export const defaultPortalSettings: PortalSettings = {
   accent_color: '#fc0c97',
   student_sees: { schedule: true, points: true, scores: true, package: false, report: false, recordings: true },
   parent_sees: { schedule: true, points: true, scores: true, package: true, report: true, recordings: true },
+  app_url: '',
+  login_message: '',
 }
 
 // The student, and the parent the CRM links them to (people.parent_id).
@@ -35,7 +40,7 @@ export async function fetchStudentLogins(studentId: number) {
   const parentId = person?.parent_id ?? null
   const [{ data: parentPerson }, { data: accounts, error }] = await Promise.all([
     parentId
-      ? supabase.from('people').select('id, full_name').eq('id', parentId).maybeSingle()
+      ? supabase.from('people').select('id, full_name, phone').eq('id', parentId).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase
       .from('portal_accounts')
@@ -54,7 +59,7 @@ export async function fetchStudentLogins(studentId: number) {
   return {
     student: mapped.find((account) => account.kind === 'student') ?? null,
     parent: mapped.find((account) => account.kind === 'parent') ?? null,
-    parentPerson: parentPerson ? { id: parentPerson.id, name: parentPerson.full_name ?? 'Parent' } : null,
+    parentPerson: parentPerson ? { id: parentPerson.id, name: parentPerson.full_name ?? 'Parent', phone: parentPerson.phone as string | null } : null,
   }
 }
 
@@ -103,12 +108,21 @@ export async function fetchPortalSettings(): Promise<PortalSettings> {
     accent_color: value.accent_color ?? defaultPortalSettings.accent_color,
     student_sees: { ...defaultPortalSettings.student_sees, ...(value.student_sees ?? {}) },
     parent_sees: { ...defaultPortalSettings.parent_sees, ...(value.parent_sees ?? {}) },
+    app_url: value.app_url ?? '',
+    login_message: value.login_message ?? '',
   }
 }
 
 export async function savePortalSettings(settings: PortalSettings) {
   if (!supabase) return 'Supabase is not configured.'
-  const { error } = await supabase.rpc('set_portal_settings', { p_settings: settings })
+  // Empty words are left out, so the settings still save on a database without them.
+  const { app_url, login_message, ...rest } = settings
+  const payload = {
+    ...rest,
+    ...(app_url.trim() ? { app_url: app_url.trim() } : {}),
+    ...(login_message.trim() ? { login_message } : {}),
+  }
+  const { error } = await supabase.rpc('set_portal_settings', { p_settings: payload })
   return error ? error.message || 'Failed to save.' : null
 }
 
@@ -203,4 +217,58 @@ export async function fetchTermsAcceptance(authUserId: string): Promise<{ versio
     .maybeSingle()
   if (error) throw error
   return data ? { version: data.version, at: data.accepted_at } : null
+}
+
+// ---------------------------------------------------------------------------
+// The App Logins page: every login, and which parent each student has
+
+const PAGE = 1000
+
+async function everyRow<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>) {
+  const rows: T[] = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await page(from, from + PAGE - 1)
+    if (error) throw new Error(error.message)
+    rows.push(...(data ?? []))
+    if (!data || data.length < PAGE) return rows
+  }
+}
+
+export async function fetchLoginDirectory() {
+  if (!supabase) return { accounts: [] as PortalAccount[], parentOfStudent: new Map<number, number>(), parents: new Map<number, { id: number; name: string | null; phone: string | null }>() }
+  const client = supabase
+  const [accountRows, childRows, parentRows] = await Promise.all([
+    everyRow((from, to) =>
+      client
+        .from('portal_accounts')
+        .select('auth_user_id, username, kind, student_id, parent_person_id, is_active')
+        .order('auth_user_id')
+        .range(from, to),
+    ),
+    everyRow((from, to) =>
+      client
+        .from('people')
+        .select('student_id, parent_id')
+        .eq('kind', 'student')
+        .not('student_id', 'is', null)
+        .not('parent_id', 'is', null)
+        .order('id')
+        .range(from, to),
+    ),
+    everyRow((from, to) => client.from('people').select('id, full_name, phone').eq('kind', 'parent').order('id').range(from, to)),
+  ])
+  const accounts: PortalAccount[] = accountRows.map((row) => ({
+    authUserId: row.auth_user_id,
+    username: row.username,
+    kind: row.kind,
+    studentId: row.student_id,
+    parentPersonId: row.parent_person_id,
+    isActive: row.is_active,
+  }))
+  const parentOfStudent = new Map<number, number>()
+  for (const row of childRows) {
+    if (row.student_id !== null && row.parent_id !== null && !parentOfStudent.has(row.student_id)) parentOfStudent.set(row.student_id, row.parent_id)
+  }
+  const parents = new Map(parentRows.map((row) => [row.id, { id: row.id, name: row.full_name, phone: row.phone }]))
+  return { accounts, parentOfStudent, parents }
 }

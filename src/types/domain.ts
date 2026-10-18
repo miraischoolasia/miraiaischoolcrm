@@ -7,6 +7,7 @@ export type AppSection =
   | 'questions'
   | 'videos'
   | 'students'
+  | 'app-logins'
   | 'teachers'
   | 'leads'
   | 'whatsapp'

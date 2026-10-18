@@ -30,6 +30,7 @@ import {
   Exam,
   GearSix,
   Package as PackageIcon,
+  DeviceMobile,
   FilmStrip,
   Brain,
   Lightning,
@@ -178,6 +179,7 @@ import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
 import { AiKnowledgeSection } from './components/sections/AiKnowledgeSection'
 import { fetchThread } from './lib/aiLearning'
+import { AppLoginsSection } from './components/sections/AppLoginsSection'
 import { ProgrammesSection } from './components/sections/ProgrammesSection'
 import { useProgrammes } from './hooks/useProgrammes'
 import { AutomationsSection } from './components/sections/AutomationsSection'
@@ -288,7 +290,7 @@ import {
 } from './lib/makeup'
 
 // The menu's order (AppNav groups them).
-const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'ai-knowledge', 'calendar', 'classrooms', 'videos', 'questions', 'students', 'programmes', 'packages', 'teachers', 'class-settings', 'activity']
+const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'ai-knowledge', 'calendar', 'classrooms', 'videos', 'questions', 'students', 'app-logins', 'programmes', 'packages', 'teachers', 'class-settings', 'activity']
 
 // The shared WhatsApp inbox only shows up once its address is set.
 const chatwootUrl = getChatwootUrl(import.meta.env.VITE_CHATWOOT_URL)
@@ -818,6 +820,8 @@ function App() {
     if (isTeacherAccount || can('classrooms')) sections.push('videos')
     // The courses the school signs parents up for: an admin makes them, so the page is the admin's.
     if (can('students')) sections.push('students')
+    // The student app's logins: same ticks as the student page that makes them.
+    if (can('students')) sections.push('app-logins')
     if (isAdmin) sections.push('teachers')
     if (can('activity')) sections.push('activity')
     return sections
@@ -1863,6 +1867,7 @@ function App() {
         { key: 'videos', label: 'Class Videos', icon: FilmStrip, group: 'teaching' },
         { key: 'questions', label: 'Question Bank', icon: Exam, group: 'teaching' },
         { key: 'students', label: 'Student List', icon: GraduationCap, group: 'students' },
+        { key: 'app-logins', label: 'App Logins', icon: DeviceMobile, group: 'students' },
         { key: 'teachers', label: 'My Team', icon: IdentificationBadge, group: 'admin' },
         { key: 'activity', label: 'Activity Log', icon: ClockCounterClockwise, group: 'admin' },
       ] satisfies { key: AppSection; label: string; icon: Icon; group?: NavGroupKey }[]
@@ -6199,6 +6204,8 @@ function App() {
                       ? 'Class Videos'
                       : activeSection === 'programmes'
                         ? 'Programmes'
+                      : activeSection === 'app-logins'
+                        ? 'App Logins'
                       : activeSection === 'teachers'
                         ? 'My Team'
                         : activeSection === 'leads'
@@ -6908,6 +6915,10 @@ function App() {
             )}
 
             {visibleSection === 'programmes' && <ProgrammesSection canEdit={isAdmin} state={programmes} />}
+
+            {visibleSection === 'app-logins' && (
+              <AppLoginsSection students={students} canManage={can('students', 'edit')} onOpenStudent={openStudentDetail} />
+            )}
 
             {visibleSection === 'forms' && (
               <FormsSection

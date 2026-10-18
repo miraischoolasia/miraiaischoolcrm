@@ -6,6 +6,7 @@ import {
   type PortalSettings,
   type PortalVisibility,
 } from '../lib/portal'
+import { DEFAULT_LOGIN_MESSAGE, fillLoginMessage } from '../lib/portalLogins'
 import { PortalConsentSettings } from './PortalConsentSettings'
 import { PortalTermsSettings } from './PortalTermsSettings'
 
@@ -37,6 +38,16 @@ export function StudentAppSettings() {
 
   const dirty = saved !== null && JSON.stringify(draft) !== JSON.stringify(saved)
   const colorOk = /^#[0-9a-fA-F]{6}$/.test(draft.accent_color)
+  const linkOk = draft.app_url.trim() === '' || /^https?:\/\/\S+$/.test(draft.app_url.trim())
+  const preview = fillLoginMessage(draft.login_message, {
+    school: draft.school_name,
+    childNames: ['Ethan Lim'],
+    link: draft.app_url,
+    logins: [
+      { kind: 'parent', name: 'Parent', username: 'ethan.lim.parent', password: 'sunny-panda-47' },
+      { kind: 'student', name: 'Ethan Lim', username: 'ethan.lim', password: 'brave-otter-12' },
+    ],
+  })
 
   function change(next: PortalSettings) {
     setDone(false)
@@ -59,8 +70,8 @@ export function StudentAppSettings() {
   return (
     <div className="space-y-5">
       <p className="text-sm text-slate-500">
-        Children and parents sign in to the student app with the logins made on each student's page. Remarks teachers
-        write are never shown in the app.
+        Children and parents sign in to the student app with the logins made on each student's page or on Students &gt; App
+        Logins. Remarks teachers write are never shown in the app.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-[1fr_9rem]">
@@ -88,6 +99,39 @@ export function StudentAppSettings() {
             <span className="font-mono text-xs text-slate-500">{draft.accent_color}</span>
           </span>
         </label>
+      </div>
+
+      <label className="block space-y-1.5">
+        <span className="text-sm font-semibold text-slate-900">The app's web address</span>
+        <input
+          type="url"
+          value={draft.app_url}
+          maxLength={200}
+          placeholder="e.g. https://mirai-student-app.vercel.app"
+          onChange={(event) => change({ ...draft, app_url: event.target.value })}
+          className={`w-full rounded-xl border px-3 py-2 text-sm ${linkOk ? 'border-slate-200' : 'border-red-300'}`}
+        />
+        <span className="block text-xs text-slate-500">Sent to families with their login, so they know where to sign in.</span>
+      </label>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <label className="block space-y-1.5">
+          <span className="text-sm font-semibold text-slate-900">Message sent with a new login</span>
+          <textarea
+            value={draft.login_message || DEFAULT_LOGIN_MESSAGE}
+            maxLength={1500}
+            rows={9}
+            onChange={(event) => change({ ...draft, login_message: event.target.value === DEFAULT_LOGIN_MESSAGE ? '' : event.target.value })}
+            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+          />
+          <span className="block text-xs text-slate-500">
+            {'{school}'} school name · {'{child}'} child's name · {'{link}'} the web address · {'{logins}'} the login names and passwords
+          </span>
+        </label>
+        <div className="space-y-1.5">
+          <span className="text-sm font-semibold text-slate-900">How it looks</span>
+          <pre className="whitespace-pre-wrap rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 font-sans text-sm text-slate-800">{preview}</pre>
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -129,7 +173,7 @@ export function StudentAppSettings() {
         {done && !dirty && <span className="text-sm font-semibold text-emerald-700">Saved</span>}
         <button
           type="button"
-          disabled={!dirty || !colorOk}
+          disabled={!dirty || !colorOk || !linkOk}
           onClick={() => void save()}
           className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84] disabled:opacity-50"
         >

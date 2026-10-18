@@ -24,6 +24,16 @@ export function suggestUsername(fullName: string, fallback: string) {
   return base.length >= 3 ? base : fallback
 }
 
+// A parent with no name of their own: their child's name and ".parent".
+export function suggestParentUsername(childName: string, fallback: string) {
+  const base = suggestUsername(childName, '')
+  if (!base) return fallback
+  // Cut a long name at a whole word.
+  let short = base.slice(0, 29)
+  if (base.length > 29 && base[29] !== '.' && short.lastIndexOf('.') > 0) short = short.slice(0, short.lastIndexOf('.'))
+  return `${short.replace(/\.+$/, '')}.parent`
+}
+
 // The first free name: ali.tan, ali.tan2, ali.tan3, ...
 export function firstFreeUsername(base: string, taken: Set<string>) {
   if (!taken.has(base)) return base

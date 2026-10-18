@@ -11,6 +11,7 @@ import {
   firstFreeUsername,
   friendlyPassword,
   portalEmail,
+  suggestParentUsername,
   suggestUsername,
 } from './logic.ts'
 
@@ -95,6 +96,19 @@ Deno.serve(async (req) => {
     if (person.auth_user_id) return jsonResponse({ ok: false, error: 'This parent already has a login.' }, 409)
     fullName = person.full_name ?? ''
     fallback = `parent${person.id}`
+    // Many parents have no name yet: "Ethan Lim" -> "ethan.lim.parent" reads better than "parent123".
+    if (!fullName.trim()) {
+      const { data: child } = await caller
+        .from('people')
+        .select('full_name')
+        .eq('parent_id', person.id)
+        .eq('kind', 'student')
+        .not('full_name', 'is', null)
+        .order('id')
+        .limit(1)
+        .maybeSingle()
+      if (child?.full_name) fallback = suggestParentUsername(child.full_name, fallback)
+    }
   } else {
     return jsonResponse({ ok: false, error: 'Say whether the login is for a student or a parent.' }, 400)
   }

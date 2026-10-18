@@ -4,10 +4,18 @@ import {
   firstFreeUsername,
   friendlyPassword,
   portalEmail,
+  suggestParentUsername,
   suggestUsername,
 } from '../../supabase/functions/portal-accounts/logic'
 
 describe('portal login names', () => {
+  it('names a parent with no name after the child', () => {
+    expect(suggestParentUsername('Toh Jia Choon', 'parent9')).toBe('toh.jia.choon.parent')
+    expect(suggestParentUsername('Muhammad Aiman bin Abdullah Rahman', 'parent9')).toBe('muhammad.aiman.bin.abdullah.parent')
+    expect(suggestParentUsername('陈小明', 'parent9')).toBe('parent9')
+    expect(USERNAME_PATTERN.test(suggestParentUsername('Muhammad Aiman bin Abdullah Rahman', 'x'))).toBe(true)
+  })
+
   it('suggests a name from the full name', () => {
     expect(suggestUsername('Ethan Lim', 'student7')).toBe('ethan.lim')
     expect(suggestUsername('  Siti Nur Aisyah  ', 'student7')).toBe('siti.nur.aisyah')

@@ -29,6 +29,8 @@ type SessionState = {
   isRefreshing: boolean
   refresh: () => Promise<void>
   signIn: (username: string, password: string) => Promise<string | null>
+  // A new password chosen in the app; the old one must be right first.
+  changePassword: (current: string, next: string) => Promise<string | null>
   signOut: () => Promise<void>
 }
 
@@ -139,6 +141,20 @@ export function SessionProvider({ children: content }: PropsWithChildren) {
     return /invalid/i.test(error.message) ? 'That login name or password is not right.' : error.message
   }, [])
 
+  const changePassword = useCallback(
+    async (current: string, next: string) => {
+      const email = session?.user.email
+      if (!email) return 'Please sign in again.'
+      if (next.length < 8) return 'The new password needs at least 8 letters or numbers.'
+      if (next === current) return 'The new password must be different from the old one.'
+      const { error: checkError } = await supabase.auth.signInWithPassword({ email, password: current })
+      if (checkError) return /invalid/i.test(checkError.message) ? 'Your current password is not right.' : checkError.message
+      const { error } = await supabase.auth.updateUser({ password: next })
+      return error ? error.message : null
+    },
+    [session],
+  )
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut()
   }, [])
@@ -158,9 +174,10 @@ export function SessionProvider({ children: content }: PropsWithChildren) {
       isRefreshing,
       refresh,
       signIn,
+      changePassword,
       signOut,
     }),
-    [branding, childId, children, chooseChild, home, homeError, isLoading, isRefreshing, onboarding, refresh, reloadOnboarding, session, signIn, signOut],
+    [branding, changePassword, childId, children, chooseChild, home, homeError, isLoading, isRefreshing, onboarding, refresh, reloadOnboarding, session, signIn, signOut],
   )
 
   return <SessionContext.Provider value={value}>{content}</SessionContext.Provider>

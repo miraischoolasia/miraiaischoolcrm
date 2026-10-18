@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Copy, DeviceMobile } from '@phosphor-icons/react'
+import { Copy, DeviceMobile, WhatsappLogo } from '@phosphor-icons/react'
 import { cn } from '../lib/cn'
 import {
   consentKinds,
@@ -8,12 +8,16 @@ import {
   defaultConsentSettings,
   fetchStudentConsents,
   fetchStudentLogins,
+  fetchPortalSettings,
   fetchTermsAcceptance,
   resetPortalPassword,
   setPortalLoginActive,
   type PortalAccount,
+  type PortalSettings,
   type StudentConsent,
 } from '../lib/portal'
+import { fillLoginMessage } from '../lib/portalLogins'
+import { useOpenChat } from './WhatsAppLink'
 import { formatDate } from '../domain/studentStatus'
 
 type Logins = Awaited<ReturnType<typeof fetchStudentLogins>>
@@ -24,17 +28,21 @@ type Logins = Awaited<ReturnType<typeof fetchStudentLogins>>
 export function AppLoginsCard({
   studentId,
   studentName,
+  studentPhone = null,
   canManage,
 }: {
   studentId: number
   studentName: string
+  studentPhone?: string | null
   canManage: boolean
 }) {
+  const openChat = useOpenChat()
+  const [settings, setSettings] = useState<PortalSettings | null>(null)
   const [logins, setLogins] = useState<Logins | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   // New passwords made while the card is open (each shows only once).
-  const [shown, setShown] = useState<{ who: string; username: string; password: string }[]>([])
+  const [shown, setShown] = useState<{ who: string; kind: 'student' | 'parent'; username: string; password: string }[]>([])
   const [copied, setCopied] = useState(false)
   // The parent's latest consent answers (null until loaded, or when they cannot be read).
   const [consents, setConsents] = useState<StudentConsent[] | null>(null)
@@ -49,6 +57,14 @@ export function AppLoginsCard({
 
   useEffect(load, [load])
 
+  // The school's words for the message that sends a login.
+  useEffect(() => {
+    if (shown.length === 0 || settings) return
+    fetchPortalSettings()
+      .then(setSettings)
+      .catch(() => setSettings(null))
+  }, [settings, shown.length])
+
   useEffect(() => {
     let cancelled = false
     fetchStudentConsents(studentId)
@@ -60,6 +76,8 @@ export function AppLoginsCard({
   }, [studentId])
 
   const parentAuthId = logins?.parent?.authUserId ?? null
+  // Logins go to the parent's number, else the child's own.
+  const sendPhone = logins?.parentPerson?.phone || studentPhone || null
   useEffect(() => {
     if (!parentAuthId) return
     let cancelled = false
@@ -71,7 +89,7 @@ export function AppLoginsCard({
     }
   }, [parentAuthId])
 
-  async function run(who: string, action: Promise<{ ok: boolean; error?: string; username?: string; password?: string }>) {
+  async function run(who: string, kind: 'student' | 'parent', action: Promise<{ ok: boolean; error?: string; username?: string; password?: string }>) {
     setBusy(true)
     setError(null)
     setCopied(false)
@@ -82,7 +100,7 @@ export function AppLoginsCard({
       return
     }
     if (answer.username && answer.password) {
-      const made = { who, username: answer.username, password: answer.password }
+      const made = { who, kind, username: answer.username, password: answer.password }
       setShown((current) => [...current.filter((entry) => entry.username !== made.username), made])
     }
     load()
@@ -137,7 +155,7 @@ export function AppLoginsCard({
               <button
                 type="button"
                 disabled={busy || !account.isActive}
-                onClick={() => void run(who, resetPortalPassword(account.authUserId))}
+                onClick={() => void run(who, account.kind, resetPortalPassword(account.authUserId))}
                 className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
               >
                 New password
@@ -145,7 +163,7 @@ export function AppLoginsCard({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => void run(who, setPortalLoginActive(account.authUserId, !account.isActive))}
+                onClick={() => void run(who, account.kind, setPortalLoginActive(account.authUserId, !account.isActive))}
                 className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50"
               >
                 {account.isActive ? 'Turn off' : 'Turn on'}
@@ -189,17 +207,40 @@ export function AppLoginsCard({
             <Copy size={14} aria-hidden="true" />
             {copied ? 'Copied' : 'Copy'}
           </button>
+          {openChat && sendPhone && (
+            <button
+              type="button"
+              title="Opens the family's chat with the message ready to send"
+              onClick={() =>
+                openChat({
+                  phone: sendPhone,
+                  name: logins?.parentPerson?.name ?? studentName,
+                  leadId: null,
+                  message: fillLoginMessage(settings?.login_message ?? '', {
+                    school: settings?.school_name ?? '',
+                    childNames: [studentName],
+                    link: settings?.app_url ?? '',
+                    logins: shown.map((entry) => ({ kind: entry.kind, name: entry.kind === 'parent' ? entry.who : studentName, username: entry.username, password: entry.password })),
+                  }),
+                })
+              }
+              className="ml-2 mt-2 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700"
+            >
+              <WhatsappLogo size={14} weight="fill" aria-hidden="true" />
+              Open chat with message
+            </button>
+          )}
         </div>
       )}
 
       {logins === null && !error && <p className="mt-3 text-sm text-slate-500">Loading…</p>}
       {logins && (
         <ul className="mt-2 divide-y divide-slate-100">
-          {row(studentName, logins.student, () => void run(studentName, createStudentLogin(studentId)))}
+          {row(studentName, logins.student, () => void run(studentName, 'student', createStudentLogin(studentId)))}
           {row(
             logins.parentPerson ? `${logins.parentPerson.name} (parent)` : 'Parent',
             logins.parent,
-            logins.parentPerson ? () => void run(logins.parentPerson!.name, createParentLogin(logins.parentPerson!.id)) : null,
+            logins.parentPerson ? () => void run(logins.parentPerson!.name, 'parent', createParentLogin(logins.parentPerson!.id)) : null,
             logins.parentPerson ? undefined : 'No parent linked to this student yet (link one from the family card in the Inbox).',
           )}
         </ul>

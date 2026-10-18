@@ -568,6 +568,26 @@ export function WhatsAppInbox({
   // Another page asked for the chat of a number: open the one this page has, else look
   // for it on the server, and only when there is none offer to start one.
   const handledRequest = useRef<number | null>(null)
+  // Words the other page wants in the chat's message box (e.g. a new app login), written once
+  // that chat is open: the chat it found, else the next chat opened in the next half minute.
+  const [pendingMessage, setPendingMessage] = useState<
+    { text: string; chatId: number | null; after: number | null; at: number } | null
+  >(null)
+  const openChatId = inbox.selected?.id ?? null
+  const openChatRef = useRef(openChatId)
+  useEffect(() => {
+    openChatRef.current = openChatId
+  })
+  useEffect(() => {
+    if (!pendingMessage || openChatId === null) return
+    const fits =
+      pendingMessage.chatId !== null
+        ? openChatId === pendingMessage.chatId
+        : openChatId !== pendingMessage.after && Date.now() - pendingMessage.at < 30_000
+    if (!fits) return
+    setPendingMessage(null)
+    setDraftRequest((current) => ({ id: (current?.id ?? 0) + 1, text: pendingMessage.text }))
+  }, [openChatId, pendingMessage])
   // The Unread tab shows every unread chat: the older pages are fetched by themselves, so there is no
   // "Load older chats" to press before everything unread is on screen.
   const { loadMore: loadMoreChats } = inbox
@@ -602,6 +622,10 @@ export function WhatsAppInbox({
     if (!openRequest || !active || isLoadingChats || handledRequest.current === openRequest.id) {
       return
     }
+    const message = openRequest.message?.trim() ? openRequest.message : null
+    const queueMessage = (chatId: number | null) => {
+      if (message) setPendingMessage({ text: message, chatId, after: openChatRef.current, at: Date.now() })
+    }
     // A Messenger / Instagram chat is asked for by its chat or contact: there is no number to look for.
     const wanted = openRequest.chat
     if (wanted) {
@@ -620,6 +644,7 @@ export function WhatsAppInbox({
         return
       }
       handledRequest.current = openRequest.id
+      queueMessage(chat.id)
       categoryDecided.current = true
       setCategory(categoryOf(chat))
       setInboxFilter(null)
@@ -657,9 +682,11 @@ export function WhatsAppInbox({
       students: crm.students,
     })
     if (here) {
+      queueMessage(here.id)
       show(here)
       return
     }
+    queueMessage(null)
     void (async () => {
       const found = await findChatByPhone(client, openRequest.phone).catch(() => null)
       if (found !== null) {

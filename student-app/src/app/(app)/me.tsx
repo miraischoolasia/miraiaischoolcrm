@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { formatDay } from '@/lib/format'
 import { setConsent, type Consent } from '@/lib/portal'
 import { useSession } from '@/lib/session'
+import { ChangePassword } from '@/ui/ChangePassword'
 import { Body, Button, Card, colors, Heading, Muted, Screen, Title } from '@/ui/kit'
 
 // Me: the package (lessons left and expiry, when shown), picking a child for
@@ -79,6 +80,7 @@ export default function Me() {
           Signed in as {session?.user.email?.replace(/@portal\.internal$/, '') ?? '—'}
           {home ? (home.viewer === 'parent' ? ' (parent)' : '') : ''}
         </Muted>
+        <ChangePassword color={branding.accentColor} />
         <Button label="Sign out" variant="outline" color={branding.accentColor} onPress={() => void signOut()} />
       </Card>
     </Screen>

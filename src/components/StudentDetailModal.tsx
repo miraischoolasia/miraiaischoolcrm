@@ -555,7 +555,7 @@ export function StudentDetailModal({
               </Card>
             )}
             {showAppLogins && !isPreview && (
-              <AppLoginsCard studentId={student.id} studentName={student.name} canManage={canManagePoints} />
+              <AppLoginsCard studentId={student.id} studentName={student.name} studentPhone={student.phone} canManage={canManagePoints} />
             )}
           </>
         )}
