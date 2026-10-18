@@ -147,6 +147,7 @@ export function StudentGrid({
   const select = (studentId: number) => setOpenId(studentId === openId ? null : studentId)
   // Classroom view: a tap opens the one-tap ring on that seat.
   const [ringId, setRingId] = useState<number | null>(null)
+  const [ringAt, setRingAt] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [done, setDone] = useState<{ studentId: number; text: string } | null>(null)
 
   function ringItems(child: GridChild): RadialItem[] {
@@ -282,9 +283,12 @@ export function StudentGrid({
                   <Seat
                     child={child}
                     open={child.studentId === openId || child.studentId === ringId}
-                    onSelect={() => setRingId(ringId === child.studentId ? null : child.studentId)}
+                    onSelect={(face) => {
+                      if (face) setRingAt({ x: face.left + face.width / 2, y: face.top + face.height / 2 })
+                      setRingId(ringId === child.studentId ? null : child.studentId)
+                    }}
                   />
-                  {ringId === child.studentId && <RadialMenu items={ringItems(child)} onClose={() => setRingId(null)} />}
+                  {ringId === child.studentId && <RadialMenu items={ringItems(child)} anchor={ringAt} onClose={() => setRingId(null)} />}
                   {done?.studentId === child.studentId && (
                     <span
                       aria-live="polite"
@@ -404,7 +408,7 @@ export function StudentGrid({
 // A desk in the classroom view: the child's face ringed in the colour of
 // where they are, their desk and short name, and marks above the head
 // (right / wrong / to mark, points just given, a note, a failed Zoom check).
-function Seat({ child, open, onSelect }: { child: GridChild; open: boolean; onSelect: () => void }) {
+function Seat({ child, open, onSelect }: { child: GridChild; open: boolean; onSelect: (face: DOMRect | null) => void }) {
   const ring =
     child.state === 'here'
       ? child.late
@@ -424,7 +428,7 @@ function Seat({ child, open, onSelect }: { child: GridChild; open: boolean; onSe
   return (
     <button
       type="button"
-      onClick={onSelect}
+      onClick={(event) => onSelect(event.currentTarget.querySelector('[data-face]')?.getBoundingClientRect() ?? null)}
       aria-pressed={open}
       title={`${child.name} · ${stateText[child.state]}${child.answer ? ` · ${answerText[child.answer]}` : ''} · ${child.points} points`}
       className={cn(
@@ -433,7 +437,7 @@ function Seat({ child, open, onSelect }: { child: GridChild; open: boolean; onSe
         child.picked && 'bg-pink-50 ring-2 ring-[#fc0c97]',
       )}
     >
-      <span className={cn('rounded-full ring-[3px] ring-offset-1', ring)}>
+      <span data-face className={cn('rounded-full ring-[3px] ring-offset-1', ring)}>
         <StudentAvatar id={child.studentId} name={child.name} size={44} dim={child.state === 'not_yet' || child.state === 'left'} />
       </span>
       <span aria-hidden="true" className="h-2 w-16 rounded-sm border border-amber-300 bg-amber-200" />
