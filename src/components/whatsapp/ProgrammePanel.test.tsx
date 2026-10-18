@@ -76,9 +76,9 @@ function makeCrm(patch: Partial<WhatsAppCrm> = {}): WhatsAppCrm {
   } as unknown as WhatsAppCrm
 }
 
-function renderPanel(crm = makeCrm(), programme = maths) {
+function renderPanel(crm = makeCrm(), programme = maths, extra: { presetClassroomId?: number } = {}) {
   const onWriteMessage = vi.fn()
-  render(<ProgrammePanel lead={lead} crm={crm} programme={programme} userName="Amy" onWriteMessage={onWriteMessage} />)
+  render(<ProgrammePanel lead={lead} crm={crm} programme={programme} userName="Amy" onWriteMessage={onWriteMessage} {...extra} />)
   return { crm, onWriteMessage }
 }
 
@@ -220,6 +220,24 @@ describe('ProgrammePanel', () => {
       expect(screen.getByText('1 of 4 done')).toBeInTheDocument()
       expect(screen.getByText(/already in a class of Maths tuition/)).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Enrol in this class' })).not.toBeInTheDocument()
+    })
+
+    it('enrols with the class alone at a school with no packages', async () => {
+      const crm = enrolCrm({ packages: [] })
+      renderPanel(crm, enrolling)
+
+      expect(screen.queryByLabelText('Package')).not.toBeInTheDocument()
+      await userEvent.selectOptions(screen.getByLabelText('Class'), '21')
+      await userEvent.click(screen.getByRole('button', { name: 'Enrol in this class' }))
+      await waitFor(() =>
+        expect(crm.onEnrolStudent).toHaveBeenCalledWith(expect.objectContaining({ classroomId: 21, packageId: null })),
+      )
+    })
+
+    it('with the class picked first, offers only that class', () => {
+      renderPanel(enrolCrm({ packages: [] }), enrolling, { presetClassroomId: 22 })
+      expect(screen.getByText('Maths F1 Sun')).toBeInTheDocument()
+      expect(screen.queryByText('Maths F1 Sat')).not.toBeInTheDocument()
     })
 
     it('does not offer enrolling to a person who may not edit students', () => {

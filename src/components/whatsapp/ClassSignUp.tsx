@@ -3,6 +3,7 @@ import type { Classroom, Lead } from '../../types/domain'
 import type { WhatsAppCrm } from './crm'
 import { ProgrammePanel } from './ProgrammePanel'
 import { fieldClass } from './enrolSteps'
+import { useAgeGroups } from '../../lib/ageGroups'
 
 // Signing a parent up for a class: the team finds the class by grade, then
 // subject, then picks it; the steps that follow come from the class's
@@ -31,7 +32,12 @@ export function ClassSignUp({
     [crm.classrooms, flows],
   )
   const subjectName = useMemo(() => new Map((crm.subjects ?? []).map((subject) => [subject.id, subject])), [crm.subjects])
-  const grades = useMemo(() => [...new Set(classes.map((classroom) => classroom.ageGroup))], [classes])
+  // Grades in the school's own order (Year 3 ... Form 5), then any not on the list.
+  const schoolGrades = useAgeGroups()
+  const grades = useMemo(() => {
+    const used = new Set(classes.map((classroom) => classroom.ageGroup))
+    return [...schoolGrades.filter((entry) => used.has(entry)), ...[...used].filter((entry) => !schoolGrades.includes(entry)).sort()]
+  }, [classes, schoolGrades])
   const [grade, setGrade] = useState('')
   const [subject, setSubject] = useState('')
   const [classroomId, setClassroomId] = useState<number | null>(null)

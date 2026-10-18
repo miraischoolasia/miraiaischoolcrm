@@ -474,6 +474,8 @@ function EnrolClassStep({
   const child = children[childIndex] ?? null
   const chosenClass = classes.find((classroom) => classroom.id === classroomId) ?? (classes.length === 1 ? classes[0] : null)
   const chosenPackage = packages.find((pkg) => pkg.id === packageId) ?? (packages.length === 1 ? packages[0] : null)
+  // A school with no packages (EduHero) enrols with the class alone.
+  const noPackages = packages.length === 0
   const plan = chosenPackage && startDate ? planEnrollment(chosenPackage, startDate) : null
   const alreadyIn = child
     ? enrolled.some((student) => student.name.trim().toLowerCase() === (child.name ?? '').trim().toLowerCase())
@@ -487,7 +489,7 @@ function EnrolClassStep({
       setProblem('Pick a class first.')
       return
     }
-    if (!chosenPackage) {
+    if (!chosenPackage && !noPackages) {
       setProblem('Pick a package.')
       return
     }
@@ -506,7 +508,7 @@ function EnrolClassStep({
       childName: child.name,
       phone: lead.phone ?? '',
       classroomId: chosenClass.id,
-      packageId: chosenPackage.id,
+      packageId: chosenPackage?.id ?? null,
       startDate,
     })
     setBusy(false)
@@ -557,8 +559,35 @@ function EnrolClassStep({
           )}
           {classes.length === 0 ? (
             <p className="text-slate-500">No class of {programme.name} yet. Add one in My Classroom, with this programme chosen.</p>
-          ) : packages.length === 0 ? (
-            <p className="text-slate-500">There is no package yet. Add one under Packages in the settings first.</p>
+          ) : noPackages ? (
+            <>
+              {classes.length > 1 && (
+                <label className="block">
+                  <span className="text-slate-600">Class</span>
+                  <select
+                    value={chosenClass?.id ?? ''}
+                    onChange={(event) => {
+                      setClassroomId(event.target.value ? Number(event.target.value) : null)
+                      setProblem(null)
+                    }}
+                    className={fieldClass}
+                  >
+                    {!chosenClass && <option value="">Choose a class</option>}
+                    {classes.map((classroom) => (
+                      <option key={classroom.id} value={classroom.id}>
+                        {classroom.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {classes.length === 1 && <p className="font-medium text-slate-800">{classes[0].name}</p>}
+              <Problem text={problem} />
+              <button type="button" disabled={busy || !chosenClass} onClick={() => void enrol()} className={`${buttonClass} w-full`}>
+                {busy ? 'Enrolling...' : 'Enrol in this class'}
+              </button>
+              <p className="text-slate-500">This makes {child?.name?.trim() || 'the child'} a student of the class.</p>
+            </>
           ) : (
             <>
               <label className="block">

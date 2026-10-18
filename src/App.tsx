@@ -296,6 +296,8 @@ const chatwootUrl = getChatwootUrl(import.meta.env.VITE_CHATWOOT_URL)
 const whatsAppApiUrl = getChatwootUrl(import.meta.env.VITE_WHATSAPP_API_URL)
 
 const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed'
+// The package end and fee dates of a student who joined a class without a package.
+const NO_PACKAGE_END = '2099-12-31'
 
 function readSidebarCollapsed() {
   try {
@@ -4167,15 +4169,16 @@ function App() {
     childName: string
     phone: string
     classroomId: number
-    packageId: number
+    // Null for a school with no packages: the child just becomes a student of the class.
+    packageId: number | null
     startDate: string
   }) {
     if (!supabase) {
       return 'Supabase is not configured.'
     }
-    const pkg = findPackage(String(input.packageId))
+    const pkg = input.packageId === null ? null : findPackage(String(input.packageId))
     const classroom = classroomMap.get(input.classroomId)
-    if (!pkg || !pkg.isActive) {
+    if (input.packageId !== null && (!pkg || !pkg.isActive)) {
       return 'That package is not available.'
     }
     if (!classroom || classroom.status !== 'active') {
@@ -4188,9 +4191,10 @@ function App() {
     if (!input.startDate) {
       return 'Pick the date the package starts.'
     }
-    const plan = planEnrollment(pkg, input.startDate)
-    const fees = planFeeChange(pkg, input.startDate, plan.endDate, null, [])
-    const feeExpiry = fees?.to ?? input.startDate
+    // No package: the dates stay far off, as for the students brought over from the recordings site.
+    const plan = pkg ? planEnrollment(pkg, input.startDate) : { endDate: NO_PACKAGE_END, classCount: 0 }
+    const fees = pkg ? planFeeChange(pkg, input.startDate, plan.endDate, null, []) : null
+    const feeExpiry = pkg ? (fees?.to ?? input.startDate) : NO_PACKAGE_END
     const { data: created, error } = await supabase.rpc('create_student_record', {
       p_full_name: name,
       p_phone: input.phone.trim() || null,
@@ -4209,7 +4213,7 @@ function App() {
     }
     const studentId = (created as { student_id: number }[] | null)?.[0]?.student_id
     let problem: string | null = null
-    if (studentId) {
+    if (studentId && pkg) {
       const { error: enrollError } = await supabase.rpc('enroll_student_package', {
         p_student_id: studentId,
         p_package_id: pkg.id,

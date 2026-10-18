@@ -86,7 +86,8 @@ export type WhatsAppCrm = {
     childName: string
     phone: string
     classroomId: number
-    packageId: number
+    // Null for a school with no packages: the child just becomes a student of the class.
+    packageId: number | null
     startDate: string
   }) => Promise<string | null>
   // Follow-ups: tasks on the calendar tied to a lead (the Follow up button beside the message box). Left out, the
