@@ -74,7 +74,7 @@ export function AppLoginsSection({
   }, [load])
 
   const rows = useMemo(
-    () => (directory ? buildLoginRows(students, directory.accounts, directory.parentOfStudent, directory.parents) : []),
+    () => (directory ? buildLoginRows(students, directory.accounts, directory.parentOfStudent, directory.parents, directory.studentContacts) : []),
     [directory, students],
   )
   const shownRows = useMemo(() => filterLoginRows(rows, filter), [rows, filter])
@@ -471,7 +471,7 @@ function NewLoginsPanel({ families, settings }: { families: SentFamily[]; settin
               <div className="min-w-0">
                 <div className="font-semibold text-slate-900">{family.childNames.join(', ')}</div>
                 <div className="text-xs text-slate-500">
-                  {family.phone ? `To ${family.sendToName ?? ''} ${family.phone}` : 'No phone number'}
+                  {family.phone ? `To ${family.sendToName ?? ''} ${family.phone}` : family.contactId !== null ? `To ${family.sendToName ?? ''} (chat)` : 'No phone number or chat'}
                 </div>
               </div>
               {family.opened && (
@@ -489,12 +489,18 @@ function NewLoginsPanel({ families, settings }: { families: SentFamily[]; settin
               ))}
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              {openChat && family.phone && (
+              {openChat && (family.contactId !== null || family.phone) && (
                 <button
                   type="button"
                   onClick={() => {
                     markOpened(family.family)
-                    openChat({ phone: family.phone!, name: family.sendToName, leadId: null, message: message(family) })
+                    openChat({
+                      phone: family.phone ?? '',
+                      name: family.sendToName,
+                      leadId: null,
+                      chat: family.contactId !== null ? { conversationId: null, contactId: family.contactId } : undefined,
+                      message: message(family),
+                    })
                   }}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
                 >

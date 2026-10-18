@@ -97,7 +97,23 @@ describe('messages to families', () => {
     expect(families[0]).toMatchObject({ childNames: ['Ali Tan', 'Mei Tan'], phone: '0111', sendToName: 'Mrs Tan' })
     expect(families[0].logins.map((login) => login.kind)).toEqual(['parent', 'student'])
     // No parent: the child's own number.
-    expect(families[1]).toMatchObject({ phone: '0199', sendToName: 'Zed Lim' })
+    expect(families[1]).toMatchObject({ phone: '0199', sendToName: 'Zed Lim', contactId: null })
+  })
+
+  it('sends to the chat the CRM knows: the parent chat, else the student own chat', () => {
+    const withChats = buildLoginRows(
+      students,
+      [],
+      parentOf,
+      new Map([[50, { id: 50, name: 'Mrs Tan', phone: null, contactId: 77 }]]),
+      new Map([[3, 88]]),
+    )
+    const [tan, zed] = groupNewLogins(withChats, [
+      { kind: 'parent', name: 'Mrs Tan', username: 'mrs.tan', password: 'a-b-11', family: 'parent:50' },
+      { kind: 'student', name: 'Zed Lim', username: 'zed.lim', password: 'c-d-22', family: 'student:3' },
+    ])
+    expect(tan).toMatchObject({ contactId: 77, phone: '0123' })
+    expect(zed).toMatchObject({ contactId: 88, phone: '0199' })
   })
 
   it('fills the school message', () => {

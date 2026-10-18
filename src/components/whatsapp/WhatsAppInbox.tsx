@@ -644,6 +644,19 @@ export function WhatsAppInbox({
           void loadMissingConversations([wanted.conversationId])
           return
         }
+        // Only the contact is known: ask which chats it has and fetch the newest once.
+        if (wanted.conversationId === null && wanted.contactId !== null && !askedForChat.current.has(openRequest.id)) {
+          askedForChat.current.add(openRequest.id)
+          const contactId = wanted.contactId
+          void client
+            .listContactConversations(contactId)
+            .then((found) => {
+              const newest = [...found].sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0) || b.id - a.id)[0]
+              if (newest) return loadMissingConversations([newest.id])
+            })
+            .catch(() => undefined)
+          return
+        }
         handledRequest.current = openRequest.id
         return
       }
@@ -665,7 +678,8 @@ export function WhatsAppInbox({
     handledRequest.current = openRequest.id
     const show = (conversation: ChatwootConversation | null) => {
       categoryDecided.current = true
-      setCategory('whatsapp')
+      // A number can also find a Messenger / Instagram chat tied to that person: show its own list.
+      setCategory(conversation ? categoryOf(conversation) : 'whatsapp')
       setSearch('')
       setTagId(null)
       setSourceId(null)

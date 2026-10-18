@@ -35,12 +35,17 @@ export const defaultPortalSettings: PortalSettings = {
 
 // The student, and the parent the CRM links them to (people.parent_id).
 export async function fetchStudentLogins(studentId: number) {
-  if (!supabase) return { student: null, parent: null, parentPerson: null }
-  const { data: person } = await supabase.from('people').select('id, parent_id').eq('student_id', studentId).limit(1).maybeSingle()
+  if (!supabase) return { student: null, parent: null, parentPerson: null, studentContactId: null }
+  const { data: person } = await supabase
+    .from('people')
+    .select('id, parent_id, chatwoot_contact_id')
+    .eq('student_id', studentId)
+    .limit(1)
+    .maybeSingle()
   const parentId = person?.parent_id ?? null
   const [{ data: parentPerson }, { data: accounts, error }] = await Promise.all([
     parentId
-      ? supabase.from('people').select('id, full_name, phone').eq('id', parentId).maybeSingle()
+      ? supabase.from('people').select('id, full_name, phone, chatwoot_contact_id').eq('id', parentId).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase
       .from('portal_accounts')
@@ -59,7 +64,16 @@ export async function fetchStudentLogins(studentId: number) {
   return {
     student: mapped.find((account) => account.kind === 'student') ?? null,
     parent: mapped.find((account) => account.kind === 'parent') ?? null,
-    parentPerson: parentPerson ? { id: parentPerson.id, name: parentPerson.full_name ?? 'Parent', phone: parentPerson.phone as string | null } : null,
+    parentPerson: parentPerson
+      ? {
+          id: parentPerson.id,
+          name: parentPerson.full_name ?? 'Parent',
+          phone: parentPerson.phone as string | null,
+          contactId: parentPerson.chatwoot_contact_id as number | null,
+        }
+      : null,
+    // The student's own chat, for a student who writes themself.
+    studentContactId: (person?.chatwoot_contact_id as number | null | undefined) ?? null,
   }
 }
 
@@ -235,7 +249,14 @@ async function everyRow<T>(page: (from: number, to: number) => PromiseLike<{ dat
 }
 
 export async function fetchLoginDirectory() {
-  if (!supabase) return { accounts: [] as PortalAccount[], parentOfStudent: new Map<number, number>(), parents: new Map<number, { id: number; name: string | null; phone: string | null }>() }
+  if (!supabase) {
+    return {
+      accounts: [] as PortalAccount[],
+      parentOfStudent: new Map<number, number>(),
+      parents: new Map<number, { id: number; name: string | null; phone: string | null; contactId: number | null }>(),
+      studentContacts: new Map<number, number>(),
+    }
+  }
   const client = supabase
   const [accountRows, childRows, parentRows] = await Promise.all([
     everyRow((from, to) =>
@@ -248,14 +269,15 @@ export async function fetchLoginDirectory() {
     everyRow((from, to) =>
       client
         .from('people')
-        .select('student_id, parent_id')
+        .select('student_id, parent_id, chatwoot_contact_id')
         .eq('kind', 'student')
         .not('student_id', 'is', null)
-        .not('parent_id', 'is', null)
         .order('id')
         .range(from, to),
     ),
-    everyRow((from, to) => client.from('people').select('id, full_name, phone').eq('kind', 'parent').order('id').range(from, to)),
+    everyRow((from, to) =>
+      client.from('people').select('id, full_name, phone, chatwoot_contact_id').eq('kind', 'parent').order('id').range(from, to),
+    ),
   ])
   const accounts: PortalAccount[] = accountRows.map((row) => ({
     authUserId: row.auth_user_id,
@@ -266,9 +288,15 @@ export async function fetchLoginDirectory() {
     isActive: row.is_active,
   }))
   const parentOfStudent = new Map<number, number>()
+  // The chat of a student who writes themself (Messenger, Instagram or WhatsApp).
+  const studentContacts = new Map<number, number>()
   for (const row of childRows) {
-    if (row.student_id !== null && row.parent_id !== null && !parentOfStudent.has(row.student_id)) parentOfStudent.set(row.student_id, row.parent_id)
+    if (row.student_id === null) continue
+    if (row.parent_id !== null && !parentOfStudent.has(row.student_id)) parentOfStudent.set(row.student_id, row.parent_id)
+    if (row.chatwoot_contact_id !== null && !studentContacts.has(row.student_id)) studentContacts.set(row.student_id, row.chatwoot_contact_id)
   }
-  const parents = new Map(parentRows.map((row) => [row.id, { id: row.id, name: row.full_name, phone: row.phone }]))
-  return { accounts, parentOfStudent, parents }
+  const parents = new Map(
+    parentRows.map((row) => [row.id, { id: row.id, name: row.full_name, phone: row.phone, contactId: row.chatwoot_contact_id }]),
+  )
+  return { accounts, parentOfStudent, parents, studentContacts }
 }

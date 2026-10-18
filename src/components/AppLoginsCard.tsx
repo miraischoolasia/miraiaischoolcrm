@@ -78,6 +78,8 @@ export function AppLoginsCard({
   const parentAuthId = logins?.parent?.authUserId ?? null
   // Logins go to the parent's number, else the child's own.
   const sendPhone = logins?.parentPerson?.phone || studentPhone || null
+  // The family's own chat when the CRM knows it (Messenger and Instagram have no number).
+  const sendContactId = (logins?.parentPerson ? logins.parentPerson.contactId : logins?.studentContactId) ?? null
   useEffect(() => {
     if (!parentAuthId) return
     let cancelled = false
@@ -207,15 +209,16 @@ export function AppLoginsCard({
             <Copy size={14} aria-hidden="true" />
             {copied ? 'Copied' : 'Copy'}
           </button>
-          {openChat && sendPhone && (
+          {openChat && (sendContactId !== null || sendPhone) && (
             <button
               type="button"
               title="Opens the family's chat with the message ready to send"
               onClick={() =>
                 openChat({
-                  phone: sendPhone,
+                  phone: sendPhone ?? '',
                   name: logins?.parentPerson?.name ?? studentName,
                   leadId: null,
+                  chat: sendContactId !== null ? { conversationId: null, contactId: sendContactId } : undefined,
                   message: fillLoginMessage(settings?.login_message ?? '', {
                     school: settings?.school_name ?? '',
                     childNames: [studentName],

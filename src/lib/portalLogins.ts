@@ -4,7 +4,7 @@ import type { PortalAccount } from './portal'
 // The App Logins page: every student with their own login and their parent's,
 // making many logins in one go, and the message that sends them to a family.
 
-export type ParentInfo = { id: number; name: string | null; phone: string | null }
+export type ParentInfo = { id: number; name: string | null; phone: string | null; contactId?: number | null }
 
 export type LoginRow = {
   studentId: number
@@ -12,6 +12,8 @@ export type LoginRow = {
   studentType: StudentType
   isActive: boolean
   studentPhone: string | null
+  // The student's own chat (a student who writes themself), when the CRM knows it.
+  studentContactId?: number | null
   studentLogin: PortalAccount | null
   parent: ParentInfo | null
   parentLogin: PortalAccount | null
@@ -24,6 +26,7 @@ export function buildLoginRows(
   accounts: PortalAccount[],
   parentOfStudent: Map<number, number>,
   parents: Map<number, ParentInfo>,
+  studentContacts: Map<number, number> = new Map(),
 ): LoginRow[] {
   const byStudent = new Map<number, PortalAccount>()
   const byParent = new Map<number, PortalAccount>()
@@ -41,6 +44,7 @@ export function buildLoginRows(
         studentType: student.studentType,
         isActive: student.isActive,
         studentPhone: student.phone,
+        studentContactId: studentContacts.get(student.id) ?? null,
         studentLogin: byStudent.get(student.id) ?? null,
         parent,
         parentLogin: parent ? (byParent.get(parent.id) ?? null) : null,
@@ -118,6 +122,8 @@ export type FamilyLogins = {
   family: string
   childNames: string[]
   phone: string | null
+  // The family's chat (Messenger, Instagram or WhatsApp) when it is known; else the phone finds it.
+  contactId: number | null
   sendToName: string | null
   logins: NewLogin[]
 }
@@ -133,6 +139,7 @@ export function groupNewLogins(rows: LoginRow[], made: Array<NewLogin & { family
         family: login.family,
         childNames: members.map((row) => row.studentName),
         phone: first?.parent?.phone || first?.studentPhone || null,
+        contactId: first?.parent ? (first.parent.contactId ?? null) : (first?.studentContactId ?? null),
         sendToName: first?.parent?.name || first?.studentName || null,
         logins: [],
       }
