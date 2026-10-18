@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { FileText, Image, MagnifyingGlass, VideoCamera } from '@phosphor-icons/react'
+import { FileText, Image, MagnifyingGlass, Microphone, VideoCamera } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { mediaKind, replyMedia, replyTexts, searchQuickReplies, type QuickReply } from '../../lib/quickReplies'
 
@@ -25,6 +25,8 @@ function MediaBadges({ reply }: { reply: QuickReply }) {
           <Image key={kind} size={13} aria-label="Has a photo" />
         ) : kind === 'video' ? (
           <VideoCamera key={kind} size={13} aria-label="Has a video" />
+        ) : kind === 'audio' ? (
+          <Microphone key={kind} size={13} aria-label="Has a voice message" />
         ) : (
           <FileText key={kind} size={13} aria-label="Has a file" />
         ),

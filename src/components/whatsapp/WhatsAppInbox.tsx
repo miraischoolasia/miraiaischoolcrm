@@ -68,7 +68,8 @@ import { NewChatDialog } from './NewChatDialog'
 import { FollowUpButton, FollowUpChip } from './FollowUpButton'
 import { NumbersDialog, type AssignableStaff } from './NumbersDialog'
 import type { WhatsAppNumber, WhatsAppNumberDraft } from '../../lib/whatsappNumbers'
-import { QuickReplyManager } from './QuickReplyManager'
+import { QuickReplyManager, type QuickReplyStart } from './QuickReplyManager'
+import { checkQuickReplyFile, MAX_QUICK_REPLY_STEPS, normalizeQuickReplyFile } from '../../lib/quickReplies'
 import { SourceRuleManager } from './SourceRuleManager'
 
 type WhatsAppInboxProps = {
@@ -563,6 +564,8 @@ export function WhatsAppInbox({
   // Set while the source rules window is open; phrase starts a new rule from a message.
   const [managingRules, setManagingRules] = useState<{ phrase: string } | null>(null)
   const [managingReplies, setManagingReplies] = useState(false)
+  // Rows the quick reply window opens with, when it was started from messages picked in a chat.
+  const [quickReplyStart, setQuickReplyStart] = useState<QuickReplyStart | null>(null)
   const [startingChat, setStartingChat] = useState(false)
   // The number and lead a "New chat" window starts with, when it was opened from one.
   const [chatPrefill, setChatPrefill] = useState<{ phone: string; name: string; leadId: number | null } | null>(null)
@@ -977,6 +980,50 @@ export function WhatsAppInbox({
       return "Couldn't forward it to every chat. Check which ones got it, then try again."
     }
   }
+  // Opens a new personal quick reply made of the messages: each one's text, then its photos, videos and PDFs.
+  async function startQuickReplyFrom(messages: ChatwootMessage[]) {
+    const steps: QuickReplyStart['steps'] = []
+    const left: string[] = []
+    let notLoaded = 0
+    for (const message of messages) {
+      const text = (message.content ?? '').trim()
+      if (text) {
+        steps.push({ kind: 'text', text })
+      }
+      for (const attachment of message.attachments ?? []) {
+        try {
+          const response = await fetch(attachment.data_url)
+          if (!response.ok) {
+            throw new Error('file')
+          }
+          const blob = await response.blob()
+          const name = decodeURIComponent(attachment.data_url.split('?')[0].split('/').pop() ?? 'file')
+          // A voice message is kept as an audio file whatever the server called it.
+          const file = normalizeQuickReplyFile(new File([blob], name, { type: blob.type }), attachment.file_type === 'audio')
+          const problem = checkQuickReplyFile(file)
+          if (problem) {
+            left.push(problem)
+          } else {
+            steps.push({ kind: 'file', file })
+          }
+        } catch {
+          notLoaded += 1
+        }
+      }
+    }
+    const notes = [...left]
+    if (notLoaded > 0) {
+      notes.push(notLoaded === 1 ? 'One photo or file could not be loaded.' : `${notLoaded} photos or files could not be loaded.`)
+    }
+    if (steps.length > MAX_QUICK_REPLY_STEPS) {
+      notes.push(`A quick reply holds up to ${MAX_QUICK_REPLY_STEPS} rows, so only the first ${MAX_QUICK_REPLY_STEPS} were copied.`)
+    }
+    setQuickReplyStart({
+      steps: steps.slice(0, MAX_QUICK_REPLY_STEPS),
+      note: notes.length > 0 ? `Left out: ${notes.join(' ')}` : undefined,
+    })
+    setManagingReplies(true)
+  }
   // Sends an approved automation message to the parent's chat: the chat the school already has for
   // the number (also one whose number WhatsApp hides), else the one the server has, else a new one.
   // Resolves to an error message, or null once WhatsApp has accepted the message.
@@ -1226,6 +1273,7 @@ export function WhatsAppInbox({
             starredIds={inbox.selected.custom_attributes?.crm_starred ?? []}
             onToggleStar={(message) => void inbox.toggleStar(inbox.selected!.id, message.id)}
             onForward={setForwarding}
+            onMakeQuickReply={(chosen) => void startQuickReplyFrom(chosen)}
             onTyping={showTyping}
             aiContext={aiContext}
             sendingFrom={sendingFromOf(inbox.selected)}
@@ -1422,7 +1470,11 @@ export function WhatsAppInbox({
           isLoading={quickReplies.isLoading}
           loadError={quickReplies.error}
           canEditTeam={crm.canEditLeads}
-          onClose={() => setManagingReplies(false)}
+          start={quickReplyStart}
+          onClose={() => {
+            setManagingReplies(false)
+            setQuickReplyStart(null)
+          }}
           onSave={quickReplies.save}
           onRemove={quickReplies.remove}
           onReorder={quickReplies.reorder}

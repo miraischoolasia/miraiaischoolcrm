@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from 'react'
 import type { VariableValues } from '../../lib/quickReplies'
-import { ArrowBendUpRight, ArrowCounterClockwise, ArrowDown, CaretDown, CaretLeft, CaretUp, CheckCircle, EnvelopeSimple, Info, MagnifyingGlass, PushPin, UserCircle, X } from '@phosphor-icons/react'
+import { ArrowBendUpRight, ArrowCounterClockwise, ArrowDown, CaretDown, CaretLeft, CaretUp, CheckCircle, EnvelopeSimple, Info, Lightning, MagnifyingGlass, PushPin, UserCircle, X } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import type { Sender } from '../../lib/chatwootClient'
 import type { SendInput } from '../../hooks/useWhatsAppInbox'
@@ -83,6 +83,8 @@ type ChatPanelProps = {
   onToggleStar?: (message: ChatwootMessage) => void
   // Forwards one or several messages, oldest first.
   onForward?: (messages: ChatwootMessage[]) => void
+  // Starts a quick reply of one or several messages, oldest first.
+  onMakeQuickReply?: (messages: ChatwootMessage[]) => void
   // Turns on the grey AI reply suggestion for this chat, with what the AI may know about the child.
   // Left out where the feature is not wanted (people who cannot edit leads).
   aiContext?: AiDraftContext | null
@@ -155,6 +157,7 @@ export function ChatPanel({
   starredIds = [],
   onToggleStar,
   onForward,
+  onMakeQuickReply,
   aiContext = null,
   sendingFrom = null,
 }: ChatPanelProps) {
@@ -199,6 +202,11 @@ export function ChatPanel({
       return next.length > 0 ? { conversationId: conversation.id, ids: next } : null
     })
   const replying = replyTo?.conversationId === conversation.id ? replyTo.message : null
+  // The ticked messages in the order they were written, whatever order they were ticked in.
+  const pickedInOrder = () =>
+    [...messages, ...waitingMessages]
+      .filter((message) => pickedIds?.includes(message.id))
+      .sort((a, b) => a.created_at - b.created_at || a.id - b.id)
   useEffect(() => {
     if (!pickedIds) {
       return undefined
@@ -714,7 +722,7 @@ export function ChatPanel({
           if (avatar) {
             lastRun = run
           }
-          const canPick = Boolean(onForward) && !message.local && !message.private
+          const canPick = Boolean(onForward || onMakeQuickReply) && !message.local && !message.private
           const isPicked = pickedIds?.includes(message.id) ?? false
           return (
             <div key={message.id} data-message-id={message.id}>
@@ -772,7 +780,7 @@ export function ChatPanel({
                   onDelete: onDeleteMessage ? () => onDeleteMessage(message) : undefined,
                   onStar: onToggleStar && !message.local ? () => onToggleStar(message) : undefined,
                   // Like WhatsApp: Forward first turns on picking (with this message ticked), then the Forward button below sends.
-                  onForward: canPick ? () => togglePicked(message.id) : undefined,
+                  onForward: canPick && onForward ? () => togglePicked(message.id) : undefined,
                   onSelect: canPick ? () => togglePicked(message.id) : undefined,
                   onJumpToQuote: quotedOf(message) ? () => jumpTo((quotedOf(message) as ChatwootMessage).id) : undefined,
                   onOpenImage: message.local ? undefined : (attachmentId) => setViewer(attachmentId),
@@ -811,7 +819,7 @@ export function ChatPanel({
         />
       )}
 
-      {pickedIds && onForward && (
+      {pickedIds && (onForward || onMakeQuickReply) && (
         <div className="flex items-center justify-between gap-2 border-t border-pink-100 bg-pink-50 px-4 py-2 text-sm">
           <span className="font-medium text-slate-800">{pickedIds.length} selected</span>
           <span className="flex items-center gap-2">
@@ -822,21 +830,34 @@ export function ChatPanel({
             >
               Cancel
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                // In the order they were written, whatever order they were ticked in.
-                const chosen = [...messages, ...waitingMessages]
-                  .filter((message) => pickedIds.includes(message.id))
-                  .sort((a, b) => a.created_at - b.created_at || a.id - b.id)
-                setPicked(null)
-                onForward(chosen)
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#fc0c97] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#de0a84]"
-            >
-              <ArrowBendUpRight size={14} aria-hidden="true" />
-              Forward
-            </button>
+            {onMakeQuickReply && (
+              <button
+                type="button"
+                onClick={() => {
+                  const chosen = pickedInOrder()
+                  setPicked(null)
+                  onMakeQuickReply(chosen)
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-pink-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#be185d] hover:bg-pink-50"
+              >
+                <Lightning size={14} aria-hidden="true" />
+                Quick reply
+              </button>
+            )}
+            {onForward && (
+              <button
+                type="button"
+                onClick={() => {
+                  const chosen = pickedInOrder()
+                  setPicked(null)
+                  onForward(chosen)
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#fc0c97] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#de0a84]"
+              >
+                <ArrowBendUpRight size={14} aria-hidden="true" />
+                Forward
+              </button>
+            )}
           </span>
         </div>
       )}
@@ -852,7 +873,7 @@ export function ChatPanel({
           This is a WhatsApp group. Everyone in it reads your reply.
         </p>
       )}
-      <div className={pickedIds && onForward ? 'hidden' : undefined}>
+      <div className={pickedIds && (onForward || onMakeQuickReply) ? 'hidden' : undefined}>
       <Composer
         key={conversation.id}
         onSend={sendAndRecord}

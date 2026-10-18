@@ -26,7 +26,59 @@ export const MAX_QUICK_REPLY_FILE_BYTES = 16 * 1024 * 1024
 export const MAX_QUICK_REPLY_VIDEO_BYTES = MAX_VIDEO_BYTES
 // What the storage bucket holds per file: the bigger of the two.
 export const QUICK_REPLY_BUCKET_BYTES = Math.max(MAX_QUICK_REPLY_FILE_BYTES, MAX_QUICK_REPLY_VIDEO_BYTES)
-export const QUICK_REPLY_FILE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'application/pdf']
+// A voice message is an audio file: WhatsApp voice notes are OGG (opus), and the others are what people record or save.
+export const QUICK_REPLY_AUDIO_TYPES = ['audio/ogg', 'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/wav']
+export const QUICK_REPLY_FILE_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'video/mp4',
+  'application/pdf',
+  ...QUICK_REPLY_AUDIO_TYPES,
+]
+
+// The same audio goes by several names; this is the one the rest of the app and the storage bucket know.
+const AUDIO_TYPE_NAMES: Record<string, string> = {
+  'audio/oga': 'audio/ogg',
+  'audio/opus': 'audio/ogg',
+  'application/ogg': 'audio/ogg',
+  'audio/mp3': 'audio/mpeg',
+  'audio/x-mpeg': 'audio/mpeg',
+  'audio/x-m4a': 'audio/mp4',
+  'audio/m4a': 'audio/mp4',
+  'audio/x-mp4': 'audio/mp4',
+  'audio/x-aac': 'audio/aac',
+  'audio/x-wav': 'audio/wav',
+  'audio/wave': 'audio/wav',
+  'audio/vnd.wave': 'audio/wav',
+}
+const AUDIO_EXTENSIONS: Record<string, string> = {
+  'audio/ogg': 'ogg',
+  'audio/mpeg': 'mp3',
+  'audio/mp4': 'm4a',
+  'audio/aac': 'aac',
+  'audio/wav': 'wav',
+}
+
+// A file ready to be kept as a quick reply row. An audio file gets the plain type and the ending the
+// WhatsApp bridge reads (it tells a voice message from a video by the file name). knownAudio: the chat already
+// said this is a voice message, so a file with no useful type is taken as the OGG that WhatsApp voice notes are.
+export function normalizeQuickReplyFile(file: File, knownAudio = false): File {
+  const bare = file.type.split(';')[0].trim().toLowerCase()
+  const named = AUDIO_TYPE_NAMES[bare] ?? bare
+  const isAudio = named.startsWith('audio/') || (knownAudio && (bare === '' || bare === 'application/octet-stream'))
+  if (!isAudio) {
+    return file
+  }
+  const type = AUDIO_EXTENSIONS[named] ? named : knownAudio ? 'audio/ogg' : named
+  const extension = AUDIO_EXTENSIONS[type]
+  if (!extension) {
+    return file
+  }
+  const hasEnding = file.name.toLowerCase().endsWith(`.${extension}`)
+  const name = hasEnding ? file.name : `${file.name.replace(/\.[A-Za-z0-9]{1,5}$/, '') || 'voice'}.${extension}`
+  return type === file.type && name === file.name ? file : new File([file], name, { type })
+}
 
 export const QUICK_REPLY_VARIABLES = [
   { token: '{parent name}', label: 'Parent name' },
@@ -40,7 +92,7 @@ export type VariableValues = Partial<Record<(typeof QUICK_REPLY_VARIABLES)[numbe
 // Null when the file may be used, otherwise a plain reason it may not.
 export function checkQuickReplyFile(file: Pick<File, 'type' | 'size' | 'name'>): string | null {
   if (!QUICK_REPLY_FILE_TYPES.includes(file.type)) {
-    return `${file.name} is not a photo (PNG, JPG, WebP), an MP4 video or a PDF.`
+    return `${file.name} is not a photo (PNG, JPG, WebP), an MP4 video, a voice message (OGG, MP3, M4A, WAV) or a PDF.`
   }
   if (file.type.startsWith('video/')) {
     if (file.size > MAX_QUICK_REPLY_VIDEO_BYTES) {
@@ -148,9 +200,12 @@ export function parseMedia(value: unknown): QuickReplyMedia[] {
   })
 }
 
-export function mediaKind(type: string): 'image' | 'video' | 'file' {
+export function mediaKind(type: string): 'image' | 'video' | 'audio' | 'file' {
   if (type.startsWith('image/')) {
     return 'image'
+  }
+  if (type.startsWith('audio/')) {
+    return 'audio'
   }
   if (type.startsWith('video/')) {
     return 'video'

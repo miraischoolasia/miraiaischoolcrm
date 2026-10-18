@@ -5,6 +5,7 @@ import {
   DotsSixVertical,
   FileText,
   Image,
+  Microphone,
   PencilSimple,
   Plus,
   Trash,
@@ -19,6 +20,7 @@ import {
   MAX_QUICK_REPLY_STEPS,
   mediaKind,
   moveItem,
+  normalizeQuickReplyFile,
   QUICK_REPLY_FILE_TYPES,
   QUICK_REPLY_VARIABLES,
   type QuickReply,
@@ -26,12 +28,21 @@ import {
 } from '../../lib/quickReplies'
 import type { QuickReplyDraft } from '../../lib/quickRepliesApi'
 
+// Rows a new quick reply starts with, when it is made from messages picked in a chat.
+export type QuickReplyStart = {
+  steps: ({ kind: 'text'; text: string } | { kind: 'file'; file: File })[]
+  // What could not be copied, shown above the rows.
+  note?: string
+}
+
 type QuickReplyManagerProps = {
   replies: QuickReply[]
   isLoading: boolean
   loadError: string | null
   // Whether the person may change the team's quick replies; their own they can always change.
   canEditTeam?: boolean
+  // Opens straight on a new personal quick reply made of these rows.
+  start?: QuickReplyStart | null
   onClose: () => void
   // Each returns an error message, or null when it worked.
   onSave: (existing: QuickReply | null, draft: QuickReplyDraft) => Promise<string | null>
@@ -45,7 +56,7 @@ const fieldClass =
 
 function KindIcon({ type }: { type: string }) {
   const kind = mediaKind(type)
-  const Icon = kind === 'image' ? Image : kind === 'video' ? VideoCamera : FileText
+  const Icon = kind === 'image' ? Image : kind === 'video' ? VideoCamera : kind === 'audio' ? Microphone : FileText
   return <Icon size={14} aria-hidden="true" className="shrink-0 text-slate-500" />
 }
 
@@ -67,10 +78,12 @@ function rowsOf(reply: QuickReply | null): Row[] {
 function ReplyForm({
   existing,
   personal,
+  start,
   onCancel,
   onSave,
 }: {
   existing: QuickReply | null
+  start?: QuickReplyStart | null
   // A new reply only its writer sees (an existing one keeps its owner).
   personal: boolean
   onCancel: () => void
@@ -78,7 +91,11 @@ function ReplyForm({
 }) {
   const isMine = existing ? Boolean(existing.ownerId) : personal
   const [title, setTitle] = useState(existing?.title ?? '')
-  const [rows, setRows] = useState<Row[]>(() => rowsOf(existing))
+  const [rows, setRows] = useState<Row[]>(() =>
+    start && start.steps.length > 0
+      ? start.steps.map((step) => (step.kind === 'text' ? newRow({ text: step.text }) : newRow({ type: 'file', file: step.file })))
+      : rowsOf(existing),
+  )
   const [isActive, setIsActive] = useState(existing?.isActive ?? true)
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -93,7 +110,8 @@ function ReplyForm({
   }
 
   function chooseFile(list: FileList | null) {
-    const file = list?.[0]
+    const chosen = list?.[0]
+    const file = chosen ? normalizeQuickReplyFile(chosen) : undefined
     const key = pickingFor.current
     if (!file || key === null) {
       return
@@ -160,6 +178,11 @@ function ReplyForm({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div data-modal-body className="max-h-[70vh] min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-6 sm:px-8">
+        {start?.note && (
+          <p role="status" className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {start.note}
+          </p>
+        )}
         <label className="block">
           <span className="text-sm font-medium text-slate-700">Title</span>
           <input
@@ -270,7 +293,7 @@ function ReplyForm({
             ref={fileInput}
             type="file"
             hidden
-            accept={QUICK_REPLY_FILE_TYPES.join(',')}
+            accept={[...QUICK_REPLY_FILE_TYPES, '.ogg', '.oga', '.opus', '.mp3', '.m4a', '.aac', '.wav'].join(',')}
             onChange={(event) => {
               chooseFile(event.target.files)
               event.target.value = ''
@@ -288,7 +311,7 @@ function ReplyForm({
           )}
           <p className="text-xs text-slate-500">
             Each row is sent on its own, one after the other, from the first row down. Up to {MAX_QUICK_REPLY_STEPS} rows. Files can be PNG, JPG,
-            WebP, MP4 or PDF. Photos and PDFs up to 16 MB, videos up to 32 MB.
+            WebP, MP4, PDF, or a voice message (OGG, MP3, M4A, WAV). Photos, voice messages and PDFs up to 16 MB, videos up to 32 MB.
           </p>
         </div>
 
@@ -347,23 +370,26 @@ export function QuickReplyManager({
   isLoading,
   loadError,
   canEditTeam = true,
+  start = null,
   onClose,
   onSave,
   onRemove,
   onReorder,
 }: QuickReplyManagerProps) {
   // Whoever may change the team's list starts there; everyone else starts on their own.
-  const [tab, setTab] = useState<'mine' | 'team'>(canEditTeam ? 'team' : 'mine')
+  const [tab, setTab] = useState<'mine' | 'team'>(start || !canEditTeam ? 'mine' : 'team')
   const replies = allReplies.filter((reply) => (tab === 'mine' ? Boolean(reply.ownerId) : !reply.ownerId))
   const canChange = tab === 'mine' || canEditTeam
-  const [editing, setEditing] = useState<QuickReply | 'new' | null>(null)
+  const [editing, setEditing] = useState<QuickReply | 'new' | null>(start ? 'new' : null)
+  // The picked messages the first new quick reply starts with; gone once that form is closed.
+  const [startRows, setStartRows] = useState(start)
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState<number | null>(null)
   const [over, setOver] = useState<number | null>(null)
   const { confirm, dialog } = useConfirm()
 
   async function remove(reply: QuickReply) {
-    const sure = await confirm(`Delete "${reply.title}"? Its photos and videos are deleted too.`, {
+    const sure = await confirm(`Delete "${reply.title}"? Its photos, videos and voice messages are deleted too.`, {
       confirmLabel: 'Delete',
     })
     if (!sure) {
@@ -394,8 +420,8 @@ export function QuickReplyManager({
             {editing === null && (
               <p className="mt-2 text-sm text-slate-500">
                 {tab === 'mine'
-                  ? 'Your own messages, in two clicks, with photos or videos if you like. Only you see them. Drag them into the order you want.'
-                  : 'Messages the whole team can send in two clicks, with photos or videos if you like. Drag them into the order you want.'}
+                  ? 'Your own messages, in two clicks, with photos, videos or voice messages if you like. Only you see them. Drag them into the order you want.'
+                  : 'Messages the whole team can send in two clicks, with photos, videos or voice messages if you like. Drag them into the order you want.'}
               </p>
             )}
           </div>
@@ -414,7 +440,11 @@ export function QuickReplyManager({
         <ReplyForm
           existing={editing === 'new' ? null : editing}
           personal={tab === 'mine'}
-          onCancel={() => setEditing(null)}
+          start={editing === 'new' ? startRows : null}
+          onCancel={() => {
+            setEditing(null)
+            setStartRows(null)
+          }}
           onSave={onSave}
         />
       ) : (

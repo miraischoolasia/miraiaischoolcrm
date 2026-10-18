@@ -3,6 +3,7 @@ import {
   checkQuickReplyFile,
   fillVariables,
   mediaKind,
+  normalizeQuickReplyFile,
   mineFirst,
   moveItem,
   parseMedia,
@@ -162,5 +163,43 @@ describe('mineFirst', () => {
     const reply = (id: number, ownerId: string | null) => ({ id, title: `r${id}`, steps: [], isActive: true, ownerId })
     const list = [reply(1, null), reply(2, 'me'), reply(3, null), reply(4, 'me')]
     expect(mineFirst(list).map((item) => item.id)).toEqual([2, 4, 1, 3])
+  })
+})
+
+describe('voice messages in quick replies', () => {
+  it('accepts audio files and sorts them as audio', () => {
+    expect(checkQuickReplyFile({ name: 'a.ogg', type: 'audio/ogg', size: 100 })).toBeNull()
+    expect(checkQuickReplyFile({ name: 'a.mp3', type: 'audio/mpeg', size: 100 })).toBeNull()
+    expect(checkQuickReplyFile({ name: 'a.m4a', type: 'audio/mp4', size: 100 })).toBeNull()
+    expect(checkQuickReplyFile({ name: 'big.ogg', type: 'audio/ogg', size: 17 * 1024 * 1024 })).toMatch(/16 MB/)
+    expect(checkQuickReplyFile({ name: 'a.webm', type: 'audio/webm', size: 100 })).toMatch(/not a photo/)
+    expect(mediaKind('audio/ogg')).toBe('audio')
+  })
+
+  it('gives an audio file the plain type and the ending the WhatsApp bridge reads', () => {
+    const named = normalizeQuickReplyFile(new File(['x'], 'note.oga', { type: 'audio/ogg; codecs=opus' }))
+    expect(named.type).toBe('audio/ogg')
+    expect(named.name).toBe('note.ogg')
+
+    const m4a = normalizeQuickReplyFile(new File(['x'], 'hello.mp4', { type: 'audio/x-m4a' }))
+    expect(m4a.type).toBe('audio/mp4')
+    expect(m4a.name).toBe('hello.m4a')
+
+    const mp3 = normalizeQuickReplyFile(new File(['x'], 'hello', { type: 'audio/mp3' }))
+    expect([mp3.type, mp3.name]).toEqual(['audio/mpeg', 'hello.mp3'])
+  })
+
+  it('leaves a file that is already right, and files that are not audio, as they are', () => {
+    const ready = new File(['x'], 'voice.ogg', { type: 'audio/ogg' })
+    expect(normalizeQuickReplyFile(ready)).toBe(ready)
+    const photo = new File(['x'], 'a.png', { type: 'image/png' })
+    expect(normalizeQuickReplyFile(photo)).toBe(photo)
+    const video = new File(['x'], 'a.mp4', { type: 'video/mp4' })
+    expect(normalizeQuickReplyFile(video, false)).toBe(video)
+  })
+
+  it('takes a voice message of unknown type as the OGG that WhatsApp voice notes are', () => {
+    const unknown = normalizeQuickReplyFile(new File(['x'], 'AUD-1234', { type: 'application/octet-stream' }), true)
+    expect([unknown.type, unknown.name]).toEqual(['audio/ogg', 'AUD-1234.ogg'])
   })
 })

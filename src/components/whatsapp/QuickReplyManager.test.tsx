@@ -2,7 +2,7 @@ import { createEvent, fireEvent, render, screen, waitFor, within } from '@testin
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { QuickReply } from '../../lib/quickReplies'
-import { QuickReplyManager } from './QuickReplyManager'
+import { QuickReplyManager, type QuickReplyStart } from './QuickReplyManager'
 
 const existing: QuickReply = {
   id: 4,
@@ -17,7 +17,7 @@ const second: QuickReply = { id: 5, title: 'Fees', steps: [{ kind: 'text', text:
 
 const mine: QuickReply = { id: 9, title: 'My hello', steps: [{ kind: 'text', text: 'Hi from me' }], isActive: true, ownerId: 'me' }
 
-function setup(replies: QuickReply[] = [existing], canEditTeam = true) {
+function setup(replies: QuickReply[] = [existing], canEditTeam = true, start: QuickReplyStart | null = null) {
   const onSave = vi.fn().mockResolvedValue(null)
   const onRemove = vi.fn().mockResolvedValue(null)
   const onReorder = vi.fn().mockResolvedValue(null)
@@ -27,6 +27,7 @@ function setup(replies: QuickReply[] = [existing], canEditTeam = true) {
       isLoading={false}
       loadError={null}
       canEditTeam={canEditTeam}
+      start={start}
       onClose={vi.fn()}
       onSave={onSave}
       onRemove={onRemove}
@@ -250,5 +251,60 @@ describe('QuickReplyManager', () => {
     expect(screen.queryByRole('button', { name: 'Edit Trial details' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Delete Trial details' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /New quick reply/ })).not.toBeInTheDocument()
+  })
+
+  it('opens on a new personal reply made of the picked messages', async () => {
+    const photo = new File(['x'], 'map.png', { type: 'image/png' })
+    const { onSave } = setup([existing], true, {
+      steps: [
+        { kind: 'text', text: 'Come at 2pm' },
+        { kind: 'file', file: photo },
+      ],
+      note: 'Left out: a voice note.',
+    })
+
+    // Straight on the form, on the person's own list, with the rows copied and what was left out said.
+    expect(screen.getByText('New quick reply')).toBeInTheDocument()
+    expect(screen.getByText('Only you see this. It is what you search for.')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Left out: a voice note.')
+    expect(screen.getByLabelText('Row 1 text')).toHaveValue('Come at 2pm')
+    expect(screen.getByText('map.png')).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText(/^Title/), 'Trial map')
+    await userEvent.click(screen.getByRole('button', { name: 'Save quick reply' }))
+
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(null, {
+        title: 'Trial map',
+        steps: [
+          { kind: 'text', text: 'Come at 2pm' },
+          { kind: 'file', file: photo },
+        ],
+        isActive: true,
+        personal: true,
+      }),
+    )
+    // Back on the list; a later New quick reply starts empty.
+    await userEvent.click(await screen.findByRole('button', { name: /New quick reply/ }))
+    expect(screen.getByLabelText('Row 1 text')).toHaveValue('')
+  })
+
+  it('takes a voice message as a row and saves it with the plain type and an .ogg ending', async () => {
+    const { onSave } = setup()
+
+    await userEvent.click(screen.getByRole('button', { name: /New quick reply/ }))
+    await userEvent.type(screen.getByLabelText(/^Title/), 'Hello voice')
+    await userEvent.selectOptions(screen.getByLabelText('Row 1 type'), 'file')
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.click(screen.getByRole('button', { name: 'Choose file' }))
+    await userEvent.upload(input, new File(['x'], 'greeting.oga', { type: 'audio/ogg; codecs=opus' }), { applyAccept: false })
+
+    expect(screen.getByText('greeting.ogg')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Save quick reply' }))
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1))
+    const step = onSave.mock.calls[0][1].steps[0]
+    expect(step.kind).toBe('file')
+    expect([step.file.name, step.file.type]).toEqual(['greeting.ogg', 'audio/ogg'])
   })
 })
