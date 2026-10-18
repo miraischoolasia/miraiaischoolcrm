@@ -211,7 +211,7 @@ function ReplyForm({
                     className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm outline-none focus:border-[#fc0c97]"
                   >
                     <option value="text">Text</option>
-                    <option value="file">Photo, video or PDF</option>
+                    <option value="file">Photo, Video, File, Voice</option>
                   </select>
                   <span className="flex-1" />
                   <button

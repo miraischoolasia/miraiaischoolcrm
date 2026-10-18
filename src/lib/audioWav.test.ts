@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { encodeWav, WAV_SAMPLE_RATE } from './audioWav'
+import { audioForMeta, encodeWav, WAV_SAMPLE_RATE } from './audioWav'
 
 describe('encodeWav', () => {
   it('writes a mono 16-bit WAV with the right header and sound', async () => {
@@ -25,5 +25,20 @@ describe('encodeWav', () => {
     const view = new DataView(await encodeWav(new Float32Array([3, -3])).arrayBuffer())
     expect(view.getInt16(44, true)).toBe(32767)
     expect(view.getInt16(46, true)).toBe(-32768)
+  })
+})
+
+describe('audioForMeta', () => {
+  it('keeps the audio Messenger and Instagram can play, and what is not audio', async () => {
+    for (const [name, type] of [['a.m4a', 'audio/mp4'], ['a.aac', 'audio/aac'], ['a.wav', 'audio/wav'], ['a.png', 'image/png']]) {
+      const file = new File(['x'], name, { type })
+      expect(await audioForMeta(file)).toBe(file)
+    }
+  })
+
+  it('sends the original when this browser cannot turn an OGG into a WAV', async () => {
+    // The test browser has no audio decoder, which is the same as a browser that cannot convert.
+    const ogg = new File(['x'], 'hello.ogg', { type: 'audio/ogg' })
+    expect(await audioForMeta(ogg)).toBe(ogg)
   })
 })

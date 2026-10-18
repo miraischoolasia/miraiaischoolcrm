@@ -56,3 +56,17 @@ export async function recordingToWav(recording: Blob): Promise<Blob> {
     void context.close()
   }
 }
+
+// A voice file for a Messenger or Instagram chat: OGG and MP3 become a WAV they can play; AAC, M4A and WAV
+// are kept. If this browser cannot convert it, the original is returned so the message still goes.
+export async function audioForMeta(file: File): Promise<File> {
+  if (file.type !== 'audio/ogg' && file.type !== 'audio/mpeg') {
+    return file
+  }
+  try {
+    const wav = await recordingToWav(file)
+    return new File([wav], `${file.name.replace(/\.[A-Za-z0-9]{1,5}$/, '') || 'voice'}.wav`, { type: 'audio/wav' })
+  } catch {
+    return file
+  }
+}

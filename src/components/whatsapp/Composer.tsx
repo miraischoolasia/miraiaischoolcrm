@@ -7,6 +7,7 @@ import { useVoiceRecorder } from '../../hooks/useVoiceRecorder'
 import type { SendInput } from '../../hooks/useWhatsAppInbox'
 import { fillVariables, unfilledVariables, type QuickReply, type VariableValues } from '../../lib/quickReplies'
 import { downloadQuickReplyMedia } from '../../lib/quickRepliesApi'
+import { audioForMeta } from '../../lib/audioWav'
 import { isEmptyDraft, type ComposerItem, type Draft } from '../../lib/draft'
 import { fileKind, fileProblem } from '../../lib/outbox'
 import { EmojiPicker } from './EmojiPicker'
@@ -285,7 +286,9 @@ ${draftRequest.text}` : draftRequest.text))
             const filled = fillVariables(step.text, variables)
             return filled.trim() ? { id: nextItemId++, kind: 'text', text: filled } : null
           }
-          return { id: nextItemId++, kind: 'file', file: await downloadQuickReplyMedia(step.media) }
+          const file = await downloadQuickReplyMedia(step.media)
+          // Messenger and Instagram cannot play OGG or MP3 voice messages; they get a WAV.
+          return { id: nextItemId++, kind: 'file', file: voiceAsWav ? await audioForMeta(file) : file }
         }),
       )
       setQueue((current) => [...current, ...added.flatMap((item) => item ?? [])])
