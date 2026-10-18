@@ -94,33 +94,6 @@ describe('FamilyCard', () => {
     expect(screen.getByText('Parent not saved yet')).toBeInTheDocument()
   })
 
-  it('adds a child to the lead', async () => {
-    const onAddChild = vi.fn().mockResolvedValue(null)
-    setup(482, { onAddChild })
-
-    await userEvent.click(screen.getByRole('button', { name: /Add a child/ }))
-    await userEvent.type(screen.getByLabelText('New child name'), 'Mia')
-    await userEvent.selectOptions(screen.getByLabelText('New child age'), '9')
-    await userEvent.click(screen.getByRole('button', { name: 'Add child' }))
-
-    expect(onAddChild).toHaveBeenCalledWith('Mia', 9)
-  })
-
-  it('asks for the name and the age before adding, and shows a problem that came back', async () => {
-    const onAddChild = vi.fn().mockResolvedValue('Failed to save lead record.')
-    setup(482, { onAddChild })
-
-    await userEvent.click(screen.getByRole('button', { name: /Add a child/ }))
-    await userEvent.click(screen.getByRole('button', { name: 'Add child' }))
-    expect(screen.getByRole('alert')).toHaveTextContent("Write the child's name and choose the age.")
-    expect(onAddChild).not.toHaveBeenCalled()
-
-    await userEvent.type(screen.getByLabelText('New child name'), 'Mia')
-    await userEvent.selectOptions(screen.getByLabelText('New child age'), '9')
-    await userEvent.click(screen.getByRole('button', { name: 'Add child' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to save lead record.')
-  })
-
   it('shows a child who did the HOA and then joined a class as one child, one button, the class record', async () => {
     const twice = [
       person(1, { kind: 'parent', name: 'Mum', phone: '60195593237', contactId: 10, leadId: 5 }),
@@ -150,7 +123,7 @@ describe('FamilyCard', () => {
     expect(onOpenStudent).toHaveBeenCalledWith(37)
   })
 
-  it('has no add button when there is no lead to add to', () => {
+  it('has no add button: children are added in the lead form below', () => {
     setup(482)
 
     expect(screen.queryByRole('button', { name: /Add a child/ })).not.toBeInTheDocument()

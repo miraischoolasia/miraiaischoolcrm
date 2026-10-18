@@ -705,29 +705,6 @@ describe('DetailsPanel', () => {
       expect(card).toHaveTextContent('9 years')
     })
 
-    it('adds a child to the lead, keeping the ones already there', async () => {
-      const crm = makeCrm({ leads: [lead] })
-      renderWithFamily(crm)
-
-      // The card's button is the first; the lead form below has its own.
-      await userEvent.click(screen.getAllByRole('button', { name: /Add a child/ })[0])
-      await userEvent.type(screen.getByLabelText('New child name'), 'Mia')
-      await userEvent.selectOptions(screen.getByLabelText('New child age'), '7')
-      await userEvent.click(screen.getByRole('button', { name: 'Add child' }))
-
-      await waitFor(() =>
-        expect(crm.onUpdateLead).toHaveBeenCalledWith(
-          11,
-          expect.objectContaining({
-            children: [
-              { name: 'Ethan', age: 9, phone: null },
-              { name: 'Mia', age: 7, phone: null },
-            ],
-          }),
-        ),
-      )
-    })
-
     it('folds the boxes that say who this is, and the other-chat box, once the card knows', () => {
       render(
         <DetailsPanel
@@ -751,8 +728,8 @@ describe('DetailsPanel', () => {
       // The pickers are inside the folded box, not loose in the panel.
       expect(screen.getByText('Who is on this chat?').closest('details')).not.toBeNull()
       expect(screen.queryByText('This family has another chat')).not.toBeInTheDocument()
-      // The card adds a named child; the lead form below keeps its own button for a child known only by age.
-      expect(screen.getAllByRole('button', { name: /Add a child/ })).toHaveLength(2)
+      // Children are added in one place: the lead form.
+      expect(screen.getAllByRole('button', { name: /Add a child/ })).toHaveLength(1)
     })
 
     it('keeps the boxes in the open when the chat is not placed yet', () => {

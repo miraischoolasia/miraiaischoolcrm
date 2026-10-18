@@ -323,26 +323,6 @@ export function DetailsPanel({
       kind: enrolled ? getStudentKind(enrolled, crm.packages) : null,
     }
   }
-  async function addChildToLead(childName: string, age: number) {
-    if (!familyLead) {
-      return 'There is no lead to add the child to yet.'
-    }
-    return crm.onUpdateLead(familyLead.id, {
-      fullName: familyLead.fullName ?? '',
-      phone: familyLead.phone ?? '',
-      state: familyLead.state ?? '',
-      sourceId: familyLead.sourceId,
-      picId: familyLead.picId,
-      tagIds: familyLead.tagIds,
-      status: familyLead.status,
-      children: [
-        ...familyLead.children.map((child) => ({ name: child.name, age: child.age, phone: child.phone })),
-        { name: childName, age, phone: null },
-      ],
-      notes: familyLead.notes ?? '',
-    })
-  }
-
   // WhatsApp hid the number, so the name the chat shows (the username) is all there is to call the parent.
   const nameWithoutNumber = role !== 'student' ? getHiddenNumberName(sender) : ''
 
@@ -432,7 +412,6 @@ export function DetailsPanel({
             chatOf={chatOfContact}
             onOpenChat={onOpenChat}
             onOpenStudent={crm.onOpenStudent}
-            onAddChild={familyLead && crm.canEditLeads ? addChildToLead : undefined}
           />
         ) : null}
         {!family ? rolePicker : null}

@@ -1,6 +1,4 @@
-import { useState } from 'react'
-import { Plus, UsersThree } from '@phosphor-icons/react'
-import { leadChildAgeOptions } from '../../lib/constants'
+import { UsersThree } from '@phosphor-icons/react'
 import type { Family } from '../../lib/family'
 import type { Person } from '../../lib/peopleApi'
 
@@ -18,9 +16,6 @@ type FamilyCardProps = {
   chatOf: (contactId: number) => number | null
   onOpenChat: (conversationId: number) => void
   onOpenStudent?: (studentId: number) => void
-  // Present only when there is a lead to add the child to and the person may edit it.
-  // Resolves to a problem to show, or null when it worked.
-  onAddChild?: (name: string, age: number) => Promise<string | null>
 }
 
 function nameOf(person: Person) {
@@ -59,31 +54,7 @@ const linkClass = 'font-medium text-[#be185d] hover:underline'
 
 // The family around the open chat: the parent, their children, and the way to the other chats of the
 // family. It is what the family table says, so the team sees one place instead of several boxes.
-export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStudent, onAddChild }: FamilyCardProps) {
-  const [adding, setAdding] = useState(false)
-  const [name, setName] = useState('')
-  const [age, setAge] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [problem, setProblem] = useState<string | null>(null)
-
-  async function addChild() {
-    if (!onAddChild || !name.trim() || !age) {
-      setProblem("Write the child's name and choose the age.")
-      return
-    }
-    setSaving(true)
-    setProblem(null)
-    const result = await onAddChild(name.trim(), Number(age))
-    setSaving(false)
-    if (result) {
-      setProblem(result)
-      return
-    }
-    setName('')
-    setAge('')
-    setAdding(false)
-  }
-
+export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStudent }: FamilyCardProps) {
   function openChatLink(person: Person) {
     const chat = person.contactId !== null ? chatOf(person.contactId) : null
     if (chat === null || person.id === family.me.id) {
@@ -189,51 +160,6 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
         </ul>
       )}
 
-      {onAddChild &&
-        (adding ? (
-          <div className="ml-4 space-y-1.5 border-l border-slate-200 pl-3">
-            <div className="grid grid-cols-[1fr_72px] gap-1.5">
-              <input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Child's name"
-                aria-label="New child name"
-                className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-[#fc0c97]"
-              />
-              <select
-                value={age}
-                onChange={(event) => setAge(event.target.value)}
-                aria-label="New child age"
-                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-[#fc0c97]"
-              >
-                <option value="">Age</option>
-                {leadChildAgeOptions.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {problem && (
-              <p role="alert" className="text-red-600">
-                {problem}
-              </p>
-            )}
-            <div className="flex gap-3">
-              <button type="button" disabled={saving} onClick={() => void addChild()} className={linkClass}>
-                {saving ? 'Adding...' : 'Add child'}
-              </button>
-              <button type="button" onClick={() => setAdding(false)} className="text-slate-500 hover:underline">
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button type="button" onClick={() => setAdding(true)} className={`ml-4 inline-flex items-center gap-1 ${linkClass}`}>
-            <Plus size={12} aria-hidden="true" />
-            Add a child
-          </button>
-        ))}
     </section>
   )
 }
