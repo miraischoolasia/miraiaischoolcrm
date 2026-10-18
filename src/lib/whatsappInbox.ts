@@ -418,6 +418,55 @@ export type LeadOfChat = (
   conversation: ChatwootConversation,
 ) => { tagIds: number[]; sourceId: number | null; fullName?: string | null } | null
 
+// The name or number that makes the chat this person, when the search fits it: the WhatsApp name, the lead,
+// every name the team knows the chat by (the parent, the children and the students) or the phone. Null when
+// only the words said in the messages could fit. The words said are a different kind of match.
+export function chatIdentityMatch(
+  conversation: ChatwootConversation,
+  search: string,
+  leadOf: LeadOfChat = () => null,
+  namesOf: (conversation: ChatwootConversation) => string[] = () => [],
+): string | null {
+  const query = search.trim().toLowerCase()
+  if (!query) {
+    return null
+  }
+  const digitsQuery = query.replace(/\D/g, '')
+  // Spaces and punctuation do not matter: "yu ni" finds "Yu-Ni" and "YuNi".
+  const squash = (text: string) => text.toLowerCase().replace(/[\s\p{P}]/gu, '')
+  const squashedQuery = squash(query)
+  const sender = conversation.meta.sender
+  // The helper that adds numbers to names writes "Name +60123456789".
+  const name = (sender.name ?? '').replace(/\s*\+\d{10,12}$/, '').trim()
+  if (name !== '' && name.toLowerCase().includes(query)) {
+    return name
+  }
+  const leadName = (leadOf(conversation)?.fullName ?? '').trim()
+  if (leadName !== '' && leadName.toLowerCase().includes(query)) {
+    return leadName
+  }
+  if (squashedQuery !== '') {
+    const known = namesOf(conversation).find((entry) => entry.toLowerCase().includes(query) || squash(entry).includes(squashedQuery))
+    if (known !== undefined) {
+      return known
+    }
+  }
+  const phone = (sender.phone_number ?? '').replace(/\D/g, '')
+  if (digitsQuery.length >= 3 && phone.includes(digitsQuery)) {
+    return formatPhone(phone)
+  }
+  return null
+}
+
+export function matchesChatIdentity(
+  conversation: ChatwootConversation,
+  search: string,
+  leadOf: LeadOfChat = () => null,
+  namesOf: (conversation: ChatwootConversation) => string[] = () => [],
+) {
+  return chatIdentityMatch(conversation, search, leadOf, namesOf) !== null
+}
+
 export function filterConversations(
   conversations: ChatwootConversation[],
   filters: InboxFilters,
@@ -428,12 +477,8 @@ export function filterConversations(
   namesOf: (conversation: ChatwootConversation) => string[] = () => [],
 ) {
   const query = filters.search.trim().toLowerCase()
-  const digitsQuery = query.replace(/\D/g, '')
-  // Spaces and punctuation do not matter: "yu ni" finds "Yu-Ni" and "YuNi".
-  const squash = (text: string) => text.toLowerCase().replace(/[\s\p{P}]/gu, '')
-  const squashedQuery = squash(query)
 
-  return conversations
+  const found = conversations
     .filter((conversation) => isInTab(conversation, filters.tab))
     .filter((conversation) => {
       if (filters.tagId === null && filters.sourceId === null) {
@@ -468,25 +513,22 @@ export function filterConversations(
       if (!query) {
         return true
       }
-      const sender = conversation.meta.sender
-      const name = (sender.name ?? '').toLowerCase()
-      const phone = (sender.phone_number ?? '').replace(/\D/g, '')
-      const preview = getPreview(conversation).toLowerCase()
-      const leadName = (leadOf(conversation)?.fullName ?? '').toLowerCase()
       return (
+        matchesChatIdentity(conversation, query, leadOf, namesOf) ||
         filters.matchedIds?.has(conversation.id) === true ||
-        name.includes(query) ||
-        (leadName !== '' && leadName.includes(query)) ||
-        (squashedQuery !== '' &&
-          namesOf(conversation).some((known) => {
-            const lowered = known.toLowerCase()
-            return lowered.includes(query) || squash(known).includes(squashedQuery)
-          })) ||
-        preview.includes(query) ||
-        (digitsQuery.length >= 3 && phone.includes(digitsQuery))
+        getPreview(conversation).toLowerCase().includes(query)
       )
     })
-    .sort((a, b) => b.last_activity_at - a.last_activity_at)
+
+  // Like WhatsApp: the people whose name or number fits come first, then the chats where the words were said.
+  // Each group keeps the newest chat on top.
+  const byActivity = (a: ChatwootConversation, b: ChatwootConversation) => b.last_activity_at - a.last_activity_at
+  if (!query) {
+    return found.sort(byActivity)
+  }
+  const people = found.filter((conversation) => matchesChatIdentity(conversation, query, leadOf, namesOf)).sort(byActivity)
+  const inPeople = new Set(people.map((conversation) => conversation.id))
+  return [...people, ...found.filter((conversation) => !inPeople.has(conversation.id)).sort(byActivity)]
 }
 
 export function countByTab(conversations: ChatwootConversation[]) {

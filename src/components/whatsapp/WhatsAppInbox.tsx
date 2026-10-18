@@ -10,6 +10,8 @@ import {
   type ChatwootMessage,
   countByTab,
   filterConversations,
+  chatIdentityMatch,
+  matchesChatIdentity,
   getChatIdentity,
   getInitials,
   getLinkedLeadId,
@@ -19,6 +21,7 @@ import {
   getRealPhone,
   getTab,
   isGroupChat,
+  formatPhone,
   socialKindOf,
   isRecentlyOverdue,
   categoryOf,
@@ -131,7 +134,7 @@ export function WhatsAppInbox({
   const channelAvatars = useChannelAvatars(active)
   const [managingChannels, setManagingChannels] = useState(false)
   const [managingNumbers, setManagingNumbers] = useState(false)
-  const [inboxList, setInboxList] = useState<{ id: number; name: string }[]>([])
+  const [inboxList, setInboxList] = useState<{ id: number; name: string; phone?: string | null }[]>([])
   const [search, setSearch] = useState('')
   // Text the enrol steps write for the message box; each new id is added once.
   const [draftRequest, setDraftRequest] = useState<{ id: number; text: string } | null>(null)
@@ -428,24 +431,37 @@ export function WhatsAppInbox({
     () => new Set(inbox.conversations.filter((conversation) => conversation.custom_attributes?.crm_pinned).map((conversation) => conversation.id)),
     [inbox.conversations],
   )
-  const visible = useMemo(
+  const leadOfChat = useCallback(
+    (conversation: ChatwootConversation) =>
+      resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number)),
+    [resolveLead],
+  )
+  const searching = search.trim() !== ''
+  const visible = useMemo(() => {
+    const found = filterConversations(
+      inbox.conversations,
+      { tab, search, tagId, sourceId, matchedIds, kind, ownerId, inboxId: inboxFilter, category },
+      leadOfChat,
+      studentKindsOf,
+      searchNamesOf,
+    )
+    // While searching, the order is the search's own: people first, then the words said in chats.
+    if (searching) {
+      return found
+    }
+    // Pinned chats first, then the ones with a draft, then the rest in their order.
+    return draftsFirst(
+      draftsFirst(found, (id) => id !== inbox.selectedId && drafts.has(id)),
+      (id) => pinnedIds.has(id),
+    )
+  }, [inbox.conversations, inbox.selectedId, pinnedIds, drafts, tab, search, searching, tagId, sourceId, matchedIds, kind, ownerId, inboxFilter, category, leadOfChat, studentKindsOf, searchNamesOf])
+  // The chats found by name or number while searching; the others were found by the words in their messages.
+  const peopleIds = useMemo(
     () =>
-      // Pinned chats first, then the ones with a draft, then the rest in their order.
-      draftsFirst(
-        draftsFirst(
-        filterConversations(
-          inbox.conversations,
-          { tab, search, tagId, sourceId, matchedIds, kind, ownerId, inboxId: inboxFilter, category },
-          (conversation) =>
-            resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number)),
-          studentKindsOf,
-          searchNamesOf,
-        ),
-        (id) => id !== inbox.selectedId && drafts.has(id),
-        ),
-        (id) => pinnedIds.has(id),
-      ),
-    [inbox.conversations, inbox.selectedId, pinnedIds, drafts, tab, search, tagId, sourceId, matchedIds, kind, ownerId, inboxFilter, category, resolveLead, studentKindsOf, searchNamesOf],
+      searching
+        ? new Set(visible.filter((conversation) => matchesChatIdentity(conversation, search, leadOfChat, searchNamesOf)).map((conversation) => conversation.id))
+        : null,
+    [searching, visible, search, leadOfChat, searchNamesOf],
   )
   const hasChat = inbox.selected !== null
   // Reactions, edits and deletes of the open chat, and the team's own.
@@ -700,7 +716,7 @@ export function WhatsAppInbox({
   )
   // Messenger and Instagram have no list of numbers; the inboxes their chats are in are the choices.
   useEffect(() => {
-    if (category === 'whatsapp' || askedInboxNames.current) {
+    if (askedInboxNames.current) {
       return
     }
     askedInboxNames.current = true
@@ -708,6 +724,7 @@ export function WhatsAppInbox({
       .listInboxes()
       .then((list) => {
         setSocialInboxNames(new Map(list.map((entry) => [entry.id, entry.name])))
+        setInboxList(list.map((entry) => ({ id: entry.id, name: entry.name, phone: entry.phone })))
         setInboxPageIds(
           new Map(list.flatMap((entry) => (entry.pageId ? [[entry.id, entry.pageId] as [number, string]] : []))),
         )
@@ -777,6 +794,22 @@ export function WhatsAppInbox({
       }
     },
     [channelAvatars.avatars, pages, socialInboxNames],
+  )
+  // Where a reply in a chat goes out from: the WhatsApp number (its name and phone), or the Messenger / Instagram Page.
+  const sendingFromOf = useCallback(
+    (conversation: ChatwootConversation): string | null => {
+      const social = socialKindOf(conversation.meta.channel, conversation.meta.sender)
+      if (social) {
+        const name = pageInfo(social, pageIdOf(conversation), conversation.inbox_id).name
+        return `${social === 'instagram' ? 'Instagram' : 'Messenger'}${name ? `: ${name}` : ''}`
+      }
+      const number = numbersView?.numbers.find((entry) => entry.inboxId === conversation.inbox_id)
+      const known = inboxList.find((entry) => entry.id === conversation.inbox_id)
+      const label = number?.label ?? known?.name ?? null
+      const phone = (number?.phone ?? known?.phone ?? '').replace(/\D/g, '')
+      return [label, phone ? formatPhone(phone) : null].filter(Boolean).join(' · ') || 'WhatsApp'
+    },
+    [numbersView, inboxList, pageInfo, pageIdOf],
   )
   const channelOf = useCallback(
     (conversation: ChatwootConversation): ChannelInfo | null => {
@@ -1046,6 +1079,8 @@ export function WhatsAppInbox({
         tags={tagOptions}
         sources={sourceOptions}
         snippets={messageHits}
+        peopleIds={peopleIds}
+        matchOf={searching ? (conversation) => chatIdentityMatch(conversation, search, leadOfChat, searchNamesOf) : undefined}
         leadNameOf={chatLabelOf}
         draftOf={draftOf}
         reactionPreviews={reactionPreviews}
@@ -1148,6 +1183,7 @@ export function WhatsAppInbox({
             onForward={setForwarding}
             onTyping={showTyping}
             aiContext={aiContext}
+            sendingFrom={sendingFromOf(inbox.selected)}
             onReact={(message, emoji) => {
               const waId = waIdOf(message.source_id)
               if (waId) {
@@ -1175,8 +1211,8 @@ export function WhatsAppInbox({
             })}
             onUnstar={(id) => void inbox.toggleStar(inbox.selected!.id, id)}
             className={cn(
-              'min-h-0 overflow-y-auto border-l border-slate-200 bg-white p-4',
-              detailsOpen ? 'block' : 'hidden xl:block',
+              'min-h-0 border-l border-slate-200 bg-white',
+              detailsOpen ? 'flex' : 'hidden xl:flex',
             )}
             conversation={inbox.selected}
             messages={inbox.messages}

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowBendUpLeft, ArrowBendUpRight, Check, CheckSquare, Checks, CircleNotch, FileText, MapPin, PencilSimple, Phone, Prohibit, Smiley, Star, Trash, WarningCircle } from '@phosphor-icons/react'
+import { ArrowBendUpLeft, ArrowBendUpRight, Check, CheckSquare, Checks, CircleNotch, Copy, FileText, Info, MapPin, PencilSimple, Phone, Prohibit, Smiley, Star, Trash, WarningCircle } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import {
   formatMessageTime,
@@ -9,8 +9,9 @@ import {
   type ChatwootMessage,
 } from '../../lib/whatsappInbox'
 import { isSticker, parseSpecialMessage, type ContactCard, type LocationCard, type PollCard } from '../../lib/specialMessages'
-import type { Reaction } from '../../lib/waActions'
+import { waIdOf, type Reaction } from '../../lib/waActions'
 import { Avatar } from './Avatar'
+import { Highlighted } from './Highlighted'
 import { WaveformPlayer } from './WaveformPlayer'
 import { LinkedMediaView } from './LinkedMediaView'
 import { splitLinkedMedia } from '../../lib/linkedMedia'
@@ -27,13 +28,24 @@ function formatSize(bytes?: number | null) {
   return bytes >= 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1000))} KB`
 }
 
-function Attachment({ attachment }: { attachment: ChatwootAttachment }) {
+function Attachment({ attachment, onOpenImage }: { attachment: ChatwootAttachment; onOpenImage?: () => void }) {
   if (isSticker(attachment)) {
     return <img src={attachment.data_url} alt="Sticker" loading="lazy" className="max-h-36 max-w-[9rem] object-contain" />
   }
   if (attachment.file_type === 'image') {
     return (
-      <a href={attachment.data_url} target="_blank" rel="noopener noreferrer">
+      <a
+        href={attachment.data_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(event) => {
+          // A plain click opens the viewer; a click with Ctrl, Shift or the middle button still opens the tab.
+          if (onOpenImage && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.button === 0) {
+            event.preventDefault()
+            onOpenImage()
+          }
+        }}
+      >
         <img
           src={attachment.data_url}
           alt="Photo in this chat"
@@ -127,6 +139,11 @@ export type BubbleExtras = {
   canEdit?: boolean
   canDelete?: boolean
   starred?: boolean
+  // Words searched for in this chat: marked in the text.
+  highlight?: string
+  // Where the message went through (WhatsApp number, Messenger...), and who wrote it, for Message info.
+  channelLabel?: string
+  authorName?: string
 }
 
 export type BubbleActions = {
@@ -138,6 +155,10 @@ export type BubbleActions = {
   onForward?: () => void
   // Starts picking several messages, this one ticked first.
   onSelect?: () => void
+  // Scrolls to the message this one answers (when it is in the chat).
+  onJumpToQuote?: () => void
+  // Opens a photo of this message in the viewer.
+  onOpenImage?: (attachmentId: number) => void
 }
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '🙏', '👏']
@@ -184,6 +205,9 @@ export function MessageBubble({
   const [editing, setEditing] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [copyFailed, setCopyFailed] = useState(false)
+  const [showingInfo, setShowingInfo] = useState(false)
 
   if (message.content_attributes?.deleted) {
     return null
@@ -204,6 +228,46 @@ export function MessageBubble({
   const linked = !special && text ? splitLinkedMedia(text) : { media: [], rest: text }
   // A sticker stands alone, without a bubble behind it.
   const stickerOnly = !text && message.attachments?.length === 1 && isSticker(message.attachments[0])
+
+  async function copyText() {
+    let done = false
+    try {
+      await navigator.clipboard.writeText(text)
+      done = true
+    } catch {
+      // Some browsers refuse the clipboard API (an embedded page, say); the older way still works on a click.
+      const field = document.createElement('textarea')
+      field.value = text
+      field.style.position = 'fixed'
+      field.style.opacity = '0'
+      document.body.appendChild(field)
+      field.select()
+      try {
+        done = document.execCommand('copy')
+      } catch {
+        done = false
+      }
+      field.remove()
+    }
+    setCopied(done)
+    setCopyFailed(!done)
+    window.setTimeout(() => {
+      setCopied(false)
+      setCopyFailed(false)
+    }, 1500)
+  }
+  const sendLabel =
+    sendState === 'sending' || sendState === 'stalled'
+      ? 'Sending'
+      : sendState === 'failed'
+        ? 'Failed'
+        : !outgoing
+          ? 'Received'
+          : message.status === 'read'
+            ? 'Read'
+            : message.status === 'delivered'
+              ? 'Delivered'
+              : 'Sent'
 
   const picture = avatar ? (
     showAvatar ? (
@@ -234,7 +298,7 @@ export function MessageBubble({
               : 'border border-slate-200 bg-white text-slate-900',
         )}
       >
-        {!local && !deletedForEveryone && !isNote && (actions.onReply || actions.onReact || actions.onStar) && (
+        {!local && !deletedForEveryone && !isNote && (actions.onReply || actions.onReact || actions.onStar || text !== '') && (
           <div
             className={cn(
               'absolute -top-3.5 z-10 hidden items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1 py-0.5 shadow group-focus-within:flex group-hover:flex',
@@ -244,6 +308,11 @@ export function MessageBubble({
             {actions.onReply && (
               <button type="button" onClick={actions.onReply} aria-label="Reply to this message" title="Reply" className="rounded-full p-1 text-slate-600 hover:bg-slate-100">
                 <ArrowBendUpLeft size={14} />
+              </button>
+            )}
+            {text !== '' && !special && (
+              <button type="button" onClick={copyText} aria-label="Copy this message" title={copied ? 'Copied' : copyFailed ? "Couldn't copy. Select the text and press Ctrl+C" : 'Copy'} className="rounded-full p-1 text-slate-600 hover:bg-slate-100">
+                {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
               </button>
             )}
             {actions.onReact && (
@@ -279,6 +348,16 @@ export function MessageBubble({
                 <CheckSquare size={14} />
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setShowingInfo((open) => !open)}
+              aria-label="Message info"
+              aria-expanded={showingInfo}
+              title="Message info"
+              className="rounded-full p-1 text-slate-600 hover:bg-slate-100"
+            >
+              <Info size={14} />
+            </button>
             {extras.canEdit && actions.onEdit && (
               <button type="button" onClick={() => setEditing(text)} aria-label="Edit this message" title="Edit" className="rounded-full p-1 text-slate-600 hover:bg-slate-100">
                 <PencilSimple size={14} />
@@ -325,7 +404,20 @@ export function MessageBubble({
         )}
         {isNote && <div className="mb-1 text-[11px] font-semibold text-amber-700">Private note, only your team sees this</div>}
         {extras.quote && !deletedForEveryone && (
-          <div className="mb-1 rounded-lg border-l-4 border-[#fc0c97] bg-black/5 px-2 py-1 text-xs">
+          <div
+            role={actions.onJumpToQuote ? 'button' : undefined}
+            tabIndex={actions.onJumpToQuote ? 0 : undefined}
+            aria-label={actions.onJumpToQuote ? 'Go to the message this answers' : undefined}
+            title={actions.onJumpToQuote ? 'Go to the original message' : undefined}
+            onClick={actions.onJumpToQuote}
+            onKeyDown={(event) => {
+              if (actions.onJumpToQuote && (event.key === 'Enter' || event.key === ' ')) {
+                event.preventDefault()
+                actions.onJumpToQuote()
+              }
+            }}
+            className={cn('mb-1 rounded-lg border-l-4 border-[#fc0c97] bg-black/5 px-2 py-1 text-xs', actions.onJumpToQuote && 'cursor-pointer hover:bg-black/10')}
+          >
             <div className="font-semibold text-[#be185d]">{extras.quote.author}</div>
             <div className="line-clamp-2 whitespace-pre-wrap text-slate-600">{extras.quote.text}</div>
           </div>
@@ -339,7 +431,11 @@ export function MessageBubble({
         {!deletedForEveryone && message.attachments && message.attachments.length > 0 && (
           <div className="mb-1 space-y-1">
             {message.attachments.map((attachment) => (
-              <Attachment key={attachment.id} attachment={attachment} />
+              <Attachment
+                key={attachment.id}
+                attachment={attachment}
+                onOpenImage={actions.onOpenImage ? () => actions.onOpenImage?.(attachment.id) : undefined}
+              />
             ))}
           </div>
         )}
@@ -353,7 +449,7 @@ export function MessageBubble({
             ))}
           </div>
         )}
-        {!deletedForEveryone && editing === null && linked.rest && !special && <div className="whitespace-pre-wrap break-words">{linked.rest}</div>}
+        {!deletedForEveryone && editing === null && linked.rest && !special && <div className="whitespace-pre-wrap break-words"><Highlighted text={linked.rest} query={extras.highlight} /></div>}
         {!deletedForEveryone && editing !== null && (
           <div className="space-y-1.5">
             <textarea
@@ -406,6 +502,34 @@ export function MessageBubble({
               Cancel
             </button>
           </div>
+        )}
+        {showingInfo && (
+          <dl aria-label="Message info" className="mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 rounded-lg bg-black/5 px-2 py-1.5 text-xs text-slate-700">
+            <dt className="font-semibold">{outgoing ? 'Sent' : 'Received'}</dt>
+            <dd>{new Date(message.created_at * 1000).toLocaleString()}</dd>
+            <dt className="font-semibold">{outgoing ? 'Sent by' : 'From'}</dt>
+            <dd className="truncate">{extras.authorName ?? sender ?? (outgoing ? 'Us' : 'The parent')}</dd>
+            <dt className="font-semibold">Status</dt>
+            <dd>{sendLabel}</dd>
+            {extras.channelLabel && (
+              <>
+                <dt className="font-semibold">Channel</dt>
+                <dd className="truncate">{extras.channelLabel}</dd>
+              </>
+            )}
+            {waIdOf(message.source_id) && (
+              <>
+                <dt className="font-semibold">Message ID</dt>
+                <dd className="break-all font-mono text-[11px]">{waIdOf(message.source_id)}</dd>
+              </>
+            )}
+            {message.content_attributes?.external_error && (
+              <>
+                <dt className="font-semibold">Error</dt>
+                <dd className="text-red-700">{message.content_attributes.external_error}</dd>
+              </>
+            )}
+          </dl>
         )}
         <div className="mt-1 flex items-center justify-end gap-1.5 text-[11px] text-slate-500">
           {sender && <span>{sender}</span>}

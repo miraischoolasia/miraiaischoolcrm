@@ -49,7 +49,8 @@ describe('Composer quick replies', () => {
   it('puts the chosen reply in as a row with the names filled in, and does not send it', async () => {
     const { onSend } = setup()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Quick replies' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Attach and more' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Quick replies' }))
     await userEvent.click(screen.getByRole('option', { name: /Trial details/ }))
 
     expect(screen.getByLabelText('Message 1')).toHaveValue('Hi Mei Ling, Ethan is booked on Oct 12, 2026.')
@@ -73,7 +74,8 @@ describe('Composer quick replies', () => {
       },
     ])
 
-    await userEvent.click(screen.getByRole('button', { name: 'Quick replies' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Attach and more' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Quick replies' }))
     await userEvent.click(screen.getByRole('option', { name: /Welcome/ }))
     await waitFor(() => expect(screen.getByText('poster.png')).toBeInTheDocument())
 
@@ -91,7 +93,8 @@ describe('Composer quick replies', () => {
   it('filters the list as you type', async () => {
     setup()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Quick replies' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Attach and more' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Quick replies' }))
     await userEvent.type(screen.getByLabelText('Search quick replies'), 'fees')
 
     expect(screen.queryByRole('option', { name: /Trial details/ })).not.toBeInTheDocument()
@@ -112,7 +115,8 @@ describe('Composer quick replies', () => {
     download.mockResolvedValue(photo)
     const { onSend } = setup()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Quick replies' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Attach and more' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Quick replies' }))
     await userEvent.click(screen.getByRole('option', { name: /Fees poster/ }))
     await waitFor(() => expect(screen.getByText('fees.png')).toBeInTheDocument())
     await userEvent.click(screen.getByRole('button', { name: 'Send' }))
@@ -123,7 +127,8 @@ describe('Composer quick replies', () => {
   it('will not send while a {tag} is still unfilled', async () => {
     const { onSend } = setup({ '{parent name}': 'Mei Ling', '{child name}': '', '{trial date}': '' })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Quick replies' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Attach and more' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Quick replies' }))
     await userEvent.click(screen.getByRole('option', { name: /Trial details/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Send' }))
 
@@ -149,7 +154,8 @@ describe('Composer quick replies', () => {
   it('offers the manage link only when it is allowed', async () => {
     const { onManage } = setup()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Quick replies' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Attach and more' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Quick replies' }))
     await userEvent.click(screen.getByRole('button', { name: 'Manage quick replies' }))
 
     expect(onManage).toHaveBeenCalled()
@@ -344,5 +350,50 @@ describe('Composer AI suggestion', () => {
   it('has no button when the feature is off', () => {
     setupAi({ aiSuggestion: null, onAiSuggest: undefined })
     expect(screen.queryByRole('button', { name: 'Suggest a reply' })).not.toBeInTheDocument()
+  })
+})
+
+describe('Composer like WhatsApp', () => {
+  function renderPlain(extra: Partial<React.ComponentProps<typeof Composer>> = {}) {
+    render(
+      <Composer
+        onSend={vi.fn().mockResolvedValue(true)}
+        quickReplies={{ replies: [], isLoading: false, error: null, reload: vi.fn().mockResolvedValue(undefined) }}
+        variables={{}}
+        {...extra}
+      />,
+    )
+  }
+
+  it('keeps the extra buttons behind one "+" and closes the menu on Escape', async () => {
+    renderPlain({ onSendSpecial: vi.fn().mockResolvedValue(null) })
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Attach a photo, video or file' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Attach and more' }))
+    const items = screen.getAllByRole('menuitem').map((item) => item.textContent)
+    expect(items).toEqual(['Photo, video or file', 'Quick replies', 'Location', 'Contact', 'Poll', 'Sticker'])
+
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('shows the microphone while the box is empty and the send button once something is written', async () => {
+    renderPlain()
+
+    expect(screen.getByRole('button', { name: 'Record a voice message' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send' })).not.toBeInTheDocument()
+
+    await userEvent.type(screen.getByPlaceholderText('Write a message'), 'Hi')
+    expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Record a voice message' })).not.toBeInTheDocument()
+  })
+
+  it('has no keyboard hint under the box, and says where the reply goes out from', () => {
+    renderPlain({ sendingFrom: 'Mirai WhatsApp · +60 12-345 6789' })
+
+    expect(screen.queryByText(/Enter to send/)).not.toBeInTheDocument()
+    expect(screen.getByText('Mirai WhatsApp · +60 12-345 6789')).toBeInTheDocument()
   })
 })

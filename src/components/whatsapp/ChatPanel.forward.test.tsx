@@ -74,4 +74,33 @@ describe('ChatPanel picking several messages to forward', () => {
 
     expect(screen.queryByText('1 selected')).not.toBeInTheDocument()
   })
+
+  it('turns picking on when Forward is pressed on a message, and only sends from the Forward button below', async () => {
+    const onForward = vi.fn()
+    setup(onForward)
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Forward this message' })[2])
+    // Nothing is sent yet: the message is ticked and the bar asks for more or for Forward.
+    expect(onForward).not.toHaveBeenCalled()
+    expect(screen.getByText('1 selected')).toBeInTheDocument()
+    // The message box is put away while picking (kept, so what was typed is not lost).
+    expect(screen.getByPlaceholderText('Write a message').closest('.hidden')).not.toBeNull()
+
+    await userEvent.click(screen.getByText('Zoom link below'))
+    expect(screen.getByText('2 selected')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Forward' }))
+
+    expect(onForward.mock.calls[0][0].map((entry: ChatwootMessage) => entry.id)).toEqual([2, 3])
+  })
+
+  it('leaves picking with Escape and brings the message box back', async () => {
+    setup(vi.fn())
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Forward this message' })[0])
+    expect(screen.getByText('1 selected')).toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+
+    expect(screen.queryByText('1 selected')).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Write a message').closest('.hidden')).toBeNull()
+  })
 })
