@@ -32,13 +32,19 @@ function makeChildren(count: number): GridChild[] {
 const count = Math.min(300, Math.max(1, Number(new URLSearchParams(window.location.search).get('count')) || 200))
 const children = makeChildren(count)
 const nothing = async () => null
+const presets = [
+  { id: 1, label: 'Great answer', points: 5, emoji: '🌟', sortOrder: 1, isActive: true },
+  { id: 2, label: 'Helping others', points: 3, emoji: '🤝', sortOrder: 2, isActive: true },
+  { id: 3, label: 'Homework done', points: 5, emoji: '📚', sortOrder: 3, isActive: true },
+  { id: 4, label: 'Super focus', points: 3, emoji: '🎯', sortOrder: 4, isActive: true },
+]
 
 export function BigClassDemo() {
   return (
     <main className="min-h-screen bg-slate-50 p-4">
       <section className="mx-auto max-w-4xl rounded-2xl border border-slate-200 bg-white p-3">
         <h3 className="mb-2 text-sm font-semibold text-slate-900">Children ({count}, made up)</h3>
-        <StudentGrid items={children} presets={[]} onGive={nothing} onSaveNote={nothing} onRemind={nothing} />
+        <StudentGrid items={children} presets={presets} onGive={nothing} onSaveNote={nothing} onRemind={nothing} onStar={() => {}} />
       </section>
     </main>
   )

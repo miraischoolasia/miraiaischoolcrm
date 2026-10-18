@@ -210,7 +210,8 @@ export function LiveClassConsole({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !showReport) onClose()
+      // Escape closes the console, but not while a one-tap ring is open (Escape closes that first).
+      if (event.key === 'Escape' && !showReport && !event.defaultPrevented && !document.querySelector('[role="menu"]')) onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

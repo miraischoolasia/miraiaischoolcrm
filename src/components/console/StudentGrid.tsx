@@ -7,6 +7,7 @@ import type { StudentBackground } from '../../lib/studentBackground'
 import type { ZoomCheck } from '../../lib/zoomChecks'
 import { BIG_CLASS, filterGrid, gridCounts, shortName, type GridFilter } from '../../lib/gridFilters'
 import { StudentAvatar } from '../StudentAvatar'
+import { RadialMenu, type RadialItem } from './RadialMenu'
 
 export type GridChild = {
   studentId: number
@@ -144,6 +145,76 @@ export function StudentGrid({
   ]
 
   const select = (studentId: number) => setOpenId(studentId === openId ? null : studentId)
+  // Classroom view: a tap opens the one-tap ring on that seat.
+  const [ringId, setRingId] = useState<number | null>(null)
+  const [done, setDone] = useState<{ studentId: number; text: string } | null>(null)
+
+  function ringItems(child: GridChild): RadialItem[] {
+    const close = () => setRingId(null)
+    const say = (text: string) => {
+      setDone({ studentId: child.studentId, text })
+      setTimeout(() => setDone((current) => (current?.studentId === child.studentId && current.text === text ? null : current)), 1800)
+    }
+    const items: RadialItem[] = presets
+      .filter((preset) => preset.isActive)
+      .slice(0, 4)
+      .map((preset) => ({
+        key: `preset-${preset.id}`,
+        icon: preset.emoji || '⭐',
+        label: `${preset.label} +${preset.points}`,
+        tone: 'bg-amber-300 text-amber-950',
+        onPick: () => {
+          close()
+          void onGive(child.studentId, preset.id).then((problem) => say(problem ?? `+${preset.points}`))
+        },
+      }))
+    if (onStar) {
+      items.push({
+        key: 'star',
+        icon: '🌟',
+        label: 'Star of the day',
+        tone: 'bg-red-500 text-white',
+        onPick: () => {
+          close()
+          onStar(child.studentId)
+          say('On stage!')
+        },
+      })
+    }
+    if (child.canRemind) {
+      items.push({
+        key: 'remind',
+        icon: '💬',
+        label: child.remindedAt ? 'Remind the parent again' : 'Remind the parent',
+        tone: 'bg-emerald-500 text-white',
+        onPick: () => {
+          close()
+          void onRemind(child.studentId).then((problem) => say(problem ?? 'Reminder sent'))
+        },
+      })
+    }
+    items.push({
+      key: 'note',
+      icon: '📝',
+      label: 'Note',
+      tone: 'bg-violet-500 text-white',
+      onPick: () => {
+        close()
+        setOpenId(child.studentId)
+      },
+    })
+    items.push({
+      key: 'more',
+      icon: '⋯',
+      label: 'More',
+      tone: 'bg-slate-700 text-white',
+      onPick: () => {
+        close()
+        setOpenId(child.studentId)
+      },
+    })
+    return items
+  }
 
   return (
     <div className="space-y-3">
@@ -207,7 +278,22 @@ export function StudentGrid({
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-x-2 gap-y-3">
             {shown.map((child) => (
               <li key={child.studentId}>
-                <Seat child={child} open={child.studentId === openId} onSelect={() => select(child.studentId)} />
+                <div className="relative">
+                  <Seat
+                    child={child}
+                    open={child.studentId === openId || child.studentId === ringId}
+                    onSelect={() => setRingId(ringId === child.studentId ? null : child.studentId)}
+                  />
+                  {ringId === child.studentId && <RadialMenu items={ringItems(child)} onClose={() => setRingId(null)} />}
+                  {done?.studentId === child.studentId && (
+                    <span
+                      aria-live="polite"
+                      className="pointer-events-none absolute left-1/2 top-0 z-30 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-full bg-slate-900 px-2 py-0.5 text-xs font-semibold text-white"
+                    >
+                      {done.text}
+                    </span>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
