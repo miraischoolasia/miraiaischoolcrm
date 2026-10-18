@@ -2,6 +2,7 @@ import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { openMenu } from './test/openMenu'
 
 // A make-up slot on the 29th-31st (when a class never normally meets) used to
 // be a dead end on the calendar: clicking it only toasted or opened the plan,
@@ -155,7 +156,7 @@ async function signInAndOpenMakeupCard() {
   render(<App />)
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'admin-1' } }))
-  await userEvent.click((await screen.findAllByRole('button', { name: 'Calendar' }))[0])
+  await openMenu('Calendar')
   await userEvent.click(await screen.findByRole('button', { name: 'make-up card' }))
 }
 
@@ -201,7 +202,7 @@ describe('make-up card on the 29th-31st', () => {
     render(<App />)
     await screen.findByText('Sign in to continue.')
     await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'admin-1' } }))
-    await userEvent.click((await screen.findAllByRole('button', { name: 'Calendar' }))[0])
+    await openMenu('Calendar')
 
     expect(await screen.findByText('Completed')).toBeInTheDocument()
   })

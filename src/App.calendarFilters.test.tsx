@@ -2,6 +2,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { openMenu } from './test/openMenu'
 
 const mocks = vi.hoisted(() => ({
   listener: null as null | ((event: string, session: unknown) => void),
@@ -123,7 +124,7 @@ async function signIn(role: 'admin' | 'teacher' = 'admin') {
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: userId } }))
   // Everybody starts on Today.
-  await userEvent.click((await screen.findAllByRole('button', { name: 'Calendar' }))[0])
+  await openMenu('Calendar')
   await screen.findByRole('list', { name: 'calendar events' })
 }
 

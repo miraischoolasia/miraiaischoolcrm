@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { openMenu } from './test/openMenu'
 
 // An admin setting a class time must be told when that teacher is already
 // teaching something else then (one teacher can't be in two places).
@@ -122,7 +123,7 @@ async function openNewReplacementClass() {
   render(<App />)
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'admin-1' } }))
-  await userEvent.click((await screen.findAllByRole('button', { name: 'Calendar' }))[0])
+  await openMenu('Calendar')
   await userEvent.click(await screen.findByRole('button', { name: 'Add Class' }))
   return within(await screen.findByRole('dialog'))
 }
