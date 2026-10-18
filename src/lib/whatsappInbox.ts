@@ -558,8 +558,28 @@ export function unreadByCategory(conversations: ChatwootConversation[]) {
 // chat with the newest message stands for the parent; the older ones are read through it.
 // Only chats on the same WhatsApp number are one chat: a parent who writes to number A and to number B
 // has a chat on each, and each number keeps its own.
-export function onePerParent(conversations: ChatwootConversation[]) {
-  const keyOf = (conversation: ChatwootConversation) => `${conversation.meta.sender.id}:${conversation.inbox_id ?? 0}`
+// A chat that has no lead written on it in Chatwoot, but whose contact the database already ties to a lead (a lead made by
+// itself from a chat with a hidden number has no phone to find it by), is shown with that lead.
+export function withLeadLink(conversation: ChatwootConversation, leadOfContact?: Map<number, number>): ChatwootConversation {
+  if (!leadOfContact || getLinkedLeadId(conversation) !== null) {
+    return conversation
+  }
+  const leadId = leadOfContact.get(conversation.meta.sender.id)
+  return leadId === undefined
+    ? conversation
+    : { ...conversation, custom_attributes: { ...conversation.custom_attributes, crm_lead_id: leadId } }
+}
+
+// siblings: a person who writes from two WhatsApp identities (their phone number and WhatsApp's hidden ID) has two
+// contacts. When the CRM knows they are one person (the same lead), each contact maps to all of them and their chats
+// count as one.
+export function onePerParent(conversations: ChatwootConversation[], siblings?: Map<number, number[]>) {
+  const personOf = (contactId: number) => {
+    const same = siblings?.get(contactId)
+    return same && same.length > 0 ? Math.min(...same) : contactId
+  }
+  const keyOf = (conversation: ChatwootConversation) =>
+    `${personOf(conversation.meta.sender.id)}:${conversation.inbox_id ?? 0}`
   const newest = new Map<string, ChatwootConversation>()
   for (const conversation of conversations) {
     const key = keyOf(conversation)

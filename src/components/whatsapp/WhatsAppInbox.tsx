@@ -2,6 +2,7 @@ import type { WhatsAppTarget } from '../WhatsAppLink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { InstagramLogo, MessengerLogo, WhatsappLogo } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
+import { contactSiblings, leadOfContacts } from '../../lib/leadChannels'
 import { createChatwootClient, type Sender } from '../../lib/chatwootClient'
 import { useMessageSearch } from '../../hooks/useMessageSearch'
 import { useWhatsAppInbox } from '../../hooks/useWhatsAppInbox'
@@ -114,7 +115,10 @@ export function WhatsAppInbox({
   const waActions = useMemo(() => createWaActions(apiUrl), [apiUrl])
   // While the numbers load nothing is listed, so a restricted person never sees a chat flash by.
   const allowedInboxIds = numbersView ? (numbersView.allowedInboxIds === undefined ? [] : numbersView.allowedInboxIds) : null
-  const inbox = useWhatsAppInbox(client, currentUser, active, allowedInboxIds)
+  // One person who writes from a phone number and from a hidden ID is one chat once they are one lead.
+  const siblings = useMemo(() => contactSiblings(crm.leadChannels), [crm.leadChannels])
+  const leadOfContact = useMemo(() => leadOfContacts(crm.leadChannels), [crm.leadChannels])
+  const inbox = useWhatsAppInbox(client, currentUser, active, allowedInboxIds, siblings, leadOfContact)
   const [tab, setTab] = useState<InboxTab>('chats')
   const [tagId, setTagId] = useState<number | null>(null)
   const [sourceId, setSourceId] = useState<number | null>(null)

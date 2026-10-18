@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   channelsByLead,
+  contactSiblings,
+  leadOfContacts,
   matchesChannelFilter,
   NO_CHANNEL_FILTER,
   placeChoices,
@@ -60,5 +62,34 @@ describe('lead channels', () => {
     // A lead with a phone number counts as WhatsApp before any chat of it was seen.
     expect(matchesChannelFilter({ channel: 'whatsapp', place: 'all' }, [], true)).toBe(true)
     expect(matchesChannelFilter({ channel: 'instagram', place: 'all' }, [], true)).toBe(false)
+  })
+})
+
+describe('contactSiblings', () => {
+  it('ties the two WhatsApp contacts of one lead together (a phone number and a hidden ID)', () => {
+    const siblings = contactSiblings([
+      row({ id: 1, channel: 'whatsapp', leadId: 7, contactId: 482 }),
+      row({ id: 2, channel: 'whatsapp', leadId: 7, contactId: 390 }),
+      row({ id: 3, channel: 'whatsapp', leadId: 8, contactId: 100 }),
+      row({ id: 4, channel: 'instagram', leadId: 7, contactId: 55 }),
+    ])
+    expect(siblings.get(482)).toEqual([390, 482])
+    expect(siblings.get(390)).toEqual([390, 482])
+    // A lead with one WhatsApp contact, and a Messenger / Instagram contact, are left out.
+    expect(siblings.has(100)).toBe(false)
+    expect(siblings.has(55)).toBe(false)
+  })
+})
+
+describe('leadOfContacts', () => {
+  it('maps each chat contact to its lead', () => {
+    const map = leadOfContacts([
+      row({ id: 1, channel: 'whatsapp', leadId: 7, contactId: 482 }),
+      row({ id: 2, channel: 'whatsapp', leadId: 7, contactId: 390 }),
+      row({ id: 3, channel: 'instagram', leadId: 9, contactId: 55 }),
+    ])
+    expect(map.get(390)).toBe(7)
+    expect(map.get(55)).toBe(9)
+    expect(map.get(1)).toBeUndefined()
   })
 })

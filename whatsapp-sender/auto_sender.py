@@ -10,8 +10,10 @@ queue names the chat (conversation_id) and it goes straight into that chat (thro
 or the Facebook channel of Chatwoot). A queue row of kind "ghl_workflow" does not send text: it starts a
 GoHighLevel workflow for that chat's contact (the workflow holds the buttons), which needs GHL_TOKEN.
 
-It only writes into a chat where the person has written to the school before. Anyone else is handed
-back to the approval queue for a person to look at.
+With OPEN_NEW_CHATS=1, a WhatsApp message to a number that has not written yet opens the chat itself (a
+contact and a conversation in the WhatsApp inbox) and sends the same message. Without it, such a message is
+handed back to the approval queue for a person to look at. Messenger / Instagram cannot be started either
+way: those only go into a chat the person began.
 
 Settings (environment, from /opt/mirai-inbox/auto-sender.env):
   SENDER_URL     https://<project>.supabase.co/functions/v1/auto-sender
@@ -22,6 +24,7 @@ Settings (environment, from /opt/mirai-inbox/auto-sender.env):
   GHL_TOKEN      optional, a GoHighLevel Private Integration token (scopes: contacts.write); only for button
                  messages (queue kind "ghl_workflow")
   GHL_API_URL    default https://services.leadconnectorhq.com
+  OPEN_NEW_CHATS 1 lets it start a chat with a number that has not written to the school; default 0
 
 Message texts are never written to the log.
 """
@@ -41,6 +44,7 @@ ACCOUNT = os.environ.get("CHATWOOT_ACCOUNT", "1")
 GHL_TOKEN = os.environ.get("GHL_TOKEN", "")
 GHL_API_URL = os.environ.get("GHL_API_URL", "https://services.leadconnectorhq.com").rstrip("/")
 GHL_PREFIX = "ghl:"
+OPEN_NEW_CHATS = os.environ.get("OPEN_NEW_CHATS", "0") == "1"
 
 IDLE_SECONDS = 15
 ERROR_SECONDS = 60
@@ -164,6 +168,59 @@ def pick_conversation(contact_id):
     return None
 
 
+def whatsapp_inbox_id():
+    """The inbox new WhatsApp chats are made in (the first API channel, as the CRM's New chat does)."""
+    inboxes = chatwoot("GET", "/inboxes").get("payload", [])
+    api = [inbox for inbox in inboxes if inbox.get("channel_type") == "Channel::Api"]
+    chosen = (api or inboxes or [None])[0]
+    if not chosen:
+        raise RuntimeError("no WhatsApp inbox")
+    return chosen["id"]
+
+
+def create_contact(inbox_id, phone, name):
+    created = chatwoot(
+        "POST",
+        "/contacts",
+        {
+            "inbox_id": inbox_id,
+            "name": name or f"+{phone}",
+            "phone_number": f"+{phone}",
+            "identifier": f"{phone}@s.whatsapp.net",
+        },
+    )
+    payload = created.get("payload", {})
+    contact_id = (payload.get("contact") or {}).get("id") or payload.get("id")
+    if not contact_id:
+        raise RuntimeError("contact was not created")
+    return contact_id
+
+
+def open_chat(phone, name):
+    """The chat to write into for a number: the one the person wrote in, else any chat of theirs in the
+    WhatsApp inbox, else a new one (and a new contact when the number is unknown). Returns (conversation, is_new);
+    the conversation is None when the person has not written and OPEN_NEW_CHATS is off."""
+    contact_id = find_contact(phone)
+    if contact_id is not None:
+        written = pick_conversation(contact_id)
+        if written is not None:
+            return written, False
+    if not OPEN_NEW_CHATS:
+        return None, False
+    inbox_id = whatsapp_inbox_id()
+    if contact_id is None:
+        contact_id = create_contact(inbox_id, phone, name)
+    existing = [
+        conversation
+        for conversation in chatwoot("GET", f"/contacts/{contact_id}/conversations").get("payload", [])
+        if conversation.get("inbox_id") == inbox_id
+    ]
+    if existing:
+        existing.sort(key=lambda conversation: conversation["id"], reverse=True)
+        return existing[0], False
+    return chatwoot("POST", "/conversations", {"contact_id": contact_id, "inbox_id": inbox_id}), True
+
+
 def wait_until_accepted(conversation_id, message_id, quiet_is_sent=False):
     """WhatsApp gives the message an id once it took it. Messenger / Instagram through GoHighLevel do not
     always: there, a message that has not failed after a few seconds counts as sent."""
@@ -270,12 +327,11 @@ def send(item):
     if item.get("conversation_id"):
         return send_to_chat(item)
     phone = digits_of(item["phone"])
-    contact_id = find_contact(phone)
-    if contact_id is None:
-        return "blocked", "Has not written to us first (no chat found)."
-    conversation = pick_conversation(contact_id)
+    conversation, is_new = open_chat(phone, item.get("parent_name") or "")
     if conversation is None:
         return "blocked", "Has not written to us first."
+    if is_new:
+        log(f"message {item['id']}: opened a new chat for it")
     if conversation.get("status") == "resolved":
         chatwoot("POST", f"/conversations/{conversation['id']}/toggle_status", {"status": "open"})
     if item.get("media_url"):

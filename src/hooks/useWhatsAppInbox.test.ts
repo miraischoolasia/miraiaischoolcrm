@@ -93,6 +93,45 @@ describe('useWhatsAppInbox with a parent who has two chats', () => {
   })
 })
 
+describe('useWhatsAppInbox with one person under two contacts', () => {
+  // A phone-number contact (5) with an old chat (10), and the hidden-ID contact (6) of the same lead with a newer chat (20).
+  function twoContacts() {
+    const messages: Record<number, ChatwootMessage[]> = {
+      20: [message(500, 1000, 'from the hidden id')],
+      10: [message(100, 10, 'from the phone number')],
+    }
+    return {
+      listConversations: vi.fn(async (status: string) => ({
+        conversations: status === 'open' ? [chat(20, 6, 1001), chat(10, 5, 12)] : [],
+        totalCount: status === 'open' ? 2 : 0,
+      })),
+      listMessages: vi.fn(async (id: number) => messages[id] ?? []),
+      listContactConversations: vi.fn(async (contactId: number) =>
+        contactId === 5 ? [{ id: 10, status: 'open', inbox_id: 1 }] : [{ id: 20, status: 'open', inbox_id: 1 }],
+      ),
+      markSeen: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ChatwootClient
+  }
+  const siblings = new Map([
+    [5, [5, 6]],
+    [6, [5, 6]],
+  ])
+
+  it('lists one chat and reads the other contact\'s chat as the older one', async () => {
+    const client = twoContacts()
+    const { result } = renderHook(() => useWhatsAppInbox(client, staff, true, null, siblings))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.conversations.map((entry) => entry.id)).toEqual([20])
+
+    act(() => result.current.setSelectedId(20))
+    await waitFor(() => expect(result.current.hasOlder).toBe(true))
+    await act(async () => {
+      await result.current.loadOlder()
+    })
+    expect(result.current.messages.map((entry) => entry.content)).toEqual(['from the phone number', 'from the hidden id'])
+  })
+})
+
 describe('useWhatsAppInbox while another page is showing', () => {
   afterEach(() => {
     vi.useRealTimers()

@@ -247,7 +247,7 @@ import { CalendarItemModal } from './components/modals/CalendarItemModal'
 import { useCalendarItems } from './hooks/useCalendarItems'
 import { useFollowUpReminders } from './hooks/useFollowUpReminders'
 import { useLeadChannels } from './hooks/useLeadChannels'
-import { mergeLeads } from './lib/leadChannels'
+import { contactSiblings, mergeLeads } from './lib/leadChannels'
 import { upcomingZoomSlots } from './lib/zoomSlots'
 import { MOCK_SOCIAL_CHANNELS, MOCK_SOCIAL_LEADS } from './lib/mockSocialLeads'
 
@@ -854,10 +854,12 @@ function App() {
   )
   // The school's WhatsApp numbers: which the signed-in person may see (an admin sees all).
   const whatsAppNumbers = useWhatsAppNumbers(Boolean(whatsAppApiUrl) && canUseWhatsApp)
+  const whatsAppSiblings = useMemo(() => contactSiblings(leadChannels.rows), [leadChannels.rows])
   const { unread: unreadWhatsApp, waiting: waitingWhatsApp } = useWhatsAppUnread(
     // Nothing is counted until it is known which numbers this person may see.
     whatsAppNumbers.allowedInboxIds === undefined ? null : whatsAppClient,
     whatsAppNumbers.allowedInboxIds ?? null,
+    whatsAppSiblings,
   )
   // The admin's / staff's Today (a teacher has their own).
   const showAdminHome = visibleSection === 'home' && !isTeacherAccount

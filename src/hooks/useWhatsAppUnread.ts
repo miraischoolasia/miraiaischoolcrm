@@ -21,7 +21,16 @@ const DEEP_EVERY = 3
 // Counts chats nobody has looked at for the sidebar badge, and tells the team
 // when a new message arrives (sound and a desktop pop-up), wherever they are in
 // the app.
-export function useWhatsAppUnread(client: ChatwootClient | null, allowedInboxIds: number[] | null = null) {
+export function useWhatsAppUnread(
+  client: ChatwootClient | null,
+  allowedInboxIds: number[] | null = null,
+  // Contacts the CRM knows to be one person (see contactSiblings): their chats count as one.
+  siblings?: Map<number, number[]>,
+) {
+  const siblingsRef = useRef(siblings)
+  useEffect(() => {
+    siblingsRef.current = siblings
+  }, [siblings])
   const [unread, setUnread] = useState(0)
   // Parents who have waited over 30 minutes (but under a day) for an answer.
   const [waiting, setWaiting] = useState(0)
@@ -40,7 +49,10 @@ export function useWhatsAppUnread(client: ChatwootClient | null, allowedInboxIds
       try {
         const first = await client!.listConversations('open', 1)
         const everyChat = first.conversations
-        const conversations = onePerParent(everyChat.filter((entry) => isOnAllowedNumber(entry, allowedInboxIds)))
+        const conversations = onePerParent(
+          everyChat.filter((entry) => isOnAllowedNumber(entry, allowedInboxIds)),
+          siblingsRef.current,
+        )
         if (cancelled) {
           return
         }
@@ -59,7 +71,11 @@ export function useWhatsAppUnread(client: ChatwootClient | null, allowedInboxIds
         round += 1
         const onFirstPage = new Set(everyChat.map((entry) => entry.id))
         const counted = [...everyChat, ...deepChats.current.filter((entry) => !onFirstPage.has(entry.id))]
-        setUnread(countUnread(onePerParent(counted.filter((entry) => isOnAllowedNumber(entry, allowedInboxIds)))))
+        setUnread(
+          countUnread(
+            onePerParent(counted.filter((entry) => isOnAllowedNumber(entry, allowedInboxIds)), siblingsRef.current),
+          ),
+        )
 
         // A chat that has just passed 30 minutes unanswered rings once. The first look
         // only records who is already late, so opening the page is not a burst of alerts.

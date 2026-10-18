@@ -130,6 +130,44 @@ export async function mergeLeads(keepId: number, removeId: number): Promise<numb
   return Number(data)
 }
 
+// A lead that wrote to the school from two WhatsApp identities (the phone number, and the hidden ID WhatsApp uses
+// instead) has two chat contacts. Each of them maps to all of the lead's WhatsApp contacts, so the inbox can show
+// them as one chat. Contacts of a lead with only one WhatsApp contact are left out.
+export function contactSiblings(rows: LeadChannel[]): Map<number, number[]> {
+  const byLead = new Map<number, Set<number>>()
+  for (const row of rows) {
+    if (row.channel !== 'whatsapp') {
+      continue
+    }
+    const set = byLead.get(row.leadId)
+    if (set) {
+      set.add(row.contactId)
+    } else {
+      byLead.set(row.leadId, new Set([row.contactId]))
+    }
+  }
+  const siblings = new Map<number, number[]>()
+  for (const set of byLead.values()) {
+    if (set.size < 2) {
+      continue
+    }
+    const ids = [...set].sort((a, b) => a - b)
+    for (const id of ids) {
+      siblings.set(id, ids)
+    }
+  }
+  return siblings
+}
+
+// Which lead each chat contact belongs to, as the database knows it.
+export function leadOfContacts(rows: LeadChannel[]): Map<number, number> {
+  const map = new Map<number, number>()
+  for (const row of rows) {
+    map.set(row.contactId, row.leadId)
+  }
+  return map
+}
+
 export function channelsByLead(rows: LeadChannel[]): Map<number, LeadChannel[]> {
   const map = new Map<number, LeadChannel[]>()
   for (const row of rows) {

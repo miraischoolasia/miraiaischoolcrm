@@ -9,6 +9,7 @@ import {
   getPhoneReadTarget,
   isOnAllowedNumber,
   onePerParent,
+  withLeadLink,
   type ChatAttributes,
   type ChatRole,
   type ChatwootConversation,
@@ -70,7 +71,15 @@ export function useWhatsAppInbox(
   currentUser: Sender,
   active = true,
   allowedInboxIds: number[] | null = null,
+  // Contacts the CRM knows to be one person (see contactSiblings): their chats show as one.
+  siblings?: Map<number, number[]>,
+  // Which lead the database ties each chat contact to (see leadOfContacts), for chats with no lead written on them.
+  leadOfContact?: Map<number, number>,
 ) {
+  const siblingsRef = useRef(siblings)
+  useEffect(() => {
+    siblingsRef.current = siblings
+  }, [siblings])
   const activeRef = useRef(active)
   useEffect(() => {
     activeRef.current = active
@@ -115,11 +124,21 @@ export function useWhatsAppInbox(
   }, [])
 
   const conversations = useMemo(
-    () => onePerParent([...conversationMap.values()].filter((entry) => isOnAllowedNumber(entry, allowedInboxIds))),
-    [conversationMap, allowedInboxIds],
+    () =>
+      onePerParent(
+        [...conversationMap.values()]
+          .filter((entry) => isOnAllowedNumber(entry, allowedInboxIds))
+          .map((entry) => withLeadLink(entry, leadOfContact)),
+        siblings,
+      ),
+    [conversationMap, allowedInboxIds, siblings, leadOfContact],
   )
   const hasOlder = ownHasOlder || olderChatCount > 0
-  const selected = selectedId === null ? null : (conversationMap.get(selectedId) ?? null)
+  const selectedRaw = selectedId === null ? null : (conversationMap.get(selectedId) ?? null)
+  const selected = useMemo(
+    () => (selectedRaw ? withLeadLink(selectedRaw, leadOfContact) : null),
+    [selectedRaw, leadOfContact],
+  )
 
   const refreshStatus = useCallback(
     async (status: 'open' | 'resolved') => {
@@ -312,8 +331,10 @@ export function useWhatsAppInbox(
     // Only chats on the same number: the chat the parent has on another number is a chat of its own.
     const inboxId = mapRef.current.get(selectedId)?.inbox_id
     if (senderId !== undefined) {
-      client
-        .listContactConversations(senderId)
+      // The same person under another WhatsApp identity (a hidden ID beside the phone number) is read too.
+      const contactIds = siblingsRef.current?.get(senderId) ?? [senderId]
+      Promise.all(contactIds.map((contactId) => client.listContactConversations(contactId)))
+        .then((lists) => lists.flat())
         .then((chats) => {
           if (cancelled) {
             return

@@ -419,7 +419,8 @@ export function LeadForm({
         )}
         {canEdit && onFindLead && (
           <LeadMatches
-            query={form.phone}
+            // A chat whose number WhatsApp hides has no phone to look up: its name finds the lead it may already be.
+            query={form.phone.trim() !== '' ? form.phone : form.fullName}
             leads={crm.leads}
             currentLeadId={lead?.id ?? null}
             onPick={async (picked) => {

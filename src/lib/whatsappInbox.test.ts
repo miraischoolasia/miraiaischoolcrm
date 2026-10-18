@@ -20,6 +20,7 @@ import {
   isMessengerChannel,
   isOnAllowedNumber,
   onePerParent,
+  withLeadLink,
   getChatRole,
   getInitials,
   getLinkedStudentIds,
@@ -180,6 +181,17 @@ describe('onePerParent', () => {
   it('leaves chats of different parents alone', () => {
     const chats = [withSender(1, 50, 100), withSender(2, 51, 300)]
     expect(onePerParent(chats)).toHaveLength(2)
+  })
+
+  it('shows one chat for a person the CRM knows under two contacts (a phone number and a hidden ID)', () => {
+    const chats = [withSender(1, 482, 100), withSender(2, 390, 300), withSender(3, 77, 200)]
+    const siblings = new Map([
+      [482, [390, 482]],
+      [390, [390, 482]],
+    ])
+    expect(onePerParent(chats, siblings).map((chat) => chat.id)).toEqual([2, 3])
+    // Without the link they stay two chats.
+    expect(onePerParent(chats).map((chat) => chat.id)).toEqual([1, 2, 3])
   })
 
   it('keeps the chat a parent has on each WhatsApp number', () => {
@@ -631,5 +643,25 @@ describe('numbersContacted', () => {
 
   it('has nothing for a parent with no chats', () => {
     expect(numbersContacted([], label)).toEqual([])
+  })
+})
+
+describe('withLeadLink', () => {
+  const chat = (customAttributes?: Record<string, unknown>) => {
+    const base = conversation({})
+    return { ...base, custom_attributes: customAttributes, meta: { ...base.meta, sender: { ...base.meta.sender, id: 390 } } }
+  }
+
+  it('gives a chat the lead the database ties its contact to', () => {
+    const linked = withLeadLink(chat(), new Map([[390, 295]]))
+    expect(linked.custom_attributes?.crm_lead_id).toBe(295)
+  })
+
+  it('leaves a chat that already names a lead, or has none to find, as it is', () => {
+    const named = chat({ crm_lead_id: 7 })
+    expect(withLeadLink(named, new Map([[390, 295]]))).toBe(named)
+    const alone = chat()
+    expect(withLeadLink(alone, new Map([[1, 2]]))).toBe(alone)
+    expect(withLeadLink(alone)).toBe(alone)
   })
 })
