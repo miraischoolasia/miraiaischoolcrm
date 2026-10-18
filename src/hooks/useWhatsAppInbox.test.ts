@@ -130,6 +130,18 @@ describe('useWhatsAppInbox with one person under two contacts', () => {
     })
     expect(result.current.messages.map((entry) => entry.content)).toEqual(['from the phone number', 'from the hidden id'])
   })
+
+  it('shows the messages of a newer chat of the same person at once, without pressing load older', async () => {
+    const client = twoContacts()
+    const { result } = renderHook(() => useWhatsAppInbox(client, staff, true, null, siblings))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    // The phone-number chat (10) is open; the hidden-ID chat (20) is newer and holds the latest message.
+    act(() => result.current.setSelectedId(10))
+    await waitFor(() =>
+      expect(result.current.messages.map((entry) => entry.content)).toEqual(['from the phone number', 'from the hidden id']),
+    )
+  })
 })
 
 describe('useWhatsAppInbox while another page is showing', () => {

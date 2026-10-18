@@ -99,6 +99,9 @@ export function useWhatsAppInbox(
   const [contactChats, setContactChats] = useState<{ id: number; inbox_id: number; created_at?: number }[]>([])
   const ownCursor = useRef<number | null>(null)
   const olderChats = useRef<number[]>([])
+  // Other chats of the same person that are newer than the open one (a hidden-ID chat beside the phone-number chat):
+  // their messages belong to the same conversation, so they are read at once and kept fresh.
+  const newerChats = useRef<number[]>([])
   const [actionError, setActionError] = useState<string | null>(null)
   const [outbox, setOutbox] = useState<OutboxItem[]>([])
   const nextPage = useRef({ open: 2, resolved: 2 })
@@ -301,6 +304,7 @@ export function useWhatsAppInbox(
     setContactChats([])
     ownCursor.current = null
     olderChats.current = []
+    newerChats.current = []
     setActionError(null)
     if (selectedId === null) {
       return
@@ -345,6 +349,17 @@ export function useWhatsAppInbox(
             .map((chat) => chat.id)
             .sort((a, b) => b - a)
           setOlderChatCount(olderChats.current.length)
+          newerChats.current = olderChats.current.filter((id) => id > selectedId).slice(0, 3)
+          for (const id of newerChats.current) {
+            client
+              .listMessages(id)
+              .then((latest) => {
+                if (!cancelled) {
+                  setMessages((current) => mergeMessages(current, latest))
+                }
+              })
+              .catch(() => undefined)
+          }
         })
         .catch(() => undefined)
     }
@@ -374,6 +389,16 @@ export function useWhatsAppInbox(
           })
         })
         .catch(() => undefined)
+      for (const id of newerChats.current) {
+        client
+          .listMessages(id)
+          .then((latest) => {
+            if (!cancelled && selectedRef.current === selectedId) {
+              setMessages((current) => mergeMessages(current, latest))
+            }
+          })
+          .catch(() => undefined)
+      }
     }, MESSAGES_REFRESH_MS)
     return () => {
       cancelled = true
