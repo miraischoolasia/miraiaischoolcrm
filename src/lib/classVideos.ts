@@ -107,18 +107,29 @@ function failure(error: { message?: string } | null, fallback: string) {
   return error ? error.message || fallback : null
 }
 
-export async function fetchClassVideos(classroomId: number): Promise<ClassVideo[]> {
-  if (!supabase) return []
-  const { data, error } = await supabase
-    .from('class_videos')
-    .select('id, classroom_id, teacher_id, title, description, year, month, lesson_date, bunny_library_id, bunny_video_id, status, source, views, is_archived, created_at')
-    .eq('classroom_id', classroomId)
-  if (error) {
-    // Before the class videos migration the table does not exist.
-    if (error.code === 'PGRST205' || error.code === '42P01') throw new Error('Class videos need the database update first.')
-    throw new Error(error.message)
-  }
-  return (data ?? []).map((row) => ({
+const VIDEO_COLUMNS =
+  'id, classroom_id, teacher_id, title, description, year, month, lesson_date, bunny_library_id, bunny_video_id, status, source, views, is_archived, created_at'
+
+type VideoRow = {
+  id: number
+  classroom_id: number
+  teacher_id: number | null
+  title: string
+  description: string | null
+  year: number
+  month: number
+  lesson_date: string | null
+  bunny_library_id: string
+  bunny_video_id: string
+  status: ClassVideoStatus
+  source: ClassVideo['source']
+  views: number
+  is_archived: boolean
+  created_at: string
+}
+
+function mapVideo(row: VideoRow): ClassVideo {
+  return {
     id: row.id,
     classroomId: row.classroom_id,
     teacherId: row.teacher_id,
@@ -134,7 +145,43 @@ export async function fetchClassVideos(classroomId: number): Promise<ClassVideo[
     views: row.views,
     isArchived: row.is_archived,
     createdAt: row.created_at,
-  }))
+  }
+}
+
+function videoError(error: { code?: string; message: string }) {
+  // Before the class videos migration the table does not exist.
+  if (error.code === 'PGRST205' || error.code === '42P01') return new Error('Class videos need the database update first.')
+  return new Error(error.message)
+}
+
+export async function fetchClassVideos(classroomId: number): Promise<ClassVideo[]> {
+  if (!supabase) return []
+  const { data, error } = await supabase.from('class_videos').select(VIDEO_COLUMNS).eq('classroom_id', classroomId)
+  if (error) throw videoError(error)
+  return ((data ?? []) as VideoRow[]).map(mapVideo)
+}
+
+// Every class video this login may see, read 1000 at a time (a school can have thousands).
+export async function fetchAllClassVideos(): Promise<ClassVideo[]> {
+  if (!supabase) return []
+  const videos: ClassVideo[] = []
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from('class_videos').select(VIDEO_COLUMNS).order('id').range(from, from + 999)
+    if (error) throw videoError(error)
+    videos.push(...((data ?? []) as VideoRow[]).map(mapVideo))
+    if ((data ?? []).length < 1000) return videos
+  }
+}
+
+// A class's videos of one teacher (null: no teacher on the video) in one year, counted by month.
+export function countByMonth(videos: ClassVideo[], classroomId: number, teacherId: number | null, year: number) {
+  const counts = new Map<number, number>()
+  for (const video of videos) {
+    if (video.classroomId === classroomId && video.teacherId === teacherId && video.year === year && !video.isArchived) {
+      counts.set(video.month, (counts.get(video.month) ?? 0) + 1)
+    }
+  }
+  return counts
 }
 
 export async function fetchVideoProgress(videoIds: number[]): Promise<VideoProgress[]> {
@@ -174,6 +221,22 @@ export async function fetchMonthAccessOn(): Promise<boolean> {
   if (!supabase) return false
   const { data } = await supabase.from('app_settings').select('value').eq('key', 'class_videos').maybeSingle()
   return (data?.value as { month_access?: unknown } | null)?.month_access === true
+}
+
+export const DEFAULT_VIDEOS_PER_MONTH = 4
+
+// How many videos a class should have each month (each teacher's), shown as "2/4".
+export async function fetchVideosPerMonth(): Promise<number> {
+  if (!supabase) return DEFAULT_VIDEOS_PER_MONTH
+  const { data } = await supabase.from('app_settings').select('value').eq('key', 'class_videos').maybeSingle()
+  const count = Number((data?.value as { per_month?: unknown } | null)?.per_month)
+  return Number.isInteger(count) && count > 0 ? count : DEFAULT_VIDEOS_PER_MONTH
+}
+
+export async function saveVideosPerMonth(count: number) {
+  if (!supabase) return 'Supabase is not configured.'
+  const { error } = await supabase.rpc('set_class_videos_per_month', { p_count: count })
+  return failure(error, 'Could not save.')
 }
 
 export async function saveMonthAccessOn(value: boolean) {

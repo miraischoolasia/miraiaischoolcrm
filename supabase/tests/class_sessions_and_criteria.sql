@@ -1387,4 +1387,16 @@ reset role;
 update public.classrooms set programme_id = (select id from lq_ids where name = 'flow2') where id = 9101;
 select pg_temp.ok(public.classroom_enrol_flow(9101) = (select id from lq_ids where name = 'flow2'), 'a class''s own flow comes before its level''s');
 
+-- Videos a month (20261023400000) ------------------------------------------------
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select pg_temp.fails($$select public.set_class_videos_per_month(6)$$, 'Only admin', 'a teacher cannot change videos a month');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select public.set_class_videos_per_month(6);
+select public.set_class_video_settings(true);
+select pg_temp.fails($$select public.set_class_videos_per_month(0)$$, '1 to 31', 'videos a month is 1 to 31');
+reset role;
+select pg_temp.ok((select (value ->> 'per_month')::int = 6 and (value ->> 'month_access')::boolean from public.app_settings where key = 'class_videos'),
+  'saving month access keeps videos a month');
+
 rollback;

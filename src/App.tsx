@@ -6912,7 +6912,9 @@ function App() {
               <ClassVideosSection
                 classrooms={visibleClassrooms}
                 students={students}
+                subjects={subjects}
                 teacherNames={new Map(Array.from(teacherMap.entries()).map(([id, teacher]) => [id, teacher.fullName]))}
+                currentTeacherId={currentSession?.teacherId ?? null}
               />
             )}
 

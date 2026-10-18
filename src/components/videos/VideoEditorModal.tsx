@@ -6,17 +6,35 @@ import { uploadClassVideo, updateClassVideo, type ClassVideo, type VideoDraft } 
 
 const inputClass = 'w-full rounded-xl border border-slate-200 px-3 py-2 text-sm'
 
+// A new video starts in the month asked for; its lesson date is today only
+// when today is in that month.
+function newDraft(today: string, year?: number, month?: number): VideoDraft {
+  const thisYear = Number(today.slice(0, 4))
+  const thisMonth = Number(today.slice(5, 7))
+  const draftYear = year ?? thisYear
+  const draftMonth = month ?? thisMonth
+  const isThisMonth = draftYear === thisYear && draftMonth === thisMonth
+  return { title: '', description: '', year: draftYear, month: draftMonth, lessonDate: isThisMonth ? today : '' }
+}
+
 // A new video (with its file, straight to Bunny) or a change to one.
 export function VideoEditorModal({
   classroomId,
   className,
   video,
+  defaultYear,
+  defaultMonth,
+  uploaderNote = null,
   onClose,
   onSaved,
 }: {
   classroomId: number
   className: string
   video: ClassVideo | null
+  // The month a new video goes in; the current month when not given.
+  defaultYear?: number
+  defaultMonth?: number
+  uploaderNote?: string | null
   onClose: () => void
   onSaved: () => void
 }) {
@@ -30,7 +48,7 @@ export function VideoEditorModal({
           month: video.month,
           lessonDate: video.lessonDate ?? '',
         }
-      : { title: '', description: '', year: Number(today.slice(0, 4)), month: Number(today.slice(5, 7)), lessonDate: today },
+      : newDraft(today, defaultYear, defaultMonth),
   )
   const [file, setFile] = useState<File | null>(null)
   const [progress, setProgress] = useState<number | null>(null)
@@ -79,6 +97,9 @@ export function VideoEditorModal({
       </div>
 
       <div data-modal-body className="max-h-[70vh] space-y-4 overflow-y-auto px-6 py-6">
+        {uploaderNote && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{uploaderNote}</div>
+        )}
         {!video && (
           <label className="block text-sm">
             <span className="font-semibold text-slate-700">Video file</span>

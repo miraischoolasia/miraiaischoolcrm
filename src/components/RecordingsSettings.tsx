@@ -12,6 +12,8 @@ import {
 } from '../lib/recordings'
 import {
   fetchMonthAccessOn,
+  fetchVideosPerMonth,
+  saveVideosPerMonth,
   fetchTeacherLibraries,
   saveMonthAccessOn,
   setTeacherLibrary,
@@ -33,6 +35,8 @@ export function RecordingsSettings() {
   const [classes, setClasses] = useState<ClassRow[]>([])
   const [deleteZoom, setDeleteZoom] = useState<boolean | null>(null)
   const [monthAccess, setMonthAccess] = useState<boolean | null>(null)
+  const [perMonth, setPerMonth] = useState<number | null>(null)
+  const [perMonthDraft, setPerMonthDraft] = useState('')
   const [teacherLibraries, setTeacherLibraries] = useState<TeacherLibrary[]>([])
   const [teachers, setTeachers] = useState<TeacherRow[]>([])
   const [own, setOwn] = useState({ classroomId: '', teacherId: '', libraryId: '' })
@@ -43,7 +47,7 @@ export function RecordingsSettings() {
 
   const load = useCallback(async () => {
     try {
-      const [list, rows, flag, monthFlag, ownLibraries, teacherRows] = await Promise.all([
+      const [list, rows, flag, monthFlag, ownLibraries, teacherRows, videosPerMonth] = await Promise.all([
         fetchRecordingLibraries(),
         supabase
           ? supabase.from('classrooms').select('id, name, recording_library_id').eq('status', 'active').order('name')
@@ -54,6 +58,7 @@ export function RecordingsSettings() {
         supabase
           ? supabase.from('teachers').select('id, full_name').eq('is_active', true).eq('role', 'teacher').order('full_name')
           : Promise.resolve({ data: [] }),
+        fetchVideosPerMonth(),
       ])
       setLibraries(list)
       setClasses(
@@ -65,6 +70,8 @@ export function RecordingsSettings() {
       )
       setDeleteZoom(flag)
       setMonthAccess(monthFlag)
+      setPerMonth(videosPerMonth)
+      setPerMonthDraft(String(videosPerMonth))
       setTeacherLibraries(ownLibraries)
       setTeachers(((teacherRows.data ?? []) as { id: number; full_name: string }[]).map((row) => ({ id: row.id, name: row.full_name })))
     } catch (loadError) {
@@ -271,6 +278,37 @@ export function RecordingsSettings() {
             </span>
           </span>
         </label>
+      )}
+
+      {perMonth !== null && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <label htmlFor="videos-per-month" className="font-semibold text-slate-800">
+            Videos a month
+          </label>
+          <input
+            id="videos-per-month"
+            type="number"
+            min={1}
+            max={31}
+            value={perMonthDraft}
+            disabled={busy}
+            onChange={(event) => setPerMonthDraft(event.target.value)}
+            className="w-20 rounded-xl border border-slate-200 px-2 py-1 text-sm"
+          />
+          {Number(perMonthDraft) !== perMonth && (
+            <button
+              type="button"
+              disabled={busy || !(Number(perMonthDraft) >= 1 && Number(perMonthDraft) <= 31)}
+              onClick={() => void run(saveVideosPerMonth(Number(perMonthDraft)))}
+              className="rounded-xl bg-[#fc0c97] px-3 py-1 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              Save
+            </button>
+          )}
+          <span className="basis-full text-slate-500">
+            Each teacher's lessons in a class each month; Class Videos shows how many are up, e.g. 2/4.
+          </span>
+        </div>
       )}
 
       {libraries && libraries.length > 0 && classes.length > 0 && teachers.length > 0 && (

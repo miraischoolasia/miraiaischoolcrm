@@ -3381,6 +3381,10 @@ export type Database = {
         Args: { p_classroom_id: number; p_teacher_id: number; p_library_id: number | null }
         Returns: undefined
       }
+      set_class_videos_per_month: {
+        Args: { p_count: number }
+        Returns: undefined
+      }
       set_program_level_flow: {
         Args: { p_name: string; p_programme_id: number | null }
         Returns: undefined
