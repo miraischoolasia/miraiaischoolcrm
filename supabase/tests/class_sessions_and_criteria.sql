@@ -1038,6 +1038,35 @@ select pg_temp.ok(not exists (select 1 from jsonb_array_elements(public.portal_l
   'and no points in the summaries');
 reset role;
 update public.app_settings set value = jsonb_set(value, '{student_sees,points}', 'true') where key = 'student_portal';
+-- Lesson notes (20261024610000) ------------------------------------------------------
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+insert into lq_ids select 'lnote', public.save_lesson_note(null, (select id from lq_ids where name = 'zsession'), ' Loops ', 'A loop repeats blocks.', false);
+select pg_temp.ok((select count(*) from public.class_session_lesson_notes where published_at is null) = 1, 'the teacher saves a draft note');
+select pg_temp.fails($$select public.save_lesson_note(null, (select id from lq_ids where name = 'zsession'), '', 'x', false)$$, 'title', 'a note needs a title');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok(jsonb_array_length(public.portal_lesson_notes(9301)) = 0, 'a draft is not in the app');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select public.save_lesson_note((select id from lq_ids where name = 'lnote'), null, 'Loops', 'A loop repeats blocks again and again.', true);
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select pg_temp.ok((select (public.portal_lesson_notes(9301) -> 0 ->> 'title')) = 'Loops', 'the child reads a published note');
+select pg_temp.fails($$select public.portal_lesson_notes(9302)$$, 'not found', 'not another child''s notes');
+select pg_temp.fails($$select public.save_lesson_note(null, (select id from lq_ids where name = 'zsession'), 'x', 'y', true)$$, 'only this class', 'a child cannot write notes');
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select pg_temp.fails($$select public.delete_lesson_note((select id from lq_ids where name = 'lnote'))$$, 'not found', 'another teacher cannot delete it');
+select pg_temp.ok((select count(*) from public.class_session_lesson_notes) = 0, 'another teacher does not see it');
+reset role;
+update public.app_settings set value = jsonb_set(value, '{student_sees,notes}', 'false') where key = 'student_portal';
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+set local role authenticated;
+select pg_temp.ok(jsonb_array_length(public.portal_lesson_notes(9301)) = 0, 'no notes when the school hides them');
+reset role;
+update public.app_settings set value = value #- '{student_sees,notes}' where key = 'student_portal';
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+set local role authenticated;
+select public.delete_lesson_note((select id from lq_ids where name = 'lnote'));
+select pg_temp.ok((select count(*) from public.class_session_lesson_notes) = 0, 'the teacher deletes the note');
+reset role;
 -- Recordings show under the lesson, when the school shows them
 reset role;
 insert into public.class_session_recordings (session_id, zoom_recording_uuid, share_url, passcode, started_at)

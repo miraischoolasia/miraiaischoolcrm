@@ -371,6 +371,15 @@ export async function saveQuestion(id: number | null, draft: QuestionDraft) {
   return error ? error.message || 'Failed to save the question.' : null
 }
 
+// A new bank question, giving back its id (to pop it or plan it at once).
+export async function saveNewQuestion(draft: QuestionDraft): Promise<{ id: number | null; error: string | null }> {
+  if (!supabase) return { id: null, error: 'Supabase is not configured.' }
+  const { data, error } = await supabase.rpc('save_question', { p_id: null, p_question: toPayload(draft) })
+  if (error) return { id: null, error: error.message || 'Failed to save the question.' }
+  const row = (Array.isArray(data) ? data[0] : data) as { id?: number } | null
+  return { id: typeof row?.id === 'number' ? row.id : null, error: null }
+}
+
 export async function importQuestions(drafts: QuestionDraft[], share: boolean) {
   if (!supabase) return 'Supabase is not configured.'
   const { error } = await supabase.rpc('import_questions', { p_questions: drafts.map(toPayload), p_share: share })

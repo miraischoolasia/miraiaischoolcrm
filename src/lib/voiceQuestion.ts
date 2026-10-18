@@ -54,7 +54,7 @@ export async function startVoiceRecording(onAutoStop?: () => void): Promise<Voic
   }
 }
 
-async function toBase64(blob: Blob) {
+export async function toBase64(blob: Blob) {
   const bytes = new Uint8Array(await blob.arrayBuffer())
   let binary = ''
   for (let index = 0; index < bytes.length; index += 0x8000) {

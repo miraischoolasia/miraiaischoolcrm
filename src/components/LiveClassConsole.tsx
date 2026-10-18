@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowSquareOut, ChartBar, ChatCircleText, Monitor, NotePencil, Shuffle, SignOut, Star, Timer, UsersFour, Warning, X } from '@phosphor-icons/react'
+import { ArrowSquareOut, ChartBar, ChatCircleText, Monitor, NotePencil, Robot, Shuffle, SignOut, Star, Timer, UsersFour, Warning, X } from '@phosphor-icons/react'
 import { cn } from '../lib/cn'
 import { LessonZoomCard } from './LessonZoomCard'
 import { LessonReportModal } from './LessonReportModal'
@@ -8,7 +8,12 @@ import { GivePointsBar } from './GivePointsBar'
 import { StudentGrid, gridChildren } from './console/StudentGrid'
 import { RandomPickTool, TimerTool } from './console/ConsoleTools'
 import { TeamsTool } from './console/TeamsTool'
-import { colorOf, type Team } from '../lib/teams'
+import { AssistantPanel, type AssistantRunner } from './console/AssistantPanel'
+import { toBankDraft, type AiQuestion } from '../lib/classAssistant'
+import { fetchQuestions, fitsClassroom, saveNewQuestion } from '../lib/questions'
+import { pushLiveQuestion } from '../lib/liveQuestions'
+import { fetchQuestionPlan, nextPlanned, saveQuestionPlan } from '../lib/questionPlan'
+import { colorOf, splitTeams, type Team } from '../lib/teams'
 import { lessonBoard, type LiveAnswer, type LiveKey, type LiveQuestion } from '../lib/liveQuestions'
 import { buildRoom, clearStranger, fetchRoom, watchRoom, type RoomData } from '../lib/zoomRoom'
 import { awardPoints, fetchLessonPoints, fetchRewardPresets, watchLessonPoints, type PointsEntry, type RewardPreset } from '../lib/rewards'
@@ -30,9 +35,10 @@ import { fetchLiveQuestionSettings } from '../lib/liveQuestions'
 import type { StudentBackground } from '../lib/studentBackground'
 import type { AgeGroup } from '../types/domain'
 
-type Tool = 'timer' | 'pick' | 'teams' | 'points' | 'notes'
+type Tool = 'assistant' | 'timer' | 'pick' | 'teams' | 'points' | 'notes'
 
 const tools: { key: Tool; label: string; icon: typeof Timer }[] = [
+  { key: 'assistant', label: 'AI assistant', icon: Robot },
   { key: 'timer', label: 'Timer', icon: Timer },
   { key: 'pick', label: 'Random pick', icon: Shuffle },
   { key: 'points', label: 'Give points', icon: Star },
@@ -111,6 +117,22 @@ export function LiveClassConsole({
     }
   })
   const [teamsOnScreen, setTeamsOnScreen] = useState(true)
+  // The AI assistant starts the timer or a pick through these.
+  const [timerCommand, setTimerCommand] = useState<{ seq: number; minutes: number } | null>(null)
+  const [pickCommand, setPickCommand] = useState<number | null>(null)
+  const [bankForClass, setBankForClass] = useState<{ id: number; prompt: string }[]>([])
+  useEffect(() => {
+    void fetchQuestions()
+      .then((list) =>
+        setBankForClass(
+          list
+            .filter((question) => !question.isArchived && (!classroom || fitsClassroom(question, classroom)))
+            .slice(0, 60)
+            .map((question) => ({ id: question.id, prompt: question.prompt })),
+        ),
+      )
+      .catch(() => setBankForClass([]))
+  }, [classroom])
   function setTeams(next: Team[] | null) {
     setTeamsState(next)
     try {
@@ -411,6 +433,80 @@ export function LiveClassConsole({
     return null
   }
 
+  function openTool(tool: Tool) {
+    setOpenTools((current) => (current.includes(tool) ? current : [...current, tool]))
+  }
+
+  async function addQuestion(question: AiQuestion, popNow: boolean) {
+    if (!sessionId) return 'The lesson is still opening.'
+    if (question.kind === 'choice' && !question.options.some((option) => option.correct)) return 'Pick the right option first.'
+    const saved = await saveNewQuestion(
+      toBankDraft(question, { subjectId: classroom?.subjectId ?? null, ageGroups: classroom ? [classroom.ageGroup] : [] }),
+    )
+    if (saved.error || saved.id === null) return saved.error ?? 'The question was not saved.'
+    setBankForClass((list) => [{ id: saved.id as number, prompt: question.prompt }, ...list])
+    if (popNow) return pushLiveQuestion(sessionId, saved.id, null)
+    const plan = await fetchQuestionPlan(sessionId)
+    return saveQuestionPlan(sessionId, [...plan, saved.id])
+  }
+
+  // What a confirmed AI suggestion does.
+  const runner: AssistantRunner = {
+    addQuestion,
+    run: async (action) => {
+      const candidates = inZoom.length > 0 ? inZoom : everyone
+      switch (action.type) {
+        case 'give_points': {
+          const problem = await awardPoints({
+            studentIds: action.studentIds,
+            presetId: action.presetId,
+            points: action.presetId === null ? action.points : null,
+            reason: action.presetId === null ? action.reason : null,
+            scheduleId,
+            lessonDate,
+          })
+          if (!problem) loadPoints()
+          return problem
+        }
+        case 'pop_question':
+          return sessionId ? pushLiveQuestion(sessionId, action.questionId, null) : 'The lesson is still opening.'
+        case 'pop_next': {
+          if (!sessionId) return 'The lesson is still opening.'
+          const next = nextPlanned(await fetchQuestionPlan(sessionId), live?.questions ?? [])
+          return next === null ? 'No planned question is left.' : pushLiveQuestion(sessionId, next, null)
+        }
+        case 'new_question':
+          return addQuestion(action.question, action.popNow)
+        case 'start_timer':
+          openTool('timer')
+          setTimerCommand({ seq: Date.now(), minutes: action.minutes })
+          return null
+        case 'random_pick':
+          openTool('pick')
+          setPickCommand(Date.now())
+          return null
+        case 'make_teams':
+          if (candidates.length < 2) return 'At least 2 children are needed.'
+          openTool('teams')
+          setTeams(splitTeams(candidates, action.count))
+          return null
+        case 'star':
+          starOfTheDay(action.studentId)
+          return null
+        case 'note':
+          return saveNote(action.studentId, action.text)
+        case 'remind': {
+          const problems: string[] = []
+          for (const studentId of action.studentIds) {
+            const problem = await remind(studentId)
+            if (problem) problems.push(`${names.get(studentId) ?? studentId}: ${problem}`)
+          }
+          return problems.length > 0 ? problems.join(' · ') : null
+        }
+      }
+    },
+  }
+
   async function clear(id: number) {
     setError(await clearStranger(id))
     loadRoom()
@@ -504,12 +600,25 @@ export function LiveClassConsole({
 
           {openTools.length > 0 && (
             <div className="grid gap-3 sm:grid-cols-2">
-              {openTools.includes('timer') && <TimerTool onChange={setTimerState} />}
+              {openTools.includes('assistant') && (
+                <div className="sm:col-span-2">
+                  <AssistantPanel
+                    sessionId={sessionId}
+                    roster={(roomData?.roster ?? []).map((child) => ({ id: child.studentId, name: child.name }))}
+                    presets={presets}
+                    bank={bankForClass}
+                    ageGroup={classroom?.ageGroup ?? null}
+                    runner={runner}
+                  />
+                </div>
+              )}
+              {openTools.includes('timer') && <TimerTool onChange={setTimerState} command={timerCommand} />}
               {openTools.includes('pick') && (
                 <RandomPickTool
                   candidates={inZoom.length > 0 ? inZoom : everyone}
                   names={names}
                   onPicked={(studentId) => picked(studentId, inZoom.length > 0 ? inZoom : everyone)}
+                  command={pickCommand}
                 />
               )}
               {openTools.includes('teams') && (

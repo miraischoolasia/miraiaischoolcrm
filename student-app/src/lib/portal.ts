@@ -188,3 +188,13 @@ export function needsZoomCheck(check: ZoomCheck | null, nextClassDate: string | 
   fresh.setUTCDate(fresh.getUTCDate() - 14)
   return check.checkedAt.slice(0, 10) < fresh.toISOString().slice(0, 10)
 }
+
+// Notes the teacher published for a lesson (portal_lesson_notes in the CRM's
+// 20261024610000_lesson_notes.sql), newest lesson first.
+export type LessonNote = { id: number; session_id: number; date: string; class: string; title: string; body: string; published_at: string }
+
+export async function fetchLessonNotes(studentId: number): Promise<LessonNote[]> {
+  const { data, error } = await supabase.rpc('portal_lesson_notes', { p_student_id: studentId })
+  if (error) return []
+  return (data ?? []) as LessonNote[]
+}

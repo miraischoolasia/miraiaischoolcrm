@@ -7,12 +7,14 @@ import { Body, Button, Card, colors, Empty, Heading, Loading, Muted, Pill, Scree
 import { LiveQuestionCard } from '@/ui/LiveQuestionCard'
 import { LessonSummaryChips, useLessonSummaries } from '@/ui/LessonSummary'
 import { ZoomCheckCard } from '@/ui/ZoomCheckCard'
+import { LessonNotesList, useLessonNotes } from '@/ui/LessonNotes'
 
 // Home: the next class with its Zoom button, the classes after it, and the
 // points so far (each part only when the school shows it to this login).
 export default function Home() {
   const { home, homeError, child, children, branding, isRefreshing, refresh } = useSession()
   const summaries = useLessonSummaries(child?.studentId ?? null, home)
+  const notes = useLessonNotes(child?.studentId ?? null, home)
 
   if (!home) {
     return (
@@ -59,6 +61,7 @@ export default function Home() {
             {formatDay(summaries[0].date)} · {summaries[0].title}
           </Muted>
           <LessonSummaryChips summary={summaries[0]} color={branding.accentColor} />
+          <LessonNotesList notes={notes.filter((note) => note.session_id === summaries[0].session_id)} color={branding.accentColor} />
           {(() => {
             const lesson = home.lessons.find((entry) => entry.date === summaries[0].date && entry.title === summaries[0].title)
             return lesson?.recording?.url ? (

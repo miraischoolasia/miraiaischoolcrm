@@ -27,7 +27,14 @@ function beep() {
 
 // A countdown for class work. It beeps when time is up; the class screen
 // shows it too.
-export function TimerTool({ onChange }: { onChange?: (timer: { endsAt: number | null; pausedLeft: number | null }) => void }) {
+export function TimerTool({
+  onChange,
+  command,
+}: {
+  onChange?: (timer: { endsAt: number | null; pausedLeft: number | null }) => void
+  // Started from outside (the AI assistant): a new seq starts `minutes`.
+  command?: { seq: number; minutes: number } | null
+}) {
   const [endsAt, setEndsAt] = useState<number | null>(null)
   const [pausedLeft, setPausedLeft] = useState<number | null>(null)
   const onChangeRef = useRef(onChange)
@@ -52,6 +59,13 @@ export function TimerTool({ onChange }: { onChange?: (timer: { endsAt: number | 
       beep()
     }
   }, [endsAt, left])
+
+  const commandSeq = command?.seq ?? null
+  const commandMinutes = command?.minutes ?? 0
+  useEffect(() => {
+    if (commandSeq !== null) start(commandMinutes)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commandSeq])
 
   function start(minutes: number) {
     rang.current = false
@@ -123,10 +137,13 @@ export function RandomPickTool({
   candidates,
   names,
   onPicked,
+  command,
 }: {
   candidates: number[]
   names: Map<number, string>
   onPicked: (studentId: number | null) => void
+  // Picked from outside (the AI assistant): a new seq picks once.
+  command?: number | null
 }) {
   const [picked, setPicked] = useState<number[]>([])
   const [current, setCurrent] = useState<number | null>(null)
@@ -135,6 +152,10 @@ export function RandomPickTool({
   const timers = useRef<ReturnType<typeof setTimeout>[]>([])
 
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
+  useEffect(() => {
+    if (command != null) pick()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [command])
 
   function pick() {
     const next = pickNext(candidates, picked)

@@ -2183,6 +2183,39 @@ export type Database = {
         }
         Relationships: []
       }
+      class_session_lesson_notes: {
+        Row: {
+          id: number
+          session_id: number
+          title: string
+          body: string
+          published_at: string | null
+          created_by: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: never
+          session_id: number
+          title: string
+          body: string
+          published_at?: string | null
+          created_by?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: never
+          session_id?: number
+          title?: string
+          body?: string
+          published_at?: string | null
+          created_by?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       zoom_waiting: {
         Row: {
           id: number
@@ -3260,6 +3293,22 @@ export type Database = {
         Args: {
           p_session_id: number
           p_question_ids: number[]
+        }
+        Returns: undefined
+      }
+      save_lesson_note: {
+        Args: {
+          p_id: number | null
+          p_session_id: number | null
+          p_title: string
+          p_body: string
+          p_publish: boolean
+        }
+        Returns: number
+      }
+      delete_lesson_note: {
+        Args: {
+          p_id: number
         }
         Returns: undefined
       }

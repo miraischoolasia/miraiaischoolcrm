@@ -5,12 +5,14 @@ import type { Home, TeacherReport } from '@/lib/portal'
 import { useSession } from '@/lib/session'
 import { Body, Button, Card, colors, Empty, Heading, Loading, Muted, Pill, Screen, Title } from '@/ui/kit'
 import { findSummary, LessonSummaryChips, useLessonSummaries } from '@/ui/LessonSummary'
+import { LessonNotesList, useLessonNotes } from '@/ui/LessonNotes'
 
 // Progress: each lesson so far, whether the child was there, and (when the
 // school shows it) the teacher's rating on each criterion. Never the remarks.
 export default function Progress() {
   const { home, homeError, branding, isRefreshing, refresh, child } = useSession()
   const summaries = useLessonSummaries(child?.studentId ?? null, home)
+  const notes = useLessonNotes(child?.studentId ?? null, home)
 
   if (!home) {
     return <Screen>{homeError ? <Empty>{homeError}</Empty> : <Loading />}</Screen>
@@ -42,6 +44,7 @@ export default function Progress() {
             const summary = findSummary(summaries, lesson.date, lesson.title)
             return summary ? <LessonSummaryChips summary={summary} color={branding.accentColor} /> : null
           })()}
+          <LessonNotesList notes={notes.filter((note) => note.date === lesson.date && note.class === lesson.title)} color={branding.accentColor} />
           {home.sees.scores &&
             lesson.scores.map((entry) => (
               <View key={entry.criterion} style={styles.scoreRow}>
