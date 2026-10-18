@@ -1,7 +1,8 @@
 import { StudentGrid, type GridChild } from '../components/console/StudentGrid'
 
 // Dev server only: /?demo=bigclass shows the live class console's children
-// grid with 200 made-up children (no login, nothing saved).
+// grid with 200 made-up children (&count=20 for a small class); no login,
+// nothing saved.
 const first = ['Lim', 'Tan', 'Ng', 'Wong', 'Lee', 'Chan', 'Ong', 'Teoh', 'Goh', 'Yap']
 const second = ['Wei', 'Jia', 'Zi', 'Xin', 'Yu', 'Kai', 'Hui', 'Min', 'Jun', 'Le']
 const third = ['Hao', 'En', 'Yan', 'Ying', 'Xuan', 'Seng', 'Qing', 'Fei', 'Ting', 'Ming']
@@ -28,14 +29,15 @@ function makeChildren(count: number): GridChild[] {
   })
 }
 
-const children = makeChildren(200)
+const count = Math.min(300, Math.max(1, Number(new URLSearchParams(window.location.search).get('count')) || 200))
+const children = makeChildren(count)
 const nothing = async () => null
 
 export function BigClassDemo() {
   return (
     <main className="min-h-screen bg-slate-50 p-4">
       <section className="mx-auto max-w-4xl rounded-2xl border border-slate-200 bg-white p-3">
-        <h3 className="mb-2 text-sm font-semibold text-slate-900">Children (200, made up)</h3>
+        <h3 className="mb-2 text-sm font-semibold text-slate-900">Children ({count}, made up)</h3>
         <StudentGrid items={children} presets={[]} onGive={nothing} onSaveNote={nothing} onRemind={nothing} />
       </section>
     </main>

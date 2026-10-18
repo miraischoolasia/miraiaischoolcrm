@@ -6,6 +6,7 @@ import type { RewardPreset } from '../../lib/rewards'
 import type { StudentBackground } from '../../lib/studentBackground'
 import type { ZoomCheck } from '../../lib/zoomChecks'
 import { BIG_CLASS, filterGrid, gridCounts, shortName, type GridFilter } from '../../lib/gridFilters'
+import { StudentAvatar } from '../StudentAvatar'
 
 export type GridChild = {
   studentId: number
@@ -86,6 +87,14 @@ const stateText: Record<GridChild['state'], string> = {
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('en-MY', { hour: 'numeric', minute: '2-digit' })
 const dayOf = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })
 
+type GridView = 'classroom' | 'big' | 'small'
+
+const gridViews: { key: GridView; label: string }[] = [
+  { key: 'classroom', label: 'Classroom' },
+  { key: 'big', label: 'Big' },
+  { key: 'small', label: 'Small' },
+]
+
 const answerText = { right: 'Right', wrong: 'Wrong', pending: 'To mark', none: 'Not answered' }
 
 export function StudentGrid({
@@ -105,13 +114,14 @@ export function StudentGrid({
   const open = items.find((child) => child.studentId === openId) ?? null
   const big = items.length > BIG_CLASS
   const [filter, setFilter] = useState<GridFilter>(big ? 'attention' : 'all')
-  const [compact, setCompact] = useState(big)
+  // A class up to BIG_CLASS children starts as a classroom; bigger ones as small tiles.
+  const [view, setView] = useState<GridView>(big ? 'small' : 'classroom')
   const [search, setSearch] = useState('')
   // A class that grows past the line (children added) switches once.
   const [wasBig, setWasBig] = useState(big)
   if (big !== wasBig) {
     setWasBig(big)
-    setCompact(big)
+    setView(big ? 'small' : 'classroom')
     setFilter(big ? 'attention' : 'all')
   }
 
@@ -165,18 +175,41 @@ export function StudentGrid({
             className="w-full rounded-full border border-slate-200 py-1 pl-7 pr-2 text-xs"
           />
         </label>
-        <button
-          type="button"
-          onClick={() => setCompact(!compact)}
-          className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-        >
-          {compact ? 'Big tiles' : 'Small tiles'}
-        </button>
+        <div role="radiogroup" aria-label="How the children are shown" className="flex overflow-hidden rounded-full border border-slate-200">
+          {gridViews.map((entry) => (
+            <button
+              key={entry.key}
+              type="button"
+              role="radio"
+              aria-checked={view === entry.key}
+              onClick={() => setView(entry.key)}
+              className={cn(
+                'px-2.5 py-1 text-xs font-semibold transition',
+                view === entry.key ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50',
+              )}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {open && <ChildPanel key={open.studentId} child={open} presets={presets} onGive={onGive} onSaveNote={onSaveNote} onRemind={onRemind} onClose={() => setOpenId(null)} />}
 
-      {compact ? (
+      {view === 'classroom' ? (
+        <div className="rounded-2xl bg-amber-50/70 p-3">
+          <div className="mx-auto mb-3 w-1/2 rounded-lg border border-slate-200 bg-white py-1 text-center text-xs font-semibold text-slate-500">
+            Teacher · Board
+          </div>
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-x-2 gap-y-3">
+            {shown.map((child) => (
+              <li key={child.studentId}>
+                <Seat child={child} open={child.studentId === openId} onSelect={() => select(child.studentId)} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : view === 'small' ? (
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] gap-1">
           {shown.map((child) => (
             <li key={child.studentId}>
@@ -276,6 +309,57 @@ export function StudentGrid({
         </button>
       )}
     </div>
+  )
+}
+
+// A desk in the classroom view: the child's face ringed in the colour of
+// where they are, their desk and short name, and marks above the head
+// (right / wrong / to mark, points just given, a note, a failed Zoom check).
+function Seat({ child, open, onSelect }: { child: GridChild; open: boolean; onSelect: () => void }) {
+  const ring =
+    child.state === 'here'
+      ? child.late
+        ? 'ring-amber-400'
+        : 'ring-emerald-500'
+      : child.state === 'waiting'
+        ? 'ring-amber-400'
+        : 'ring-slate-300'
+  const mark =
+    child.answer === 'right'
+      ? { text: '✓', className: 'bg-emerald-100 text-emerald-800' }
+      : child.answer === 'wrong'
+        ? { text: '✗', className: 'bg-rose-100 text-rose-800' }
+        : child.answer === 'pending'
+          ? { text: '…', className: 'bg-amber-100 text-amber-800' }
+          : null
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={open}
+      title={`${child.name} · ${stateText[child.state]}${child.answer ? ` · ${answerText[child.answer]}` : ''} · ${child.points} points`}
+      className={cn(
+        'relative flex w-full flex-col items-center gap-1 rounded-xl px-1 pb-1 pt-2 transition hover:bg-white/80',
+        open && 'bg-white shadow-sm ring-2 ring-sky-400',
+        child.picked && 'bg-pink-50 ring-2 ring-[#fc0c97]',
+      )}
+    >
+      <span className={cn('rounded-full ring-[3px] ring-offset-1', ring)}>
+        <StudentAvatar id={child.studentId} name={child.name} size={44} dim={child.state === 'not_yet' || child.state === 'left'} />
+      </span>
+      <span aria-hidden="true" className="h-2 w-16 rounded-sm border border-amber-300 bg-amber-200" />
+      <span className="w-full truncate text-center text-xs font-semibold text-slate-800">{shortName(child.name)}</span>
+      <span className="flex h-4 items-center gap-1 text-[11px] text-slate-500">
+        {child.state === 'waiting' ? 'waiting' : child.state === 'not_yet' ? 'not here' : child.state === 'left' ? 'left' : child.late ? 'late' : ''}
+        {child.points > 0 && <span className="font-semibold text-amber-600">⭐{child.points}</span>}
+      </span>
+      <span className="absolute right-1 top-0 flex gap-0.5">
+        {mark && <span className={cn('rounded-full px-1.5 text-[11px] font-bold', mark.className)}>{mark.text}</span>}
+        {child.note && <span className="rounded-full bg-violet-100 px-1 text-[11px]" aria-label="Has a note">📝</span>}
+        {child.zoomCheck && !child.zoomCheck.ok && <span className="rounded-full bg-amber-100 px-1 text-[11px]" aria-label="Zoom check failed">⚠</span>}
+      </span>
+      {child.flash ? <PointsFlash points={child.flash} /> : null}
+    </button>
   )
 }
 
