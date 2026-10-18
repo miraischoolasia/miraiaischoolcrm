@@ -189,4 +189,20 @@ describe('TrialBookingModal', () => {
 
     expect(props.onTakeAttendance).toHaveBeenCalledTimes(1)
   })
+
+  it("opens a booked child's profile when their name is pressed", async () => {
+    const onOpenStudent = vi.fn()
+    renderModal({ bookings: [booking], onOpenStudent })
+
+    await userEvent.click(screen.getByRole('button', { name: "Open Aiden's profile" }))
+
+    expect(onOpenStudent).toHaveBeenCalledWith(501)
+  })
+
+  it('leaves a child with no student on file as plain text', () => {
+    renderModal({ bookings: [{ ...booking, studentId: null }], onOpenStudent: vi.fn() })
+
+    expect(screen.getByText('Aiden')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /profile/ })).not.toBeInTheDocument()
+  })
 })

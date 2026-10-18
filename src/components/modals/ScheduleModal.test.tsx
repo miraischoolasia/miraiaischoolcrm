@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ScheduleModal } from './ScheduleModal'
-import type { Schedule, ScheduleFormState } from '../../types/domain'
+import type { Schedule, ScheduleFormState, Student } from '../../types/domain'
 
 const regularSchedule: Schedule = {
   id: 1,
@@ -122,5 +122,28 @@ describe('ScheduleModal single-day cancellation', () => {
     renderModal({ isCreatingSchedule: true, editingSchedule: null })
 
     expect(screen.queryByRole('button', { name: 'Cancel This Day' })).not.toBeInTheDocument()
+  })
+
+  it("opens a student's profile from the classroom roster", async () => {
+    const onOpenStudent = vi.fn()
+    const ada = {
+      id: 501,
+      name: 'Ada Lovelace',
+      remainingHours: 8,
+      isActive: true,
+      studentType: 'regular',
+      lessonExpiryDate: '2026-12-31',
+      accountFeeExpiryDate: '2026-12-31',
+      miraiClubExpiryDate: '2026-12-31',
+    } as Student
+    renderModal({
+      scheduleLinkedClassroom: { id: 1, name: 'Group A', teacherId: 1 } as never,
+      scheduleClassroomRoster: [ada],
+      onOpenStudent,
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: "Open Ada Lovelace's profile" }))
+
+    expect(onOpenStudent).toHaveBeenCalledWith(501)
   })
 })

@@ -179,8 +179,8 @@ import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
 import { AiKnowledgeSection } from './components/sections/AiKnowledgeSection'
 import { fetchThread } from './lib/aiLearning'
-import { AppLoginsSection } from './components/sections/AppLoginsSection'
 import { ProgrammesSection } from './components/sections/ProgrammesSection'
+import { AppLoginsSection } from './components/sections/AppLoginsSection'
 import { useProgrammes } from './hooks/useProgrammes'
 import { AutomationsSection } from './components/sections/AutomationsSection'
 import { WhatsAppOpenProvider, type WhatsAppTarget } from './components/WhatsAppLink'
@@ -7197,6 +7197,11 @@ function App() {
 
       {selectedStudentDetail && (
         <StudentDetailModal
+          layer={
+            attendanceModal || trialBookingSlot || isCreatingSchedule || editingScheduleId
+              ? 'overlay'
+              : 'base'
+          }
           classrooms={classrooms}
           student={selectedStudentDetail}
           lessonLogs={lessonLogs}
@@ -7388,6 +7393,7 @@ function App() {
             onClose={closeTrialBooking}
             onBook={handleBookTrial}
             onCancelBooking={canDeleteCalendar ? handleCancelTrialBooking : undefined}
+            onOpenStudent={openStudentDetail}
             onEditSlot={() => {
               const { scheduleId, dateKey } = trialBookingSlot
               closeTrialBooking()
@@ -7437,6 +7443,7 @@ function App() {
           }
           onCancelOccurrence={handleCancelOccurrence}
           clashes={scheduleClashes}
+          onOpenStudent={openStudentDetail}
           clashTeacherName={
             scheduleClashTeacherId !== null
               ? (teacherMap.get(scheduleClashTeacherId)?.fullName ?? 'This teacher')
@@ -7514,6 +7521,7 @@ function App() {
           onUpdateReviewScore={updateAttendanceReviewScore}
           onUpdateReviewRemark={updateAttendanceReviewRemark}
           onUpdateLessonRemark={updateAttendanceLessonRemark}
+          onOpenStudent={openStudentDetail}
           makeupNotes={getClassroomMakeupNotes(
             schedules.find((schedule) => schedule.id === attendanceModal.scheduleId)
               ?.classroomId ?? null,

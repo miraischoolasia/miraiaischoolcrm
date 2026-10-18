@@ -66,6 +66,8 @@ type AttendanceModalProps = {
   onUpdateReviewScore: (studentId: number, metric: ReviewMetric, score: number) => void
   onUpdateReviewRemark: (studentId: number, criterionId: number, value: string) => void
   onUpdateLessonRemark: (studentId: number, value: string) => void
+  // Opens a student's profile (the name and photo of each row are the way in).
+  onOpenStudent?: (studentId: number) => void
 }
 
 export function AttendanceModal({
@@ -93,6 +95,7 @@ export function AttendanceModal({
   onUpdateReviewScore,
   onUpdateReviewRemark,
   onUpdateLessonRemark,
+  onOpenStudent,
   makeupNotes = [],
 }: AttendanceModalProps) {
   // Nothing has been submitted that this viewer could look at: roster only.
@@ -292,29 +295,10 @@ export function AttendanceModal({
                     className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
                   >
                     <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-                      <span
-                        aria-hidden="true"
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#fbcfe8] bg-[#fff1f8] text-xs font-bold text-[#be185d]"
-                      >
-                        {student.name
-                          .split(/\s+/)
-                          .filter(Boolean)
-                          .slice(0, 2)
-                          .map((word) => word[0])
-                          .join('')
-                          .toUpperCase()}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="text-base font-semibold text-slate-900">{student.name}</div>
-                        <div className="text-sm text-slate-500">
-                          {[
-                            student.age !== null ? `${student.age} yrs old` : null,
-                            student.phone,
-                          ]
-                            .filter(Boolean)
-                            .join(' · ') || 'No contact info'}
-                        </div>
-                      </div>
+                      <StudentIdentity
+                        student={student}
+                        onOpen={onOpenStudent ? () => onOpenStudent(student.id) : undefined}
+                      />
 
                       {!isRosterOnly && (
                         <div
@@ -663,3 +647,47 @@ function ClassNotesButton({
   )
 }
 
+// The child's initials, name, age and phone. With `onOpen` the whole block is
+// a button that opens their profile.
+function StudentIdentity({ student, onOpen }: { student: Student; onOpen?: () => void }) {
+  const content = (
+    <>
+      <span
+        aria-hidden="true"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#fbcfe8] bg-[#fff1f8] text-xs font-bold text-[#be185d]"
+      >
+        {student.name
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((word) => word[0])
+          .join('')
+          .toUpperCase()}
+      </span>
+      <div className="min-w-0">
+        <div className="text-base font-semibold text-slate-900">{student.name}</div>
+        <div className="text-sm text-slate-500">
+          {[student.age !== null ? `${student.age} yrs old` : null, student.phone]
+            .filter(Boolean)
+            .join(' · ') || 'No contact info'}
+        </div>
+      </div>
+    </>
+  )
+
+  if (!onOpen) {
+    return <div className="flex min-w-0 items-center gap-3">{content}</div>
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`Open ${student.name}'s profile`}
+      title="Open profile"
+      className="-m-1 flex min-w-0 items-center gap-3 rounded-xl p-1 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#ffe4f2]"
+    >
+      {content}
+    </button>
+  )
+}

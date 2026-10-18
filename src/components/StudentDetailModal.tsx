@@ -49,6 +49,9 @@ import type {
 type TabKey = 'overview' | 'progress' | 'lessons' | 'videos' | 'billing'
 
 type StudentDetailModalProps = {
+  // 'overlay' when opened from another window (a class's attendance), so the
+  // profile sits above it instead of behind it.
+  layer?: 'base' | 'overlay'
   classrooms: Classroom[]
   student: Student
   lessonLogs: LessonLogSummary[]
@@ -127,6 +130,7 @@ function relativeDays(daysUntil: number) {
 }
 
 export function StudentDetailModal({
+  layer = 'base',
   classrooms,
   student,
   lessonLogs,
@@ -286,7 +290,7 @@ export function StudentDetailModal({
       : currentPackage?.name ?? 'Regular'
 
   return (
-    <ModalShell placement="right" onClose={onClose}>
+    <ModalShell placement="right" onClose={onClose} layer={layer}>
       <header className="shrink-0 border-b border-slate-200 bg-white px-5 pt-5 sm:px-6">
         <div className="relative flex flex-wrap items-start gap-x-4 gap-y-3">
           <span

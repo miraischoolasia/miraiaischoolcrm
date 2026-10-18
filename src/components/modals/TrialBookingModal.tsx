@@ -23,6 +23,8 @@ type TrialBookingModalProps = {
   onEditSlot: () => void
   // Omitted for a future day: attendance opens on the day of the class.
   onTakeAttendance?: () => void
+  // Opens a booked child's profile (only children already on file as a student).
+  onOpenStudent?: (studentId: number) => void
 }
 
 const emptyForm: TrialBookingFormState = {
@@ -56,6 +58,7 @@ export function TrialBookingModal({
   onCancelBooking,
   onEditSlot,
   onTakeAttendance,
+  onOpenStudent,
 }: TrialBookingModalProps) {
   const [query, setQuery] = useState('')
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
@@ -170,19 +173,38 @@ export function TrialBookingModal({
                   key={booking.id}
                   className="flex items-center justify-between gap-3 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3"
                 >
-                  <div>
-                    <div className="font-semibold text-slate-900">
-                      {booking.childName}
-                      {booking.childAge !== null && (
-                        <span className="ml-2 text-sm font-normal text-slate-500">
-                          {booking.childAge} yrs
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      {[booking.phone, booking.notes].filter(Boolean).join(' · ') || 'No contact'}
-                    </div>
-                  </div>
+                  {(() => {
+                    const studentId = booking.studentId
+                    const details = (
+                      <>
+                        <div className="font-semibold text-slate-900">
+                          {booking.childName}
+                          {booking.childAge !== null && (
+                            <span className="ml-2 text-sm font-normal text-slate-500">
+                              {booking.childAge} yrs
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {[booking.phone, booking.notes].filter(Boolean).join(' · ') || 'No contact'}
+                        </div>
+                      </>
+                    )
+
+                    return onOpenStudent && studentId !== null ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenStudent(studentId)}
+                        aria-label={`Open ${booking.childName}'s profile`}
+                        title="Open profile"
+                        className="-m-1 rounded-lg p-1 text-left transition hover:bg-teal-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-teal-200"
+                      >
+                        {details}
+                      </button>
+                    ) : (
+                      <div>{details}</div>
+                    )
+                  })()}
                   {canManage && onCancelBooking && (
                     <button
                       type="button"

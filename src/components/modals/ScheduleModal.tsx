@@ -36,6 +36,8 @@ type ScheduleModalProps = {
   // The teacher's other classes that overlap this time (empty when none).
   clashes?: TeacherClash[]
   clashTeacherName?: string
+  // Opens a student's profile from the classroom roster.
+  onOpenStudent?: (studentId: number) => void
 }
 
 export function ScheduleModal({
@@ -61,6 +63,7 @@ export function ScheduleModal({
   onCancelOccurrence,
   clashes = [],
   clashTeacherName = 'This teacher',
+  onOpenStudent,
 }: ScheduleModalProps) {
   const schoolLevels = useProgramLevels()
   const programLevelOptions = [
@@ -307,14 +310,32 @@ export function ScheduleModal({
                         className="rounded-xl border border-slate-200 bg-white px-3 py-3"
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="font-semibold text-slate-900">
-                              {student.name}
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              Classes: {student.remainingHours}
-                            </div>
-                          </div>
+                          {(() => {
+                            const details = (
+                              <>
+                                <div className="font-semibold text-slate-900">
+                                  {student.name}
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  Classes: {student.remainingHours}
+                                </div>
+                              </>
+                            )
+
+                            return onOpenStudent ? (
+                              <button
+                                type="button"
+                                onClick={() => onOpenStudent(student.id)}
+                                aria-label={`Open ${student.name}'s profile`}
+                                title="Open profile"
+                                className="-m-1 rounded-lg p-1 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#ffe4f2]"
+                              >
+                                {details}
+                              </button>
+                            ) : (
+                              <div>{details}</div>
+                            )
+                          })()}
                           {!student.isActive && (
                             <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-500">
                               Deactivated
