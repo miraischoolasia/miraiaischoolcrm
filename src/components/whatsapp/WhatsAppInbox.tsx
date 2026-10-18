@@ -70,6 +70,7 @@ import { NumbersDialog, type AssignableStaff } from './NumbersDialog'
 import type { WhatsAppNumber, WhatsAppNumberDraft } from '../../lib/whatsappNumbers'
 import { QuickReplyManager, type QuickReplyStart } from './QuickReplyManager'
 import { quickReplyStartFrom } from '../../lib/quickReplyFromMessages'
+import { ownMediaUrl } from '../../lib/chatwoot'
 import { SourceRuleManager } from './SourceRuleManager'
 
 type WhatsAppInboxProps = {
@@ -951,7 +952,7 @@ export function WhatsAppInbox({
       for (const message of messages) {
         const files = await Promise.all(
           (message.attachments ?? []).map(async (attachment) => {
-            const response = await fetch(attachment.data_url)
+            const response = await fetch(ownMediaUrl(attachment.data_url, apiUrl))
             if (!response.ok) {
               throw new Error('file')
             }
@@ -984,7 +985,7 @@ export function WhatsAppInbox({
   async function startQuickReplyFrom(messages: ChatwootMessage[]) {
     setQuickReplyStart(
       await quickReplyStartFrom(messages, async (url) => {
-        const response = await fetch(url)
+        const response = await fetch(ownMediaUrl(url, apiUrl))
         if (!response.ok) {
           throw new Error('file')
         }

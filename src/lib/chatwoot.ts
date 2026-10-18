@@ -16,3 +16,20 @@ export function getChatwootUrl(raw: string | undefined) {
     return null
   }
 }
+
+// A photo, video or voice message of a chat lives at an address the inbox server wrote into the message, which is
+// not always the address this school's site talks to (both schools share one Chatwoot, so a message may carry the
+// other school's address). The browser only lets a site read a file from the address that allows it, so a file is
+// fetched through the address of this school's own inbox. Any other address is left as it is.
+export function ownMediaUrl(url: string, apiUrl: string | null | undefined) {
+  try {
+    const file = new URL(url)
+    const own = apiUrl ? new URL(apiUrl) : null
+    if (!own || !file.pathname.startsWith('/rails/active_storage/') || file.origin === own.origin) {
+      return url
+    }
+    return `${own.origin}${file.pathname}${file.search}`
+  } catch {
+    return url
+  }
+}
