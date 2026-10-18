@@ -67,10 +67,15 @@ export function SideNav({
   onSelect: (entry: NavEntry) => void
 }) {
   const { top, groups } = groupNav(entries)
-  // The group of the page that is open starts open.
-  const [open, setOpen] = useState<Set<NavGroupKey>>(
-    () => new Set(groups.filter((group) => group.entries.some((entry) => entry.section === activeSection)).map((group) => group.key)),
-  )
+  // One group is open at a time: opening one folds the other. The group of the page that is open is the one
+  // open, and it follows the page (a page opened from somewhere else, or the first page settling after the
+  // menu loads, moves the open group with it; Today folds them all).
+  const groupOfPage = groups.find((group) => group.entries.some((entry) => entry.section === activeSection))?.key ?? null
+  const [menu, setMenu] = useState<{ section: AppSection; open: NavGroupKey | null }>({ section: activeSection, open: groupOfPage })
+  if (menu.section !== activeSection) {
+    setMenu({ section: activeSection, open: groupOfPage })
+  }
+  const openGroup = menu.section === activeSection ? menu.open : groupOfPage
 
   function item(entry: NavEntry) {
     const active = entry.section !== undefined && entry.section === activeSection
@@ -107,21 +112,14 @@ export function SideNav({
             </div>
           )
         }
-        const isOpen = open.has(group.key)
+        const isOpen = openGroup === group.key
         const holdsActive = group.entries.some((entry) => entry.section === activeSection)
         return (
           <div key={group.key}>
             <button
               type="button"
               aria-expanded={isOpen}
-              onClick={() =>
-                setOpen((current) => {
-                  const next = new Set(current)
-                  if (next.has(group.key)) next.delete(group.key)
-                  else next.add(group.key)
-                  return next
-                })
-              }
+              onClick={() => setMenu((current) => ({ section: activeSection, open: current.open === group.key ? null : group.key }))}
               className={cn(
                 'flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium transition',
                 !isOpen && holdsActive ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white',
