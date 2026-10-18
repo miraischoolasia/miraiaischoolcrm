@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   CaretDown,
   CaretUp,
@@ -25,15 +25,11 @@ import {
   QUICK_REPLY_VARIABLES,
   type QuickReply,
   type QuickReplyMedia,
+  type QuickReplyStart,
 } from '../../lib/quickReplies'
 import type { QuickReplyDraft } from '../../lib/quickRepliesApi'
 
-// Rows a new quick reply starts with, when it is made from messages picked in a chat.
-export type QuickReplyStart = {
-  steps: ({ kind: 'text'; text: string } | { kind: 'file'; file: File })[]
-  // What could not be copied, shown above the rows.
-  note?: string
-}
+export type { QuickReplyStart }
 
 type QuickReplyManagerProps = {
   replies: QuickReply[]
@@ -99,11 +95,16 @@ function ReplyForm({
   const [isActive, setIsActive] = useState(existing?.isActive ?? true)
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const noteBox = useRef<HTMLParagraphElement>(null)
   const textFields = useRef(new Map<number, HTMLTextAreaElement>())
   // The text row a name tag is put into: the one last clicked in.
   const lastText = useRef<number | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const pickingFor = useRef<number | null>(null)
+
+  useEffect(() => {
+    noteBox.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [])
 
   function change(key: number, patch: Partial<Row>) {
     setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)))
@@ -179,7 +180,7 @@ function ReplyForm({
     <div className="flex min-h-0 flex-1 flex-col">
       <div data-modal-body className="max-h-[70vh] min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-6 sm:px-8">
         {start?.note && (
-          <p role="status" className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p ref={noteBox} role="status" className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
             {start.note}
           </p>
         )}

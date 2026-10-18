@@ -9,6 +9,13 @@ export type QuickReplyMedia = { path: string; name: string; type: string; size: 
 // One row of a quick reply: a text, or a file. Each is sent to the parent as its own message.
 export type QuickReplyStep = { kind: 'text'; text: string } | { kind: 'media'; media: QuickReplyMedia }
 
+// Rows a new quick reply starts with, when it is made from messages picked in a chat.
+export type QuickReplyStart = {
+  steps: ({ kind: 'text'; text: string } | { kind: 'file'; file: File })[]
+  // What could not be copied, shown above the rows.
+  note?: string
+}
+
 export type QuickReply = {
   id: number
   title: string
@@ -211,4 +218,25 @@ export function mediaKind(type: string): 'image' | 'video' | 'audio' | 'file' {
     return 'video'
   }
   return 'file'
+}
+
+const TYPE_OF_ENDING: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  mp4: 'video/mp4',
+  pdf: 'application/pdf',
+  ogg: 'audio/ogg',
+  oga: 'audio/ogg',
+  opus: 'audio/ogg',
+  mp3: 'audio/mpeg',
+  m4a: 'audio/mp4',
+  aac: 'audio/aac',
+  wav: 'audio/wav',
+}
+
+// The file type a name says it is, for a file whose server gave no useful type. Empty when it is not one of ours.
+export function typeOfFileName(name: string): string {
+  return TYPE_OF_ENDING[name.split('?')[0].split('.').pop()?.toLowerCase() ?? ''] ?? ''
 }

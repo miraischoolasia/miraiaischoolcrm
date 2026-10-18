@@ -69,7 +69,7 @@ import { FollowUpButton, FollowUpChip } from './FollowUpButton'
 import { NumbersDialog, type AssignableStaff } from './NumbersDialog'
 import type { WhatsAppNumber, WhatsAppNumberDraft } from '../../lib/whatsappNumbers'
 import { QuickReplyManager, type QuickReplyStart } from './QuickReplyManager'
-import { checkQuickReplyFile, MAX_QUICK_REPLY_STEPS, normalizeQuickReplyFile } from '../../lib/quickReplies'
+import { quickReplyStartFrom } from '../../lib/quickReplyFromMessages'
 import { SourceRuleManager } from './SourceRuleManager'
 
 type WhatsAppInboxProps = {
@@ -982,46 +982,15 @@ export function WhatsAppInbox({
   }
   // Opens a new personal quick reply made of the messages: each one's text, then its photos, videos and PDFs.
   async function startQuickReplyFrom(messages: ChatwootMessage[]) {
-    const steps: QuickReplyStart['steps'] = []
-    const left: string[] = []
-    let notLoaded = 0
-    for (const message of messages) {
-      const text = (message.content ?? '').trim()
-      if (text) {
-        steps.push({ kind: 'text', text })
-      }
-      for (const attachment of message.attachments ?? []) {
-        try {
-          const response = await fetch(attachment.data_url)
-          if (!response.ok) {
-            throw new Error('file')
-          }
-          const blob = await response.blob()
-          const name = decodeURIComponent(attachment.data_url.split('?')[0].split('/').pop() ?? 'file')
-          // A voice message is kept as an audio file whatever the server called it.
-          const file = normalizeQuickReplyFile(new File([blob], name, { type: blob.type }), attachment.file_type === 'audio')
-          const problem = checkQuickReplyFile(file)
-          if (problem) {
-            left.push(problem)
-          } else {
-            steps.push({ kind: 'file', file })
-          }
-        } catch {
-          notLoaded += 1
+    setQuickReplyStart(
+      await quickReplyStartFrom(messages, async (url) => {
+        const response = await fetch(url)
+        if (!response.ok) {
+          throw new Error('file')
         }
-      }
-    }
-    const notes = [...left]
-    if (notLoaded > 0) {
-      notes.push(notLoaded === 1 ? 'One photo or file could not be loaded.' : `${notLoaded} photos or files could not be loaded.`)
-    }
-    if (steps.length > MAX_QUICK_REPLY_STEPS) {
-      notes.push(`A quick reply holds up to ${MAX_QUICK_REPLY_STEPS} rows, so only the first ${MAX_QUICK_REPLY_STEPS} were copied.`)
-    }
-    setQuickReplyStart({
-      steps: steps.slice(0, MAX_QUICK_REPLY_STEPS),
-      note: notes.length > 0 ? `Left out: ${notes.join(' ')}` : undefined,
-    })
+        return response.blob()
+      }),
+    )
     setManagingReplies(true)
   }
   // Sends an approved automation message to the parent's chat: the chat the school already has for
