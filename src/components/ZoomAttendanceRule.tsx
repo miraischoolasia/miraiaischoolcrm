@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { WholeNumberInput } from './WholeNumberInput'
 
 type Rule = { percent: number; lateMinutes: number; dropGraceSeconds: number }
 
@@ -60,19 +61,18 @@ export function ZoomAttendanceRule() {
 
   if (saved === null) return null
   const unchanged = draft.percent === saved.percent && draft.lateMinutes === saved.lateMinutes && draft.dropGraceSeconds === saved.dropGraceSeconds
-  const input = 'w20 rounded-xl border border-slate-200 px-2 py-1'
+  const input = 'w-20 rounded-xl border border-slate-200 px-2 py-1'
 
   return (
     <div className="mt-6 space-y-2 border-t border-slate-200 pt-5">
       <h3 className="text-base font-semibold text-slate-900">Attendance from Zoom</h3>
       <label className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
         A child counts as there after
-        <input
-          type="number"
+        <WholeNumberInput
           min={1}
           max={100}
           value={draft.percent}
-          onChange={(event) => change({ percent: clamp(Number(event.target.value), 1, 100) })}
+          onChange={(value) => change({ percent: value })}
           className={input}
           aria-label="Percent of the lesson"
         />
@@ -81,12 +81,11 @@ export function ZoomAttendanceRule() {
       <p className="text-xs text-slate-500">Used by "Fill from Zoom" in the attendance form; the teacher still checks it.</p>
       <label className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
         Show a child as late when they first join more than
-        <input
-          type="number"
+        <WholeNumberInput
           min={0}
           max={120}
           value={draft.lateMinutes}
-          onChange={(event) => change({ lateMinutes: clamp(Number(event.target.value), 0, 120) })}
+          onChange={(value) => change({ lateMinutes: value })}
           className={input}
           aria-label="Minutes after the start"
         />
@@ -94,12 +93,11 @@ export function ZoomAttendanceRule() {
       </label>
       <label className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
         When a child's connection drops, they really left
-        <input
-          type="number"
+        <WholeNumberInput
           min={0}
           max={900}
           value={draft.dropGraceSeconds}
-          onChange={(event) => change({ dropGraceSeconds: clamp(Number(event.target.value), 0, 900) })}
+          onChange={(value) => change({ dropGraceSeconds: value })}
           className={input}
           aria-label="Seconds before Zoom reports it"
         />

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { WholeNumberInput } from './WholeNumberInput'
 import { defaultLateReminder, fetchLateReminderSettings, fillLateReminder, saveLateReminderSettings, type LateReminderSettings } from '../lib/lateReminder'
 
 // Class Settings > Zoom: the WhatsApp message a teacher can send from the
@@ -34,14 +35,13 @@ export function LateReminderSetting() {
       <h3 className="text-base font-semibold text-slate-900">Reminder to parents of late children</h3>
       <label className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
         Show "Remind the parent" when a child is not in Zoom
-        <input
-          type="number"
+        <WholeNumberInput
           min={0}
           max={120}
           value={draft.afterMinutes}
-          onChange={(event) => {
+          onChange={(value) => {
             setDone(false)
-            setDraft({ ...draft, afterMinutes: Math.min(120, Math.max(0, Math.round(Number(event.target.value) || 0))) })
+            setDraft({ ...draft, afterMinutes: value })
           }}
           className="w-20 rounded-xl border border-slate-200 px-2 py-1"
           aria-label="Minutes after the start"
