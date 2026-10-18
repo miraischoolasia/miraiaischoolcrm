@@ -9,6 +9,8 @@ import { fetchClassVideos } from '@/lib/videos'
 import { useEffect, useState } from 'react'
 import { colors, Loading, Screen } from '@/ui/kit'
 import { LiveQuestionBanner } from '@/ui/LiveQuestionCard'
+import { usePointsBursts } from '@/lib/pointsFeed'
+import { PointsBurstView } from '@/ui/PointsBurst'
 import { TermsScreen } from '@/ui/TermsScreen'
 
 // The tabs, as one bar at the bottom on phones and on the web. A question
@@ -18,9 +20,11 @@ export default function AppLayout() {
   const insets = useSafeAreaInsets()
   const pathname = usePathname()
   const router = useRouter()
-  const { branding, onboarding, child } = useSession()
+  const { branding, onboarding, child, home, refresh } = useSession()
   const [hasVideos, setHasVideos] = useState(false)
   const studentId = child?.studentId ?? null
+  // Points the teacher gives pop up at once (when the school shows points).
+  const bursts = usePointsBursts(studentId, Boolean(home?.sees.points), () => void refresh())
   useEffect(() => {
     setHasVideos(false)
     if (studentId === null) return
@@ -62,6 +66,7 @@ export default function AppLayout() {
           <TabButton label="Me" icon="🙂" />
         </TabTrigger>
       </TabList>
+      {bursts.current && <PointsBurstView burst={bursts.current} color={branding.accentColor} onDone={bursts.done} />}
       </Tabs>
     </LiveProvider>
   )

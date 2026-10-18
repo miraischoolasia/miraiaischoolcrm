@@ -2153,6 +2153,33 @@ export type Database = {
         }
         Relationships: []
       }
+      student_zoom_checks: {
+        Row: {
+          id: number
+          student_id: number
+          ok: boolean
+          platform: string | null
+          checked_at: string
+          checked_by: string | null
+        }
+        Insert: {
+          id?: never
+          student_id: number
+          ok: boolean
+          platform?: string | null
+          checked_at?: string
+          checked_by?: string | null
+        }
+        Update: {
+          id?: never
+          student_id?: number
+          ok?: boolean
+          platform?: string | null
+          checked_at?: string
+          checked_by?: string | null
+        }
+        Relationships: []
+      }
       zoom_waiting: {
         Row: {
           id: number

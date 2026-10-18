@@ -161,6 +161,23 @@ function message(error: { message?: string } | null, fallback: string) {
   return error ? error.message || fallback : null
 }
 
+// New points in one lesson as they are given (the live class console cheers
+// them). Staff read them through RLS like the rest of the ledger.
+export function watchLessonPoints(scheduleId: number, lessonDate: string, onEntry: (entry: PointsEntry) => void) {
+  if (!supabase) return () => {}
+  const client = supabase
+  const channel = client
+    .channel(`lesson-points-${scheduleId}-${lessonDate}-${Math.random().toString(36).slice(2)}`)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'student_points', filter: `schedule_id=eq.${scheduleId}` }, (change) => {
+      const row = change.new as Parameters<typeof mapPointsRow>[0]
+      if (row && row.lesson_date === lessonDate) onEntry(mapPointsRow(row))
+    })
+    .subscribe()
+  return () => {
+    void client.removeChannel(channel)
+  }
+}
+
 export async function awardPoints(input: {
   studentIds: number[]
   points?: number | null

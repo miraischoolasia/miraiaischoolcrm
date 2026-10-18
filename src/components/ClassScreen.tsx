@@ -92,6 +92,17 @@ export function ClassScreen({ scheduleId, lessonDate }: { scheduleId: number; le
           </section>
         </div>
       )}
+      {state?.cheer && !lost && (
+        <div key={state.cheer.id} className="pointer-events-none fixed inset-0 flex items-center justify-center" aria-live="polite">
+          <div className="animate-bounce rounded-3xl border-4 border-amber-400 bg-white px-12 py-8 text-center shadow-2xl">
+            <p className="text-7xl">🎉</p>
+            <p className="mt-2 text-5xl font-bold text-[#be185d]">
+              {state.cheer.name} +{state.cheer.points} ⭐
+            </p>
+            {state.cheer.reason && <p className="mt-2 text-3xl font-semibold text-slate-700">{state.cheer.reason}</p>}
+          </div>
+        </div>
+      )}
       {lost && <p className="pt-4 text-center text-lg text-slate-400">Waiting for the console…</p>}
     </main>
   )

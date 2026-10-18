@@ -4,6 +4,7 @@ import { cn } from '../../lib/cn'
 import type { Room } from '../../lib/zoomRoom'
 import type { RewardPreset } from '../../lib/rewards'
 import type { StudentBackground } from '../../lib/studentBackground'
+import type { ZoomCheck } from '../../lib/zoomChecks'
 import { BIG_CLASS, filterGrid, gridCounts, shortName, type GridFilter } from '../../lib/gridFilters'
 
 export type GridChild = {
@@ -22,6 +23,10 @@ export type GridChild = {
   remindedAt: string | null
   // Not in Zoom this long after the start: the parent may be reminded.
   canRemind: boolean
+  // Points just given, shown on the tile for a moment.
+  flash?: number | null
+  // The family's latest Zoom check before class.
+  zoomCheck?: ZoomCheck | null
 }
 
 // Every child in the lesson as one tile: in Zoom or not, late, the question
@@ -35,8 +40,10 @@ export function gridChildren(input: {
   backgrounds?: Map<number, StudentBackground>
   reminders?: Map<number, string>
   remindFrom?: boolean
+  flashes?: Map<number, number>
+  zoomChecks?: Map<number, ZoomCheck>
 }): GridChild[] {
-  const { room, answers, points, notes, pickedId, backgrounds, reminders, remindFrom = false } = input
+  const { room, answers, points, notes, pickedId, backgrounds, reminders, remindFrom = false, flashes, zoomChecks } = input
   const make = (child: { studentId: number; name: string; late: boolean; dropped: boolean }, state: GridChild['state']): GridChild => {
     const result = answers?.get(child.studentId)
     return {
@@ -52,6 +59,8 @@ export function gridChildren(input: {
       background: backgrounds?.get(child.studentId) ?? null,
       remindedAt: reminders?.get(child.studentId) ?? null,
       canRemind: remindFrom && (state === 'not_yet' || state === 'left'),
+      flash: flashes?.get(child.studentId) ?? null,
+      zoomCheck: zoomChecks?.get(child.studentId) ?? null,
     }
   }
   // Children in the waiting room are in none of the other lists.
@@ -177,7 +186,7 @@ export function StudentGrid({
                 aria-pressed={child.studentId === openId}
                 title={`${child.name} · ${stateText[child.state]}${child.answer ? ` · ${answerText[child.answer]}` : ''} · ${child.points} points`}
                 className={cn(
-                  'flex w-full items-center gap-1 rounded-lg border px-1.5 py-1 text-left text-xs transition hover:brightness-95',
+                  'relative flex w-full items-center gap-1 rounded-lg border px-1.5 py-1 text-left text-xs transition hover:brightness-95',
                   tileTone(child),
                   child.picked && 'ring-2 ring-[#fc0c97]',
                   child.studentId === openId && 'ring-2 ring-sky-400',
@@ -186,6 +195,7 @@ export function StudentGrid({
                 <span className="min-w-0 flex-1 truncate font-semibold">{shortName(child.name)}</span>
                 {child.note && <NotePencil size={11} className="shrink-0" aria-label="Has a note" />}
                 {child.points > 0 && <span className="shrink-0 text-[11px] font-semibold">{child.points}</span>}
+                {child.flash ? <PointsFlash points={child.flash} /> : null}
               </button>
             </li>
           ))}
@@ -199,7 +209,7 @@ export function StudentGrid({
                 onClick={() => select(child.studentId)}
                 aria-pressed={child.studentId === openId}
                 className={cn(
-                  'w-full rounded-xl border bg-white px-3 py-2 text-left transition hover:bg-slate-50',
+                  'relative w-full rounded-xl border bg-white px-3 py-2 text-left transition hover:bg-slate-50',
                   child.state === 'here' && !child.late && 'border-emerald-300',
                   child.state === 'here' && child.late && 'border-amber-300',
                   child.state === 'waiting' && 'border-amber-300 bg-amber-50',
@@ -223,6 +233,7 @@ export function StudentGrid({
                   {child.state === 'here' && child.late ? ' · late' : ''}
                   {child.state === 'left' && child.dropped ? ' · dropped' : ''}
                   {child.remindedAt ? ` · reminded ${timeOf(child.remindedAt)}` : ''}
+                {child.zoomCheck && !child.zoomCheck.ok ? ' · ⚠ Zoom check failed' : ''}
                 </span>
                 {child.background && (child.background.lowOnLessons || child.background.expiringSoon) && (
                   <span className="block truncate text-[11px] font-semibold text-amber-700">
@@ -248,6 +259,7 @@ export function StudentGrid({
                   )}
                   <span className="font-semibold text-amber-600">⭐ {child.points}</span>
                 </span>
+                {child.flash ? <PointsFlash points={child.flash} /> : null}
               </button>
             </li>
           ))}
@@ -264,6 +276,15 @@ export function StudentGrid({
         </button>
       )}
     </div>
+  )
+}
+
+// "+5" popping on a tile when points are given.
+function PointsFlash({ points }: { points: number }) {
+  return (
+    <span aria-live="polite" className="pointer-events-none absolute -right-1 -top-2 animate-bounce rounded-full bg-amber-400 px-1.5 text-xs font-bold text-white shadow">
+      +{points}
+    </span>
   )
 }
 
@@ -337,6 +358,13 @@ function ChildPanel({
           {child.background.expiresOn ? ` · package ends ${dayOf(child.background.expiresOn)}` : ''}
         </p>
       )}
+      <p className="mt-1 text-xs text-slate-600">
+        {child.zoomCheck
+          ? child.zoomCheck.ok
+            ? `Zoom check: worked on ${dayOf(child.zoomCheck.checkedAt.slice(0, 10))}${child.zoomCheck.platform ? ` (${child.zoomCheck.platform})` : ''}`
+            : `Zoom check: did NOT work on ${dayOf(child.zoomCheck.checkedAt.slice(0, 10))}${child.zoomCheck.platform ? ` (${child.zoomCheck.platform})` : ''}`
+          : 'Zoom check: not done yet'}
+      </p>
       {child.background?.lastRemark && (
         <p className="mt-1 line-clamp-4 rounded-lg bg-white px-2 py-1 text-xs text-slate-700" title={child.background.lastRemark}>
           <span className="font-semibold">Last lesson ({dayOf(child.background.lastRemarkDate ?? '')}):</span> {child.background.lastRemark}

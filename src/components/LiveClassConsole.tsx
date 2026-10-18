@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowSquareOut, ChartBar, ChatCircleText, Monitor, NotePencil, Shuffle, SignOut, Star, Timer, Warning, X } from '@phosphor-icons/react'
 import { cn } from '../lib/cn'
 import { LessonZoomCard } from './LessonZoomCard'
@@ -9,9 +9,10 @@ import { StudentGrid, gridChildren } from './console/StudentGrid'
 import { RandomPickTool, TimerTool } from './console/ConsoleTools'
 import { lessonBoard, type LiveAnswer, type LiveKey, type LiveQuestion } from '../lib/liveQuestions'
 import { buildRoom, clearStranger, fetchRoom, watchRoom, type RoomData } from '../lib/zoomRoom'
-import { awardPoints, fetchLessonPoints, fetchRewardPresets, type PointsEntry, type RewardPreset } from '../lib/rewards'
+import { awardPoints, fetchLessonPoints, fetchRewardPresets, watchLessonPoints, type PointsEntry, type RewardPreset } from '../lib/rewards'
 import { fetchClassNotes, saveClassNote } from '../lib/classNotes'
 import { formatClock } from '../lib/consoleTools'
+import { fetchZoomChecks, type ZoomCheck } from '../lib/zoomChecks'
 import { endLessonZoom } from '../lib/zoomLessons'
 import {
   defaultLateReminder,
@@ -90,6 +91,10 @@ export function LiveClassConsole({
   const [ending, setEnding] = useState<'idle' | 'confirm' | 'ending' | 'failed'>('idle')
   const [timerState, setTimerState] = useState<{ endsAt: number | null; pausedLeft: number | null }>({ endsAt: null, pausedLeft: null })
   const [leaderboardTop, setLeaderboardTop] = useState(3)
+  // Points just given: "+5" on the child's tile, and a cheer on the class screen for awards.
+  const [flashes, setFlashes] = useState<Map<number, number>>(new Map())
+  const [cheer, setCheer] = useState<ClassScreenState['cheer']>(null)
+  const [zoomChecks, setZoomChecks] = useState<Map<number, ZoomCheck>>(new Map())
 
   const loadRoom = useCallback(() => {
     if (!sessionId) return
@@ -141,6 +146,38 @@ export function LiveClassConsole({
   const answerCount = live?.answers.length ?? 0
   useEffect(loadPoints, [answerCount, loadPoints])
 
+  const namesRef = useRef(studentNames)
+  useEffect(() => {
+    namesRef.current = studentNames
+  }, [studentNames])
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = []
+    const stop = watchLessonPoints(scheduleId, lessonDate, (entry) => {
+      loadPoints()
+      if (entry.points <= 0 || entry.reversesId !== null) return
+      setFlashes((current) => new Map(current).set(entry.studentId, entry.points))
+      timers.push(
+        setTimeout(() => {
+          setFlashes((current) => {
+            if (current.get(entry.studentId) !== entry.points) return current
+            const next = new Map(current)
+            next.delete(entry.studentId)
+            return next
+          })
+        }, 2500),
+      )
+      if (entry.kind === 'award') {
+        const name = (namesRef.current.get(entry.studentId) ?? '').trim().split(' ')[0] || 'Star'
+        setCheer({ id: entry.id, name, points: entry.points, reason: entry.reason })
+        timers.push(setTimeout(() => setCheer((current) => (current?.id === entry.id ? null : current)), 4000))
+      }
+    })
+    return () => {
+      stop()
+      timers.forEach(clearTimeout)
+    }
+  }, [lessonDate, loadPoints, scheduleId])
+
   useEffect(() => {
     const tick = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(tick)
@@ -155,6 +192,11 @@ export function LiveClassConsole({
   }, [onClose, showReport])
 
   const room = useMemo(() => (roomData ? buildRoom(roomData) : null), [roomData])
+  const rosterKey = (roomData?.roster ?? []).map((child) => child.studentId).join(',')
+  useEffect(() => {
+    if (!rosterKey) return
+    void fetchZoomChecks(rosterKey.split(',').map(Number)).then(setZoomChecks)
+  }, [rosterKey])
   const names = useMemo(() => {
     const map = new Map(studentNames)
     for (const child of roomData?.roster ?? []) map.set(child.studentId, child.name)
@@ -185,8 +227,8 @@ export function LiveClassConsole({
   const startsAtIso = roomData?.startsAt ?? null
   const remindFrom = startsAtIso !== null && now >= Date.parse(startsAtIso) + reminderSettings.afterMinutes * 60_000
   const items = useMemo(
-    () => (room ? gridChildren({ room, answers: currentAnswers, points, notes, pickedId, backgrounds, reminders, remindFrom }) : []),
-    [backgrounds, currentAnswers, notes, pickedId, points, reminders, remindFrom, room],
+    () => (room ? gridChildren({ room, answers: currentAnswers, points, notes, pickedId, backgrounds, reminders, remindFrom, flashes, zoomChecks }) : []),
+    [backgrounds, currentAnswers, flashes, notes, pickedId, points, reminders, remindFrom, room, zoomChecks],
   )
   const inZoom = room?.here.map((child) => child.studentId) ?? []
   const everyone = roomData?.roster.map((child) => child.studentId) ?? []
@@ -284,8 +326,9 @@ export function LiveClassConsole({
       picked: pickedName || null,
       top: topForScreen(board, names, Math.min(leaderboardTop, 5)),
       question: current ? { number: current.number, prompt: current.prompt, closesAt: current.closesAt } : null,
+      cheer,
     }
-  }, [current, leaderboardTop, live?.answers, live?.questions, names, pickedId, timerState, title])
+  }, [cheer, current, leaderboardTop, live?.answers, live?.questions, names, pickedId, timerState, title])
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return
     const channel = new BroadcastChannel(classScreenChannel(scheduleId, lessonDate))

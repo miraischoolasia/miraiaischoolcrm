@@ -9,6 +9,8 @@ export type ClassScreenState = {
   picked: string | null
   top: { name: string; points: number }[]
   question: { number: number; prompt: string; closesAt: string } | null
+  // Points the teacher just gave, cheered on the screen for a moment.
+  cheer?: { id: number; name: string; points: number; reason: string } | null
   sentAt: number
 }
 

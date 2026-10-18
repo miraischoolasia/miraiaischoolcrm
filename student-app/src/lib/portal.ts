@@ -131,3 +131,60 @@ export async function acceptTerms(version: number, answers: Record<ConsentKind, 
   const { error } = await supabase.rpc('portal_accept_terms', { p_version: version, p_consents: answers })
   return error ? error.message : null
 }
+
+// A summary of one lesson for the family (portal_lesson_summaries in the
+// CRM's 20261024210000_student_live_feedback.sql): time in Zoom (null when
+// the lesson had no meeting), questions answered and right (shown ones only),
+// and the lesson's points (missing when the school does not show points).
+export type LessonSummary = {
+  session_id: number
+  date: string
+  start: string
+  title: string
+  lesson_minutes: number
+  zoom_minutes: number | null
+  questions: number
+  answered: number
+  right: number
+  points: number | null
+}
+
+export async function fetchLessonSummaries(studentId: number): Promise<LessonSummary[]> {
+  const { data, error } = await supabase.rpc('portal_lesson_summaries', { p_student_id: studentId })
+  if (error) return []
+  return (data ?? []) as LessonSummary[]
+}
+
+// The family's Zoom check before class (student_zoom_checks): did Zoom's test
+// meeting work on this device? The teacher sees the answer on the console.
+export type ZoomCheck = { ok: boolean; checkedAt: string; platform: string | null }
+
+export async function fetchLastZoomCheck(studentId: number): Promise<ZoomCheck | null> {
+  const { data, error } = await supabase
+    .from('student_zoom_checks')
+    .select('ok, checked_at, platform')
+    .eq('student_id', studentId)
+    .order('checked_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error || !data) return null
+  return { ok: data.ok, checkedAt: data.checked_at, platform: data.platform }
+}
+
+export async function recordZoomCheck(studentId: number, ok: boolean, platform: 'web' | 'ios' | 'android') {
+  const { error } = await supabase.rpc('portal_record_zoom_check', { p_student_id: studentId, p_ok: ok, p_platform: platform })
+  return error ? error.message : null
+}
+
+// Ask for a check when a class is coming within `days` and there is no good
+// check from the last two weeks.
+export function needsZoomCheck(check: ZoomCheck | null, nextClassDate: string | null, today: string, days = 3) {
+  if (!nextClassDate) return false
+  const soon = new Date(`${today}T00:00:00Z`)
+  soon.setUTCDate(soon.getUTCDate() + days)
+  if (nextClassDate > soon.toISOString().slice(0, 10)) return false
+  if (!check || !check.ok) return true
+  const fresh = new Date(`${today}T00:00:00Z`)
+  fresh.setUTCDate(fresh.getUTCDate() - 14)
+  return check.checkedAt.slice(0, 10) < fresh.toISOString().slice(0, 10)
+}

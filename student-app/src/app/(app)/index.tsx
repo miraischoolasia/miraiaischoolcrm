@@ -5,11 +5,14 @@ import type { UpcomingClass } from '@/lib/portal'
 import { useSession } from '@/lib/session'
 import { Body, Button, Card, colors, Empty, Heading, Loading, Muted, Pill, Screen, Title } from '@/ui/kit'
 import { LiveQuestionCard } from '@/ui/LiveQuestionCard'
+import { LessonSummaryChips, useLessonSummaries } from '@/ui/LessonSummary'
+import { ZoomCheckCard } from '@/ui/ZoomCheckCard'
 
 // Home: the next class with its Zoom button, the classes after it, and the
 // points so far (each part only when the school shows it to this login).
 export default function Home() {
   const { home, homeError, child, children, branding, isRefreshing, refresh } = useSession()
+  const summaries = useLessonSummaries(child?.studentId ?? null, home)
 
   if (!home) {
     return (
@@ -35,6 +38,10 @@ export default function Home() {
       <LiveQuestionCard color={branding.accentColor} />
 
       {home.sees.schedule && (
+        <ZoomCheckCard key={home.student.id} studentId={home.student.id} nextClassDate={next?.date ?? null} today={today} color={branding.accentColor} />
+      )}
+
+      {home.sees.schedule && (
         <Card>
           <Heading>Next class</Heading>
           {next ? (
@@ -42,6 +49,27 @@ export default function Home() {
           ) : (
             <Empty>No classes in the next three weeks.</Empty>
           )}
+        </Card>
+      )}
+
+      {summaries[0] && (
+        <Card>
+          <Heading>Last lesson</Heading>
+          <Muted>
+            {formatDay(summaries[0].date)} · {summaries[0].title}
+          </Muted>
+          <LessonSummaryChips summary={summaries[0]} color={branding.accentColor} />
+          {(() => {
+            const lesson = home.lessons.find((entry) => entry.date === summaries[0].date && entry.title === summaries[0].title)
+            return lesson?.recording?.url ? (
+              <Button
+                label="Watch the recording"
+                variant="outline"
+                color={branding.accentColor}
+                onPress={() => (Platform.OS === 'web' ? window.open(lesson.recording!.url, '_blank', 'noopener') : void Linking.openURL(lesson.recording!.url))}
+              />
+            ) : null
+          })()}
         </Card>
       )}
 

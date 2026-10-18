@@ -1011,6 +1011,33 @@ select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 select pg_temp.fails($$select public.set_late_reminder_settings(121, 'Hi')$$, '0 to 120', 'the reminder waits at most 2 hours');
 select public.set_late_reminder_settings(10, '  {child} is late  ');
 select pg_temp.ok((select value from public.app_settings where key = 'lesson_late_reminder') = '{"after_minutes": 10, "text": "{child} is late"}'::jsonb, 'admin sets the reminder words');
+-- Points at once, lesson summaries, Zoom check (20261024210000) ---------------------
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+set local role authenticated;
+select pg_temp.ok((select count(*) from public.student_points where student_id = 9301) > 0, 'the child reads their own points');
+select pg_temp.ok((select count(*) from public.student_points where student_id <> 9301) = 0, 'and nobody else''s');
+select pg_temp.ok(exists (select 1 from jsonb_array_elements(public.portal_lesson_summaries(9301)) e
+  where e ->> 'date' = '2026-10-14' and (e ->> 'points')::int >= 1), 'the lesson summary has the lesson''s points');
+select pg_temp.ok(not exists (select 1 from jsonb_array_elements(public.portal_lesson_summaries(9301)) e where e ->> 'date' > '2026-10-18'),
+  'no summary for a lesson that has not happened');
+select pg_temp.fails($$select public.portal_lesson_summaries(9302)$$, 'not found', 'no summary of another child');
+select public.portal_record_zoom_check(9301, true, 'web');
+select public.portal_record_zoom_check(9301, false, 'android');
+select pg_temp.ok((select count(*) from public.student_zoom_checks) = 1 and (select not ok from public.student_zoom_checks), 'a second answer within a minute replaces the first');
+select pg_temp.fails($$select public.portal_record_zoom_check(9302, true, 'web')$$, 'not found', 'only for one''s own child');
+select pg_temp.fails($$select public.portal_record_zoom_check(9301, true, 'tv')$$, 'unknown device', 'only web, ios or android');
+select pg_temp.fails($$insert into public.student_zoom_checks (student_id, ok) values (9301, true)$$, 'permission denied', 'nobody writes the checks directly');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select pg_temp.ok((select count(*) from public.student_zoom_checks where student_id = 9301) = 1, 'the teacher sees the Zoom check');
+reset role;
+update public.app_settings set value = jsonb_set(value, '{student_sees,points}', 'false') where key = 'student_portal';
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+set local role authenticated;
+select pg_temp.ok((select count(*) from public.student_points) = 0, 'no points when the school hides them from the child');
+select pg_temp.ok(not exists (select 1 from jsonb_array_elements(public.portal_lesson_summaries(9301)) e where e ->> 'points' is not null),
+  'and no points in the summaries');
+reset role;
+update public.app_settings set value = jsonb_set(value, '{student_sees,points}', 'true') where key = 'student_portal';
 -- Recordings show under the lesson, when the school shows them
 reset role;
 insert into public.class_session_recordings (session_id, zoom_recording_uuid, share_url, passcode, started_at)
