@@ -103,12 +103,15 @@ export function StudentGrid({
   onGive,
   onSaveNote,
   onRemind,
+  onStar,
 }: {
   items: GridChild[]
   presets: RewardPreset[]
   onGive: (studentId: number, presetId: number) => Promise<string | null>
   onSaveNote: (studentId: number, note: string) => Promise<string | null>
   onRemind: (studentId: number) => Promise<string | null>
+  // Star of the day: the child on the class screen's stage.
+  onStar?: (studentId: number) => void
 }) {
   const [openId, setOpenId] = useState<number | null>(null)
   const open = items.find((child) => child.studentId === openId) ?? null
@@ -194,7 +197,7 @@ export function StudentGrid({
         </div>
       </div>
 
-      {open && <ChildPanel key={open.studentId} child={open} presets={presets} onGive={onGive} onSaveNote={onSaveNote} onRemind={onRemind} onClose={() => setOpenId(null)} />}
+      {open && <ChildPanel key={open.studentId} child={open} presets={presets} onGive={onGive} onSaveNote={onSaveNote} onRemind={onRemind} onStar={onStar} onClose={() => setOpenId(null)} />}
 
       {view === 'classroom' ? (
         <div className="rounded-2xl bg-amber-50/70 p-3">
@@ -389,6 +392,7 @@ function ChildPanel({
   onGive,
   onSaveNote,
   onRemind,
+  onStar,
   onClose,
 }: {
   child: GridChild
@@ -396,6 +400,7 @@ function ChildPanel({
   onGive: (studentId: number, presetId: number) => Promise<string | null>
   onSaveNote: (studentId: number, note: string) => Promise<string | null>
   onRemind: (studentId: number) => Promise<string | null>
+  onStar?: (studentId: number) => void
   onClose: () => void
 }) {
   const [note, setNote] = useState(child.note ?? '')
@@ -466,6 +471,18 @@ function ChildPanel({
           </button>
           {child.remindedAt && <span className="text-xs text-slate-500">Reminded at {timeOf(child.remindedAt)}</span>}
         </div>
+      )}
+      {onStar && (
+        <button
+          type="button"
+          onClick={() => {
+            onStar(child.studentId)
+            setMessage(`${child.name} is on the class screen's stage`)
+          }}
+          className="mt-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+        >
+          ⭐ Star of the day
+        </button>
       )}
       <div className="mt-2 flex flex-wrap gap-1.5">
         {presets

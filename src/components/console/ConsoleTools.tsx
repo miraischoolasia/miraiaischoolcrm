@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Shuffle, Timer } from '@phosphor-icons/react'
 import { formatClock, pickNext } from '../../lib/consoleTools'
+import { StudentAvatar } from '../StudentAvatar'
 
 const timerChoices = [1, 3, 5, 10]
 
@@ -129,30 +130,57 @@ export function RandomPickTool({
 }) {
   const [picked, setPicked] = useState<number[]>([])
   const [current, setCurrent] = useState<number | null>(null)
+  // While rolling, the face on show changes quickly, then slows and stops.
+  const [rolling, setRolling] = useState<number | null>(null)
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([])
+
+  useEffect(() => () => timers.current.forEach(clearTimeout), [])
 
   function pick() {
     const next = pickNext(candidates, picked)
     setPicked(next.picked)
-    setCurrent(next.studentId)
     onPicked(next.studentId)
+    timers.current.forEach(clearTimeout)
+    timers.current = []
+    if (next.studentId === null) {
+      setCurrent(null)
+      return
+    }
+    const chosen = next.studentId
+    let at = 0
+    for (let step = 0; step < 14; step += 1) {
+      at += 60 + step * step * 4
+      const face = candidates[Math.floor(Math.random() * candidates.length)]
+      timers.current.push(setTimeout(() => setRolling(face), at))
+    }
+    timers.current.push(
+      setTimeout(() => {
+        setRolling(null)
+        setCurrent(chosen)
+      }, at + 120),
+    )
   }
 
+  const shown = rolling ?? current
   return (
     <section aria-label="Random pick" className="rounded-2xl border border-slate-200 bg-white p-3">
       <h4 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
         <Shuffle size={16} className="text-[#fc0c97]" aria-hidden="true" />
         Random pick
       </h4>
-      <p className="mt-1 min-h-10 truncate text-3xl font-semibold text-slate-900" aria-live="polite">
-        {current !== null ? (names.get(current) ?? `Student ${current}`) : '—'}
-      </p>
+      <div className="mt-1 flex min-h-14 items-center gap-3" aria-live="polite">
+        {shown !== null && <StudentAvatar id={shown} name={names.get(shown) ?? ''} size={52} />}
+        <p className={`truncate text-3xl font-semibold ${rolling !== null ? 'text-slate-400' : 'text-slate-900'}`}>
+          {shown !== null ? (names.get(shown) ?? `Student ${shown}`) : '—'}
+        </p>
+      </div>
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="text-xs text-slate-500">
           {candidates.length === 0 ? 'Nobody to pick.' : `${Math.min(picked.length, candidates.length)} of ${candidates.length} picked this round`}
         </span>
         <button
           type="button"
-          disabled={candidates.length === 0}
+          disabled={candidates.length === 0 || rolling !== null}
           onClick={pick}
           className="rounded-xl bg-[#fc0c97] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#de0a84] disabled:opacity-50"
         >

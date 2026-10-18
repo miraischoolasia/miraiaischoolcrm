@@ -11,8 +11,19 @@ export type ClassScreenState = {
   question: { number: number; prompt: string; closesAt: string } | null
   // Points the teacher just gave, cheered on the screen for a moment.
   cheer?: { id: number; name: string; points: number; reason: string } | null
+  // Random pick: names roll on the screen and stop on the child picked (seq is new for each pick).
+  roll?: { seq: number; people: ScreenPerson[]; chosenId: number } | null
+  // Star of the day: the child on a stage under a spotlight.
+  star?: { seq: number; id: number; name: string } | null
+  // Teams made in the console, with the points each team got.
+  teams?: { key: string; label: string; color: string; text: string; members: ScreenPerson[]; score: number }[] | null
   sentAt: number
 }
+
+// A child as the class screen shows them: their face (from the id) and first name.
+export type ScreenPerson = { id: number; name: string }
+
+export const firstName = (name: string) => name.trim().split(/\s+/)[0] || name
 
 export const classScreenChannel = (scheduleId: number, lessonDate: string) => `mirai-class-screen-${scheduleId}-${lessonDate}`
 

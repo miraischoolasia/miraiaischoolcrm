@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { classScreenChannel, readClassScreenState, type ClassScreenState } from '../lib/classScreen'
 import { formatClock } from '../lib/consoleTools'
 import { brand } from '../lib/brand'
+import { StudentAvatar } from './StudentAvatar'
 
 const medals = ['🥇', '🥈', '🥉', '4', '5']
 
@@ -64,6 +65,8 @@ export function ClassScreen({ scheduleId, lessonDate }: { scheduleId: number; le
                   {left === 0 ? "Time's up!" : formatClock(Math.ceil(left))}
                 </p>
               </>
+            ) : state.teams && state.teams.length > 0 ? (
+              <TeamsBoard teams={state.teams} />
             ) : state.picked ? (
               <>
                 <p className="text-3xl font-semibold text-slate-500">Your turn</p>
@@ -103,7 +106,153 @@ export function ClassScreen({ scheduleId, lessonDate }: { scheduleId: number; le
           </div>
         </div>
       )}
+      {state?.roll && now - state.roll.seq < 15000 && <RollShow key={state.roll.seq} roll={state.roll} />}
+      {state?.star && <StarStage key={state.star.seq} star={state.star} />}
       {lost && <p className="pt-4 text-center text-lg text-slate-400">Waiting for the console…</p>}
     </main>
+  )
+}
+
+// Moving pieces of the class screen (only CSS, no extra library).
+const screenKeyframes = `
+@keyframes cs-pop { 0% { transform: scale(0.3); opacity: 0 } 60% { transform: scale(1.12); opacity: 1 } 100% { transform: scale(1) } }
+@keyframes cs-float { 0% { transform: translateY(0) rotate(0deg); opacity: 1 } 100% { transform: translateY(-60vh) rotate(260deg); opacity: 0 } }
+@keyframes cs-sway { 0%, 100% { transform: rotate(-4deg) } 50% { transform: rotate(4deg) } }
+@keyframes cs-glow { 0%, 100% { opacity: 0.55 } 50% { opacity: 0.85 } }
+`
+
+const confetti = ['🎉', '⭐', '✨', '🎊', '🌟', '💫', '🎈', '⭐']
+
+function Confetti() {
+  return (
+    <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
+      {confetti.concat(confetti).map((piece, index) => (
+        <span
+          key={index}
+          className="absolute text-5xl"
+          style={{
+            left: `${(index * 61) % 100}%`,
+            bottom: '-3rem',
+            animation: `cs-float ${2.2 + (index % 5) * 0.35}s ease-out ${(index % 7) * 0.12}s forwards`,
+          }}
+        >
+          {piece}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+// Random pick: 3, 2, 1, then faces roll by fast, slow down and stop on the
+// child picked, who pops up big with confetti.
+function RollShow({ roll }: { roll: NonNullable<ClassScreenState['roll']> }) {
+  const [phase, setPhase] = useState<'count' | 'roll' | 'done'>('count')
+  const [count, setCount] = useState(3)
+  const [face, setFace] = useState(roll.people[0] ?? null)
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([])
+  // The console sends the same pick again every 2 seconds: the show runs once per pick.
+  const first = useRef(roll)
+
+  useEffect(() => {
+    const roll = first.current
+    const later = (ms: number, run: () => void) => timers.current.push(setTimeout(run, ms))
+    later(700, () => setCount(2))
+    later(1400, () => setCount(1))
+    later(2100, () => setPhase('roll'))
+    let at = 2100
+    const people = roll.people.length > 0 ? roll.people : [{ id: roll.chosenId, name: '' }]
+    for (let step = 0; step < 22; step += 1) {
+      at += 55 + step * step * 1.6
+      const next = people[Math.floor(Math.random() * people.length)]
+      later(at, () => setFace(next))
+    }
+    later(at + 150, () => setPhase('done'))
+    const list = timers.current
+    return () => list.forEach(clearTimeout)
+  }, [])
+
+  const chosen = roll.people.find((person) => person.id === roll.chosenId) ?? { id: roll.chosenId, name: '' }
+  return (
+    <div className="fixed inset-0 flex flex-col items-center justify-center bg-indigo-950/95 text-white" aria-live="polite">
+      <style>{screenKeyframes}</style>
+      {phase === 'count' ? (
+        <p key={count} className="text-[14rem] font-black" style={{ animation: 'cs-pop 0.6s ease-out' }}>
+          {count}
+        </p>
+      ) : phase === 'roll' && face ? (
+        <div className="flex flex-col items-center gap-4 opacity-80">
+          <StudentAvatar id={face.id} name={face.name} size={220} />
+          <p className="text-6xl font-bold">{face.name}</p>
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-col items-center gap-5" style={{ animation: 'cs-pop 0.7s ease-out' }}>
+            <div className="rounded-full bg-amber-300 p-3 shadow-[0_0_80px_rgba(252,211,77,0.7)]">
+              <StudentAvatar id={chosen.id} name={chosen.name} size={260} />
+            </div>
+            <p className="text-8xl font-black text-amber-300">{chosen.name}</p>
+            <p className="text-4xl font-semibold">It's your turn!</p>
+          </div>
+          <Confetti />
+        </>
+      )}
+    </div>
+  )
+}
+
+// Star of the day: a stage with curtains and a spotlight on the child.
+function StarStage({ star }: { star: NonNullable<ClassScreenState['star']> }) {
+  return (
+    <div
+      className="fixed inset-0 flex flex-col items-center justify-center overflow-hidden text-white"
+      style={{ background: 'repeating-linear-gradient(90deg, #7f1d1d 0 38px, #991b1b 38px 76px)' }}
+      aria-live="polite"
+    >
+      <style>{screenKeyframes}</style>
+      <div
+        aria-hidden="true"
+        className="absolute inset-x-0 top-0 h-full"
+        style={{
+          background: 'radial-gradient(ellipse 32% 70% at 50% 58%, rgba(254,243,199,0.85), rgba(254,243,199,0) 70%)',
+          animation: 'cs-glow 2.4s ease-in-out infinite',
+        }}
+      />
+      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-16 bg-[repeating-linear-gradient(90deg,#b91c1c_0_30px,#dc2626_30px_60px)] shadow-lg" />
+      <div className="relative flex flex-col items-center gap-4" style={{ animation: 'cs-pop 0.8s ease-out' }}>
+        <p className="text-5xl font-black tracking-wide text-amber-300" style={{ animation: 'cs-sway 2s ease-in-out infinite' }}>
+          ⭐ Star of the day ⭐
+        </p>
+        <div className="rounded-full bg-white p-3 shadow-2xl">
+          <StudentAvatar id={star.id} name={star.name} size={260} />
+        </div>
+        <p className="rounded-full bg-amber-300 px-10 py-2 text-7xl font-black text-red-900">{star.name}</p>
+      </div>
+      <div aria-hidden="true" className="absolute bottom-0 h-24 w-full bg-amber-900" />
+      <Confetti />
+    </div>
+  )
+}
+
+// Teams on the big panel: one coloured card each, with faces and the points.
+function TeamsBoard({ teams }: { teams: NonNullable<ClassScreenState['teams']> }) {
+  return (
+    <div className="grid w-full gap-4" style={{ gridTemplateColumns: `repeat(${teams.length > 4 ? 3 : 2}, minmax(0, 1fr))` }}>
+      {teams.map((team) => (
+        <div key={team.key} className="rounded-3xl p-4 text-left" style={{ background: team.color, color: team.text }}>
+          <div className="flex items-center justify-between text-3xl font-black">
+            <span>{team.label}</span>
+            <span>⭐ {team.score}</span>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {team.members.map((member) => (
+              <span key={member.id} className="flex items-center gap-1.5 rounded-full bg-white/90 py-1 pl-1 pr-3 text-xl font-semibold text-slate-800">
+                <StudentAvatar id={member.id} name={member.name} size={34} />
+                {member.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }

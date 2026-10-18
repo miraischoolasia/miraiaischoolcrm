@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowSquareOut, ChartBar, ChatCircleText, Monitor, NotePencil, Shuffle, SignOut, Star, Timer, Warning, X } from '@phosphor-icons/react'
+import { ArrowSquareOut, ChartBar, ChatCircleText, Monitor, NotePencil, Shuffle, SignOut, Star, Timer, UsersFour, Warning, X } from '@phosphor-icons/react'
 import { cn } from '../lib/cn'
 import { LessonZoomCard } from './LessonZoomCard'
 import { LessonReportModal } from './LessonReportModal'
@@ -7,6 +7,8 @@ import { LiveQuestionsPanel } from './LiveQuestionsPanel'
 import { GivePointsBar } from './GivePointsBar'
 import { StudentGrid, gridChildren } from './console/StudentGrid'
 import { RandomPickTool, TimerTool } from './console/ConsoleTools'
+import { TeamsTool } from './console/TeamsTool'
+import { colorOf, type Team } from '../lib/teams'
 import { lessonBoard, type LiveAnswer, type LiveKey, type LiveQuestion } from '../lib/liveQuestions'
 import { buildRoom, clearStranger, fetchRoom, watchRoom, type RoomData } from '../lib/zoomRoom'
 import { awardPoints, fetchLessonPoints, fetchRewardPresets, watchLessonPoints, type PointsEntry, type RewardPreset } from '../lib/rewards'
@@ -23,17 +25,18 @@ import {
   whatsAppLink,
   type LateReminderSettings,
 } from '../lib/lateReminder'
-import { classScreenChannel, classScreenUrl, topForScreen, type ClassScreenState } from '../lib/classScreen'
+import { classScreenChannel, classScreenUrl, firstName, topForScreen, type ClassScreenState } from '../lib/classScreen'
 import { fetchLiveQuestionSettings } from '../lib/liveQuestions'
 import type { StudentBackground } from '../lib/studentBackground'
 import type { AgeGroup } from '../types/domain'
 
-type Tool = 'timer' | 'pick' | 'points' | 'notes'
+type Tool = 'timer' | 'pick' | 'teams' | 'points' | 'notes'
 
 const tools: { key: Tool; label: string; icon: typeof Timer }[] = [
   { key: 'timer', label: 'Timer', icon: Timer },
   { key: 'pick', label: 'Random pick', icon: Shuffle },
   { key: 'points', label: 'Give points', icon: Star },
+  { key: 'teams', label: 'Teams', icon: UsersFour },
   { key: 'notes', label: 'Notes', icon: NotePencil },
 ]
 
@@ -95,6 +98,28 @@ export function LiveClassConsole({
   const [flashes, setFlashes] = useState<Map<number, number>>(new Map())
   const [cheer, setCheer] = useState<ClassScreenState['cheer']>(null)
   const [zoomChecks, setZoomChecks] = useState<Map<number, ZoomCheck>>(new Map())
+  const [roll, setRoll] = useState<ClassScreenState['roll']>(null)
+  const [star, setStar] = useState<ClassScreenState['star']>(null)
+  // Teams stay for the lesson in this browser (a reload keeps them).
+  const teamsKey = `mirai-teams-${scheduleId}-${lessonDate}`
+  const [teams, setTeamsState] = useState<Team[] | null>(() => {
+    try {
+      const saved = window.localStorage.getItem(teamsKey)
+      return saved ? (JSON.parse(saved) as Team[]) : null
+    } catch {
+      return null
+    }
+  })
+  const [teamsOnScreen, setTeamsOnScreen] = useState(true)
+  function setTeams(next: Team[] | null) {
+    setTeamsState(next)
+    try {
+      if (next) window.localStorage.setItem(teamsKey, JSON.stringify(next))
+      else window.localStorage.removeItem(teamsKey)
+    } catch {
+      // nothing saved is fine
+    }
+  }
 
   const loadRoom = useCallback(() => {
     if (!sessionId) return
@@ -327,8 +352,24 @@ export function LiveClassConsole({
       top: topForScreen(board, names, Math.min(leaderboardTop, 5)),
       question: current ? { number: current.number, prompt: current.prompt, closesAt: current.closesAt } : null,
       cheer,
+      roll,
+      star,
+      teams:
+        teams && teamsOnScreen
+          ? teams.map((team) => {
+              const color = colorOf(team.key)
+              return {
+                key: team.key,
+                label: team.label,
+                color: color.card,
+                text: color.text,
+                score: team.score,
+                members: team.memberIds.map((id) => ({ id, name: firstName(names.get(id) ?? '') })),
+              }
+            })
+          : null,
     }
-  }, [cheer, current, leaderboardTop, live?.answers, live?.questions, names, pickedId, timerState, title])
+  }, [cheer, roll, star, teams, teamsOnScreen, current, leaderboardTop, live?.answers, live?.questions, names, pickedId, timerState, title])
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return
     const channel = new BroadcastChannel(classScreenChannel(scheduleId, lessonDate))
@@ -341,6 +382,33 @@ export function LiveClassConsole({
       channel.close()
     }
   }, [lessonDate, scheduleId, screenState])
+
+  // Random pick: the class screen rolls the names of those it picks from.
+  function picked(studentId: number | null, candidates: number[]) {
+    setPickedId(studentId)
+    if (studentId === null) return
+    const people = candidates.slice(0, 60).map((id) => ({ id, name: firstName(names.get(id) ?? '') }))
+    setRoll({ seq: Date.now(), people, chosenId: studentId })
+  }
+
+  const starTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (starTimer.current) clearTimeout(starTimer.current)
+  }, [])
+  function starOfTheDay(studentId: number) {
+    const seq = Date.now()
+    setStar({ seq, id: studentId, name: firstName(names.get(studentId) ?? '') })
+    if (starTimer.current) clearTimeout(starTimer.current)
+    starTimer.current = setTimeout(() => setStar((current) => (current?.seq === seq ? null : current)), 12000)
+  }
+
+  async function giveTeam(team: Team, preset: RewardPreset) {
+    const problem = await awardPoints({ studentIds: team.memberIds, presetId: preset.id, scheduleId, lessonDate })
+    if (problem) return problem
+    setTeams((teams ?? []).map((entry) => (entry.key === team.key ? { ...entry, score: entry.score + preset.points } : entry)))
+    loadPoints()
+    return null
+  }
 
   async function clear(id: number) {
     setError(await clearStranger(id))
@@ -436,7 +504,27 @@ export function LiveClassConsole({
           {openTools.length > 0 && (
             <div className="grid gap-3 sm:grid-cols-2">
               {openTools.includes('timer') && <TimerTool onChange={setTimerState} />}
-              {openTools.includes('pick') && <RandomPickTool candidates={inZoom.length > 0 ? inZoom : everyone} names={names} onPicked={setPickedId} />}
+              {openTools.includes('pick') && (
+                <RandomPickTool
+                  candidates={inZoom.length > 0 ? inZoom : everyone}
+                  names={names}
+                  onPicked={(studentId) => picked(studentId, inZoom.length > 0 ? inZoom : everyone)}
+                />
+              )}
+              {openTools.includes('teams') && (
+                <div className="sm:col-span-2">
+                  <TeamsTool
+                    candidates={inZoom.length > 0 ? inZoom : everyone}
+                    names={names}
+                    teams={teams}
+                    presets={presets}
+                    onTeams={setTeams}
+                    onGiveTeam={giveTeam}
+                    onScreen={teamsOnScreen}
+                    onScreenChange={setTeamsOnScreen}
+                  />
+                </div>
+              )}
               {openTools.includes('points') && (
                 <div className="sm:col-span-2">
                   <GivePointsBar scheduleId={scheduleId} lessonDate={lessonDate} students={rosterStudents} presets={presets} onChanged={loadPoints} />
@@ -470,7 +558,7 @@ export function LiveClassConsole({
               <span className="text-xs text-slate-500">{current ? `Q${current.number} now: ${currentAnswers?.size ?? 0} of ${everyone.length} answered` : 'Tap a child for points and a note'}</span>
             </div>
             {room ? (
-              <StudentGrid items={items} presets={presets} onGive={giveOne} onSaveNote={saveNote} onRemind={remind} />
+              <StudentGrid items={items} presets={presets} onGive={giveOne} onSaveNote={saveNote} onRemind={remind} onStar={starOfTheDay} />
             ) : (
               <p className="text-sm text-slate-500">{sessionId ? 'Loading…' : 'Opening the lesson…'}</p>
             )}
