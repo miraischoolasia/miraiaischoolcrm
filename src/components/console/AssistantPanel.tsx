@@ -62,7 +62,13 @@ export function AssistantPanel({
     if (sessionId) void fetchLessonNotes(sessionId).then(setNotes)
   }, [sessionId])
 
-  useEffect(() => () => recording?.cancel(), [recording])
+  // A recording still going when the panel closes is dropped (only then:
+  // stopping it to send must not cancel it).
+  const recordingRef = useRef<VoiceRecording | null>(null)
+  useEffect(() => {
+    recordingRef.current = recording
+  }, [recording])
+  useEffect(() => () => recordingRef.current?.cancel(), [])
 
   const context = {
     roster,
@@ -255,6 +261,11 @@ export function AssistantPanel({
         />
       </div>
 
+      {recording && (
+        <p className="mt-2 text-sm font-semibold text-rose-700" aria-live="polite">
+          🎙 Listening… tap the red button when you finish speaking.
+        </p>
+      )}
       {busy && <p className="mt-2 text-xs font-semibold text-violet-700" aria-live="polite">{busy}</p>}
       {error && (
         <p role="alert" className="mt-2 text-xs text-red-700">

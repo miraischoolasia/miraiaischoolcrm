@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { toBase64 } from './voiceQuestion'
+import { toBase64, toWav } from './voiceQuestion'
 import type { AssistantAction, CommandContext, QuestionDraft as AiQuestion } from '../../supabase/functions/class-assistant/logic'
 import type { QuestionDraft } from './questions'
 
@@ -31,8 +31,9 @@ export async function askAssistant(input: { text?: string; audio?: Blob }, conte
   if (input.text) body.text = input.text
   if (input.audio) {
     if (input.audio.size === 0) return { data: null, error: 'Nothing was recorded. Check the microphone.' }
-    body.audio = await toBase64(input.audio)
-    body.mime = input.audio.type || 'audio/webm'
+    const audio = await toWav(input.audio)
+    body.audio = await toBase64(audio)
+    body.mime = audio.type || 'audio/webm'
   }
   return call<{ reply: string; actions: AssistantAction[] }>(body)
 }
