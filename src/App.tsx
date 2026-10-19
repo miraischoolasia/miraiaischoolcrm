@@ -859,11 +859,7 @@ function App() {
   // The school's WhatsApp numbers: which the signed-in person may see (an admin sees all).
   const whatsAppNumbers = useWhatsAppNumbers(Boolean(whatsAppApiUrl) && canUseWhatsApp)
   const whatsAppSiblings = useMemo(() => contactSiblings(leadChannels.rows), [leadChannels.rows])
-  const {
-    unread: unreadWhatsApp,
-    waiting: waitingWhatsApp,
-    openChats: everyOpenChat,
-  } = useWhatsAppUnread(
+  const { unread: unreadWhatsApp, waiting: waitingWhatsApp } = useWhatsAppUnread(
     // Nothing is counted until it is known which numbers this person may see.
     whatsAppNumbers.allowedInboxIds === undefined ? null : whatsAppClient,
     whatsAppNumbers.allowedInboxIds ?? null,
