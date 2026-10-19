@@ -1,0 +1,225 @@
+﻿day,start,end,sheet_label,crm_class,crm_class_id,teacher_id,zoom_account,fb_link,zoom_link,zoom_domain,status
+1,08:15,09:30,F1 SCI MS ANGELINE,SCI Form 1,29,26,A1,yes,yes,us06web,ok
+1,08:15,09:30,F1 SAINS MS JOEY,SCI Form 1,29,52,A6,yes,yes,us06web,ok
+1,08:15,09:30,F2 BMK MS JESSIE,BMK Form 2,38,13,A9,yes,yes,us06web,ok
+1,09:40,10:55,F1 BMP MS JESSIE,BMP Form 1,78,13,A9,yes,yes,us06web,ok
+1,09:40,10:55,F2 SCI MS ANGELINE,SCI Form 2,54,26,A1,yes,yes,us06web,ok
+1,09:40,10:55,F2 SAINS MS JOEY,SCI Form 2,54,52,A6,yes,yes,us06web,ok
+1,15:45,17:00,Y5 BMK MS REGINA,BMK Year 5,108,24,A2,yes,yes,us06web,ok
+1,15:45,17:00,F1 MM MS MADELINE,MM Form 1,40,27,A3,yes,yes,us06web,ok
+1,15:45,17:00,F2 MM 双语 MR HENRY,MM Form 2,3,14,A7,yes,yes,us06web,ok
+1,15:45,17:00,F3 BMK MS HAPPY,BMK Form 3,51,51,A7,yes,yes,us06web,ok
+1,15:45,17:00,F4 BC MS ANGIE,BC Form 4,7,9,A4,yes,yes,us06web,ok
+1,15:45,17:00,F5 BIO MS TINA,BIO Form 5,30,23,A3,yes,yes,us06web,ok
+1,17:15,18:30,Y3 BMP MS REGINA,BMP Year 3,34,24,A2,yes,yes,us06web,ok
+1,17:15,18:30,Y5 BIP MS ABBY,BIP Year 5,28,42,A5,yes,yes,us06web,ok
+1,17:15,18:30,F1 SEJ MS JESSIE,SEJ Form 1,59,13,A9,yes,yes,us06web,ok
+1,17:15,18:30,F1 BC MS KIWI,BC Form 1,104,35,A2,yes,yes,us06web,ok
+1,17:15,18:30,F2 SCI MS ANGELINE,SCI Form 2,54,26,A1,yes,yes,us06web,ok
+1,17:15,18:30,F2 SAINS MS JOEY,SCI Form 2,54,52,A6,yes,yes,us06web,ok
+1,17:15,18:30,F3 UP F4 AM MASTER TAN,AM 升级班 Form 3,,41,,yes,yes,us06web,ok
+1,17:15,18:30,F4 MM 双语 MR HENRY,MM Form 4,19,14,A7,yes,yes,us06web,ok
+1,17:15,18:30,F4 SEJ MS AUDREY,SEJ Form 4,79,30,A9,yes,yes,us06web,ok
+1,17:15,18:30,F5 BMK MS HAPPY,BMK Form 5,68,51,A7,yes,yes,us06web,ok
+1,17:15,18:30,F5 PHY MS TINA,PHY Form 5,36,23,A3,yes,yes,us06web,ok
+1,19:00,20:15,Y4 BC MS ANGIE,BC Year 4,27,9,A4,yes,yes,us06web,ok
+1,19:00,20:15,Y5 BMK MS JENNY,BMK Year 5,108,55,A2,yes,yes,us06web,ok
+1,19:00,20:15,Y6 UP F1 MM MASTER TAN MON 7PM,MM Year 6,86,41,,yes,yes,us06web,ok
+1,19:00,20:15,Y6 BIK MS ABBY,BIK Year 6,109,42,A5,yes,yes,us06web,ok
+1,19:00,20:15,F3 SEJ MR JACK,SEJ Form 3,31,38,A3,yes,yes,us06web,ok
+1,19:00,20:15,F4 SCI MS ANGELINE,SCI Form 4,49,26,A1,yes,yes,us06web,ok
+1,19:00,20:15,F4 SAINS MS JOEY,SCI Form 4,49,52,A6,yes,yes,us06web,ok
+1,19:00,20:15,F4 BIO MS TINA,BIO Form 4,67,23,A3,yes,yes,us06web,ok
+1,19:00,20:15,F5 BMP MS SOPHIA,BMP Form 5,71,29,A1,yes,yes,us06web,ok
+1,19:00,20:15,F5 PHYSICS MR KC,PHY Form 5,36,15,,yes,yes,us02web,ok
+1,20:30,21:45,Y3 MM MR DANNY,MM Year 3,41,28,A4,yes,yes,us06web,ok
+1,20:30,21:45,Y4 MM MS QING,MM Year 4,55,12,A5,yes,yes,us06web,ok
+1,20:30,21:45,Y5 BIP MS ABBY,BIP Year 5,28,42,A5,yes,yes,us06web,ok
+1,20:30,21:45,Y6 BMP MS JENNY,BMP Year 6,20,55,A2,yes,yes,us06web,ok
+1,20:30,21:45,F1 GEO MS MAD,GEO Form 1,82,27,A3,yes,yes,us06web,ok
+1,20:30,21:45,F2 SEJ MR JACK,SEJ Form 2,85,38,A3,yes,yes,us06web,ok
+1,20:30,21:45,F3 BC MS ANGIE,BC Form 3,107,9,A4,yes,yes,us06web,ok
+1,20:30,21:45,F4 BMP MS SOPHIA,BMP Form 4,81,29,A1,yes,yes,us06web,ok
+1,20:30,21:45,F4 PHYSICS MR KC,PHY Form 4,110,15,,yes,yes,us02web,ok
+1,20:30,21:45,F5 BIO MS ANGELINE,BIO Form 5,30,26,A1,yes,yes,us06web,ok
+1,20:30,21:45,F5 MM 双语 MR HENRY,MM Form 5,56,14,A7,yes,yes,us06web,ok
+1,20:30,21:45,F5 BC MS KIWI,BC Form 5,23,35,A2,yes,yes,us06web,ok
+2,08:15,09:30,F1 SEJ MS AUDREY,SEJ Form 1,59,30,A9,yes,yes,us06web,ok
+2,08:15,09:30,F2 GEO MS MAD,GEO Form 2,48,27,A3,yes,yes,us06web,ok
+2,09:40,10:55,F1 GEO MS MAD,GEO Form 1,82,27,A3,yes,yes,us06web,ok
+2,09:40,10:55,F2 SEJ MS AUDREY,SEJ Form 2,85,30,A9,yes,yes,us06web,ok
+2,15:45,17:00,Y3 BC MS KIWI,BC Year 3,18,35,A2,yes,yes,us06web,ok
+2,15:45,17:00,Y5 SEJ MS JESSIE,SEJ Year 5,32,13,A9,yes,yes,us06web,ok
+2,15:45,17:00,Y6 BMK MS REGINA,BMK Year 6,72,24,A2,yes,yes,us06web,ok
+2,15:45,17:00,F1 BIK MS ABBY,BIK Form 1,35,42,A5,yes,yes,us06web,ok
+2,15:45,17:00,F2 BMK MS HAPPY,BMK Form 2,38,51,A7,yes,yes,us06web,ok
+2,15:45,17:00,F3 BC MS ANGIE,BC Form 3,107,9,A4,yes,yes,us06web,ok
+2,15:45,17:00,F4 SAINS (双语) MS JOEY,SCI (双语) Form 4,94,52,A6,yes,yes,us06web,ok
+2,15:45,17:00,F5 CHEMI MS TINA,CHE Form 5,24,23,A3,yes,yes,us06web,ok
+2,17:15,18:30,Y4 SEJ MS JESSIE,SEJ Year 4,11,13,A9,yes,yes,us06web,ok
+2,17:15,18:30,Y5 BMP MS REGINA,BMP Year 5,88,24,A2,yes,yes,us06web,ok
+2,17:15,18:30,Y6 BIK MS ABBY,BIK Year 6,109,42,A5,yes,yes,us06web,ok
+2,17:15,18:30,F1 BMK MS HAPPY,BMK Form 1,4,51,A7,yes,yes,us06web,ok
+2,17:15,18:30,F2 BIK MS RACHEL,BIK Form 2,5,10,A5,yes,yes,us06web,ok
+2,17:15,18:30,F4 BIOLOGY MR KC,BIO Form 4,67,15,,yes,yes,us02web,ok
+2,17:15,18:30,F4 AM MASTER TAN,AM Form 4,105,41,,yes,yes,us06web,ok
+2,17:15,18:30,F5 BMK MS SOPHIA,BMK Form 5,68,29,A1,yes,yes,us06web,ok
+2,17:15,18:30,F5 AM MR HENRY,AM Form 5,90,14,A7,yes,yes,us06web,ok
+2,19:00,20:15,Y3 BIK MS ABBY,BIK Year 3,57,42,A5,yes,yes,us06web,ok
+2,19:00,20:15,Y4 BMK MS JENNY,BMK Year 4,46,55,A2,yes,yes,us06web,ok
+2,19:00,20:15,Y5 MM MR DANNY,MM Year 5,42,28,A4,yes,yes,us06web,ok
+2,19:00,20:15,F1 SCI MS ANGELINE,SCI Form 1,29,26,A1,yes,yes,us06web,ok
+2,19:00,20:15,F1 SAINS MS JOEY,SCI Form 1,29,52,A6,yes,yes,us06web,ok
+2,19:00,20:15,F2 BC MS KIWI,BC Form 2,52,35,A2,yes,yes,us06web,ok
+2,19:00,20:15,F3 BMP MS SOPHIA,BMP Form 3,22,29,A1,yes,yes,us06web,ok
+2,19:00,20:15,F3 BIP MS MELISSA,BIP Form 3,53,21,A6,yes,yes,us06web,ok
+2,19:00,20:15,F4 BC MS ANGIE,BC Form 4,7,9,A4,yes,yes,us06web,ok
+2,19:00,20:15,F4 PHY MS TINA,PHY Form 4,110,23,A3,yes,yes,us06web,ok
+2,19:00,20:15,F5 BIOLOGY MR KC,BIO Form 5,30,15,,yes,yes,us02web,ok
+2,19:00,20:15,F5 SEJ MR JACK,SEJ Form 5,80,38,A3,yes,yes,us06web,ok
+2,20:30,21:45,Y4 SC MS JOEY,SCI Year 4,64,52,A6,yes,yes,us06web,ok
+2,20:30,21:45,Y5 BC MS ANGIE,BC Year 5,70,9,A4,yes,yes,us06web,ok
+2,20:30,21:45,Y6 BIP MS ABBY,BIP Year 6,17,42,A5,yes,yes,us06web,ok
+2,20:30,21:45,F1 SEJ MR JACK,SEJ Form 1,59,38,A3,yes,yes,us06web,ok
+2,20:30,21:45,F2 BMP MS SOPHIA,BMP Form 2,106,29,A1,yes,yes,us06web,ok
+2,20:30,21:45,F3 MM MR HENRY,MM Form 3,65,14,A7,yes,yes,us06web,ok
+2,20:30,21:45,F3 BIK MS RACHEL,BIK Form 3,92,10,A5,yes,yes,us06web,ok
+2,20:30,21:45,F4 CHEMI MS ANGELINE,CHE Form 4,84,26,A1,yes,yes,us06web,ok
+2,20:30,21:45,F4 MM MASTER TAN,MM Form 4,19,41,,yes,yes,us06web,ok
+2,20:30,21:45,F5 AM MS HAPPY,AM Form 5,90,51,A7,yes,yes,us06web,ok
+2,20:30,21:45,F5 BIP MS MELISSA,BIP Form 5,63,21,A6,yes,yes,us06web,ok
+2,20:30,21:45,F5 PHY MS TINA,PHY Form 5,36,23,A3,yes,yes,us06web,ok
+3,08:15,09:30,F1 BIP MS RACHEL,BIP Form 1,73,10,A5,yes,yes,us06web,ok
+3,09:40,10:55,F2 BIP MS RACHEL,BIP Form 2,66,10,A5,yes,yes,us06web,ok
+3,17:15,18:30,Y5 BC MS KIWI,BC Year 5,70,35,A2,yes,yes,us06web,ok
+3,17:15,18:30,Y6 BIP MS ABBY,BIP Year 6,17,42,A5,yes,yes,us06web,ok
+3,17:15,18:30,F1 BC MR HANSON,BC Form 1,104,33,A1,yes,yes,us06web,ok
+3,17:15,18:30,F4 BIK MS MELISSA,BIK Form 4,15,21,A6,yes,yes,us06web,ok
+3,17:15,18:30,F4 BIO MS ANGELINE,BIO Form 4,67,26,A1,yes,yes,us06web,ok
+3,17:15,18:30,F5 AM MR HENRY,AM Form 5,90,14,A7,yes,yes,us06web,ok
+3,19:00,20:15,Y4 MM MS QING,MM Year 4,55,12,A5,yes,yes,us06web,ok
+3,19:00,20:15,Y4 SEJ MS JESSIE,SEJ Year 4,11,13,A9,yes,yes,us06web,ok
+3,19:00,20:15,Y5 SCI MS JOEY,SCI Year 5,47,52,A6,yes,yes,us06web,ok
+3,19:00,20:15,Y5 BIK MS ABBY,BIK Year 5,43,42,A5,yes,yes,us06web,ok
+3,19:00,20:15,Y6 BMK MS JENNY,BMK Year 6,72,55,A2,yes,yes,us06web,ok
+3,19:00,20:15,F1 MM 双语 MR HENRY,MM Form 1,40,14,A7,yes,yes,us06web,ok
+3,19:00,20:15,F2 GEO MS MAD,GEO Form 2,48,27,A3,yes,yes,us06web,ok
+3,19:00,20:15,F3 SEJ MS AUDREY,SEJ Form 3,31,30,A9,yes,yes,us06web,ok
+3,19:00,20:15,F3 BIK MS MELISSA,BIK Form 3,92,21,A6,yes,yes,us06web,ok
+3,19:00,20:15,F4 SEJ MR JACK,SEJ Form 4,79,38,A3,yes,yes,us06web,ok
+3,19:00,20:15,F5 ACC MS EUNICE,ACC Form 5,75,17,,yes,yes,us02web,ok
+3,19:00,20:15,F5 BMP MS HAPPY,BMP Form 5,71,51,A7,yes,yes,us06web,ok
+3,20:30,21:45,Y4 BIP MS ABBY,BIP Year 4,25,42,A5,yes,yes,us06web,ok
+3,20:30,21:45,Y5 BMP MS JENNY,BMP Year 5,88,55,A2,yes,yes,us06web,ok
+3,20:30,21:45,Y6 BC MS ANGIE,BC Year 6,13,9,A4,yes,yes,us06web,ok
+3,20:30,21:45,F1 BMP MS JESSIE,BMP Form 1,78,13,A9,yes,yes,us06web,ok
+3,20:30,21:45,F2 SCI MS JOEY 双语,SCI (双语) Form 2,101,52,A6,yes,yes,us06web,ok
+3,20:30,21:45,F3 UP F4 AM MR HENRY,AM 升级班 Form 3,,14,A7,yes,yes,us06web,ok
+3,20:30,21:45,F3 BIP MS RACHEL,BIP Form 3,53,10,A5,yes,yes,us06web,ok
+3,20:30,21:45,F4 CHEMI MS TINA,CHE Form 4,84,23,A3,yes,yes,us06web,ok
+3,20:30,21:45,F4 BMP MS HAPPY,BMP Form 4,81,51,A7,yes,yes,us06web,ok
+3,20:30,21:45,F4 PN MS AUDREY,PER Form 4,91,30,A9,yes,yes,us06web,ok
+3,20:30,21:45,F5 MM MASTER TAN 双语,MM Form 5,56,41,,yes,yes,us06web,ok
+3,20:30,21:45,F5 BIOLOGY MR KC,BIO Form 5,30,15,,yes,yes,us02web,ok
+4,08:15,09:30,F2 BMP MS JESSIE,BMP Form 2,106,13,A9,yes,yes,us06web,ok
+4,09:40,10:55,F1 BMK MS JESSIE,BMK Form 1,4,13,A9,yes,yes,us06web,ok
+4,15:45,17:00,Y3 BIP MS ABBY,BIP Year 3,45,42,A5,yes,yes,us06web,ok
+4,15:45,17:00,Y6 SEJ MS JESSIE,SEJ Year 6,10,13,A9,yes,yes,us06web,ok
+4,15:45,17:00,F1 GEO MS MAD,GEO Form 1,82,27,A3,yes,yes,us06web,ok
+4,15:45,17:00,F2 BIP MS RACHEL,BIP Form 2,66,10,A5,yes,yes,us06web,ok
+4,15:45,17:00,F3 SCI MS ANGELINE,SCI Form 3,61,26,A1,yes,yes,us06web,ok
+4,15:45,17:00,F3 SAINS MS JOEY,SCI Form 3,61,52,A6,yes,yes,us06web,ok
+4,15:45,17:00,F4 BIO MS TINA,BIO Form 4,67,23,A3,yes,yes,us06web,ok
+4,15:45,17:00,F5 EKO MS AUDREY,EKO Form 5,37,30,A9,yes,yes,us06web,ok
+4,15:45,17:00,F5 PHYSICS MR KC,PHY Form 5,36,15,,yes,yes,us02web,ok
+4,17:15,18:30,Y6 BMP MS REGINA,BMP Year 6,20,24,A2,yes,yes,us06web,ok
+4,17:15,18:30,F1 BIP MS ABBY,BIP Form 1,73,42,A5,yes,yes,us06web,ok
+4,17:15,18:30,F2 SEJ MS AUDREY,SEJ Form 2,85,30,A9,yes,yes,us06web,ok
+4,17:15,18:30,F3 MM MASTER TAN,MM Form 3,65,41,,yes,yes,us06web,ok
+4,17:15,18:30,F3 BC MS KIWI,BC Form 3,107,35,A2,yes,yes,us06web,ok
+4,17:15,18:30,F4 CHEMI MR KC,CHE Form 4,84,15,,yes,yes,us02web,ok
+4,17:15,18:30,F5 MM MR HENRY,MM Form 5,56,14,A7,yes,yes,us06web,ok
+4,17:15,18:30,F5 CHEMI MS TINA,CHE Form 5,24,23,A3,yes,yes,us06web,ok
+4,17:15,18:30,F5 SAINS 双语 MS JOEY,SCI (双语) Form 5,97,52,A6,yes,yes,us06web,ok
+4,19:00,20:15,Y4 BMP MS REGINA,BMP Year 4,69,24,A2,yes,yes,us06web,ok
+4,19:00,20:15,F2 BC MR HANSON,BC Form 2,52,33,A1,yes,yes,us06web,ok
+4,19:00,20:15,F3 MM MS MADELINE,MM Form 3,65,27,A3,yes,yes,us06web,ok
+4,19:00,20:15,F3 BMP MS HAPPY,BMP Form 3,22,51,A7,yes,yes,us06web,ok
+4,19:00,20:15,F4 AM MR HENRY,AM Form 4,105,14,A7,yes,yes,us06web,ok
+4,19:00,20:15,F4 BIP MS MELISSA,BIP Form 4,39,21,A6,yes,yes,us06web,ok
+4,19:00,20:15,F4 ACC MS EUNICE,ACC Form 4,89,17,,yes,yes,us02web,ok
+4,19:00,20:15,F4 SC 双语 MR KEE,SCI (双语) Form 4,94,25,,yes,yes,us06web,ok
+4,19:00,20:15,F5 CHEMI MS ANGELINE,CHE Form 5,24,26,A1,yes,yes,us06web,ok
+4,19:00,20:15,F5 MM MASTER TAN 双语,MM Form 5,56,41,,yes,yes,us06web,ok
+4,19:00,20:15,F5 BC MS ANGIE,BC Form 5,23,9,A4,yes,yes,us06web,ok
+4,20:30,21:45,Y4 BC MS KIWI,BC Year 4,27,35,A2,yes,yes,us06web,ok
+4,20:30,21:45,Y6 UP F1 MM MS MADELINE,MM Year 6,86,27,A3,yes,yes,us06web,ok
+4,20:30,21:45,F1 SCI MS JOEY,SCI Form 1,29,52,A6,yes,yes,us06web,ok
+4,20:30,21:45,F1 BC MS ANGIE,BC Form 1,104,9,A4,yes,yes,us06web,ok
+4,20:30,21:45,F2 BIP MS ABBY,BIP Form 2,66,42,A5,yes,yes,us06web,ok
+4,20:30,21:45,F3 SC 双语 MR KEE,SCI (双语) Form 3,,25,,yes,yes,us06web,ok
+4,20:30,21:45,F3 BC MR HANSON,BC Form 3,107,33,A1,yes,yes,us06web,ok
+4,20:30,21:45,F4 MM 双语 MR HENRY,MM Form 4,19,14,A7,yes,yes,us06web,ok
+4,20:30,21:45,F4 BIOLOGY MS KC,BIO Form 4,67,15,,yes,yes,us02web,ok
+4,20:30,21:45,F4 PHY MS TINA,PHY Form 4,110,23,A3,yes,yes,us06web,ok
+4,20:30,21:45,F5 BIK MS MELISSA,BIK Form 5,58,21,A6,yes,yes,us06web,ok
+4,20:30,21:45,F5 SEJ MS AUDREY,SEJ Form 5,80,30,A9,yes,yes,us06web,ok
+5,08:15,09:30,F1 MM 双语 MR HENRY,MM Form 1,40,14,A7,yes,yes,us06web,ok
+5,08:15,09:30,F2 BIK MS RACHEL,BIK Form 2,5,10,A5,yes,yes,us06web,ok
+5,09:40,10:55,F1 BIK MS RACHEL,BIK Form 1,35,10,A5,yes,yes,us06web,ok
+5,09:40,10:55,F2 MM 双语 MR HENRY,MM Form 2,3,14,A7,yes,yes,us06web,ok
+5,15:45,17:00,Y5 BIK MS ABBY,BIK Year 5,43,42,A5,yes,yes,us06web,ok
+5,15:45,17:00,F1 BMP MS HAPPY,BMP Form 1,78,51,A7,yes,yes,us06web,ok
+5,15:45,17:00,F4 BIK MS RACHEL,BIK Form 4,15,10,A5,yes,yes,us06web,ok
+5,15:45,17:00,F4 PHYSICS MR KC,PHY Form 4,110,15,,yes,yes,us02web,ok
+5,15:45,17:00,F5 PN MS AUDREY,PER Form 5,14,30,A9,yes,yes,us06web,ok
+5,15:45,17:00,F5 BC MS ANGIE,BC Form 5,23,9,A4,yes,yes,us06web,ok
+5,17:15,18:30,Y3 BMK MS REGINA,BMK Year 3,87,24,A2,yes,yes,us06web,ok
+5,17:15,18:30,Y5 SEJ MS JESSIE,SEJ Year 5,32,13,A9,yes,yes,us06web,ok
+5,17:15,18:30,Y6 BC MS KIWI,BC Year 6,13,35,A2,yes,yes,us06web,ok
+5,17:15,18:30,F2 BMP MS HAPPY,BMP Form 2,106,51,A7,yes,yes,us06web,ok
+5,17:15,18:30,F3 SCI MS ANGELINE,SCI Form 3,61,26,A1,yes,yes,us06web,ok
+5,17:15,18:30,F3 SAINS MS JOEY,SCI Form 3,61,52,A6,yes,yes,us06web,ok
+5,17:15,18:30,F4 BIP MS RACHEL,BIP Form 4,39,10,A5,yes,yes,us06web,ok
+5,17:15,18:30,F4 CHEMI MS TINA,CHE Form 4,84,23,A3,yes,yes,us06web,ok
+5,17:15,18:30,F5 SCI MR KEE 双语,SCI (双语) Form 5,97,25,,yes,yes,us06web,ok
+5,17:15,18:30,F5 AM MASTER TAN 双语,AM Form 5,90,41,,yes,yes,us06web,ok
+5,19:00,20:15,Y3 MM MS QING,MM Year 3,41,12,A5,yes,yes,us06web,ok
+5,19:00,20:15,Y4 BIK MS ABBY,BIK Year 4,21,42,A5,yes,yes,us06web,ok
+5,19:00,20:15,Y6 SEJ MS JESSIE,SEJ Year 6,10,13,A9,yes,yes,us06web,ok
+5,19:00,20:15,Y6 UP F1 SEJ MR JACK,SEJ Year 6,10,38,A3,yes,yes,us06web,ok
+5,19:00,20:15,F2 MM MS MADELINE,MM Form 2,3,27,A3,yes,yes,us06web,ok
+5,19:00,20:15,F3 MM MR HENRY,MM Form 3,65,14,A7,yes,yes,us06web,ok
+5,19:00,20:15,F4 MM MASTER TAN,MM Form 4,19,41,,yes,yes,us06web,ok
+5,19:00,20:15,F4 EKO MS AUDREY,EKO Form 4,77,30,A9,yes,yes,us06web,ok
+5,19:00,20:15,F4 ACC MR KEE,ACC Form 4,89,25,,yes,yes,us06web,ok
+5,19:00,20:15,F5 SCI MS ANGELINE,SCI Form 5,102,26,A1,yes,yes,us06web,ok
+5,19:00,20:15,F5 SAINS MS JOEY,SCI Form 5,102,52,A6,yes,yes,us06web,ok
+5,19:00,20:15,F5 CHEMI MR KC,CHE Form 5,24,15,,yes,yes,us02web,ok
+5,20:30,21:45,Y5 MM MS LIJIA,MM Year 5,42,50,A4,yes,yes,us06web,ok
+5,20:30,21:45,Y6 SCI MS JOEY,SCI Year 6,33,52,A6,yes,yes,us06web,ok
+5,20:30,21:45,F1 BIP MS ABBY,BIP Form 1,73,42,A5,yes,yes,us06web,ok
+5,20:30,21:45,F2 GEO MS MAD,GEO Form 2,48,27,A3,yes,yes,us06web,ok
+5,20:30,21:45,F2 BC MS ANGIE,BC Form 2,52,9,A4,yes,yes,us06web,ok
+5,20:30,21:45,F4 BMK MS HAPPY,BMK Form 4,16,51,A7,yes,yes,us06web,ok
+5,20:30,21:45,F4 AM MR HENRY,AM Form 4,105,14,A7,yes,yes,us06web,ok
+5,20:30,21:45,F4 BC MS KIWI,BC Form 4,7,35,A2,yes,yes,us06web,ok
+5,20:30,21:45,F4 BIO MR IVAN,BIO Form 4,67,48,A1,yes,yes,us06web,ok
+5,20:30,21:45,F5 BIP MS MELISSA,BIP Form 5,63,21,A6,yes,yes,us06web,ok
+5,20:30,21:45,F5 BIO MS TINA,BIO Form 5,30,23,A3,yes,yes,us06web,ok
+5,20:30,21:45,F5 AKAUN MR KEE,ACC Form 5,75,25,,yes,yes,us06web,ok
+6,11:00,12:15,F2 RBT MS MADELINE,RBT Form 2,60,27,A3,yes,yes,us06web,ok
+6,11:30,12:45,F1 BMK MS SOPHIA,BMK Form 1,4,29,A1,yes,yes,us06web,ok
+6,12:00,13:15,F4 BIK MS MELISSA,BIK Form 4,15,21,A6,yes,yes,us06web,ok
+6,12:00,13:15,2026 Y6 up F1 MM MR HENRY,MM Year 6,86,14,A7,yes,yes,us06web,ok
+6,13:00,14:15,F1 RBT MS MADELINE,RBT Form 1,26,27,A3,yes,yes,us06web,ok
+6,13:30,14:45,F2 MM 双语MASTER TAN,MM Form 2,3,41,,yes,yes,us06web,ok
+6,13:30,14:45,F3 BMK MS SOPHIA,BMK Form 3,51,29,A1,yes,yes,us06web,ok
+6,13:30,14:45,F4 BIP MS MELISSA,BIP Form 4,39,21,A6,yes,yes,us06web,ok
+6,15:00,16:15,F2 BMK MS SOPHIA,BMK Form 2,38,29,A1,yes,yes,us06web,ok
+6,15:00,16:15,F1 MM 双语MASTER TAN,MM Form 1,40,41,,yes,yes,us06web,ok
+6,15:00,16:15,F5 BIK MS MELISSA,BIK Form 5,58,21,A6,yes,yes,us06web,ok
+6,15:00,16:15,F3 RBT MS MADELINE,RBT Form 3,8,27,A3,yes,yes,us06web,ok
+6,16:30,17:45,F4 BMK MS SOPHIA,BMK Form 4,16,29,A1,yes,yes,us06web,ok
+6,19:00,20:15,F2 BIK MS RACHEL,BIK Form 2,5,10,A5,yes,yes,us06web,ok
+6,20:30,21:45,F1 BIK MS RACHEL,BIK Form 1,35,10,A5,yes,yes,us06web,ok

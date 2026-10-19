@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { VideoCamera } from '@phosphor-icons/react'
 import { facebookLiveConfigured, fetchLessonZoom, lessonZoomHostUrl, prepareLessonZoom, setFacebookLive, type LessonZoom } from '../lib/zoomLessons'
 import { fetchLessonRecordings, recordingAction, recordingStatusLabels, type LessonRecording } from '../lib/recordings'
+import { fetchLessonFixedZoomLink } from '../lib/scheduleLinks'
 
 // The lesson's own Zoom meeting: make it (each child gets a link of their own
 // in the student app), sign up children added later, and start it as host.
+// Until a meeting is made, the lesson's fixed link (else the class's) opens.
 export function LessonZoomCard({
   scheduleId,
   lessonDate,
@@ -22,6 +24,17 @@ export function LessonZoomCard({
   const [facebookReady, setFacebookReady] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const [progress, setProgress] = useState<string | null>(null)
+  const [fixedLink, setFixedLink] = useState<string | null>(null)
+
+  useEffect(() => {
+    let current = true
+    void fetchLessonFixedZoomLink(scheduleId).then((link) => {
+      if (current) setFixedLink(link)
+    })
+    return () => {
+      current = false
+    }
+  }, [scheduleId])
 
   const load = useCallback(() => {
     fetchLessonZoom(scheduleId, lessonDate)
@@ -146,6 +159,19 @@ export function LessonZoomCard({
             ? `Meeting ${zoom.meeting.meetingId}${zoom.meeting.host ? ` on ${zoom.meeting.host}` : ''} · ${zoom.linked} of ${rosterCount} children have their own link in the student app.`
             : 'Each child gets a link of their own in the student app; Zoom then tells the attendance form who was there.'}
       </p>
+      {zoom && !zoom.meeting && fixedLink && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-sm">
+          <span className="text-slate-700">Fixed Zoom link for this lesson</span>
+          <a
+            href={fixedLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-xl border border-sky-200 px-3 py-1.5 text-sm font-semibold text-sky-700 hover:bg-sky-50"
+          >
+            Open fixed link
+          </a>
+        </div>
+      )}
       {zoom?.meeting && facebookReady && (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-sm">
           <label className="flex items-center gap-2 text-slate-700">

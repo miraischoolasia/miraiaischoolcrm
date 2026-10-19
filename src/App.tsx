@@ -147,6 +147,7 @@ import {
   weekdayLabels,
   type CalendarClassFilter,
 } from './lib/schedule'
+import { normalizeLessonLink, regularLessonOwner, SCHEDULE_SELECT } from './lib/scheduleLinks'
 import {
   MAX_LEAD_FOLLOW_UPS,
   ageGroupOptions,
@@ -3318,9 +3319,10 @@ function App() {
   }
 
   // Title only: a teacher change goes through reassign_classroom_teacher,
-  // which splits each weekly series at the effective date.
-  async function syncRegularScheduleTitles(classroomId: number, classroomName: string) {
-    if (!supabase) {
+  // which splits each weekly series at the effective date. Lessons with a
+  // name of their own (e.g. "F1 SAINS MS JOEY") keep it.
+  async function syncRegularScheduleTitles(classroomId: number, previousName: string, classroomName: string) {
+    if (!supabase || previousName === classroomName) {
       return
     }
 
@@ -3329,6 +3331,7 @@ function App() {
       .update({ title: classroomName })
       .eq('classroom_id', classroomId)
       .eq('event_type', 'regular')
+      .eq('title', previousName)
 
     if (error) {
       throw error
@@ -4726,7 +4729,7 @@ function App() {
           throw error
         }
 
-        await syncRegularScheduleTitles(editingClassroom.id, name)
+        await syncRegularScheduleTitles(editingClassroom.id, editingClassroom.name, name)
         await recordAdminActivity(
           'classroom_updated',
           'classroom',
@@ -5016,8 +5019,10 @@ function App() {
         return
       }
 
-      teacherId = linkedClassroom.teacherId
-      title = linkedClassroom.name
+      // Another class teacher's lesson keeps its teacher and name.
+      const owner = regularLessonOwner(linkedClassroom, isCreatingSchedule ? null : editingSchedule)
+      teacherId = owner.teacherId ?? linkedClassroom.teacherId
+      title = owner.title
     } else {
       if (!teacherId) {
         setScheduleSaveError('Please select a teacher for this replacement schedule.')
@@ -5045,6 +5050,13 @@ function App() {
       if (!proceed) {
         return
       }
+    }
+
+    const fbGroupLink = normalizeLessonLink(scheduleFormState.fbGroupUrl)
+    const zoomLessonLink = normalizeLessonLink(scheduleFormState.zoomLink)
+    if (fbGroupLink.error || zoomLessonLink.error) {
+      setScheduleSaveError(fbGroupLink.error ? `The FB group link ${fbGroupLink.error}.` : `The Zoom link ${zoomLessonLink.error}.`)
+      return
     }
 
     const payload: Database['public']['Tables']['schedules']['Update'] = {
@@ -5079,6 +5091,8 @@ function App() {
           ? scheduleFormState.endRecur
           : null,
       notes: scheduleFormState.notes.trim() || null,
+      fb_group_url: fbGroupLink.link,
+      zoom_link: zoomLessonLink.link,
       status: 'active',
     }
 
@@ -5090,9 +5104,7 @@ function App() {
         const { data, error } = await supabase
           .from('schedules')
           .insert(payload as Database['public']['Tables']['schedules']['Insert'])
-          .select(
-            'id, teacher_id, classroom_id, title, event_type, recurrence_type, day_of_week, scheduled_date, start_time, end_time, start_recur, end_recur, status, notes',
-          )
+          .select(SCHEDULE_SELECT)
           .single()
 
         if (error) {
@@ -5122,9 +5134,7 @@ function App() {
           .from('schedules')
           .update(payload)
           .eq('id', editingSchedule.id)
-          .select(
-            'id, teacher_id, classroom_id, title, event_type, recurrence_type, day_of_week, scheduled_date, start_time, end_time, start_recur, end_recur, status, notes',
-          )
+          .select(SCHEDULE_SELECT)
           .single()
 
         if (error) {
@@ -5433,9 +5443,7 @@ function App() {
         .from('schedules')
         .update({ status: 'cancelled' })
         .eq('id', editingSchedule.id)
-        .select(
-          'id, teacher_id, classroom_id, title, event_type, recurrence_type, day_of_week, scheduled_date, start_time, end_time, start_recur, end_recur, status, notes',
-        )
+        .select(SCHEDULE_SELECT)
         .single()
 
       if (error) {

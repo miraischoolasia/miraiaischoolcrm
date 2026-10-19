@@ -114,6 +114,17 @@ async function start() {
     return
   }
 
+  // Dev server only: /?demo=lessonlinks shows a weekly lesson's form with its FB group and fixed Zoom link.
+  if (import.meta.env.DEV && params.get('demo') === 'lessonlinks') {
+    const { LessonLinksDemo } = await import('./dev/LessonLinksDemo.tsx')
+    root.render(
+      <StrictMode>
+        <LessonLinksDemo />
+      </StrictMode>,
+    )
+    return
+  }
+
   const { default: App } = await import('./App.tsx')
   root.render(
     <StrictMode>

@@ -7,6 +7,8 @@ import { useProgramLevels } from '../../lib/programLevels'
 import { useAgeGroups } from '../../lib/ageGroups'
 import { weekdayLabels } from '../../lib/schedule'
 import type { TeacherClash } from '../../lib/clash'
+import { LessonLinkFields } from '../LessonLinkFields'
+import { regularLessonOwner } from '../../lib/scheduleLinks'
 import type { Classroom, Schedule, ScheduleFormState, Student, Teacher } from '../../types/domain'
 
 type ScheduleModalProps = {
@@ -201,8 +203,11 @@ export function ScheduleModal({
                     </div>
                     <div className="mt-2 text-sm font-semibold text-slate-900">
                       {scheduleLinkedClassroom?.teacherId
-                        ? teacherMap.get(scheduleLinkedClassroom.teacherId)
-                            ?.fullName ?? 'Unknown Teacher'
+                        ? teacherMap.get(
+                            // This lesson's own teacher when the class has several.
+                            regularLessonOwner(scheduleLinkedClassroom, isCreatingSchedule ? null : editingSchedule).teacherId ??
+                              scheduleLinkedClassroom.teacherId,
+                          )?.fullName ?? 'Unknown Teacher'
                         : 'Assign a teacher in classroom first'}
                     </div>
                   </div>
@@ -515,6 +520,12 @@ export function ScheduleModal({
               </div>
             </div>
           )}
+
+          <LessonLinkFields
+            fbGroupUrl={formState.fbGroupUrl ?? ''}
+            zoomLink={formState.zoomLink ?? ''}
+            onChange={onFieldChange}
+          />
 
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-slate-700">

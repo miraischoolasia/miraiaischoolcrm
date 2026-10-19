@@ -1145,6 +1145,8 @@ export type Database = {
           end_recur: string | null
           status: 'active' | 'cancelled'
           notes: string | null
+          fb_group_url: string | null
+          zoom_link: string | null
           created_at: string
           updated_at: string
         }
@@ -1164,6 +1166,8 @@ export type Database = {
           end_recur?: string | null
           status?: 'active' | 'cancelled'
           notes?: string | null
+          fb_group_url?: string | null
+          zoom_link?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -1183,6 +1187,8 @@ export type Database = {
           end_recur?: string | null
           status?: 'active' | 'cancelled'
           notes?: string | null
+          fb_group_url?: string | null
+          zoom_link?: string | null
           created_at?: string
           updated_at?: string
         }

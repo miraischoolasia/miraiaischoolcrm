@@ -205,6 +205,8 @@ export function mapScheduleRow(row: ScheduleRow): Schedule {
     endRecur: row.end_recur,
     status: row.status,
     notes: row.notes,
+    fbGroupUrl: row.fb_group_url ?? null,
+    zoomLink: row.zoom_link ?? null,
   }
 }
 

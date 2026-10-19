@@ -120,6 +120,8 @@ export function buildScheduleFormState(
       endRecur: '',
       notes: '',
       participantIds,
+      fbGroupUrl: '',
+      zoomLink: '',
     }
   }
 
@@ -137,6 +139,8 @@ export function buildScheduleFormState(
     endRecur: schedule.endRecur ?? '',
     notes: schedule.notes ?? '',
     participantIds,
+    fbGroupUrl: schedule.fbGroupUrl ?? '',
+    zoomLink: schedule.zoomLink ?? '',
   }
 }
 

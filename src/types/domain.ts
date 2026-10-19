@@ -271,6 +271,10 @@ export type Schedule = {
   endRecur: string | null
   status: 'active' | 'cancelled'
   notes: string | null
+  // The lesson's own FB group and fixed Zoom link. Undefined before the
+  // schedule links migration.
+  fbGroupUrl?: string | null
+  zoomLink?: string | null
 }
 
 export type ScheduleParticipant = {
@@ -446,6 +450,9 @@ export type ScheduleFormState = {
   endRecur: string
   notes: string
   participantIds: string[]
+  // Weekly lessons only; left out means "no link".
+  fbGroupUrl?: string
+  zoomLink?: string
 }
 
 export type ClassroomFormState = {
@@ -580,7 +587,8 @@ export type ScheduleRow = Pick<
   | 'end_recur'
   | 'status'
   | 'notes'
->
+> &
+  Partial<Pick<Database['public']['Tables']['schedules']['Row'], 'fb_group_url' | 'zoom_link'>>
 
 export type ScheduleParticipantRow = Pick<
   Database['public']['Tables']['schedule_students']['Row'],

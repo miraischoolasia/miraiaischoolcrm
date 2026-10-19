@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import { defaultReviewCriteria } from './reviewCriteria'
 import { defaultAttendanceStatuses } from './attendanceStatuses'
 import { mapFormRow, mapPublicForm, mapSubmissionRow, suggestSlug } from './forms'
+import { SCHEDULE_SELECT } from './scheduleLinks'
 import {
   mapAdminActivityRow,
   mapClassroomRow,
@@ -360,9 +361,7 @@ export async function fetchSchedulesFromSupabase() {
 
   const { data, error } = await supabase
     .from('schedules')
-    .select(
-      'id, teacher_id, classroom_id, title, event_type, recurrence_type, day_of_week, scheduled_date, start_time, end_time, start_recur, end_recur, status, notes',
-    )
+    .select(SCHEDULE_SELECT)
     .order('title')
 
   if (error) {
