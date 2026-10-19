@@ -574,6 +574,7 @@ export function LeadForm({
             onChange={(tagIds) => change({ tagIds })}
             onCreate={addTag}
             showLabel={false}
+            compact
           />
         ) : (
           <p className="text-slate-500">

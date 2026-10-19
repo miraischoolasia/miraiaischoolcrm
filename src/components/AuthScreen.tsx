@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { BrandLogo } from './BrandLogo'
-import { usernameToInternalEmail } from '../lib/auth'
+import { signInAttempts } from '../lib/auth'
+import { brand } from '../lib/brand'
 import { supabase } from '../lib/supabase'
 
 type AuthScreenProps = {
@@ -30,10 +31,12 @@ export function AuthScreen({ blockedMessage }: AuthScreenProps) {
     setIsSubmitting(true)
     setError(null)
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: usernameToInternalEmail(username),
-      password,
-    })
+    // Exactly as typed first; then the name before "@" and the password without spaces round it (signInAttempts).
+    let signInError: unknown = null
+    for (const attempt of signInAttempts(username, password)) {
+      ;({ error: signInError } = await supabase.auth.signInWithPassword(attempt))
+      if (!signInError) break
+    }
 
     setIsSubmitting(false)
 
@@ -97,6 +100,7 @@ export function AuthScreen({ blockedMessage }: AuthScreenProps) {
           >
             {isSubmitting ? 'Signing in...' : 'Sign in'}
           </button>
+          <p className="text-center text-xs text-slate-500">{brand.loginHint}</p>
         </form>
       </div>
     </div>

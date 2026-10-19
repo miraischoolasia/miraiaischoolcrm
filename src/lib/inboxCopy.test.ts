@@ -35,18 +35,38 @@ describe('copyFromWebhook', () => {
   it('copies a new message with who sent it, and the chat it is in', () => {
     const copy = copyFromWebhook(webhookMessage())!
     expect(copy.accountId).toBe(2)
-    expect(copy.messages).toEqual([
+    expect(copy.messages).toMatchObject([
       {
         id: 555, conversation_id: 42, inbox_id: 5, message_type: 1, direction: 'outgoing', sender_kind: 'staff', staff_id: 3,
         content: 'Boleh, kelas hari Sabtu', attachments: [], private: false, deleted: false, reply_to: null,
         created_at: '2026-10-19T01:05:00.123Z', updated_at: null,
       },
     ])
-    expect(copy.chat).toEqual({
+    expect(copy.chat).toMatchObject({
       conversation_id: 42, inbox_id: 5, channel: 'Channel::Api', contact_id: 900, contact_name: 'Puan Aminah',
       contact_phone: '60123456789', contact_identifier: '60123456789@s.whatsapp.net', status: 'open', owner_id: 7,
       unread_count: 2, waiting_since: '2025-10-09T08:53:20.000Z', last_activity_at: '2025-10-09T08:55:00.000Z',
     })
+  })
+
+  it('keeps the message and the chat as the Chatwoot API shows them, for the Inbox page to read back', () => {
+    const copy = copyFromWebhook(webhookMessage({ source_id: 'WAID:ABC', attachments: [{ id: 1, file_type: 'audio', data_url: 'https://x/a.ogg' }] }))!
+    expect(copy.messages[0].raw).toMatchObject({
+      id: 555,
+      message_type: 1,
+      created_at: 1_792_371_900,
+      status: 'sent',
+      source_id: 'WAID:ABC',
+      content_attributes: { crm_sender: { id: 3, name: 'Mei' } },
+      attachments: [{ id: 1, file_type: 'audio', data_url: 'https://x/a.ogg' }],
+      sender: { id: 1, type: 'user' },
+      conversation_id: 42,
+    })
+    // The list keeps the channel inside meta, and no messages.
+    expect(copy.chat!.raw).toMatchObject({ id: 42, unread_count: 2, custom_attributes: { crm_owner_id: 7 }, meta: { channel: 'Channel::Api' } })
+    expect(copy.chat!.raw).not.toHaveProperty('messages')
+    // A message read from the API keeps its delivery tick.
+    expect(copyMessage({ id: 9, message_type: 1, created_at: 1_760_000_000, status: 'read', private: false }, 42, 5)!.raw).toMatchObject({ status: 'read' })
   })
 
   it('tells the automatic sender, the phone and the parent apart', () => {

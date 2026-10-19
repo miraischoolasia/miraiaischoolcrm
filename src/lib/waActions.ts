@@ -8,7 +8,8 @@ import { describeWaRecord, type ReactionPreview } from './reactionPreview'
 // WhatsApp's own address of one message.
 export type WaKey = { id: string; fromMe: boolean; remoteJid: string }
 
-export type Reaction = { emoji: string; byUs: boolean }
+// by: who reacted, in a group (their WhatsApp name, else their number); null for the team or a one-to-one chat.
+export type Reaction = { emoji: string; byUs: boolean; by?: string | null }
 
 // What happened to messages after they were sent, found in WhatsApp's own record.
 export type MessageEvents = {
@@ -35,7 +36,9 @@ export const NO_EVENTS: MessageEvents = {
 }
 
 type Row = {
-  key?: { id?: string; fromMe?: boolean; remoteJid?: string }
+  // participant: who sent it, in a group.
+  key?: { id?: string; fromMe?: boolean; remoteJid?: string; participant?: string; participantAlt?: string }
+  pushName?: string | null
   messageTimestamp?: number
   message?: {
     conversation?: string
@@ -48,11 +51,23 @@ type Row = {
   }
 }
 
+// The person behind a group message: their WhatsApp name, else the digits of their number.
+function personOf(row: Row) {
+  const name = row.pushName?.trim()
+  if (name) {
+    return name
+  }
+  const address = row.key?.participantAlt ?? row.key?.participant ?? ''
+  const digits = address.split('@')[0].split(':')[0]
+  return /^\d{6,15}$/.test(digits) ? `+${digits}` : null
+}
+
 // Turns WhatsApp's records of reactions and edits into what each message should show. The newest
-// reaction of each person wins, and an empty one means it was taken back.
+// reaction of each person wins (in a group, each member is a person of their own), and an empty one means
+// it was taken back.
 export function parseEvents(rows: Row[]): MessageEvents {
   const events: MessageEvents = { reactions: new Map(), edits: new Map(), texts: new Map(), deleted: new Set(), reactionIds: new Set() }
-  const newest = new Map<string, { at: number; emoji: string; byUs: boolean; target: string }>()
+  const newest = new Map<string, { at: number; emoji: string; byUs: boolean; target: string; by: string | null }>()
   const editedAt = new Map<string, number>()
 
   for (const row of rows) {
@@ -67,10 +82,11 @@ export function parseEvents(rows: Row[]): MessageEvents {
         events.reactionIds.add(row.key.id)
       }
       const byUs = row.key?.fromMe === true
-      const slot = `${reaction.key.id}|${byUs ? 'us' : 'them'}`
+      const participant = byUs ? null : (row.key?.participantAlt ?? row.key?.participant ?? null)
+      const slot = `${reaction.key.id}|${byUs ? 'us' : (participant ?? 'them')}`
       const known = newest.get(slot)
       if (!known || at >= known.at) {
-        newest.set(slot, { at, emoji: reaction.text ?? '', byUs, target: reaction.key.id })
+        newest.set(slot, { at, emoji: reaction.text ?? '', byUs, target: reaction.key.id, by: participant ? personOf(row) : null })
       }
       continue
     }
@@ -95,7 +111,7 @@ export function parseEvents(rows: Row[]): MessageEvents {
       continue
     }
     const list = events.reactions.get(entry.target) ?? []
-    list.push({ emoji: entry.emoji, byUs: entry.byUs })
+    list.push({ emoji: entry.emoji, byUs: entry.byUs, by: entry.by })
     events.reactions.set(entry.target, list)
   }
   return events

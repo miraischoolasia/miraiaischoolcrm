@@ -128,8 +128,21 @@ export function LinkWhatsAppPanel({ apiUrl, connect }: { apiUrl: string; connect
     }
   }, [api, phase])
 
-  if (state === 'checking' || state === 'unavailable') {
+  if (state === 'checking') {
     return null
+  }
+  // This school's inbox server has no door for linking from here (Mirai's, on 2026-10-19). The Numbers window is
+  // the admin's, so they are told rather than shown nothing; a number already linked keeps working as before.
+  if (state === 'unavailable') {
+    return (
+      <section className="rounded-xl border border-slate-200 px-4 py-3" aria-label="Link a WhatsApp phone">
+        <p className="text-sm font-semibold text-slate-900">WhatsApp phone</p>
+        <p className="text-xs text-slate-500">
+          Linking the phone from the CRM is not turned on for this school yet (the inbox server needs it). A number that
+          is already linked keeps sending and receiving as before.
+        </p>
+      </section>
+    )
   }
 
   const start = () => {

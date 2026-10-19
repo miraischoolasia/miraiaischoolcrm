@@ -340,6 +340,13 @@ h3 {
   row-gap: 0.125rem;
 }
 
+/* Agenda (list) view: the day's heading sticks to the top while the list scrolls. FullCalendar puts each
+   event's content at z-index 2 and the heading at none, so the class cards scrolled under it were drawn over
+   the date. The heading now stays on top. */
+.fc .fc-list-sticky .fc-list-day > * {
+  z-index: 3;
+}
+
 /* Agenda (list) view, used on phones: the class cell takes the width that is left and cuts a long line with
    "…", instead of growing to fit it, which made the calendar (and the page) 1300px wide. */
 .fc .fc-list-event-title {

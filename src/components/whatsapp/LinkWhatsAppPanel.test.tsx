@@ -37,11 +37,14 @@ describe('LinkWhatsAppPanel', () => {
     vi.useRealTimers()
   })
 
-  it('shows nothing when this school has no number to link here', async () => {
+  it('says linking from here is not turned on when the school server has no such door, and asks for nothing', async () => {
     const connect = fakeConnect(['unavailable'])
-    const { container } = render(<LinkWhatsAppPanel apiUrl="https://wa.example" connect={connect} />)
-    await wait(0)
-    expect(container).toBeEmptyDOMElement()
+    render(<LinkWhatsAppPanel apiUrl="https://wa.example" connect={connect} />)
+    await wait(30_000)
+    expect(screen.getByText(/not turned on for this school yet/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show QR code' })).not.toBeInTheDocument()
+    expect(connect.qr).not.toHaveBeenCalled()
+    expect(connect.state).toHaveBeenCalledTimes(1)
   })
 
   it('asks for no QR code, and does not keep checking, until the admin presses the button', async () => {

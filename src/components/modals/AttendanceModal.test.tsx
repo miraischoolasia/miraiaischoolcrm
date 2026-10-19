@@ -258,3 +258,51 @@ describe('AttendanceModal (substitute teacher)', () => {
     expect(screen.getByText('You assist this class')).toBeInTheDocument()
   })
 })
+
+describe('AttendanceModal (who is still to review)', () => {
+  function renderClass(size: number) {
+    const big = Array.from({ length: size }, (_, index) => student(index + 1, `Kid${index + 1} Lim`))
+    render(
+      <AttendanceModal
+        attendanceModal={{ scheduleId: 1, occurrenceDate: '2026-10-09', title: 'FORM 5 BM' }}
+        attendanceExistingLog={null}
+        attendanceLocked={false}
+        isLoadingAttendance={false}
+        attendanceRoster={big}
+        attendanceStatuses={{}}
+        attendanceReviews={{}}
+        reviewMetrics={metrics}
+        attendanceRemark=""
+        attendanceSaveError={null}
+        isSavingAttendance={false}
+        onClose={vi.fn()}
+        onSubmit={vi.fn()}
+        onSetStatus={vi.fn()}
+        onUpdateReviewScore={vi.fn()}
+        onUpdateReviewRemark={vi.fn()}
+        onUpdateLessonRemark={vi.fn()}
+      />,
+    )
+  }
+
+  it('lists everyone in a small class, as before', () => {
+    renderClass(3)
+
+    expect(screen.getByText('Still to review: Kid1, Kid2, Kid3')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show all' })).not.toBeInTheDocument()
+  })
+
+  it('shows a big class as a count and a few names, with the full list on request', async () => {
+    renderClass(96)
+    const hint = document.getElementById('attendance-submit-hint')!
+
+    expect(hint).toHaveTextContent('Still to review: 96 — Kid1, Kid2, Kid3 +93')
+    expect(hint).not.toHaveTextContent('Kid50')
+
+    await userEvent.click(within(hint).getByRole('button', { name: 'Show all' }))
+    expect(hint).toHaveTextContent('Kid50')
+    await userEvent.click(within(hint).getByRole('button', { name: 'Show less' }))
+    expect(hint).not.toHaveTextContent('Kid50')
+    expect(screen.getByRole('button', { name: 'Submit Attendance' })).toBeInTheDocument()
+  })
+})

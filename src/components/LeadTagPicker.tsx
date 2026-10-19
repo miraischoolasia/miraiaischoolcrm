@@ -91,7 +91,8 @@ export function LeadTagPicker({ tags, selectedIds, onChange, onCreate, showLabel
             }}
             className={inputClass}
           />
-          <div role="radiogroup" aria-label="Tag colour" className="flex flex-wrap gap-1.5">
+          {/* Nine equal columns: the colours stay on one line however narrow the panel (each up to 24px). */}
+          <div role="radiogroup" aria-label="Tag colour" className="grid grid-cols-9 gap-1">
             {TAG_COLORS.map((swatch) => (
               <button
                 key={swatch}
@@ -102,7 +103,7 @@ export function LeadTagPicker({ tags, selectedIds, onChange, onCreate, showLabel
                 onClick={() => setColor(swatch)}
                 className={cn(
                   // min-h-0: phones make every button 40px tall, which turned the circles into ovals.
-                  'h-6 w-6 shrink-0 rounded-full border-2 transition min-h-0!',
+                  'aspect-square w-full max-w-6 justify-self-center rounded-full border-2 transition min-h-0!',
                   color === swatch ? 'border-slate-800' : 'border-white ring-1 ring-slate-200',
                 )}
                 style={{ backgroundColor: swatch }}

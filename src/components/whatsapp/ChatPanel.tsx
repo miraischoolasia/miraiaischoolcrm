@@ -31,6 +31,9 @@ import { recordAiDraftSent, type AiDraftContext } from '../../lib/aiDraft'
 
 type ChatPanelProps = {
   conversation: ChatwootConversation
+  // A message to show as soon as it is loaded (a search result), flashed like a quote jump; then onFocused.
+  focusMessageId?: number | null
+  onFocused?: () => void
   // The parent's name on the lead this chat belongs to, used when WhatsApp gave no name.
   leadName?: string | null
   messages: ChatwootMessage[]
@@ -70,6 +73,9 @@ type ChatPanelProps = {
   onEditMessage?: (message: ChatwootMessage, text: string) => Promise<boolean>
   onDeleteMessage?: (message: ChatwootMessage) => Promise<boolean>
   onSendSpecial?: (message: SpecialMessage) => Promise<string | null>
+  // The "+" menu's Automation row, and what is scheduled for this chat (shown above the message box).
+  onSchedule?: () => void
+  scheduledSlot?: React.ReactNode
   // The Follow up button for the message box, and a line under the header with the next follow-up.
   followUpControl?: React.ReactNode
   followUpChip?: React.ReactNode
@@ -81,6 +87,9 @@ type ChatPanelProps = {
   // Starred messages of this chat (by Chatwoot id); the team shares them.
   starredIds?: number[]
   onToggleStar?: (message: ChatwootMessage) => void
+  // Messages pinned at the top of the chat (newest first), and pinning or unpinning one.
+  pinnedMessageIds?: number[]
+  onTogglePinMessage?: (messageId: number) => void
   // Forwards one or several messages, oldest first.
   onForward?: (messages: ChatwootMessage[]) => void
   // Starts a quick reply of one or several messages, oldest first.
@@ -120,6 +129,8 @@ function describeMessage(message: ChatwootMessage) {
 
 export function ChatPanel({
   conversation,
+  focusMessageId = null,
+  onFocused,
   leadName,
   messages,
   waitingMessages,
@@ -149,6 +160,8 @@ export function ChatPanel({
   onEditMessage,
   onDeleteMessage,
   onSendSpecial,
+  onSchedule,
+  scheduledSlot,
   followUpControl,
   followUpChip,
   onTyping,
@@ -156,6 +169,8 @@ export function ChatPanel({
   onTogglePin,
   starredIds = [],
   onToggleStar,
+  pinnedMessageIds = [],
+  onTogglePinMessage,
   onForward,
   onMakeQuickReply,
   aiContext = null,
@@ -358,6 +373,20 @@ export function ChatPanel({
     flashTimer.current = window.setTimeout(() => setFlashId(null), 1600)
   }
 
+  // A search result: once its message is on screen it is shown and flashed (after the chat's own first scroll).
+  useEffect(() => {
+    if (focusMessageId === null || !messages.some((message) => message.id === focusMessageId)) {
+      return
+    }
+    const timer = window.setTimeout(() => {
+      jumpTo(focusMessageId)
+      onFocused?.()
+    }, 60)
+    return () => window.clearTimeout(timer)
+    // jumpTo only reads refs and sets the flash.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusMessageId, messages])
+
   function scrollToNewest() {
     const element = scroller.current
     if (!element) {
@@ -442,6 +471,7 @@ export function ChatPanel({
       canEdit: ours && !message.attachments?.length && Boolean(message.content?.trim()) && age < EDIT_WINDOW_SECONDS,
       canDelete: ours && age < DELETE_WINDOW_SECONDS,
       starred: starredIds.includes(message.id),
+      pinned: pinnedMessageIds.includes(message.id),
       highlight: searchOpen ? chatQuery : undefined,
       channelLabel,
       authorName: authorOf(message),
@@ -623,6 +653,39 @@ export function ChatPanel({
         </div>
       </div>
 
+      {pinnedMessageIds.length > 0 && (
+        <div aria-label="Pinned messages" className="border-b border-pink-100 bg-pink-50/40 px-3 py-1.5">
+          {pinnedMessageIds.map((id) => {
+            const pinnedMessage = messages.find((message) => message.id === id)
+            const text = pinnedMessage ? (pinnedMessage.content?.trim() || (pinnedMessage.attachments?.length ? 'Photo or file' : 'Message')) : 'A message further up the chat'
+            return (
+              <div key={id} className="flex items-center gap-2 py-0.5">
+                <PushPin size={13} weight="fill" aria-hidden="true" className="shrink-0 text-[#be185d]" />
+                <button
+                  type="button"
+                  onClick={() => jumpTo(id)}
+                  title={pinnedMessage ? 'Show this message' : 'Load earlier messages to see it'}
+                  className="min-w-0 flex-1 truncate text-left text-xs text-slate-700 hover:underline min-h-0!"
+                >
+                  {text}
+                </button>
+                {onTogglePinMessage && (
+                  <button
+                    type="button"
+                    onClick={() => onTogglePinMessage(id)}
+                    aria-label="Unpin this message"
+                    title="Unpin"
+                    className="shrink-0 rounded p-0.5 text-slate-500 hover:bg-white min-h-0!"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       {searchOpen && (
         <div role="search" className="flex flex-wrap items-center gap-2 border-b border-pink-100 bg-white px-3 py-2">
           <MagnifyingGlass size={16} aria-hidden="true" className="shrink-0 text-slate-400" />
@@ -779,6 +842,7 @@ export function ChatPanel({
                   onEdit: onEditMessage ? (text) => onEditMessage(message, text) : undefined,
                   onDelete: onDeleteMessage ? () => onDeleteMessage(message) : undefined,
                   onStar: onToggleStar && !message.local ? () => onToggleStar(message) : undefined,
+                  onPin: onTogglePinMessage && !message.local && message.id > 0 ? () => onTogglePinMessage(message.id) : undefined,
                   // Like WhatsApp: Forward first turns on picking (with this message ticked), then the Forward button below sends.
                   onForward: canPick && onForward ? () => togglePicked(message.id) : undefined,
                   onSelect: canPick ? () => togglePicked(message.id) : undefined,
@@ -868,6 +932,7 @@ export function ChatPanel({
         </p>
       )}
       {followUpChip}
+      {scheduledSlot}
       {identity.isGroup && (
         <p className="border-t border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-800">
           This is a WhatsApp group. Everyone in it reads your reply.
@@ -890,6 +955,7 @@ export function ChatPanel({
         // Location, contact, poll and sticker go through WhatsApp only; Messenger and Instagram have no such messages here.
         onSendSpecial={isSocialChat ? undefined : onSendSpecial}
         voiceAsWav={isSocialChat}
+        onSchedule={onSchedule}
         followUpControl={followUpControl}
         onTyping={onTyping}
         aiSuggestion={ai.suggestion ? { text: ai.suggestion.text, note: ai.suggestion.note } : null}

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowBendUpLeft, ArrowBendUpRight, Check, CheckSquare, Checks, CircleNotch, Copy, FileText, Info, MapPin, PencilSimple, Phone, Prohibit, Smiley, Star, Trash, WarningCircle } from '@phosphor-icons/react'
+import { ArrowBendUpLeft, ArrowBendUpRight, Check, CheckSquare, Checks, CircleNotch, Copy, FileText, Info, MapPin, PencilSimple, Phone, Prohibit, PushPin, Smiley, Star, Trash, WarningCircle } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import {
   formatMessageTime,
@@ -139,6 +139,8 @@ export type BubbleExtras = {
   canEdit?: boolean
   canDelete?: boolean
   starred?: boolean
+  // Pinned at the top of the chat.
+  pinned?: boolean
   // Words searched for in this chat: marked in the text.
   highlight?: string
   // Where the message went through (WhatsApp number, Messenger...), and who wrote it, for Message info.
@@ -152,6 +154,7 @@ export type BubbleActions = {
   onEdit?: (text: string) => Promise<boolean>
   onDelete?: () => Promise<boolean>
   onStar?: () => void
+  onPin?: () => void
   onForward?: () => void
   // Starts picking several messages, this one ticked first.
   onSelect?: () => void
@@ -163,15 +166,58 @@ export type BubbleActions = {
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '🙏', '👏']
 
-function groupReactions(reactions: Reaction[]) {
-  const groups = new Map<string, { emoji: string; count: number; byUs: boolean }>()
+// Each emoji once, with how many reacted with it and who (in a group, each member by name).
+export function groupReactions(reactions: Reaction[]) {
+  const groups = new Map<string, { emoji: string; count: number; byUs: boolean; people: string[] }>()
   for (const reaction of reactions) {
-    const group = groups.get(reaction.emoji) ?? { emoji: reaction.emoji, count: 0, byUs: false }
+    const group = groups.get(reaction.emoji) ?? { emoji: reaction.emoji, count: 0, byUs: false, people: [] }
     group.count += 1
     group.byUs = group.byUs || reaction.byUs
+    const person = reaction.byUs ? 'You' : reaction.by
+    if (person) {
+      group.people.push(person)
+    }
     groups.set(reaction.emoji, group)
   }
   return [...groups.values()]
+}
+
+// One emoji under a message: how many reacted; who did shows on hover, and in a list when it is pressed.
+function ReactionChip({ group }: { group: ReturnType<typeof groupReactions>[number] }) {
+  const [open, setOpen] = useState(false)
+  const who = group.people.length > 0 ? group.people.join(', ') : null
+  return (
+    <span className="relative">
+      <button
+        type="button"
+        title={who ?? undefined}
+        aria-label={`${group.emoji} ${group.count}${who ? `: ${who}` : ''}`}
+        aria-expanded={who ? open : undefined}
+        onClick={() => who && setOpen((value) => !value)}
+        onBlur={() => setOpen(false)}
+        className={cn(
+          'inline-flex items-center gap-0.5 rounded-full border bg-white px-1.5 py-0.5 text-xs shadow-sm min-h-0!',
+          group.byUs ? 'border-[#fc0c97]' : 'border-slate-200',
+          who ? 'cursor-pointer' : 'cursor-default',
+        )}
+      >
+        {group.emoji}
+        {group.count > 1 && <span className="text-[10px] text-slate-500">{group.count}</span>}
+      </button>
+      {open && who && (
+        <span
+          role="tooltip"
+          className="absolute bottom-full left-0 z-20 mb-1 w-max max-w-[14rem] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-700 shadow-lg"
+        >
+          {group.people.map((person, index) => (
+            <span key={`${person}-${index}`} className="block truncate">
+              {group.emoji} {person}
+            </span>
+          ))}
+        </span>
+      )}
+    </span>
+  )
 }
 
 type MessageBubbleProps = {
@@ -336,6 +382,17 @@ export function MessageBubble({
                 className="rounded-full p-1 text-slate-600 hover:bg-slate-100"
               >
                 <Star size={14} weight={extras.starred ? 'fill' : 'regular'} className={extras.starred ? 'text-amber-500' : undefined} />
+              </button>
+            )}
+            {actions.onPin && (
+              <button
+                type="button"
+                onClick={actions.onPin}
+                aria-label={extras.pinned ? 'Unpin this message' : 'Pin this message'}
+                title={extras.pinned ? 'Unpin' : 'Pin'}
+                className="rounded-full p-1 text-slate-600 hover:bg-slate-100"
+              >
+                <PushPin size={14} weight={extras.pinned ? 'fill' : 'regular'} className={extras.pinned ? 'text-[#be185d]' : undefined} />
               </button>
             )}
             {actions.onForward && (
@@ -553,16 +610,7 @@ export function MessageBubble({
         {extras.reactions && extras.reactions.length > 0 && !deletedForEveryone && (
           <div className={cn('-mb-4 mt-1 flex gap-1', outgoing ? 'justify-end' : 'justify-start')} aria-label="Reactions">
             {groupReactions(extras.reactions).map((group) => (
-              <span
-                key={group.emoji}
-                className={cn(
-                  'inline-flex items-center gap-0.5 rounded-full border bg-white px-1.5 py-0.5 text-xs shadow-sm',
-                  group.byUs ? 'border-[#fc0c97]' : 'border-slate-200',
-                )}
-              >
-                {group.emoji}
-                {group.count > 1 && <span className="text-[10px] text-slate-500">{group.count}</span>}
-              </span>
+              <ReactionChip key={group.emoji} group={group} />
             ))}
           </div>
         )}

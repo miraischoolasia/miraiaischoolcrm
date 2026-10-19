@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AddressBook, BellRinging, ChartBarHorizontal, FileText, Image as ImageIcon, Lightning, MapPin, Microphone, PaperPlaneTilt, Paperclip, Plus, Smiley, Sparkle, Sticker, Trash, VideoCamera, X } from '@phosphor-icons/react'
+import { AddressBook, BellRinging, ChartBarHorizontal, Clock, FileText, Image as ImageIcon, Lightning, MapPin, Microphone, PaperPlaneTilt, Paperclip, Plus, Smiley, Sparkle, Sticker, Trash, VideoCamera, X } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { useAutoGrow } from '../../hooks/useAutoGrow'
@@ -16,6 +16,45 @@ import { QuickReplyPicker } from './QuickReplyPicker'
 import { SpecialMessageDialog, type SpecialKind } from './SpecialMessageDialog'
 import { FollowUpHostContext, type FollowUpSummary } from './FollowUpButton'
 import type { SpecialMessage } from '../../lib/waActions'
+
+// A file about to be sent, shown like WhatsApp Web shows it: a picture or a video as a small picture of
+// itself, anything else as its name.
+function FileThumb({ file, onRemove }: { file: File; onRemove: () => void }) {
+  const kind = fileKind(file)
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if ((kind !== 'image' && kind !== 'video') || typeof URL.createObjectURL !== 'function') {
+      return undefined
+    }
+    const made = URL.createObjectURL(file)
+    setUrl(made)
+    return () => URL.revokeObjectURL(made)
+  }, [file, kind])
+  return (
+    <span className="relative inline-flex w-20 flex-col gap-1 data-[wide=true]:w-28" data-wide={!url}>
+      {url && kind === 'image' ? (
+        <img src={url} alt={file.name} className="h-20 w-20 rounded-lg border border-slate-200 object-cover" />
+      ) : url && kind === 'video' ? (
+        <video src={url} aria-label={file.name} muted className="h-20 w-20 rounded-lg border border-slate-200 bg-black object-cover" />
+      ) : (
+        <span className="inline-flex h-20 w-28 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-500">
+          <FileText size={24} aria-hidden="true" />
+        </span>
+      )}
+      <span className="truncate text-[11px] text-slate-600" title={file.name}>
+        {file.name}
+      </span>
+      <button
+        type="button"
+        aria-label={`Remove ${file.name}`}
+        onClick={onRemove}
+        className="absolute -right-1.5 -top-1.5 rounded-full border border-slate-200 bg-white p-0.5 text-slate-600 shadow-sm min-h-0! hover:bg-slate-100"
+      >
+        <X size={12} />
+      </button>
+    </span>
+  )
+}
 
 type ComposerProps = {
   onSend: (input: SendInput) => Promise<boolean>
@@ -55,6 +94,8 @@ type ComposerProps = {
   onAiDismiss?: () => void
   // Where the reply goes out from: the WhatsApp number, or the Page. Shown so nobody answers from the wrong one.
   sendingFrom?: string | null
+  // The "+" menu's Automation row: a message or a flow for this person at a chosen time.
+  onSchedule?: () => void
   // Messenger and Instagram chats: the voice message is made as a WAV, which their apps can play.
   voiceAsWav?: boolean
 }
@@ -146,6 +187,7 @@ export function Composer({
   onAiUse,
   onAiDismiss,
   sendingFrom = null,
+  onSchedule,
   voiceAsWav = false,
 }: ComposerProps) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -239,6 +281,8 @@ ${draftRequest.text}` : draftRequest.text))
     const refused = all.map((file) => fileProblem(file)).filter((problem): problem is string => problem !== null)
     if (accepted.length > 0) {
       setFiles((current) => [...current, ...accepted])
+      // Ready for a caption, and Enter sends, as on WhatsApp Web.
+      window.requestAnimationFrame(() => textarea.current?.focus())
     }
     setHint(refused.length > 0 ? refused.join(' ') : null)
   }
@@ -448,23 +492,17 @@ ${draftRequest.text}` : draftRequest.text))
       )}
 
       {files.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2">
-          {files.map((file, index) => (
-            <span
-              key={`${file.name}-${index}`}
-              className="inline-flex max-w-[200px] items-center gap-1 rounded-full bg-slate-100 py-1 pl-3 pr-1 text-xs text-slate-700"
-            >
-              <span className="truncate">{file.name}</span>
-              <button
-                type="button"
-                aria-label={`Remove ${file.name}`}
-                onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}
-                className="rounded-full p-1 hover:bg-slate-200"
-              >
-                <X size={12} />
-              </button>
-            </span>
-          ))}
+        <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50/60 p-2">
+          <div className="flex flex-wrap gap-2.5">
+            {files.map((file, index) => (
+              <FileThumb
+                key={`${file.name}-${index}`}
+                file={file}
+                onRemove={() => setFiles((current) => current.filter((_, i) => i !== index))}
+              />
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11px] text-slate-500">Add a caption below if you like, then press Enter to send.</p>
         </div>
       )}
 
@@ -580,6 +618,9 @@ ${draftRequest.text}` : draftRequest.text))
               >
                 {[
                   { label: 'Photo, video or file', icon: Paperclip, run: () => fileInput.current?.click(), aria: 'Attach a photo, video or file' },
+                  ...(onSchedule && mode === 'reply'
+                    ? [{ label: 'Automation', icon: Clock, run: onSchedule, aria: 'Automation: a message or a flow at a time' }]
+                    : []),
                   ...(onSendSpecial && mode === 'reply'
                     ? SPECIAL_CHOICES.map((choice) => ({
                         label: choice.label,
@@ -710,7 +751,7 @@ ${draftRequest.text}` : draftRequest.text))
                 addFiles(event.clipboardData.files)
               }
             }}
-            placeholder={mode === 'note' ? 'Write a note for your team' : 'Write a message'}
+            placeholder={mode === 'note' ? 'Write a note for your team' : files.length > 0 ? 'Add a caption' : 'Write a message'}
             aria-label={mode === 'note' ? 'Private note' : 'Message to parent'}
             className="block max-h-40 min-h-9 w-full resize-none bg-transparent py-2! pl-1 pr-1 text-sm leading-5 outline-none placeholder:truncate max-md:min-h-10 max-md:px-1.5! max-md:py-2.5!"
           />

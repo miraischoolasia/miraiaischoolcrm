@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { Bell, BellSlash, CaretDown, ChatCircleDots, CheckCircle, EnvelopeSimple, FunnelSimple, ImageSquare, Lightning, X, MagnifyingGlass, Phone, Plus, SpeakerHigh, SpeakerSlash, PushPin } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
@@ -34,6 +34,40 @@ const tabs: { key: InboxTab; label: string; icon: Icon }[] = [
   { key: 'unread', label: 'Unread', icon: EnvelopeSimple },
   { key: 'done', label: 'Done', icon: CheckCircle },
 ]
+
+// The "Load older chats" button loads by itself as soon as it scrolls into view, so the list simply goes on
+// (the button stays for a computer without that, and to try again).
+function LoadMoreButton({ onLoadMore, isLoadingMore }: { onLoadMore: () => void; isLoadingMore: boolean }) {
+  const button = useRef<HTMLButtonElement>(null)
+  const load = useRef(onLoadMore)
+  useEffect(() => {
+    load.current = onLoadMore
+  }, [onLoadMore])
+  useEffect(() => {
+    const element = button.current
+    if (!element || isLoadingMore || typeof IntersectionObserver === 'undefined') {
+      return
+    }
+    const watcher = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        load.current()
+      }
+    })
+    watcher.observe(element)
+    return () => watcher.disconnect()
+  }, [isLoadingMore])
+  return (
+    <button
+      ref={button}
+      type="button"
+      onClick={onLoadMore}
+      disabled={isLoadingMore}
+      className="w-full px-3 py-3 text-sm font-medium text-[#be185d] hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
+    >
+      {isLoadingMore ? 'Loading...' : 'Load older chats'}
+    </button>
+  )
+}
 
 // What an empty tab says: each tab is empty for a different reason.
 function emptyText(tab: InboxTab, moreToLoad: boolean) {
@@ -664,8 +698,8 @@ export function ConversationList({
                     </span>
                   ))}
                   {tagsOf?.(conversation).map((tag) => (
-                    <span key={tag.id} className="max-w-full text-[11px]">
-                      <LeadTagChip tag={tag} />
+                    <span key={tag.id} className="max-w-full">
+                      <LeadTagChip tag={tag} compact />
                     </span>
                   ))}
                 </span>
@@ -674,16 +708,7 @@ export function ConversationList({
             </Fragment>
           )
         })}
-        {canLoadMore && (
-          <button
-            type="button"
-            onClick={onLoadMore}
-            disabled={isLoadingMore}
-            className="w-full px-3 py-3 text-sm font-medium text-[#be185d] hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
-          >
-            {isLoadingMore ? 'Loading...' : 'Load older chats'}
-          </button>
-        )}
+        {canLoadMore && <LoadMoreButton onLoadMore={onLoadMore} isLoadingMore={isLoadingMore} />}
       </div>
 
       <AlertSettings />

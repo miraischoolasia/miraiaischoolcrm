@@ -112,9 +112,6 @@ export function CalendarDayList({
   const slots = groupBySlot(dayLessons, grades)
   const subjects = [...new Set(lessons.map((lesson) => lesson.subject).filter((subject): subject is string => Boolean(subject)))].sort()
   const usedGrades = grades.filter((grade) => lessons.some((lesson) => lesson.grade === grade))
-  const teacherCount = new Set(dayLessons.map((lesson) => lesson.teacherId)).size
-  const places = dayLessons.reduce((total, lesson) => total + lesson.studentCount, 0)
-  const next = date === today ? dayLessons.find((lesson) => describeClassTiming(lesson, now).phase !== 'ended') : undefined
   const week = getWeekRange(date)
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(week.start, index))
   const filtered = filter.grade !== null || filter.subject !== null || filter.teacherId !== null
@@ -268,11 +265,6 @@ export function CalendarDayList({
           <h3 className="text-lg font-bold text-slate-900 sm:text-xl">{longDate(date)}</h3>
           <span className="text-lg font-extrabold text-[#be185d] sm:text-xl">{plural(dayLessons.length, 'class')}</span>
           {dayItems.length > 0 && <span className="text-sm font-semibold text-slate-500">+ {dayItems.length} to do &amp; events</span>}
-          <div className="hidden flex-wrap gap-2 text-xs text-slate-500 sm:flex">
-            {dayLessons.length > 0 && <span className="rounded-lg border border-slate-200 px-2 py-1">{plural(teacherCount, 'teacher')}</span>}
-            {places > 0 && <span className="rounded-lg border border-slate-200 px-2 py-1">{places.toLocaleString()} on the class lists</span>}
-            {next && <span className="rounded-lg border border-slate-200 px-2 py-1">Next {formatClockTime(next.startTime)}</span>}
-          </div>
           <div className="ml-auto flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label="Calendar view">
             <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-slate-900 shadow-sm">Day list</span>
             <button type="button" onClick={() => onShowCalendar('dayGridMonth')} className="rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-500 hover:text-slate-800">

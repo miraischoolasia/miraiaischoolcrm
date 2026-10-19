@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Plus, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import type { SpecialMessage } from '../../lib/waActions'
+import { StickerPicker } from './StickerPicker'
 
 export type SpecialKind = SpecialMessage['kind']
 
@@ -80,8 +81,10 @@ export function SpecialMessageDialog({
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
 
-  async function send() {
-    const built = build(kind, { name, address, latitude, longitude, fullName, phone, question, options, multiple, file })
+  async function send(picked?: File) {
+    const built = picked
+      ? ({ kind: 'sticker', file: picked } as const)
+      : build(kind, { name, address, latitude, longitude, fullName, phone, question, options, multiple, file })
     if (typeof built === 'string') {
       setError(built)
       return
@@ -190,8 +193,12 @@ export function SpecialMessageDialog({
         )}
 
         {kind === 'sticker' && (
+          <StickerPicker isSending={isSending} onPick={(picked) => void send(picked)} />
+        )}
+
+        {kind === 'sticker' && (
           <label className="block">
-            <span className="text-sm font-medium text-slate-700">Picture (a square PNG or WebP works best)</span>
+            <span className="text-sm font-medium text-slate-700">Or a picture from this computer (a square PNG or WebP works best)</span>
             <input
               type="file"
               accept="image/png,image/webp,image/jpeg"

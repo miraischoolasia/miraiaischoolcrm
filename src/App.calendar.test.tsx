@@ -220,6 +220,25 @@ describe('calendar kinds filter', () => {
   })
 })
 
+describe('the top of the Calendar page', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    window.localStorage.clear()
+    mocks.exceptions.mockResolvedValue([])
+    mocks.rpc.mockResolvedValue({ data: null, error: null })
+  })
+
+  it('has only the filters and the add buttons: no counts, no title, no colour legend', async () => {
+    await signInAsAdmin()
+    expect(screen.getByRole('group', { name: 'Calendar filters' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add Class' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add Task / Meeting / Event' })).toBeInTheDocument()
+    for (const gone of ['Active Schedule Cards', 'Visible Teachers', 'Full Calendar Timetable Board', 'Trial - Available', 'Public Holiday']) {
+      expect(screen.queryByText(gone)).not.toBeInTheDocument()
+    }
+  })
+})
+
 describe('adding a class', () => {
   beforeEach(() => {
     vi.clearAllMocks()

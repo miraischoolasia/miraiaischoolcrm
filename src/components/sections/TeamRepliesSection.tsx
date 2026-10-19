@@ -71,6 +71,41 @@ export function periodDays(mode: Exclude<Mode, 'today'>, today: string, month: s
   return { first: from <= last ? from : last, last }
 }
 
+const PERIOD_KEY = 'teamReplies.period'
+const MODES: Mode[] = ['today', '7d', '30d', 'month', 'custom']
+const DAY = /^\d{4}-\d{2}-\d{2}$/
+
+// The period picked last time (a per-computer convenience: anything odd or missing is ignored).
+export function readRememberedPeriod(): { mode: Mode; month: string; custom: { from: string; to: string } } | null {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(PERIOD_KEY) ?? 'null') as {
+      mode?: unknown
+      month?: unknown
+      custom?: { from?: unknown; to?: unknown }
+    } | null
+    if (!value || !MODES.includes(value.mode as Mode)) {
+      return null
+    }
+    const month = typeof value.month === 'string' && /^\d{4}-\d{2}$/.test(value.month) ? value.month : null
+    const from = typeof value.custom?.from === 'string' && DAY.test(value.custom.from) ? value.custom.from : null
+    const to = typeof value.custom?.to === 'string' && DAY.test(value.custom.to) ? value.custom.to : null
+    if (!month || !from || !to) {
+      return null
+    }
+    return { mode: value.mode as Mode, month, custom: { from, to } }
+  } catch {
+    return null
+  }
+}
+
+function rememberPeriod(period: { mode: Mode; month: string; custom: { from: string; to: string } }) {
+  try {
+    window.localStorage.setItem(PERIOD_KEY, JSON.stringify(period))
+  } catch {
+    // Private window or storage off: the page simply starts on Last 7 days next time.
+  }
+}
+
 function Cell({ children, muted, strong }: { children: React.ReactNode; muted?: boolean; strong?: boolean }) {
   return (
     <td className={cn('whitespace-nowrap px-3 py-2.5 text-right text-sm', muted ? 'text-slate-400' : 'text-slate-700', strong && 'font-semibold text-slate-900')}>
@@ -233,9 +268,14 @@ export function TeamRepliesSection({ staff, client, canCopy = false, now }: Team
   const stats = useStaffReplyStats(client)
   const { load } = stats
   const today = dayOf(Math.floor((now ?? new Date()).getTime() / 1000))
-  const [mode, setMode] = useState<Mode>('7d')
-  const [month, setMonth] = useState(today.slice(0, 7))
-  const [custom, setCustom] = useState({ from: addDays(today, -14), to: addDays(today, -1) })
+  // The period picked last time on this computer comes back when the page opens again.
+  const remembered = useMemo(() => readRememberedPeriod(), [])
+  const [mode, setMode] = useState<Mode>(remembered?.mode ?? '7d')
+  const [month, setMonth] = useState(remembered?.month ?? today.slice(0, 7))
+  const [custom, setCustom] = useState(remembered?.custom ?? { from: addDays(today, -14), to: addDays(today, -1) })
+  useEffect(() => {
+    rememberPeriod({ mode, month, custom })
+  }, [mode, month, custom])
   const [kept, setKept] = useState<{ key: string; days: KeptDays } | null>(null)
   const [keptError, setKeptError] = useState<string | null>(null)
   const [isLoadingKept, setIsLoadingKept] = useState(false)
@@ -306,7 +346,8 @@ export function TeamRepliesSection({ staff, client, canCopy = false, now }: Team
   const yesterday = addDays(today, -1)
 
   return (
-    <section aria-labelledby="team-replies-title" className="mx-auto min-w-0 max-w-[1600px] space-y-4">
+    // w-full: with mx-auto alone the page took the width of its table (830px) and was cut off on a phone.
+    <section aria-labelledby="team-replies-title" className="mx-auto w-full min-w-0 max-w-[1600px] space-y-4">
       <div className="min-w-0 rounded-2xl border border-slate-200 bg-white">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
           <div>

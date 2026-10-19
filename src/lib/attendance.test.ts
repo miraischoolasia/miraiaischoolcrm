@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAttendanceSubmission, countRatedMetrics, getReviewProgress, isReviewComplete } from './attendance'
+import { buildAttendanceSubmission, countRatedMetrics, getReviewProgress, isReviewComplete, summarizePendingNames } from './attendance'
 import { defaultReviewCriteria, getReviewMetrics } from './reviewCriteria'
 import { defaultAttendanceStatuses } from './attendanceStatuses'
 import type { AttendanceReviewFormState } from '../types/domain'
@@ -263,3 +263,16 @@ describe("a school's own attendance statuses", () => {
   })
 })
 
+
+describe('summarizePendingNames', () => {
+  it('lists everyone in a small class, as before', () => {
+    expect(summarizePendingNames(['Ava', 'Ben', 'Cara'])).toEqual({ text: 'Ava, Ben, Cara', shortened: false })
+    expect(summarizePendingNames(['A', 'B', 'C', 'D', 'E', 'F']).shortened).toBe(false)
+  })
+
+  it('gives a big class the count, the first three names and how many more', () => {
+    const names = Array.from({ length: 87 }, (_, index) => (index === 0 ? 'ALEX' : index === 1 ? 'AUDREY' : index === 2 ? 'BEH' : `KID${index}`))
+
+    expect(summarizePendingNames(names)).toEqual({ text: '87 — ALEX, AUDREY, BEH +84', shortened: true })
+  })
+})

@@ -84,9 +84,15 @@ export function isBeingSent(item: QueueItem, now: number) {
 
 // A waiting message of a flow that has "Send by itself" ticked: the sender program sends it when it is
 // due, so nobody has to approve it. One it handed back (autoBlocked) or one that failed needs a person.
+// A message a person scheduled for one chat ("+" > Automation) goes out by itself too, at its time.
+export const CHAT_SCHEDULE_RULE = 'chat_schedule'
+
 export function willSendByItself(item: QueueItem, autoRuleKeys: ReadonlySet<string>, now: number) {
   return (
-    autoRuleKeys.has(item.ruleKey) && item.status === 'pending' && item.autoBlocked === null && !isExpired(item, now)
+    (autoRuleKeys.has(item.ruleKey) || item.ruleKey === CHAT_SCHEDULE_RULE) &&
+    item.status === 'pending' &&
+    item.autoBlocked === null &&
+    !isExpired(item, now)
   )
 }
 

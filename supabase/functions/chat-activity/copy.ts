@@ -27,6 +27,8 @@ export type CopyMessage = {
   reply_to: number | null
   created_at: string
   updated_at: string | null
+  // The message as Chatwoot's API shows it (what the Inbox page reads back), whichever way it arrived.
+  raw: Record<string, unknown>
 }
 
 export type CopyChat = {
@@ -42,6 +44,8 @@ export type CopyChat = {
   unread_count: number | null
   waiting_since: string | null
   last_activity_at: string | null
+  // The chat as Chatwoot's API lists it, without its messages (the newest is kept apart).
+  raw: Record<string, unknown>
 }
 
 export type CopyEvent = {
@@ -144,6 +148,47 @@ function attachmentsOf(value: unknown): CopyAttachment[] {
   })
 }
 
+function asSeconds(value: unknown): number | null {
+  const iso = asIso(value)
+  return iso === null ? null : Math.floor(Date.parse(iso) / 1000)
+}
+
+// A message in the shape of Chatwoot's API (GET .../messages): numbers for message_type and times, the sender as
+// { id, name, type }. A webhook says nothing of delivery ticks: such a message reads as "sent" until the page
+// reads it from Chatwoot again (which it does for the newest messages of a chat it opens).
+export function apiMessage(message: Json, messageType: number, conversationId: number, createdAt: string): Record<string, unknown> {
+  const sender = asObject(message.sender)
+  return {
+    id: message.id,
+    content: typeof message.content === 'string' ? message.content : null,
+    content_type: typeof message.content_type === 'string' ? message.content_type : 'text',
+    message_type: messageType,
+    created_at: Math.floor(Date.parse(createdAt) / 1000),
+    updated_at: asSeconds(message.updated_at),
+    private: message.private === true,
+    status: typeof message.status === 'string' ? message.status : 'sent',
+    source_id: typeof message.source_id === 'string' ? message.source_id : null,
+    content_attributes: asObject(message.content_attributes) ?? {},
+    attachments: Array.isArray(message.attachments) ? message.attachments : [],
+    sender: sender
+      ? { id: sender.id ?? null, name: sender.name ?? null, type: sender.type ?? null, thumbnail: sender.thumbnail ?? null }
+      : null,
+    conversation_id: conversationId,
+  }
+}
+
+// A chat in the shape of Chatwoot's API list (GET .../conversations), without messages: a webhook's chat has its
+// channel beside meta, the list has it inside meta.
+export function apiChat(conversation: Json): Record<string, unknown> {
+  const { messages: _messages, account: _account, last_non_activity_message: _last, event: _event, changed_attributes: _changed, ...rest } =
+    conversation
+  const meta = asObject(rest.meta) ?? {}
+  return {
+    ...rest,
+    meta: { ...meta, channel: meta.channel ?? rest.channel ?? null },
+  }
+}
+
 // One message, from the webhook or from the API. Null when it is not a message of a chat.
 export function copyMessage(raw: unknown, conversationId?: number | null, inboxId?: number | null): CopyMessage | null {
   const message = asObject(raw)
@@ -171,6 +216,7 @@ export function copyMessage(raw: unknown, conversationId?: number | null, inboxI
     reply_to: asId(attributes?.in_reply_to),
     created_at: createdAt,
     updated_at: asIso(message.updated_at),
+    raw: apiMessage(message, messageType, conversation, createdAt),
   }
 }
 
@@ -197,6 +243,7 @@ export function copyChat(raw: unknown): CopyChat | null {
     unread_count: asCount(conversation.unread_count),
     waiting_since: asIso(conversation.waiting_since),
     last_activity_at: asIso(conversation.last_activity_at),
+    raw: apiChat(conversation),
   }
 }
 

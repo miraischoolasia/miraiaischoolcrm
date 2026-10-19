@@ -45,6 +45,8 @@ function client(conversations: ChatwootConversation[]) {
 const staff = [{ id: 1, name: 'Mei' }, { id: 2, name: 'Jun' }]
 
 beforeEach(() => {
+  // The period picked in one test must not carry over to the next.
+  window.localStorage.clear()
   fetchKeptDays.mockReset()
   fetchToday.mockReset()
 })
@@ -112,5 +114,32 @@ describe('TeamRepliesSection', () => {
     render(<TeamRepliesSection staff={staff} client={null} canCopy now={NOW} />)
     expect(await screen.findByRole('heading', { name: 'Copy old chats' })).toBeInTheDocument()
     expect(await screen.findByText(/40 messages in 3 chats/)).toBeInTheDocument()
+  })
+})
+
+describe('TeamRepliesSection remembers the period', () => {
+  it('opens on the period picked last time, after going to another page and back', async () => {
+    window.localStorage.removeItem('teamReplies.period')
+    fetchKeptDays.mockResolvedValue({ rows: [], doneDays: new Set() })
+    const first = render(<TeamRepliesSection staff={staff} client={null} now={NOW} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Last 30 days' }))
+    first.unmount()
+
+    render(<TeamRepliesSection staff={staff} client={null} now={NOW} />)
+    expect(screen.getByRole('button', { name: 'Last 30 days' })).toHaveAttribute('aria-pressed', 'true')
+    expect(fetchKeptDays).toHaveBeenLastCalledWith('2026-09-19', '2026-10-18')
+  })
+
+  it('ignores a broken remembered value', () => {
+    window.localStorage.setItem('teamReplies.period', '{"mode":"forever"}')
+    fetchKeptDays.mockResolvedValue({ rows: [], doneDays: new Set() })
+    render(<TeamRepliesSection staff={staff} client={null} now={NOW} />)
+    expect(screen.getByRole('button', { name: 'Last 7 days' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('fills the width it is given (a phone), so the table scrolls inside instead of the page being cut', () => {
+    fetchKeptDays.mockResolvedValue({ rows: [], doneDays: new Set() })
+    render(<TeamRepliesSection staff={staff} client={null} now={NOW} />)
+    expect(screen.getByRole('region', { name: 'Team replies' }).className).toContain('w-full')
   })
 })

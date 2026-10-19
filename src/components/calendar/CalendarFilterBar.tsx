@@ -13,7 +13,18 @@ type CalendarFilterBarProps = {
   canPickPeople: boolean
 }
 
-const chip = 'inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition'
+// Each kind's colour on the calendar cards, so the kind buttons also say what the colours mean.
+const KIND_DOT: Record<string, string> = {
+  class: 'bg-sky-500',
+  trial: 'bg-teal-500',
+  makeup: 'bg-orange-500',
+  task: 'bg-amber-400',
+  meeting: 'bg-indigo-500',
+  event: 'bg-purple-500',
+  follow_up: 'bg-amber-400',
+}
+
+const chip = 'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold transition'
 const chipOn = 'border-[#fc0c97] bg-[#fff1f8] text-[#be185d]'
 const chipOff = 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
 
@@ -57,7 +68,8 @@ export function CalendarFilterBar({ filter, onChange, people, teams, canPickPeop
 
       <span className="mx-1 hidden h-5 w-px bg-slate-200 sm:block" aria-hidden="true" />
 
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Kinds shown">
+      {/* A phone keeps the kinds on one line that scrolls sideways. */}
+      <div className="-mx-1 flex max-w-full gap-1.5 overflow-x-auto px-1 pb-0.5 max-sm:w-full sm:flex-wrap" role="group" aria-label="Kinds shown">
         {CALENDAR_KINDS.map((kind) => {
           const on = filter.kinds.includes(kind.key)
           return (
@@ -73,6 +85,7 @@ export function CalendarFilterBar({ filter, onChange, people, teams, canPickPeop
               }
               className={cn(chip, on && !allKinds ? chipOn : chipOff, allKinds && 'text-slate-700')}
             >
+              <span aria-hidden="true" className={cn('h-2 w-2 rounded-full', KIND_DOT[kind.key])} />
               {kind.label}
             </button>
           )

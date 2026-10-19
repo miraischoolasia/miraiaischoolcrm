@@ -408,3 +408,34 @@ describe('Composer like WhatsApp', () => {
     expect(screen.getByText('Mirai WhatsApp · +60 12-345 6789')).toBeInTheDocument()
   })
 })
+
+describe('Composer with files dropped on the chat', () => {
+  it('shows a picture of each file, puts the cursor in the box for a caption, and Enter sends them', async () => {
+    const createUrl = vi.fn(() => 'blob:preview')
+    const revokeUrl = vi.fn()
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: createUrl, revokeObjectURL: revokeUrl }))
+    const onSend = vi.fn().mockResolvedValue(true)
+    const photo = new File(['x'], 'poster.png', { type: 'image/png' })
+    const pdf = new File(['x'], 'fees.pdf', { type: 'application/pdf' })
+    const props = {
+      onSend,
+      quickReplies: { replies: [], isLoading: false, error: null, reload: vi.fn().mockResolvedValue(undefined) },
+      variables: {},
+    }
+    const { rerender } = render(<Composer {...props} droppedFiles={null} />)
+    // The files are dropped on the chat.
+    rerender(<Composer {...props} droppedFiles={{ id: 1, files: [photo, pdf] }} />)
+
+    expect(await screen.findByRole('img', { name: 'poster.png' })).toHaveAttribute('src', 'blob:preview')
+    expect(screen.getByText('fees.pdf')).toBeInTheDocument()
+    const box = screen.getByPlaceholderText('Add a caption')
+    await waitFor(() => expect(box).toHaveFocus())
+
+    await userEvent.type(box, 'Our fees{Enter}')
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1))
+    const sent = onSend.mock.calls[0][0]
+    expect(sent.sequence).toEqual(expect.arrayContaining([photo, pdf]))
+    expect(sent.sequence.some((part: unknown) => typeof part === 'string' && part.includes('Our fees'))).toBe(true)
+    vi.unstubAllGlobals()
+  })
+})

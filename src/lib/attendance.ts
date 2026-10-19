@@ -119,3 +119,14 @@ export function getReviewProgress(
   const pendingIds = presentIds.filter((id) => !doneIds.includes(id))
   return { presentIds, doneIds, pendingIds, awayCount: rosterIds.length - presentIds.length }
 }
+
+// "Still to review" under a big class: the count and the first few names, so
+// the line stays short and Submit stays in view. A small class (up to
+// `showAllUpTo` students left) lists everyone, as before.
+export function summarizePendingNames(names: string[], { showAllUpTo = 6, firstNames = 3 } = {}) {
+  if (names.length <= showAllUpTo) {
+    return { text: names.join(', '), shortened: false }
+  }
+  const shown = names.slice(0, firstNames)
+  return { text: `${names.length} — ${shown.join(', ')} +${names.length - shown.length}`, shortened: true }
+}

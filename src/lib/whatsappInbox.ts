@@ -66,6 +66,8 @@ export type ChatAttributes = {
   crm_pinned?: boolean
   // Messages of this chat the team starred, by Chatwoot's id.
   crm_starred?: number[]
+  // Messages pinned at the top of this chat for the whole team (newest first, at most 3, as on WhatsApp).
+  crm_pinned_messages?: number[]
   // Students the team tied to this chat by hand, for a parent whose number matches nobody.
   crm_student_ids?: number[]
   // Who is on the other end of the chat: the parent of the student(s), or the student themself.
@@ -589,6 +591,16 @@ export function onePerParent(conversations: ChatwootConversation[], siblings?: M
     }
   }
   return conversations.filter((conversation) => newest.get(keyOf(conversation)) === conversation)
+}
+
+// WhatsApp keeps at most 3 messages pinned in a chat; a fourth takes the place of the oldest.
+export const MAX_PINNED_MESSAGES = 3
+
+export function togglePinnedMessage(pinned: number[] | undefined, messageId: number) {
+  const list = pinned ?? []
+  return list.includes(messageId)
+    ? list.filter((id) => id !== messageId)
+    : [messageId, ...list].slice(0, MAX_PINNED_MESSAGES)
 }
 
 export type UnreadCounts = { total: number; byCategory: Record<InboxCategory, number> }

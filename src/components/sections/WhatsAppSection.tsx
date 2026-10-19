@@ -3,6 +3,7 @@ import { ArrowSquareOut } from '@phosphor-icons/react'
 import type { Sender } from '../../lib/chatwootClient'
 import type { WhatsAppCrm } from '../whatsapp/crm'
 import type { ChatwootConversation } from '../../lib/whatsappInbox'
+import type { InboxCopyLive } from '../../hooks/useInboxCopyLive'
 import { WhatsAppInbox, type WhatsAppNumbersView } from '../whatsapp/WhatsAppInbox'
 
 type WhatsAppSectionProps = {
@@ -22,6 +23,8 @@ type WhatsAppSectionProps = {
   numbersView?: WhatsAppNumbersView
   // Every open chat (read by the menu badge), so the Inbox's unread numbers count them all.
   everyOpenChat?: ChatwootConversation[]
+  // The CRM's copy of the inbox (see useInboxCopyLive).
+  inboxCopy?: InboxCopyLive | null
 }
 
 export function WhatsAppSection({
@@ -34,6 +37,7 @@ export function WhatsAppSection({
   openRequest = null,
   numbersView,
   everyOpenChat,
+  inboxCopy = null,
 }: WhatsAppSectionProps) {
   if (apiUrl && currentUser) {
     return (
@@ -46,6 +50,7 @@ export function WhatsAppSection({
         openRequest={openRequest}
         numbersView={numbersView}
         everyOpenChat={everyOpenChat}
+        inboxCopy={inboxCopy}
       />
     )
   }

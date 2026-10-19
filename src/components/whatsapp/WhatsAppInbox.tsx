@@ -6,6 +6,12 @@ import { contactSiblings, leadOfContacts } from '../../lib/leadChannels'
 import { createChatwootClient, type Sender } from '../../lib/chatwootClient'
 import { useMessageSearch } from '../../hooks/useMessageSearch'
 import { useWhatsAppInbox } from '../../hooks/useWhatsAppInbox'
+import type { InboxCopyLive } from '../../hooks/useInboxCopyLive'
+import { StickerSourceContext } from '../../lib/inboxStickers'
+import { useChatSchedules } from '../../hooks/useChatSchedules'
+import { cancelSchedule, scheduleError, type ChatSchedule, type ScheduleTarget } from '../../lib/chatSchedules'
+import { ScheduleDialog } from './ScheduleDialog'
+import { ScheduledList } from './ScheduledList'
 import { useFillToBottom } from '../../hooks/useFillToBottom'
 import {
   type ChatwootConversation,
@@ -88,6 +94,9 @@ type WhatsAppInboxProps = {
   // Every open chat, read now and then by the menu badge: the unread numbers on the WhatsApp / Messenger /
   // Instagram buttons count all of them, as the badge does, not only the chats loaded in the list.
   everyOpenChat?: ChatwootConversation[]
+  // The CRM's copy of the inbox: chats and messages read from it, new ones heard of by themselves, search across
+  // every message. Without it (or while it is not live) the page asks Chatwoot as before.
+  inboxCopy?: InboxCopyLive | null
 }
 
 // What the inbox needs to know about the school's WhatsApp numbers.
@@ -117,6 +126,7 @@ export function WhatsAppInbox({
   openRequest = null,
   numbersView,
   everyOpenChat,
+  inboxCopy = null,
 }: WhatsAppInboxProps) {
   const client = useMemo(() => createChatwootClient(apiUrl), [apiUrl])
   const waActions = useMemo(() => createWaActions(apiUrl), [apiUrl])
@@ -125,7 +135,11 @@ export function WhatsAppInbox({
   // One person who writes from a phone number and from a hidden ID is one chat once they are one lead.
   const siblings = useMemo(() => contactSiblings(crm.leadChannels), [crm.leadChannels])
   const leadOfContact = useMemo(() => leadOfContacts(crm.leadChannels), [crm.leadChannels])
-  const inbox = useWhatsAppInbox(client, currentUser, active, allowedInboxIds, siblings, leadOfContact)
+  const copyLink = useMemo(
+    () => (inboxCopy ? { link: inboxCopy, everyOpen: everyOpenChat } : null),
+    [inboxCopy, everyOpenChat],
+  )
+  const inbox = useWhatsAppInbox(client, currentUser, active, allowedInboxIds, siblings, leadOfContact, copyLink)
   const [tab, setTab] = useState<InboxTab>('chats')
   const [tagId, setTagId] = useState<number | null>(null)
   const [sourceId, setSourceId] = useState<number | null>(null)
@@ -169,14 +183,19 @@ export function WhatsAppInbox({
   }, [inbox.conversations])
   const counts = useMemo(() => countByTab(categoryChats), [categoryChats])
   // Words typed in the search are also looked for inside the messages of every chat.
-  const messageHits = useMessageSearch(client, search)
+  // With the copy: every message ever copied, and the chat opens on the message found.
+  const messageSearch = useMessageSearch(client, search, inboxCopy?.available ?? false)
+  const messageHits = messageSearch.snippets
   const matchedIds = useMemo(() => new Set(messageHits.keys()), [messageHits])
-  const { loadMissingConversations } = inbox
+  const { loadMissingConversations, addConversations } = inbox
   useEffect(() => {
-    if (messageHits.size > 0) {
-      void loadMissingConversations([...messageHits.keys()])
+    addConversations(messageSearch.chats)
+    const fromCopy = new Set(messageSearch.chats.map((chat) => chat.id))
+    const missing = [...messageHits.keys()].filter((id) => !fromCopy.has(id))
+    if (missing.length > 0) {
+      void loadMissingConversations(missing)
     }
-  }, [messageHits, loadMissingConversations])
+  }, [messageSearch, messageHits, loadMissingConversations, addConversations])
 
   // Which lead each chat belongs to, for the tag and source filters.
   const resolveLead = useMemo(() => makeLeadResolver(crm.leads), [crm.leads])
@@ -1095,11 +1114,41 @@ export function WhatsAppInbox({
     })
   }, [inbox.selected, crm, currentUser.name])
 
+  // "+" > Automation: a message or a flow for this chat's person at a chosen time, and what is scheduled.
+  const chatSchedules = useChatSchedules(inbox.selected?.id ?? null)
+  const [scheduling, setScheduling] = useState<{ editing: ChatSchedule | null } | null>(null)
+  const scheduleTarget: ScheduleTarget | null = inbox.selected
+    ? {
+        conversationId: inbox.selected.id,
+        contactId: inbox.selected.meta.sender.id ?? null,
+        inboxId: inbox.selected.inbox_id ?? null,
+        channel: categoryOf(inbox.selected),
+        phone: getRealPhone(inbox.selected.meta.sender.phone_number),
+        leadId: leadIdOf(inbox.selected),
+        parentName: chatLabelOf(inbox.selected) || inbox.selected.meta.sender.name || null,
+      }
+    : null
+  async function cancelScheduled(schedule: ChatSchedule) {
+    try {
+      await cancelSchedule(schedule.id)
+    } catch (failure) {
+      window.alert(scheduleError(failure, "Couldn't cancel it. Try again."))
+    }
+    chatSchedules.reload()
+  }
+
+  // Stickers: a chat's files are reached through the school's own inbox address; an admin manages the library.
+  const stickerSource = useMemo(
+    () => ({ mediaUrl: (url: string) => ownMediaUrl(url, apiUrl), canManage: numbersView?.isAdmin ?? false }),
+    [apiUrl, numbersView?.isAdmin],
+  )
+
   // On a computer the Inbox reaches down to the bottom of the window, whatever its height.
   const inboxBox = useRef<HTMLDivElement>(null)
   const inboxHeight = useFillToBottom(inboxBox)
 
   return (
+    <StickerSourceContext.Provider value={stickerSource}>
     <div>
     <div role="group" aria-label="Channel" className={cn('mb-3 flex flex-wrap gap-2', hasChat && 'max-lg:hidden')}>
       {CATEGORY_BUTTONS.map(({ key, label, icon: ChannelIcon, color }) => {
@@ -1184,7 +1233,13 @@ export function WhatsAppInbox({
         onSearch={setSearch}
         onSelect={(id) => {
           setDetailsOpen(false)
-          inbox.setSelectedId(id)
+          // A chat found by its words opens on the message that matched.
+          const found = search.trim().length >= 2 ? messageSearch.messageIds.get(id) : undefined
+          if (found !== undefined) {
+            inbox.openAt(id, found)
+          } else {
+            inbox.setSelectedId(id)
+          }
         }}
         onLoadMore={() => void inbox.loadMore(tab === 'done' ? 'resolved' : 'open')}
         onNewChat={() => setStartingChat(true)}
@@ -1206,6 +1261,8 @@ export function WhatsAppInbox({
           <ChatPanel
             className={cn(!hasChat && 'hidden lg:flex', detailsOpen && 'hidden xl:flex')}
             conversation={inbox.selected}
+            focusMessageId={inbox.focusMessageId}
+            onFocused={inbox.clearFocus}
             leadName={chatLabelOf(inbox.selected)}
             onOpenLead={
               leadIdOf(inbox.selected) !== null ? () => crm.onOpenLead(leadIdOf(inbox.selected!)!) : undefined
@@ -1234,6 +1291,15 @@ export function WhatsAppInbox({
             draftRequest={draftRequest}
             messageEvents={messageEvents.events}
             onSendSpecial={messageEvents.sendSpecial}
+            onSchedule={() => setScheduling({ editing: null })}
+            scheduledSlot={
+              <ScheduledList
+                schedules={chatSchedules.schedules}
+                flows={chatSchedules.flows}
+                onEdit={(schedule) => setScheduling({ editing: schedule })}
+                onCancel={(schedule) => void cancelScheduled(schedule)}
+              />
+            }
             followUpControl={
               crm.followUps && crm.canEditLeads ? (
                 <FollowUpButton
@@ -1256,6 +1322,8 @@ export function WhatsAppInbox({
             onTogglePin={() => void inbox.togglePinned(inbox.selected!.id)}
             starredIds={inbox.selected.custom_attributes?.crm_starred ?? []}
             onToggleStar={(message) => void inbox.toggleStar(inbox.selected!.id, message.id)}
+            pinnedMessageIds={inbox.selected.custom_attributes?.crm_pinned_messages ?? []}
+            onTogglePinMessage={(messageId) => void inbox.togglePinMessage(inbox.selected!.id, messageId)}
             onForward={setForwarding}
             onMakeQuickReply={(chosen) => void startQuickReplyFrom(chosen)}
             onTyping={showTyping}
@@ -1436,6 +1504,15 @@ export function WhatsAppInbox({
           onAddOption={crm.onAddOption}
         />
       )}
+      {scheduling && scheduleTarget && (
+        <ScheduleDialog
+          target={scheduleTarget}
+          quickReplies={quickReplies.replies}
+          editing={scheduling.editing}
+          onClose={() => setScheduling(null)}
+          onSaved={chatSchedules.reload}
+        />
+      )}
       {forwarding && (
         <ForwardDialog
           targets={forwardTargets.filter((target) => target.id !== inbox.selectedId)}
@@ -1466,5 +1543,6 @@ export function WhatsAppInbox({
       )}
     </div>
     </div>
+    </StickerSourceContext.Provider>
   )
 }

@@ -117,3 +117,12 @@ describe('when the sender picks a message up', () => {
     expect(autoSendTime(item({ dueAt: '2026-10-14T09:00:00+08:00' }), hours, now)).toBe(now)
   })
 })
+
+describe('a message scheduled for one chat', () => {
+  it('goes out by itself at its time, so it does not wait for anyone to approve it', async () => {
+    const { willSendByItself, needsApproval } = await import('./automationQueue')
+    const item = { ruleKey: 'chat_schedule', status: 'pending', autoBlocked: null, expiresAt: null, dueAt: new Date(0).toISOString() } as never
+    expect(willSendByItself(item, new Set(), Date.now())).toBe(true)
+    expect(needsApproval(item, new Set(), Date.now())).toBe(false)
+  })
+})

@@ -12,7 +12,13 @@ import {
   PRESENT,
   statusChoices,
 } from '../../lib/attendanceStatuses'
-import { countRatedMetrics, getReviewProgress, isReviewComplete, lowScoreText } from '../../lib/attendance'
+import {
+  countRatedMetrics,
+  getReviewProgress,
+  isReviewComplete,
+  lowScoreText,
+  summarizePendingNames,
+} from '../../lib/attendance'
 import { createEmptyAttendanceReviewForm } from '../../lib/mappers'
 import { StarRatingInput } from '../StarRatingInput'
 import { GivePointsBar } from '../GivePointsBar'
@@ -138,6 +144,9 @@ export function AttendanceModal({
   const pendingNames = progress.pendingIds.map(
     (id) => attendanceRoster.find((student) => student.id === id)?.name.split(' ')[0] ?? '',
   )
+  // A big class shows the count and a few names; the full list opens on request.
+  const pendingSummary = summarizePendingNames(pendingNames)
+  const [showAllPending, setShowAllPending] = useState(false)
   const canSubmit = !attendanceLocked && attendanceRoster.length > 0
 
   return (
@@ -493,7 +502,8 @@ export function AttendanceModal({
           </>
         )}
 
-        <div className="flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-end">
+        {/* Pinned to the bottom of the window, so Submit stays in view however long the class is. */}
+        <div className="sticky bottom-0 z-10 -mx-6 -mb-6 flex flex-col gap-3 border-t border-slate-200 bg-white px-6 pt-5 pb-6 sm:-mx-8 sm:flex-row sm:items-center sm:justify-end sm:px-8">
           {adminAction && (
             <button
               type="button"
@@ -512,8 +522,17 @@ export function AttendanceModal({
               )}
             >
               {pendingNames.length > 0
-                ? `Still to review: ${pendingNames.join(', ')}`
+                ? `Still to review: ${showAllPending ? pendingNames.join(', ') : pendingSummary.text}`
                 : 'All set. Ready to submit.'}
+              {pendingSummary.shortened && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllPending((current) => !current)}
+                  className="ml-2 font-semibold text-[#be185d] hover:underline"
+                >
+                  {showAllPending ? 'Show less' : 'Show all'}
+                </button>
+              )}
             </p>
           )}
           <button

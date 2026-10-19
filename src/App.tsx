@@ -108,7 +108,8 @@ import {
 } from './lib/rewards'
 import type { BulkLeadRow } from './lib/leadCsv'
 import type { BulkPreviewStudentRow } from './lib/studentCsv'
-import { provisionTeacherLogin, resetTeacherPassword } from './lib/teacherAuth'
+import { provisionTeacherLogin, resetTeacherPassword, syncTeacherLoginName } from './lib/teacherAuth'
+import { usernameToInternalEmail } from './lib/auth'
 import {
   fetchAdminActivityForDay,
   fetchClassroomsFromSupabase,
@@ -176,7 +177,6 @@ import { useIsMobile } from './hooks/useIsMobile'
 import { useConfirm } from './hooks/useConfirm'
 import { useToast } from './hooks/useToast'
 import { AuthScreen } from './components/AuthScreen'
-import { SummaryBar } from './components/SummaryBar'
 import { ClassListingSection } from './components/sections/ClassListingSection'
 import { StudentDashboardSection } from './components/sections/StudentDashboardSection'
 import { TeacherHomeSection } from './components/sections/TeacherHomeSection'
@@ -199,11 +199,6 @@ import {
 } from './lib/attendanceTakers'
 import { buildTeacherClasses } from './lib/teacherDetails'
 import { TeacherDetailsSection } from './components/sections/TeacherDetailsSection'
-import {
-  getLegendKeys,
-  getScheduleKinds,
-  legendEntries,
-} from './lib/calendarLegend'
 import { TeacherManagementSection } from './components/sections/TeacherManagementSection'
 import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
@@ -223,6 +218,8 @@ import { findLeadsByPhone, sameNumberMessage } from './lib/chatLink'
 import { getChatwootUrl } from './lib/chatwoot'
 import { createChatwootClient } from './lib/chatwootClient'
 import { useWhatsAppUnread } from './hooks/useWhatsAppUnread'
+import { useInboxCopyLive } from './hooks/useInboxCopyLive'
+import { chatTargetForLead } from './lib/leadChat'
 import { useLeadFormAnswers } from './hooks/useLeadFormAnswers'
 import { useUnreadFormSubmissions } from './hooks/useUnreadFormSubmissions'
 import { LeadsSection } from './components/sections/LeadsSection'
@@ -896,6 +893,8 @@ function App() {
   // The school's WhatsApp numbers: which the signed-in person may see (an admin sees all).
   const whatsAppNumbers = useWhatsAppNumbers(Boolean(whatsAppApiUrl) && canUseWhatsApp)
   const whatsAppSiblings = useMemo(() => contactSiblings(leadChannels.rows), [leadChannels.rows])
+  // The CRM's copy of the inbox, live: the Inbox reads from it and hears of new messages by itself.
+  const inboxCopy = useInboxCopyLive(Boolean(whatsAppClient))
   const {
     unread: unreadWhatsApp,
     waiting: waitingWhatsApp,
@@ -905,6 +904,7 @@ function App() {
     whatsAppNumbers.allowedInboxIds === undefined ? null : whatsAppClient,
     whatsAppNumbers.allowedInboxIds ?? null,
     whatsAppSiblings,
+    inboxCopy.live,
   )
   // The admin's / staff's Today (a teacher has their own).
   const showAdminHome = visibleSection === 'home' && !isTeacherAccount
@@ -935,12 +935,18 @@ function App() {
   const canOpenWhatsAppChat = allowedSections.includes('whatsapp') && Boolean(whatsAppApiUrl && whatsAppUser)
   // Follow-ups whose time has come ring for the person they are for (cards in the corner of the screen).
   const followUpReminders = useFollowUpReminders(calendarItems.items, currentSession?.teacherId ?? null)
+  // A follow-up's "Open chat": the lead's own chat (also a Messenger / Instagram lead with no phone), else its number;
+  // only a lead with no chat at all opens its profile, saying so.
   function openFollowUpChat(leadId: number) {
-    const lead = leads.find((entry) => entry.id === leadId)
-    if (lead?.phone && canOpenWhatsAppChat) {
-      openWhatsAppChat({ phone: lead.phone, name: lead.fullName, leadId })
-    } else {
-      openEditLeadModal(leadId)
+    const lead = leads.find((entry) => entry.id === leadId) ?? null
+    const target = canOpenWhatsAppChat ? chatTargetForLead(lead, leadChannels.rows) : null
+    if (target) {
+      openWhatsAppChat(target)
+      return
+    }
+    openEditLeadModal(leadId)
+    if (canOpenWhatsAppChat && lead) {
+      showToast('This lead has no chat yet.', 'info')
     }
   }
   const {
@@ -2126,17 +2132,6 @@ function App() {
   const activeClassroomSchedules = activeVisibleSchedules.filter(
     (schedule) => schedule.eventType === 'regular' && schedule.classroomId !== null,
   )
-  const regularCount = activeVisibleSchedules.filter(
-    (schedule) => schedule.eventType === 'regular',
-  ).length
-  const replacementCount = activeVisibleSchedules.filter(
-    (schedule) => schedule.eventType === 'replacement',
-  ).length
-  const visibleTeacherCount =
-    !seesAllClasses
-      ? 1
-      : new Set(activeVisibleSchedules.map((schedule) => schedule.teacherId)).size
-
   const hasAutoSelectedClassroomFilterRef = useRef(false)
 
   useEffect(() => {
@@ -3904,6 +3899,18 @@ function App() {
         createdTeacherId = data?.[0]?.teacher_id ?? null
       }
 
+      // A changed username: the login follows it, so the person signs in with the new name (same password).
+      let loginNameError: string | null = null
+      if (
+        editingTeacher?.authUserId &&
+        usernameToInternalEmail(username) !== usernameToInternalEmail(editingTeacher.username)
+      ) {
+        const synced = await syncTeacherLoginName(editingTeacher.id)
+        if (!synced.ok) {
+          loginNameError = `Saved, but the login still uses the old username "${editingTeacher.username}": ${synced.error}`
+        }
+      }
+
       // Admins can use everything, so their ticks are left as they are.
       const savedTeacherId = editingTeacher?.id ?? createdTeacherId
       let permissionsError: unknown = null
@@ -3934,6 +3941,10 @@ function App() {
       if (permissionsError) {
         // The account itself saved; only the ticks need another try.
         throw permissionsError
+      }
+      if (loginNameError) {
+        setCreateTeacherSaveError(loginNameError)
+        return
       }
       if (!createdTeacherId) {
         closeCreateTeacherModal()
@@ -6244,6 +6255,8 @@ function App() {
 
       return (
         <div
+          // The colour legend is gone; hovering a card says what kind it is.
+          title={`Trial class · ${completed ? 'completed' : isBooked ? 'booked' : 'available'}`}
           className={cn(
             'rounded-lg border px-2 py-1.5 shadow-sm',
             isBooked && !completed && 'border-teal-200 bg-teal-500 text-white',
@@ -6332,6 +6345,7 @@ function App() {
 
     return (
       <div
+        title={`${classKind === 'camp' ? 'Camp class' : classKind === 'replacement' ? 'Replacement class' : 'Regular class'}${completed ? ' · completed' : ''}`}
         className={cn(
           'rounded-lg border px-2 py-1.5 shadow-sm',
           classKind === 'regular' && !completed && 'border-sky-200 bg-sky-500 text-white',
@@ -6786,75 +6800,38 @@ function App() {
 
             {visibleSection === 'calendar' && (
               <>
-                <SummaryBar
-                  metrics={[
-                    {
-                      label: 'Active Schedule Cards',
-                      value: activeVisibleSchedules.length,
-                    },
-                    { label: 'Regular Classes', value: regularCount, tone: 'blue' },
-                    {
-                      label: 'Replacement Classes',
-                      value: replacementCount,
-                      tone: 'orange',
-                    },
-                    { label: 'Visible Teachers', value: visibleTeacherCount, tone: 'brand' },
-                  ]}
-                />
-
                 {/* Not overflow-hidden: FullCalendar's "+more" box has to be able to
                     reach past the edge of this card instead of being cut off. */}
                 <section className="rounded-[24px] border border-slate-200 bg-white shadow-sm">
-                  <div className="border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
-                    <div className="flex flex-col gap-3">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <h2 className="text-lg font-semibold text-slate-900">
-                          Full Calendar Timetable Board
-                        </h2>
-                        {canEditCalendar && (
-                          <div className="flex flex-wrap items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setCalendarItemEditor({ item: null, date: todayString })}
-                              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                            >
-                              Add Task / Meeting / Event
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openCreateSchedule()}
-                              className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
-                            >
-                              Add Class
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                        {getLegendKeys({
-                          canEdit: canEditCalendar,
-                          kinds: getScheduleKinds(visibleSchedules, classroomMap),
-                          hasMakeups: makeupEntries.length > 0,
-                          hasCancelledDays: scheduleExceptions.length > 0,
-                        }).map((key) => (
-                          <div key={key} className="flex items-center gap-2 text-sm text-slate-600">
-                            <span className={cn('h-3 w-3 rounded-full', legendEntries[key].dot)} />
-                            <span>{legendEntries[key].label}</span>
-                          </div>
-                        ))}
-                      </div>
+                  {/* The filters (their kind buttons carry the cards' colours) and the add buttons, on one row. */}
+                  <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 sm:px-6 lg:flex-row lg:items-start">
+                    <div className="min-w-0 lg:flex-1">
+                      <CalendarFilterBar
+                        filter={calendarFilter}
+                        onChange={setCalendarFilter}
+                        people={calendarFilterPeople}
+                        teams={calendarTeams}
+                        canPickPeople={seesAllClasses}
+                      />
                     </div>
-                  </div>
-
-                  <div className="border-b border-slate-200 px-5 py-3 sm:px-6">
-                    <CalendarFilterBar
-                      filter={calendarFilter}
-                      onChange={setCalendarFilter}
-                      people={calendarFilterPeople}
-                      teams={calendarTeams}
-                      canPickPeople={seesAllClasses}
-                    />
+                    {canEditCalendar && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setCalendarItemEditor({ item: null, date: todayString })}
+                          className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                        >
+                          Add Task / Meeting / Event
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openCreateSchedule()}
+                          className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
+                        >
+                          Add Class
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="p-3 sm:p-4">
@@ -7223,6 +7200,7 @@ function App() {
                   active={visibleSection === 'whatsapp'}
                   openRequest={whatsAppRequest}
                   everyOpenChat={everyOpenChat}
+                  inboxCopy={inboxCopy}
                   numbersView={{
                     numbers: whatsAppNumbers.numbers,
                     assignments: whatsAppNumbers.assignments,

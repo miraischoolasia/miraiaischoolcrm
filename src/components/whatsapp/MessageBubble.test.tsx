@@ -34,6 +34,24 @@ describe('MessageBubble reactions, quotes, edits and deletes', () => {
     expect(row).toHaveTextContent('❤️')
   })
 
+  it('in a group, says how many reacted and, when pressed, who', async () => {
+    show({
+      reactions: [
+        { emoji: '👍', byUs: false, by: 'Puan Aminah' },
+        { emoji: '👍', byUs: false, by: 'Mr Tan' },
+        { emoji: '👍', byUs: true },
+      ],
+    })
+
+    const chip = screen.getByRole('button', { name: '👍 3: Puan Aminah, Mr Tan, You' })
+    expect(chip).toHaveAttribute('title', 'Puan Aminah, Mr Tan, You')
+    await userEvent.click(chip)
+    const list = screen.getByRole('tooltip')
+    expect(list).toHaveTextContent('👍 Puan Aminah')
+    expect(list).toHaveTextContent('👍 Mr Tan')
+    expect(list).toHaveTextContent('👍 You')
+  })
+
   it('shows a message taken back instead of its text', () => {
     show({ deletedForEveryone: true })
 

@@ -26,6 +26,9 @@ export const brand = {
   // brand starts without (a student with no package is not chased for classes left or an end date, while one
   // with a package still is) until it sets VITE_BRAND_PACKAGES=true.
   usesPackages: !customName || text(import.meta.env.VITE_BRAND_PACKAGES) === 'true',
+  // One line under the sign-in form telling staff what to type (VITE_BRAND_LOGIN_HINT), e.g. EduHero's
+  // "Sign in with your e-mail, like msangie@eduhero.com".
+  loginHint: text(import.meta.env.VITE_BRAND_LOGIN_HINT) || 'Use the username the school gave you.',
   // The tab icon: another brand's own picture (VITE_BRAND_FAVICON_URL, else its logo), or none; null for Mirai's.
   favicon: customName ? faviconUrl || logoUrl || null : null,
 }

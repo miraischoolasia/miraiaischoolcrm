@@ -3,12 +3,24 @@ import type { ChatwootClient, Sender } from '../lib/chatwootClient'
 import { startChat } from '../lib/startChat'
 import { CONFIRM_POLL_MS, CONFIRM_TIMEOUT_MS, fileKind, splitSequence } from '../lib/outbox'
 import {
+  copyIsBehind,
+  fetchCopyChats,
+  fetchCopyContactChats,
+  fetchCopyMessages,
+  fetchCopyMessagesAround,
+  fetchRecentMessages,
+  fillCopy,
+  type CopyCursor,
+} from '../lib/inboxCopyReader'
+import type { InboxCopyLive } from './useInboxCopyLive'
+import {
   SOCIAL_CONFIRM_SECONDS,
   confirmsBySource,
   getOwner,
   getPhoneReadTarget,
   isOnAllowedNumber,
   onePerParent,
+  togglePinnedMessage,
   withLeadLink,
   type ChatAttributes,
   type ChatRole,
@@ -23,6 +35,54 @@ const LIST_REFRESH_MS = 4_000
 const DONE_REFRESH_MS = 20_000
 const MESSAGES_REFRESH_MS = 3_000
 const DEEP_REFRESH_MS = 30_000
+// While the copy is live, new messages arrive by themselves; this slow check (every 20th round, one minute)
+// only guards against one that was missed.
+const LIVE_SAFETY_EVERY = 20
+// The Done list from the copy is read again this often while live (it is the database, not Chatwoot).
+const LIVE_DONE_REFRESH_MS = 60_000
+// The newest messages of the chats at the top of the list are read ahead (one request for 40 chats), so opening
+// one of them shows its messages at once. Read again when the top of the list changes, at most this often.
+const PREFETCH_CHATS = 40
+const PREFETCH_EVERY_MS = 20_000
+
+function sameChat(a: ChatwootConversation, b: ChatwootConversation) {
+  const lastA = a.last_non_activity_message
+  const lastB = b.last_non_activity_message
+  return (
+    a.unread_count === b.unread_count &&
+    a.status === b.status &&
+    a.waiting_since === b.waiting_since &&
+    a.inbox_id === b.inbox_id &&
+    JSON.stringify(a.custom_attributes ?? null) === JSON.stringify(b.custom_attributes ?? null) &&
+    JSON.stringify(a.labels ?? null) === JSON.stringify(b.labels ?? null) &&
+    JSON.stringify(a.meta) === JSON.stringify(b.meta) &&
+    (!lastB || (lastA?.id === lastB.id && lastA.content === lastB.content && lastA.status === lastB.status))
+  )
+}
+
+// A chat's state that is not older than what is shown replaces it: the copy, a live update and the menu badge's
+// list each may be a little behind the others, and an older one must not undo a newer one.
+function mergeNewer(current: Map<number, ChatwootConversation>, incoming: ChatwootConversation[]) {
+  let next: Map<number, ChatwootConversation> | null = null
+  for (const conversation of incoming) {
+    const shown = (next ?? current).get(conversation.id)
+    if (shown === conversation || (shown && shown.last_activity_at > conversation.last_activity_at)) {
+      continue
+    }
+    // The same state again (the badge reads every few seconds): nothing to redraw.
+    if (shown && shown.last_activity_at === conversation.last_activity_at && sameChat(shown, conversation)) {
+      continue
+    }
+    next ??= new Map(current)
+    next.set(
+      conversation.id,
+      shown?.last_non_activity_message && !conversation.last_non_activity_message
+        ? { ...conversation, last_non_activity_message: shown.last_non_activity_message }
+        : conversation,
+    )
+  }
+  return next ?? current
+}
 
 function mergeConversations(current: Map<number, ChatwootConversation>, incoming: ChatwootConversation[]) {
   const next = new Map(current)
@@ -75,7 +135,28 @@ export function useWhatsAppInbox(
   siblings?: Map<number, number[]>,
   // Which lead the database ties each chat contact to (see leadOfContacts), for chats with no lead written on them.
   leadOfContact?: Map<number, number>,
+  // The CRM's copy of the inbox (see useInboxCopyLive) and every open chat the menu badge has read. With them the
+  // page reads chats and messages from the copy and hears of new ones by itself; without them, or while the copy
+  // is not live, it asks Chatwoot every few seconds as before.
+  copy: { link: InboxCopyLive; everyOpen?: ChatwootConversation[] } | null = null,
 ) {
+  const copyRef = useRef(copy)
+  useEffect(() => {
+    copyRef.current = copy
+  }, [copy])
+  const copyAvailable = copy?.link.available ?? false
+  const copyLive = copy?.link.live ?? false
+  // Chats whose copy was found behind Chatwoot when opened: they are asked about every few seconds, as before.
+  const behindChats = useRef(new Set<number>())
+  const doneCursor = useRef<CopyCursor | null>(null)
+  // The Done list is read from the copy (page by page, as far back as it goes) once the copy is there.
+  const doneFromCopy = useRef(false)
+  // A message to open a chat on (a search result).
+  const [focus, setFocus] = useState<{ conversationId: number; messageId: number } | null>(null)
+  // The chats whose messages are on screen (the open one and newer chats of the same parent), for live updates.
+  const [watchIds, setWatchIds] = useState<number[]>([])
+  // Newest messages of the chats at the top of the list, read ahead from the copy.
+  const readAhead = useRef(new Map<number, ChatwootMessage[]>())
   const siblingsRef = useRef(siblings)
   useEffect(() => {
     siblingsRef.current = siblings
@@ -120,9 +201,11 @@ export function useWhatsAppInbox(
 
   const updateLoadMore = useCallback(() => {
     const loaded = (status: 'open' | 'resolved') => (nextPage.current[status] - 1) * 25
+    // The menu badge has read every open chat; the Done list from the copy carries on while it has a next page.
+    const allOpen = (copyRef.current?.everyOpen?.length ?? 0) > 0
     setCanLoadMore({
-      open: totals.current.open > loaded('open'),
-      resolved: totals.current.resolved > loaded('resolved'),
+      open: !allOpen && totals.current.open > loaded('open'),
+      resolved: doneFromCopy.current ? doneCursor.current !== null : totals.current.resolved > loaded('resolved'),
     })
   }, [])
 
@@ -136,12 +219,105 @@ export function useWhatsAppInbox(
       ),
     [conversationMap, allowedInboxIds, siblings, leadOfContact],
   )
+  // Reads ahead the newest messages of the chats at the top of the list (they are the ones opened).
+  const topKey = useMemo(
+    () =>
+      [...conversations]
+        .sort((a, b) => b.last_activity_at - a.last_activity_at)
+        .slice(0, PREFETCH_CHATS)
+        .map((conversation) => conversation.id)
+        .join(','),
+    [conversations],
+  )
+  const lastReadAhead = useRef(0)
+  useEffect(() => {
+    if (!copyAvailable || topKey === '') {
+      return
+    }
+    let cancelled = false
+    const wait = Math.max(0, lastReadAhead.current + PREFETCH_EVERY_MS - Date.now())
+    const timer = window.setTimeout(() => {
+      lastReadAhead.current = Date.now()
+      fetchRecentMessages(topKey.split(',').map(Number))
+        .then((byChat) => {
+          if (!cancelled) {
+            for (const [id, list] of byChat) {
+              readAhead.current.set(id, list)
+            }
+          }
+        })
+        .catch(() => undefined)
+    }, wait)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [copyAvailable, topKey])
+
   const hasOlder = ownHasOlder || olderChatCount > 0
   const selectedRaw = selectedId === null ? null : (conversationMap.get(selectedId) ?? null)
   const selected = useMemo(
     () => (selectedRaw ? withLeadLink(selectedRaw, leadOfContact) : null),
     [selectedRaw, leadOfContact],
   )
+
+  // Every open chat the menu badge read (all pages): the list needs no pages of its own.
+  const everyOpen = copy?.everyOpen
+  useEffect(() => {
+    if (everyOpen && everyOpen.length > 0) {
+      setConversationMap((current) => mergeNewer(current, everyOpen))
+      setIsLoading(false)
+      updateLoadMore()
+    }
+  }, [everyOpen, updateLoadMore])
+
+  // A chat changed in the copy (a new message, owner, status): shown at once.
+  const subscribeChats = copy?.link.subscribeChats
+  useEffect(() => {
+    if (!subscribeChats) {
+      return
+    }
+    return subscribeChats((conversation) => {
+      setConversationMap((current) => mergeNewer(current, [conversation]))
+      // The read-ahead messages of that chat get its new message too.
+      const newest = conversation.last_non_activity_message
+      const ahead = readAhead.current.get(conversation.id)
+      if (newest && ahead && !ahead.some((message) => message.id === newest.id)) {
+        readAhead.current.set(conversation.id, [newest, ...ahead].slice(0, PREFETCH_CHATS))
+      }
+    })
+  }, [subscribeChats])
+
+  // The Done list from the copy: its first page, and again now and then while live.
+  useEffect(() => {
+    if (!copyAvailable) {
+      return
+    }
+    let cancelled = false
+    fetchCopyChats('resolved', null)
+      .then((page) => {
+        if (cancelled) {
+          return
+        }
+        doneFromCopy.current = true
+        doneCursor.current = page.next
+        setConversationMap((current) => mergeNewer(current, page.conversations))
+        updateLoadMore()
+      })
+      .catch(() => undefined)
+    const timer = window.setInterval(() => {
+      if (!document.hidden && copyRef.current?.link.live && doneFromCopy.current) {
+        // Only the first page again: the pages further back are history.
+        fetchCopyChats('resolved', null)
+          .then((page) => setConversationMap((current) => mergeNewer(current, page.conversations)))
+          .catch(() => undefined)
+      }
+    }, LIVE_DONE_REFRESH_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [copyAvailable, updateLoadMore])
 
   const refreshStatus = useCallback(
     async (status: 'open' | 'resolved') => {
@@ -158,6 +334,10 @@ export function useWhatsAppInbox(
     async function firstLoad() {
       try {
         await Promise.all([refreshStatus('open'), refreshStatus('resolved')])
+        // With the menu badge's list every open chat is here already.
+        if ((copyRef.current?.everyOpen?.length ?? 0) > 0) {
+          return
+        }
         const second = await client.listConversations('open', 2)
         if (!cancelled) {
           setConversationMap((current) => mergeConversations(current, second.conversations))
@@ -183,7 +363,9 @@ export function useWhatsAppInbox(
     // The list quietly goes stale when the inbox server stops answering: two refreshes in a row that fail say so.
     let failedRefreshes = 0
     const listTimer = window.setInterval(() => {
-      if (!document.hidden && !listBusy) {
+      // Live: the badge reads the open chats every few seconds and the copy reports each new message.
+      const live = Boolean(copyRef.current?.link.live) && (copyRef.current?.everyOpen?.length ?? 0) > 0
+      if (!document.hidden && !listBusy && !live) {
         listBusy = true
         refreshStatus('open')
           .then(() => {
@@ -202,7 +384,7 @@ export function useWhatsAppInbox(
       }
     }, LIST_REFRESH_MS)
     const doneTimer = window.setInterval(() => {
-      if (!document.hidden && !doneBusy) {
+      if (!document.hidden && !doneBusy && !doneFromCopy.current) {
         doneBusy = true
         refreshStatus('resolved')
           .catch(() => undefined)
@@ -230,6 +412,20 @@ export function useWhatsAppInbox(
       loadingMore.current[status] = true
       setIsLoadingMore((current) => ({ ...current, [status]: true }))
       try {
+        if (status === 'resolved' && doneFromCopy.current) {
+          try {
+            if (doneCursor.current) {
+              const page = await fetchCopyChats('resolved', doneCursor.current)
+              doneCursor.current = page.next
+              setConversationMap((current) => mergeNewer(current, page.conversations))
+            }
+            updateLoadMore()
+            return
+          } catch {
+            // The copy did not answer: Chatwoot's pages from here on.
+            doneFromCopy.current = false
+          }
+        }
         const page = await client.listConversations(status, nextPage.current[status])
         nextPage.current[status] += 1
         setConversationMap((current) => mergeConversations(current, page.conversations))
@@ -249,7 +445,8 @@ export function useWhatsAppInbox(
   // owner and status until a reload. They are read again now and then.
   useEffect(() => {
     const timer = window.setInterval(() => {
-      if (document.hidden || loadingMore.current.open) {
+      // With the badge's list (every open chat, read by the badge) there are no pages of our own to read again.
+      if (document.hidden || loadingMore.current.open || (copyRef.current?.everyOpen?.length ?? 0) > 0) {
         return
       }
       const loadedPages = nextPage.current.open - 1
@@ -302,6 +499,7 @@ export function useWhatsAppInbox(
     setOwnHasOlder(false)
     setOlderChatCount(0)
     setContactChats([])
+    setWatchIds(selectedId === null ? [] : [selectedId])
     ownCursor.current = null
     olderChats.current = []
     newerChats.current = []
@@ -310,22 +508,67 @@ export function useWhatsAppInbox(
       return
     }
     let cancelled = false
+    // Chatwoot's answer is the truth; the copy's is only shown until it comes (it is usually much faster).
+    let fromChatwoot = false
+    let copied: ChatwootMessage[] = []
+    const showLoaded = (loaded: ChatwootMessage[], full: boolean) => {
+      setMessages((current) => mergeMessages(current, loaded))
+      setMessagesChat(selectedId)
+      setOwnHasOlder(loaded.length >= 20 || (full && ownCursor.current !== null))
+      const lowest = loaded.length > 0 ? Math.min(...loaded.map((message) => message.id)) : null
+      if (lowest !== null && (ownCursor.current === null || lowest < ownCursor.current)) {
+        ownCursor.current = lowest
+      }
+    }
+
+    // Read ahead: shown at once, before anything is asked.
+    const ahead = readAhead.current.get(selectedId)
+    if (ahead && ahead.length > 0) {
+      copied = ahead
+      showLoaded(ahead, false)
+    }
+
+    if (copyRef.current?.link.available) {
+      fetchCopyMessages(selectedId)
+        .then(({ messages: fromCopy }) => {
+          copied = fromCopy
+          if (!cancelled && !fromChatwoot && fromCopy.length > 0) {
+            showLoaded(fromCopy, false)
+          }
+        })
+        .catch(() => undefined)
+    }
+
     client
       .listMessages(selectedId)
       .then((latest) => {
         if (cancelled) {
           return
         }
-        setMessages(mergeMessages([], latest))
-        setMessagesChat(selectedId)
+        fromChatwoot = true
+        showLoaded(latest, false)
+        readAhead.current.set(selectedId, latest)
         setOwnHasOlder(latest.length >= 20)
-        ownCursor.current = latest.length > 0 ? Math.min(...latest.map((message) => message.id)) : null
         // The phone shows as many unread as the CRM did, so only that many need telling.
         const unread = mapRef.current.get(selectedId)?.unread_count ?? 0
         markSeen(selectedId, unread > 0 ? latest.filter((message) => message.message_type === 0).slice(-unread) : [])
+        // What the copy lacks (a message the webhook missed, a delivery tick) is written into it; a chat whose copy
+        // was missing a message is asked about every few seconds while it is open, as before.
+        const link = copyRef.current?.link
+        const conversation = mapRef.current.get(selectedId)
+        if (link?.available && conversation) {
+          const behind = copyIsBehind(copied, latest)
+          if (behind.length > 0) {
+            fillCopy(conversation, latest).catch(() => undefined)
+            const known = new Set(copied.map((message) => message.id))
+            if (copied.length > 0 && behind.some((message) => !known.has(message.id))) {
+              behindChats.current.add(selectedId)
+            }
+          }
+        }
       })
       .catch(() => {
-        if (!cancelled) {
+        if (!cancelled && copied.length === 0) {
           setActionError("Couldn't load this chat. Try again in a moment.")
         }
       })
@@ -337,8 +580,15 @@ export function useWhatsAppInbox(
     if (senderId !== undefined) {
       // The same person under another WhatsApp identity (a hidden ID beside the phone number) is read too.
       const contactIds = siblingsRef.current?.get(senderId) ?? [senderId]
-      Promise.all(contactIds.map((contactId) => client.listContactConversations(contactId)))
-        .then((lists) => lists.flat())
+      const fromChatwootList = () =>
+        Promise.all(contactIds.map((contactId) => client.listContactConversations(contactId))).then((lists) => lists.flat())
+      // The copy knows every chat of the contact once it is complete; Chatwoot is asked when it has not got this one.
+      const chatsOf = copyRef.current?.link.available
+        ? fetchCopyContactChats(contactIds)
+            .then((chats) => (chats.some((chat) => chat.id === selectedId) ? chats : fromChatwootList()))
+            .catch(fromChatwootList)
+        : fromChatwootList()
+      chatsOf
         .then((chats) => {
           if (cancelled) {
             return
@@ -350,6 +600,7 @@ export function useWhatsAppInbox(
             .sort((a, b) => b - a)
           setOlderChatCount(olderChats.current.length)
           newerChats.current = olderChats.current.filter((id) => id > selectedId).slice(0, 3)
+          setWatchIds([selectedId, ...newerChats.current])
           for (const id of newerChats.current) {
             client
               .listMessages(id)
@@ -365,8 +616,12 @@ export function useWhatsAppInbox(
     }
 
     let messagesBusy = false
+    let round = 0
     const timer = window.setInterval(() => {
-      if (document.hidden || !activeRef.current || messagesBusy) {
+      round += 1
+      // Live: new messages come by themselves; Chatwoot is only asked now and then, in case one was missed.
+      const live = Boolean(copyRef.current?.link.live) && !behindChats.current.has(selectedId)
+      if (document.hidden || !activeRef.current || messagesBusy || (live && round % LIVE_SAFETY_EVERY !== 0)) {
         return
       }
       messagesBusy = true
@@ -406,11 +661,81 @@ export function useWhatsAppInbox(
     }
   }, [client, selectedId, markSeen])
 
+  // Live: a new or changed message of the chats on screen arrives the moment the copy has it.
+  const watchMessages = copy?.link.watchMessages
+  const watchKey = watchIds.join(',')
+  useEffect(() => {
+    if (!watchMessages || watchKey === '' || !copyLive) {
+      return
+    }
+    const ids = watchKey.split(',').map(Number)
+    return watchMessages(ids, (conversationId, message) => {
+      const open = selectedRef.current
+      if (open === null || !ids.includes(conversationId)) {
+        return
+      }
+      setMessages((current) => {
+        const isNew = !current.some((entry) => entry.id === message.id)
+        if (isNew && message.message_type === 0 && conversationId === open && activeRef.current && !document.hidden) {
+          markSeen(open, [message])
+        }
+        // A message Chatwoot already gave keeps Chatwoot's version unless the copy's is a change (an edit, a delete).
+        const shown = current.find((entry) => entry.id === message.id)
+        if (shown && shown.content === message.content && Boolean(shown.content_attributes?.deleted) === Boolean(message.content_attributes?.deleted)) {
+          return current
+        }
+        return mergeMessages(current, [shown ? { ...shown, content: message.content, content_attributes: message.content_attributes } : message])
+      })
+    })
+  }, [watchMessages, watchKey, copyLive, markSeen])
+
+  // A search result: once its chat is open, the messages around the found one are loaded so it can be shown.
+  useEffect(() => {
+    if (!focus || focus.conversationId !== selectedId || messagesChat !== selectedId) {
+      return
+    }
+    if (messages.some((message) => message.id === focus.messageId)) {
+      return
+    }
+    let cancelled = false
+    fetchCopyMessagesAround(focus.conversationId, focus.messageId)
+      .then((around) => {
+        if (!cancelled && selectedRef.current === focus.conversationId) {
+          setMessages((current) => mergeMessages(current, around))
+          setOwnHasOlder(true)
+          const lowest = around.length > 0 ? Math.min(...around.map((message) => message.id)) : null
+          if (lowest !== null && (ownCursor.current === null || lowest < ownCursor.current)) {
+            ownCursor.current = lowest
+          }
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [focus, selectedId, messagesChat, messages])
+
+  const openAt = useCallback((conversationId: number, messageId: number | null) => {
+    setFocus(messageId === null ? null : { conversationId, messageId })
+    setSelectedId(conversationId)
+  }, [])
+  const clearFocus = useCallback(() => setFocus(null), [])
+  const focusMessageId = focus && focus.conversationId === selectedId ? focus.messageId : null
+
   const loadOlder = useCallback(async () => {
     if (selectedId === null) {
       return
     }
     if (ownHasOlder && ownCursor.current !== null) {
+      // The copy first (instant); Chatwoot when the copy has fewer than a page (its start, or not copied yet).
+      if (copyRef.current?.link.available) {
+        const fromCopy = await fetchCopyMessages(selectedId, ownCursor.current).catch(() => null)
+        if (fromCopy && fromCopy.complete && fromCopy.messages.length >= 20) {
+          ownCursor.current = Math.min(...fromCopy.messages.map((message) => message.id))
+          setMessages((current) => mergeMessages(current, fromCopy.messages))
+          return
+        }
+      }
       const older = await client.listMessages(selectedId, ownCursor.current)
       setOwnHasOlder(older.length >= 20)
       if (older.length > 0) {
@@ -514,6 +839,20 @@ export function useWhatsAppInbox(
         })
       } catch {
         setActionError("Couldn't star this message. Try again.")
+      }
+    },
+    [saveAttributes],
+  )
+
+  // Pins or unpins one message at the top of the chat, for the whole team (at most 3, the oldest goes).
+  const togglePinMessage = useCallback(
+    async (conversationId: number, messageId: number) => {
+      setActionError(null)
+      try {
+        const pinned = mapRef.current.get(conversationId)?.custom_attributes?.crm_pinned_messages
+        await saveAttributes(conversationId, { crm_pinned_messages: togglePinnedMessage(pinned, messageId) })
+      } catch {
+        setActionError("Couldn't pin this message. Try again.")
       }
     },
     [saveAttributes],
@@ -829,6 +1168,13 @@ export function useWhatsAppInbox(
     [outbox, selectedId, currentUser],
   )
 
+  // Chats the copy's search found (with their newest message): shown in the list straight away.
+  const addConversations = useCallback((found: ChatwootConversation[]) => {
+    if (found.length > 0) {
+      setConversationMap((current) => mergeNewer(current, found))
+    }
+  }, [])
+
   // Brings in chats that a search found but the list has not loaded (older ones).
   const loadMissingConversations = useCallback(
     async (ids: number[]) => {
@@ -881,6 +1227,7 @@ export function useWhatsAppInbox(
     markUnread,
     togglePinned,
     toggleStar,
+    togglePinMessage,
     setLeadLink,
     setStudentLinks,
     setChatRole,
@@ -892,5 +1239,12 @@ export function useWhatsAppInbox(
     dismissUnsent,
     startNewChat,
     loadMissingConversations,
+    addConversations,
+    // Opens a chat on one of its messages (a search result), and which message that is.
+    openAt,
+    focusMessageId,
+    clearFocus,
+    // The page is reading from the copy and hearing of new messages by itself.
+    live: copyLive,
   }
 }

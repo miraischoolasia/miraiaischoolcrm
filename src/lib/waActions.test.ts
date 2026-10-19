@@ -18,8 +18,8 @@ describe('parseEvents', () => {
     ])
 
     expect(events.reactions.get('m1')).toEqual([
-      { emoji: '❤️', byUs: false },
-      { emoji: '🙏', byUs: true },
+      { emoji: '❤️', byUs: false, by: null },
+      { emoji: '🙏', byUs: true, by: null },
     ])
     expect(events.reactions.has('m2')).toBe(false)
   })
@@ -125,5 +125,32 @@ describe('createWaActions', () => {
     const { actions } = setup([])
 
     await expect(actions.react('nope', '👍')).rejects.toThrow('does not know')
+  })
+})
+
+describe('parseEvents in a group', () => {
+  const groupReaction = (id: string, emoji: string, participant: string, pushName: string | null, at: number) => ({
+    key: { id: `r-${id}-${participant}-${at}`, fromMe: false, remoteJid: '1203630@g.us', participant },
+    pushName,
+    messageTimestamp: at,
+    message: { reactionMessage: { key: { id }, text: emoji } },
+  })
+
+  it('keeps every member\'s reaction, with who it was', () => {
+    const events = parseEvents([
+      groupReaction('m1', '👍', '60111111111@s.whatsapp.net', 'Puan Aminah', 1),
+      groupReaction('m1', '👍', '60122222222@s.whatsapp.net', null, 2),
+      groupReaction('m1', '❤️', '60133333333@s.whatsapp.net', 'Mr Tan', 3),
+      // Mr Tan changes his mind: only his newest counts.
+      groupReaction('m1', '👍', '60133333333@s.whatsapp.net', 'Mr Tan', 4),
+    ])
+    expect(events.reactions.get('m1')).toEqual(
+      expect.arrayContaining([
+        { emoji: '👍', byUs: false, by: 'Puan Aminah' },
+        { emoji: '👍', byUs: false, by: '+60122222222' },
+        { emoji: '👍', byUs: false, by: 'Mr Tan' },
+      ]),
+    )
+    expect(events.reactions.get('m1')).toHaveLength(3)
   })
 })

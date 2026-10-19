@@ -2866,6 +2866,57 @@ export type Database = {
         Update: Record<string, never>
         Relationships: []
       }
+      inbox_stickers: {
+        Row: { id: number; path: string; name: string | null; sort_order: number; is_active: boolean; created_at: string }
+        Insert: { path: string; name?: string | null; sort_order?: number; is_active?: boolean }
+        Update: { name?: string | null; sort_order?: number; is_active?: boolean }
+        Relationships: []
+      }
+      inbox_chats: {
+        Row: {
+          conversation_id: number
+          inbox_id: number | null
+          contact_id: number | null
+          status: string | null
+          last_activity_at: string | null
+          copied_at: string | null
+          needs_copy: boolean
+          raw: Json | null
+          last_message_raw: Json | null
+        }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: []
+      }
+      inbox_messages: {
+        Row: {
+          id: number
+          conversation_id: number
+          created_at: string
+          raw: Json | null
+        }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: []
+      }
+      chat_schedules: {
+        Row: {
+          id: number
+          kind: string
+          conversation_id: number
+          message: string | null
+          media_url: string | null
+          flow_id: number | null
+          run_at: string
+          cancel_on_reply: boolean
+          status: string
+          created_by_name: string | null
+          created_at: string
+        }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: []
+      }
       team_reply_day_runs: {
         Row: {
           day: string
@@ -2911,6 +2962,69 @@ export type Database = {
       inbox_copy_import: {
         Args: { p_account: number | null; p_chat: Json; p_messages: Json; p_done?: boolean }
         Returns: number
+      }
+      chat_schedule_message: {
+        Args: {
+          p_conversation_id: number
+          p_contact_id: number | null
+          p_inbox_id: number | null
+          p_channel: string
+          p_phone: string | null
+          p_lead_id: number | null
+          p_parent_name: string | null
+          p_message: string
+          p_media_url: string | null
+          p_run_at: string
+          p_cancel_on_reply?: boolean
+        }
+        Returns: number
+      }
+      chat_schedule_flow: {
+        Args: {
+          p_conversation_id: number
+          p_contact_id: number | null
+          p_inbox_id: number | null
+          p_channel: string
+          p_phone: string | null
+          p_lead_id: number | null
+          p_parent_name: string | null
+          p_flow_id: number
+          p_run_at: string
+          p_cancel_on_reply?: boolean
+        }
+        Returns: number
+      }
+      chat_schedule_change: {
+        Args: { p_id: number; p_message: string | null; p_media_url: string | null; p_run_at: string; p_cancel_on_reply: boolean }
+        Returns: undefined
+      }
+      chat_schedule_cancel: {
+        Args: { p_id: number }
+        Returns: undefined
+      }
+      inbox_recent_stickers: {
+        Args: { p_limit?: number }
+        Returns: { url: string | null; name: string | null; size: number | null; sent_at: string }[]
+      }
+      inbox_recent_messages: {
+        Args: { p_conversation_ids: number[]; p_per_chat?: number }
+        Returns: { conversation_id: number; raw: Json | null }[]
+      }
+      inbox_copy_fill: {
+        Args: { p_account: number | null; p_chat: Json; p_messages: Json }
+        Returns: number
+      }
+      inbox_search: {
+        Args: { p_query: string; p_limit?: number }
+        Returns: {
+          kind: string
+          conversation_id: number
+          message_id: number | null
+          created_at: string | null
+          snippet: string | null
+          chat: Json | null
+          last_message: Json | null
+        }[]
       }
       inbox_copy_state: {
         Args: Record<PropertyKey, never>

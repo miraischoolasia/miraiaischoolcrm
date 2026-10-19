@@ -1,4 +1,5 @@
-// Admin-only: creates or resets a teacher's Supabase Auth login.
+// Admin-only: creates or resets a teacher's Supabase Auth login, and keeps the login name (the synthetic
+// e-mail) the same as the account's username when the username is changed in My Team (sync_login_name).
 //
 // This is the ONLY place the service-role key is used — setting another
 // user's password requires supabase.auth.admin.*, which the browser must
@@ -18,6 +19,7 @@ function usernameToInternalEmail(username: string): string {
 type ProvisionRequest =
   | { action: 'create_login'; teacherId: number; password: string }
   | { action: 'reset_password'; teacherId: number; password: string }
+  | { action: 'sync_login_name'; teacherId: number }
 
 // Edge Functions don't add CORS headers automatically — without these, the
 // browser's preflight OPTIONS request (or the actual response) gets
@@ -95,14 +97,14 @@ Deno.serve(async (req) => {
 
   if (
     !body ||
-    (body.action !== 'create_login' && body.action !== 'reset_password') ||
+    (body.action !== 'create_login' && body.action !== 'reset_password' && body.action !== 'sync_login_name') ||
     !Number.isFinite(body.teacherId) ||
-    typeof body.password !== 'string'
+    (body.action !== 'sync_login_name' && typeof body.password !== 'string')
   ) {
     return jsonResponse({ ok: false, error: 'Invalid request body.' }, 400)
   }
 
-  if (body.password.length < 8) {
+  if (body.action !== 'sync_login_name' && body.password.length < 8) {
     return jsonResponse({ ok: false, error: 'Password must be at least 8 characters.' }, 400)
   }
 
@@ -148,7 +150,6 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, authUserId: created.user.id }, 200)
   }
 
-  // reset_password
   if (!targetTeacher.auth_user_id) {
     return jsonResponse(
       { ok: false, error: 'This teacher has no login yet. Use create_login instead.' },
@@ -156,8 +157,35 @@ Deno.serve(async (req) => {
     )
   }
 
+  // The username changed in My Team: the login follows it. The password is not touched.
+  if (body.action === 'sync_login_name') {
+    const { data: current, error: readError } = await adminClient.auth.admin.getUserById(targetTeacher.auth_user_id)
+    if (readError || !current?.user) {
+      return jsonResponse({ ok: false, error: readError?.message ?? 'Login not found.' }, 404)
+    }
+    if (current.user.email === syntheticEmail) {
+      return jsonResponse({ ok: true, authUserId: targetTeacher.auth_user_id }, 200)
+    }
+    const { error: renameError } = await adminClient.auth.admin.updateUserById(targetTeacher.auth_user_id, {
+      email: syntheticEmail,
+      email_confirm: true,
+    })
+    if (renameError) {
+      const taken = /already|exists|registered/i.test(renameError.message)
+      return jsonResponse(
+        { ok: false, error: taken ? 'Another login already uses this username.' : renameError.message },
+        taken ? 409 : 500,
+      )
+    }
+    return jsonResponse({ ok: true, authUserId: targetTeacher.auth_user_id }, 200)
+  }
+
+  // reset_password: also puts the login name back in line with the username, so an account whose
+  // username was changed before sync_login_name existed signs in with its username again.
   const { error: updateError } = await adminClient.auth.admin.updateUserById(targetTeacher.auth_user_id, {
     password: body.password,
+    email: syntheticEmail,
+    email_confirm: true,
   })
 
   if (updateError) {
