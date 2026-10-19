@@ -36,6 +36,7 @@ import {
   Lightning,
   WarningCircle,
   WhatsappLogo,
+  ChatCenteredText,
 } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
@@ -164,7 +165,6 @@ import { TeacherHomeSection } from './components/sections/TeacherHomeSection'
 import { AdminHomeSection } from './components/sections/AdminHomeSection'
 import { buildStudentRows } from './lib/studentRows'
 import { useAutomationSummary } from './hooks/useAutomationSummary'
-import { useStaffReplyStats } from './hooks/useStaffReplyStats'
 import { buildTeacherAgenda, formatClockTime, getAgendaItems, getWeekRange, type AgendaItem } from './lib/teacherAgenda'
 import { buildTeacherClasses } from './lib/teacherDetails'
 import { TeacherDetailsSection } from './components/sections/TeacherDetailsSection'
@@ -197,6 +197,7 @@ import { useLeadFormAnswers } from './hooks/useLeadFormAnswers'
 import { useUnreadFormSubmissions } from './hooks/useUnreadFormSubmissions'
 import { LeadsSection } from './components/sections/LeadsSection'
 import { AdminActivitySection } from './components/sections/AdminActivitySection'
+import { TeamRepliesSection } from './components/sections/TeamRepliesSection'
 import { StudentDetailModal } from './components/StudentDetailModal'
 import { buildStudentParents } from './lib/studentParents'
 import { getAttendedStudentIds } from './lib/studentLessons'
@@ -290,7 +291,7 @@ import {
 } from './lib/makeup'
 
 // The menu's order (AppNav groups them).
-const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'ai-knowledge', 'calendar', 'classrooms', 'videos', 'questions', 'students', 'app-logins', 'programmes', 'packages', 'teachers', 'class-settings', 'activity']
+const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'ai-knowledge', 'calendar', 'classrooms', 'videos', 'questions', 'students', 'app-logins', 'programmes', 'packages', 'teachers', 'team-replies', 'class-settings', 'activity']
 
 // The shared WhatsApp inbox only shows up once its address is set.
 const chatwootUrl = getChatwootUrl(import.meta.env.VITE_CHATWOOT_URL)
@@ -823,6 +824,8 @@ function App() {
     // The student app's logins: same ticks as the student page that makes them.
     if (can('students')) sections.push('app-logins')
     if (isAdmin) sections.push('teachers')
+    // How each person answers the chats: its own tick, since it is about the team's work.
+    if (can('team_replies')) sections.push('team-replies')
     if (can('activity')) sections.push('activity')
     return sections
   }, [can, isAdmin, isTeacherAccount])
@@ -867,11 +870,14 @@ function App() {
   const { summary: automationSummary, unavailable: automationUnavailable } = useAutomationSummary(
     showAdminHome && can('leads'),
   )
-  // The admin reads how each person answers the chats; only an admin, and only when asked.
-  const staffReplies = useStaffReplyStats(isAdmin && showAdminHome ? whatsAppClient : null)
   const whatsAppUser = useMemo(
     () => (effectiveTeacher ? { id: effectiveTeacher.id, name: effectiveTeacher.fullName } : null),
     [effectiveTeacher],
+  )
+  // Team Replies names everybody who may have answered a chat, those no longer active included.
+  const teamReplyStaff = useMemo(
+    () => teachers.map((teacher) => ({ id: teacher.id, name: teacher.fullName })),
+    [teachers],
   )
   const whatsAppStaff = useMemo(
     () => teachers.filter((teacher) => teacher.isActive).map((teacher) => ({ id: teacher.id, name: teacher.fullName })),
@@ -1871,6 +1877,7 @@ function App() {
         { key: 'students', label: 'Student List', icon: GraduationCap, group: 'students' },
         { key: 'app-logins', label: 'App Logins', icon: DeviceMobile, group: 'students' },
         { key: 'teachers', label: 'My Team', icon: IdentificationBadge, group: 'admin' },
+        { key: 'team-replies', label: 'Team Replies', icon: ChatCenteredText, group: 'admin' },
         { key: 'activity', label: 'Activity Log', icon: ClockCounterClockwise, group: 'admin' },
       ] satisfies { key: AppSection; label: string; icon: Icon; group?: NavGroupKey }[]
     )
@@ -6179,7 +6186,7 @@ function App() {
                       ? 'Classroom Board'
                       : activeSection === 'programmes'
                         ? 'Settings'
-                      : activeSection === 'teachers'
+                      : activeSection === 'teachers' || activeSection === 'team-replies'
                         ? 'Team Board'
                         : activeSection === 'leads'
                           ? 'Sales Pipeline'
@@ -6210,6 +6217,8 @@ function App() {
                         ? 'App Logins'
                       : activeSection === 'teachers'
                         ? 'My Team'
+                        : activeSection === 'team-replies'
+                        ? 'Team Replies'
                         : activeSection === 'leads'
                           ? 'Leads'
                           : activeSection === 'whatsapp'
@@ -6387,18 +6396,6 @@ function App() {
                   can('leads') ? { summary: automationSummary, unavailable: automationUnavailable } : null
                 }
                 canRenew={can('students', 'edit')}
-                teamReplies={
-                  isAdmin && whatsAppClient
-                    ? {
-                        staff: teachers.map((teacher) => ({ id: teacher.id, name: teacher.fullName })),
-                        data: staffReplies.data,
-                        isLoading: staffReplies.isLoading,
-                        progress: staffReplies.progress,
-                        error: staffReplies.error,
-                        onLoad: (range) => void staffReplies.load(range),
-                      }
-                    : null
-                }
                 onTakeAttendance={(item) =>
                   void openAttendanceForEvent(item.scheduleId, item.date, item.title)
                 }
@@ -6931,6 +6928,10 @@ function App() {
                 canEdit={can('forms', 'edit')}
                 canDelete={can('forms', 'delete')}
               />
+            )}
+
+            {visibleSection === 'team-replies' && (
+              <TeamRepliesSection staff={teamReplyStaff} client={whatsAppClient} canCopy={isAdmin} />
             )}
 
             {visibleSection === 'activity' && (

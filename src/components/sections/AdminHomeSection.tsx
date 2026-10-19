@@ -13,7 +13,6 @@ import { describeClassTiming, formatClockTime, type AgendaItem, type TeacherAgen
 import { parseLocalDate } from '../../domain/studentStatus'
 import type { Lead } from '../../types/domain'
 import type { FollowUpRow } from '../../lib/followUps'
-import { TeamRepliesCard, type TeamRepliesCardProps } from './TeamRepliesCard'
 
 const PREVIEW = 5
 const TODAY_PREVIEW = 8
@@ -36,8 +35,6 @@ export type AdminHomeSectionProps = {
   // Null when this account cannot see the automations.
   automations: { summary: AutomationSummary | null; unavailable: boolean } | null
   canRenew: boolean
-  // Admin only: how each person answers the WhatsApp chats. Null when it is not offered.
-  teamReplies?: TeamRepliesCardProps | null
   onTakeAttendance: (item: AgendaItem) => void
   // Opens the lesson's live questions (pop questions, see the answers).
   onRunLive?: (item: AgendaItem) => void
@@ -136,7 +133,6 @@ export function AdminHomeSection({
   whatsApp,
   automations,
   canRenew,
-  teamReplies = null,
   onTakeAttendance,
   onRunLive,
   onOpenCalendar,
@@ -165,7 +161,7 @@ export function AdminHomeSection({
   const teacherName = (id: number) => teacherNames.get(id) ?? 'Unknown teacher'
   const hasInbox = whatsApp !== null || automations !== null
   const hasAnything =
-    attendance !== null || followUp !== null || leadTasks !== null || hasInbox || unreadForms !== null || teamReplies !== null
+    attendance !== null || followUp !== null || leadTasks !== null || hasInbox || unreadForms !== null
 
   return (
     <div className="space-y-6">
@@ -314,8 +310,10 @@ export function AdminHomeSection({
             ) : (
               <ul className="divide-y divide-slate-200">
                 {followUp.all.slice(0, PREVIEW).map(({ row, reason, critical }) => (
-                  <li key={row.student.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
-                    <div className="min-w-0">
+                  // Name on the left, the reason and Renew on the right, on every row alike (it used to wrap
+                  // to a second line only when the name was long, so the list looked uneven).
+                  <li key={row.student.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <div className="min-w-0 flex-1">
                       <button
                         type="button"
                         onClick={() => onOpenStudent(row.student.id)}
@@ -323,12 +321,12 @@ export function AdminHomeSection({
                       >
                         {row.student.name}
                       </button>
-                      <div className="text-xs text-slate-500">
+                      <div className="truncate text-xs text-slate-500">
                         {[row.classroom?.name, row.parent?.name, row.parent?.phone].filter(Boolean).join(' · ') ||
                           'No class yet'}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-2">
                       <Chip tone={critical ? 'bad' : 'warn'}>{reason}</Chip>
                       {canRenew && row.kind !== 'hoa' && (
                         <button type="button" onClick={() => onRenewStudent(row.student.id)} className={secondaryButton}>
@@ -497,7 +495,6 @@ export function AdminHomeSection({
           </Block>
         )}
 
-        {teamReplies && <TeamRepliesCard {...teamReplies} />}
       </div>
     </div>
   )

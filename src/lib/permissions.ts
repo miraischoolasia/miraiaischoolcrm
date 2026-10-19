@@ -29,9 +29,12 @@ export const permissionModules: {
   { key: 'leads', label: 'Leads', canEdit: true, deleteHint: 'Delete leads' },
   { key: 'forms', label: 'Forms', canEdit: true, deleteHint: 'Delete forms and responses' },
   { key: 'activity', label: 'Activity Log', canEdit: false },
+  { key: 'team_replies', label: 'Team Replies', canEdit: false },
 ]
 
 const moduleKeys = new Set<string>(permissionModules.map((module) => module.key))
+// Modules that can only be seen, never changed (the database refuses 'edit' for them too).
+const viewOnlyKeys = new Set<string>(permissionModules.filter((module) => !module.canEdit).map((module) => module.key))
 
 // Keeps only well-formed entries, so a bad value from the database can never
 // grant more than it should.
@@ -46,7 +49,7 @@ export function parseAccountPermissions(raw: unknown): AccountPermissions {
       continue
     }
     const entry = value as { level?: unknown; delete?: unknown }
-    if (entry.level === 'edit' && key !== 'activity') {
+    if (entry.level === 'edit' && !viewOnlyKeys.has(key)) {
       result[key as PermissionModule] = { level: 'edit', delete: entry.delete === true }
     } else if (entry.level === 'view' || entry.level === 'edit') {
       result[key as PermissionModule] = { level: 'view' }

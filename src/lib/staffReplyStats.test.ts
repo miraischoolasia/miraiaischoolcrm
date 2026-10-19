@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { buildStaffReplyReport, formatDuration, type ChatForStats } from './staffReplyStats'
+import { buildTeamRepliesReport, formatDuration, type LiveChat } from './staffReplyStats'
 import type { ChatwootMessage } from './whatsappInbox'
+import { summarizeDays } from '../../supabase/functions/team-replies/logic'
+
+type ChatForStats = LiveChat & { messages: ChatwootMessage[] }
 
 const FROM = 1_000_000
 const TO = FROM + 86_400
@@ -22,9 +25,10 @@ function chat(id: number, messages: ChatwootMessage[], extra: Partial<ChatForSta
 }
 
 const staff = [{ id: 1, name: 'Mei' }, { id: 2, name: 'Jun' }]
-const report = (chats: ChatForStats[]) => buildStaffReplyReport({ chats, staff, from: FROM, to: TO, nowSeconds: NOW })
+const report = (chats: ChatForStats[]) =>
+  buildTeamRepliesReport({ dayRows: summarizeDays(chats, FROM, TO), staff, live: chats, nowSeconds: NOW })
 
-describe('buildStaffReplyReport', () => {
+describe('buildTeamRepliesReport', () => {
   it('times the first answer to a waiting parent and credits the person who sent it', () => {
     const result = report([
       chat(10, [parent(FROM + 100), ours(FROM + 400, 1)]),
@@ -81,7 +85,7 @@ describe('buildStaffReplyReport', () => {
 
     expect(result.rows.map((row) => [row.key, row.name, row.replies])).toEqual([
       ['staff:99', 'Staff #99', 1],
-      ['other', 'Sent from the phone', 1],
+      ['phone', 'Sent from the phone', 1],
     ])
   })
 

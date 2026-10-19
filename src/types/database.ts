@@ -2837,6 +2837,35 @@ export type Database = {
         Update: { watch_percentage?: number }
         Relationships: []
       }
+      // Team replies page: kept days, written only by the team-replies function.
+      team_reply_days: {
+        Row: {
+          day: string
+          replier: string
+          staff_id: number | null
+          replies: number
+          chat_ids: number[]
+          waits: number[]
+          within_target: number
+          slowest: number | null
+          computed_at: string
+        }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: []
+      }
+      team_reply_day_runs: {
+        Row: {
+          day: string
+          computed_at: string
+          source: string
+          chats_read: number
+          replies: number
+        }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: {
@@ -2847,6 +2876,44 @@ export type Database = {
       run_automation_rules: {
         Args: Record<string, never>
         Returns: number
+      }
+      // Team Replies (20261024810000): today worked out on the spot, and "Work out the days".
+      team_reply_today: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          day: string
+          replier: string
+          staff_id: number | null
+          replies: number
+          chat_ids: number[]
+          waits: number[]
+          within_target: number
+          slowest: number | null
+        }[]
+      }
+      team_reply_compute_range: {
+        Args: { p_first: string; p_last: string }
+        Returns: number
+      }
+      // The inbox copy (20261024800000): "Copy old chats" writes through these.
+      inbox_copy_import: {
+        Args: { p_account: number | null; p_chat: Json; p_messages: Json; p_done?: boolean }
+        Returns: number
+      }
+      inbox_copy_state: {
+        Args: Record<PropertyKey, never>
+        Returns: { conversation_id: number; copied_at: string | null; needs_copy: boolean; newest_message_id: number | null }[]
+      }
+      inbox_copy_summary: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          chats: number
+          messages: number
+          copied_chats: number
+          chats_to_copy: number
+          first_message_at: string | null
+          last_message_at: string | null
+        }[]
       }
       chat_webhook_info: {
         Args: Record<PropertyKey, never>

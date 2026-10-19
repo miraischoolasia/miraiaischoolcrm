@@ -70,7 +70,7 @@ export function createChatwootClient(
   }
 
   return {
-    async listConversations(status: 'open' | 'resolved', page = 1): Promise<ConversationPage> {
+    async listConversations(status: 'open' | 'resolved' | 'all', page = 1): Promise<ConversationPage> {
       const data = await request<{ data: { payload: ChatwootConversation[]; meta: { all_count: number } } }>(
         `/conversations?status=${status}&assignee_type=all&page=${page}`,
       )

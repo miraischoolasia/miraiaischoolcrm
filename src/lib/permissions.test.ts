@@ -32,10 +32,11 @@ describe('parseAccountPermissions', () => {
       parseAccountPermissions({
         leads: { level: 'view', delete: true },
         activity: { level: 'edit', delete: true },
+        team_replies: { level: 'edit' },
         money: { level: 'edit' },
         forms: { level: 'owner' },
       }),
-    ).toEqual({ leads: { level: 'view' }, activity: { level: 'view' } })
+    ).toEqual({ leads: { level: 'view' }, activity: { level: 'view' }, team_replies: { level: 'view' } })
     expect(parseAccountPermissions(null)).toEqual({})
     expect(parseAccountPermissions([])).toEqual({})
   })

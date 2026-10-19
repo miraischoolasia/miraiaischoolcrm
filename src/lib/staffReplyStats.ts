@@ -1,28 +1,26 @@
-import type { ChatwootMessage } from './whatsappInbox'
+import { mergeDayRows, TARGET_SECONDS, type DayRow, type ReplierKey } from '../../supabase/functions/team-replies/logic'
 
-// How well each staff member answers the WhatsApp chats, worked out from the messages themselves:
-// a message sent from the CRM carries who sent it (content_attributes.crm_sender), so "who answered
-// this parent, and how fast" is in Chatwoot already. Kept apart from the screen so the rules are tested.
+// How well each staff member answers the chats. The counting rules live in the team-replies function's
+// logic (shared with the server, which keeps one row per day); this adds the names and what is true right
+// now (open chats, parents waiting), which is never kept.
 
-// A parent who has waited longer than this is late; the same 30 minutes the inbox warns about.
-export const TARGET_SECONDS = 30 * 60
+export { TARGET_SECONDS }
 
 export type StaffRef = { id: number; name: string }
 
-// One chat with its messages (oldest first or not; they are sorted here).
-export type ChatForStats = {
+// An open or closed chat as it is right now.
+export type LiveChat = {
   id: number
   status: string
   // Seconds since epoch of the parent's unanswered message, 0 when answered.
   waitingSince: number
   // Who the team gave the chat to (crm_owner_id), if anybody.
   ownerId: number | null
-  messages: ChatwootMessage[]
 }
 
 export type StaffReplyRow = {
-  // 'staff:<id>', 'other' (sent from the phone or by something else) or 'nobody' (waiting, no owner).
-  key: string
+  // 'staff:<id>', 'automation' (the automatic sender), 'phone' (typed on the phone) or 'nobody' (waiting, no owner).
+  key: ReplierKey | 'nobody'
   staffId: number | null
   name: string
   // Messages sent in the period.
@@ -36,145 +34,78 @@ export type StaffReplyRow = {
   // Of those answers, how many came within TARGET_SECONDS.
   withinTarget: number
   slowestSeconds: number | null
-  // Open chats given to this person where the parent is waiting right now.
-  waitingNow: number
-  // Open chats given to this person.
-  ownedOpen: number
+  // Open chats given to this person where the parent is waiting right now (null when not read).
+  waitingNow: number | null
+  // Open chats given to this person (null when not read).
+  ownedOpen: number | null
 }
 
 export type StaffReplyReport = {
   rows: StaffReplyRow[]
   // The whole team together.
   totals: { replies: number; chats: number; answers: number; medianSeconds: number | null; withinTarget: number }
-  waiting: { total: number; overTarget: number; longestSeconds: number | null }
+  // What is waiting right now; null when the open chats were not read.
+  waiting: { total: number; overTarget: number; longestSeconds: number | null } | null
 }
 
-function senderOf(message: ChatwootMessage): number | null {
-  const id = Number(message.content_attributes?.crm_sender?.id)
-  return Number.isInteger(id) && id > 0 ? id : null
-}
+export const PHONE_LABEL = 'Sent from the phone'
+export const AUTOMATION_LABEL = 'Automation'
 
-function median(values: number[]) {
-  if (values.length === 0) {
-    return null
-  }
-  const sorted = [...values].sort((a, b) => a - b)
-  const middle = Math.floor(sorted.length / 2)
-  return sorted.length % 2 === 1 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2)
-}
-
-function average(values: number[]) {
-  return values.length === 0 ? null : Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)
-}
-
-type Tally = { replies: number; chatIds: Set<number>; waits: number[] }
-
-function emptyTally(): Tally {
-  return { replies: 0, chatIds: new Set(), waits: [] }
-}
-
-// from / to are seconds since epoch; only messages sent in [from, to) count as the period's work.
-export function buildStaffReplyReport({
-  chats,
+// Adds days together (kept ones, or today's worked out on the spot) and lays the live state over them.
+export function buildTeamRepliesReport({
+  dayRows,
   staff,
-  from,
-  to,
+  live,
   nowSeconds,
 }: {
-  chats: ChatForStats[]
+  dayRows: DayRow[]
   staff: StaffRef[]
-  from: number
-  to: number
+  live: LiveChat[] | null
   nowSeconds: number
 }): StaffReplyReport {
-  // null is "no crm_sender": sent from the phone itself, or by something other than a signed-in person.
-  const tallies = new Map<number | null, Tally>()
-  const tallyOf = (id: number | null) => {
-    let tally = tallies.get(id)
-    if (!tally) {
-      tally = emptyTally()
-      tallies.set(id, tally)
-    }
-    return tally
-  }
-  const allWaits: number[] = []
-  const allChats = new Set<number>()
-
-  for (const chat of chats) {
-    const messages = chat.messages
-      .filter(
-        (message) =>
-          !message.private &&
-          !message.content_attributes?.deleted &&
-          (message.message_type === 0 || message.message_type === 1),
-      )
-      .sort((a, b) => a.created_at - b.created_at || a.id - b.id)
-
-    // The first message of the parent that nobody has answered yet.
-    let waitingFrom: number | null = null
-    for (const message of messages) {
-      if (message.message_type === 0) {
-        if (waitingFrom === null) {
-          waitingFrom = message.created_at
-        }
-        continue
-      }
-      const inPeriod = message.created_at >= from && message.created_at < to
-      const sender = senderOf(message)
-      if (inPeriod) {
-        const tally = tallyOf(sender)
-        tally.replies += 1
-        tally.chatIds.add(chat.id)
-        allChats.add(chat.id)
-        if (waitingFrom !== null) {
-          const wait = Math.max(0, message.created_at - waitingFrom)
-          tally.waits.push(wait)
-          allWaits.push(wait)
-        }
-      }
-      waitingFrom = null
-    }
-  }
+  const merged = mergeDayRows(dayRows)
+  const work = new Map(merged.repliers.map((entry) => [entry.replier, entry]))
 
   // Open chats, given to whom, and where the parent is waiting right now.
   const owned = new Map<number | null, { open: number; waiting: number }>()
-  let waitingTotal = 0
-  let waitingOver = 0
-  let longest: number | null = null
-  for (const chat of chats) {
-    if (chat.status === 'resolved') {
-      continue
-    }
-    const entry = owned.get(chat.ownerId) ?? { open: 0, waiting: 0 }
-    entry.open += 1
-    if (chat.waitingSince > 0) {
-      entry.waiting += 1
-      waitingTotal += 1
-      const waited = Math.max(0, nowSeconds - chat.waitingSince)
-      if (waited >= TARGET_SECONDS) {
-        waitingOver += 1
+  let waiting: StaffReplyReport['waiting'] = null
+  if (live) {
+    waiting = { total: 0, overTarget: 0, longestSeconds: null }
+    for (const chat of live) {
+      if (chat.status === 'resolved') {
+        continue
       }
-      longest = longest === null ? waited : Math.max(longest, waited)
+      const entry = owned.get(chat.ownerId) ?? { open: 0, waiting: 0 }
+      entry.open += 1
+      if (chat.waitingSince > 0) {
+        entry.waiting += 1
+        waiting.total += 1
+        const waited = Math.max(0, nowSeconds - chat.waitingSince)
+        if (waited >= TARGET_SECONDS) {
+          waiting.overTarget += 1
+        }
+        waiting.longestSeconds = waiting.longestSeconds === null ? waited : Math.max(waiting.longestSeconds, waited)
+      }
+      owned.set(chat.ownerId, entry)
     }
-    owned.set(chat.ownerId, entry)
   }
 
-  function rowFor(key: string, staffId: number | null, name: string): StaffReplyRow {
-    const tally = tallies.get(staffId) ?? emptyTally()
-    const own = owned.get(staffId) ?? { open: 0, waiting: 0 }
+  function rowFor(key: StaffReplyRow['key'], staffId: number | null, name: string): StaffReplyRow {
+    const done = key === 'nobody' ? undefined : work.get(key)
+    const own = live ? (owned.get(staffId) ?? { open: 0, waiting: 0 }) : null
     return {
       key,
       staffId,
       name,
-      replies: tally.replies,
-      chats: tally.chatIds.size,
-      answers: tally.waits.length,
-      medianSeconds: median(tally.waits),
-      averageSeconds: average(tally.waits),
-      withinTarget: tally.waits.filter((wait) => wait <= TARGET_SECONDS).length,
-      slowestSeconds: tally.waits.length > 0 ? Math.max(...tally.waits) : null,
-      waitingNow: own.waiting,
-      ownedOpen: own.open,
+      replies: done?.replies ?? 0,
+      chats: done?.chats ?? 0,
+      answers: done?.answers ?? 0,
+      medianSeconds: done?.medianSeconds ?? null,
+      averageSeconds: done?.averageSeconds ?? null,
+      withinTarget: done?.withinTarget ?? 0,
+      slowestSeconds: done?.slowestSeconds ?? null,
+      waitingNow: own ? own.waiting : null,
+      ownedOpen: own ? own.open : null,
     }
   }
 
@@ -182,51 +113,34 @@ export function buildStaffReplyReport({
   const rows: StaffReplyRow[] = []
   for (const member of staff) {
     const row = rowFor(`staff:${member.id}`, member.id, member.name)
-    if (row.replies > 0 || row.ownedOpen > 0) {
+    if (row.replies > 0 || (row.ownedOpen ?? 0) > 0) {
       rows.push(row)
     }
   }
   // Somebody who sent from the CRM but is no longer in the team list: keep the work visible.
-  for (const id of tallies.keys()) {
-    if (id !== null && !known.has(id)) {
-      rows.push(rowFor(`staff:${id}`, id, `Staff #${id}`))
+  for (const entry of merged.repliers) {
+    if (entry.staffId !== null && !known.has(entry.staffId)) {
+      rows.push(rowFor(entry.replier, entry.staffId, `Staff #${entry.staffId}`))
     }
   }
-  rows.sort((a, b) => b.replies - a.replies || b.ownedOpen - a.ownedOpen || a.name.localeCompare(b.name))
+  rows.sort((a, b) => b.replies - a.replies || (b.ownedOpen ?? 0) - (a.ownedOpen ?? 0) || a.name.localeCompare(b.name))
 
-  const other = rowFor('other', null, 'Sent from the phone')
-  if (other.replies > 0) {
-    rows.push(other)
+  for (const [key, name] of [
+    ['automation', AUTOMATION_LABEL],
+    ['phone', PHONE_LABEL],
+  ] as const) {
+    const row = rowFor(key, null, name)
+    if (row.replies > 0) {
+      // The automatic sender and the phone own no chats.
+      rows.push({ ...row, waitingNow: null, ownedOpen: null })
+    }
   }
   const nobody = owned.get(null)
   if (nobody && nobody.waiting > 0) {
-    rows.push({
-      key: 'nobody',
-      staffId: null,
-      name: 'Nobody owns these',
-      replies: 0,
-      chats: 0,
-      answers: 0,
-      medianSeconds: null,
-      averageSeconds: null,
-      withinTarget: 0,
-      slowestSeconds: null,
-      waitingNow: nobody.waiting,
-      ownedOpen: nobody.open,
-    })
+    rows.push({ ...rowFor('nobody', null, 'Nobody owns these'), waitingNow: nobody.waiting, ownedOpen: nobody.open })
   }
 
-  return {
-    rows,
-    totals: {
-      replies: [...tallies.values()].reduce((sum, tally) => sum + tally.replies, 0),
-      chats: allChats.size,
-      answers: allWaits.length,
-      medianSeconds: median(allWaits),
-      withinTarget: allWaits.filter((wait) => wait <= TARGET_SECONDS).length,
-    },
-    waiting: { total: waitingTotal, overTarget: waitingOver, longestSeconds: longest },
-  }
+  return { rows, totals: merged.totals, waiting }
 }
 
 // "45 s", "12 min", "3 h 20 min", "2 d".

@@ -16,6 +16,7 @@ export type AppSection =
   | 'programmes'
   | 'forms'
   | 'activity'
+  | 'team-replies'
 // A tab on the Students page: a kind of student, or (for a school with programmes of its own) one programme,
 // 'programme:<id>', or the students in none, 'programme:none'.
 export type FilterKey = 'all' | 'hoa' | 'trial' | 'regular' | 'camp' | `programme:${number}` | 'programme:none'
@@ -194,6 +195,7 @@ export type PermissionModule =
   | 'leads'
   | 'forms'
   | 'activity'
+  | 'team_replies'
 
 export type PermissionAction = 'view' | 'edit' | 'delete'
 

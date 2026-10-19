@@ -18,9 +18,14 @@
 //
 // A message the school sends moves the lead of that chat from "new" to "contacted" (mark_lead_contacted_from_chat).
 //
+// Every message (new, edited, deleted; private notes too) and every chat change is also written to the CRM's
+// own copy of the inbox (inbox_chats / inbox_messages, see copy.ts). Chatwoot sends edits, deletes and chat
+// changes only when "Message updated", "Conversation updated" and "Conversation status changed" are ticked too.
+//
 // Deploy (once, and after changes):
 //   npx supabase functions deploy chat-activity --no-verify-jwt
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { copyFromWebhook } from './copy.ts'
 import { parseChatwootEvent } from './logic.ts'
 
 function jsonResponse(body: unknown, status = 200) {
@@ -53,14 +58,33 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: 'Invalid request body.' }, 400)
   }
 
+  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
+
+  // The copy of the inbox first: it keeps everything Chatwoot reports, also what the rest below ignores.
+  // It never stops the message from being recorded.
+  const copy = copyFromWebhook(payload)
+  if (copy !== null) {
+    const { error: copyError } = await admin.rpc('inbox_copy_from_webhook', {
+      p_key: key,
+      p_account: copy.accountId,
+      p_chat: copy.chat,
+      p_messages: copy.messages,
+    })
+    if (copyError) {
+      if (copyError.code === '28000') {
+        return jsonResponse({ ok: false, error: 'The key is not right.' }, 401)
+      }
+      // 42883: the copy is not in this database yet (its migration not pushed); the rest still works.
+      console.error('Could not copy into the inbox copy', copyError.code, copyError.message)
+    }
+  }
+
   const parsed = parseChatwootEvent(payload)
   if (!parsed.ok) {
     // Chatwoot sends every kind of event; the ones that are not a message are not an error.
     return jsonResponse({ ok: true, ignored: parsed.reason })
   }
   const message = parsed.message
-
-  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
 
   // A parent's first message that holds an advert's keyword makes the lead right now, so the automations
   // that start from "a new lead" do not wait for someone to open the inbox. It runs before the message is

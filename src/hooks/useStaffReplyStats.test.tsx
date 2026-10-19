@@ -1,56 +1,39 @@
 import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { rangeStart, useStaffReplyStats } from './useStaffReplyStats'
+import { useStaffReplyStats } from './useStaffReplyStats'
 import type { ChatwootClient } from '../lib/chatwootClient'
-import type { ChatwootConversation, ChatwootMessage } from '../lib/whatsappInbox'
+import type { ChatwootConversation } from '../lib/whatsappInbox'
 
-function conversation(id: number, lastActivity: number, extra: Partial<ChatwootConversation> = {}): ChatwootConversation {
+function conversation(id: number, extra: Partial<ChatwootConversation> = {}): ChatwootConversation {
   return {
-    id, status: 'open', unread_count: 0, waiting_since: 0, timestamp: lastActivity, last_activity_at: lastActivity,
+    id, status: 'open', unread_count: 0, waiting_since: 0, timestamp: 1, last_activity_at: 1,
     meta: { sender: { id: id * 10, name: `P${id}`, phone_number: null, identifier: null } }, ...extra,
   }
 }
-function message(id: number, createdAt: number, type = 0): ChatwootMessage {
-  return { id, content: 'x', message_type: type, created_at: createdAt, private: false, status: 'sent' }
-}
-
-describe('rangeStart', () => {
-  it('starts at midnight today, 6 days back for a week and 29 for a month', () => {
-    const now = new Date(2026, 9, 13, 15, 10)
-    expect(rangeStart('today', now)).toBe(new Date(2026, 9, 13).getTime() / 1000)
-    expect(rangeStart('7d', now)).toBe(new Date(2026, 9, 7).getTime() / 1000)
-    expect(rangeStart('30d', now)).toBe(new Date(2026, 8, 14).getTime() / 1000)
-  })
-})
 
 describe('useStaffReplyStats', () => {
-  it('reads the chats active in the period and walks back through their messages', async () => {
-    const from = rangeStart('today')
-    const recent = from + 3600
-    const listConversations = vi.fn(async (status: string, page: number) => {
-      if (status === 'open' && page === 1) {
-        return { conversations: [conversation(1, recent), conversation(2, from - 5000)], totalCount: 2 }
-      }
-      return { conversations: [], totalCount: 0 }
-    })
-    // The newest 2 messages first, then an older one that crosses the start of the period.
-    const listMessages = vi.fn(async (_id: number, before?: number) =>
-      before === undefined
-        ? [message(8, recent + 10, 1), message(7, recent, 0)]
-        : [message(5, from - 100, 1)],
-    )
-    const client = { listConversations, listMessages } as unknown as ChatwootClient
+  it('reads every open chat, with its owner and wait, in as many pages as there are', async () => {
+    // 30 open chats: a full first page of 25, then 5.
+    const all = [conversation(1, { waiting_since: 500, custom_attributes: { crm_owner_id: 3 } }), ...Array.from({ length: 29 }, (_, index) => conversation(index + 2))]
+    const listConversations = vi.fn(async (_status: string, page: number) => ({
+      conversations: all.slice((page - 1) * 25, page * 25),
+      totalCount: 30,
+    }))
+    const client = { listConversations } as unknown as ChatwootClient
 
     const { result } = renderHook(() => useStaffReplyStats(client))
     await act(async () => {
-      await result.current.load('today')
+      await result.current.load()
     })
 
     expect(result.current.error).toBeNull()
-    expect(result.current.data?.chats.map((chat) => chat.id)).toEqual([1])
-    expect(result.current.data?.chats[0].messages.map((m) => m.id).sort()).toEqual([5, 7, 8])
-    expect(listMessages).toHaveBeenCalledWith(1, undefined)
-    expect(listMessages).toHaveBeenCalledWith(1, 7)
+    expect(result.current.data?.live).toHaveLength(30)
+    expect(result.current.data?.live.slice(0, 2)).toEqual([
+      { id: 1, status: 'open', waitingSince: 500, ownerId: 3 },
+      { id: 2, status: 'open', waitingSince: 0, ownerId: null },
+    ])
+    // Two pages hold them all: no third request.
+    expect(listConversations).toHaveBeenCalledTimes(2)
   })
 
   it('reports a problem instead of throwing', async () => {
@@ -62,10 +45,10 @@ describe('useStaffReplyStats', () => {
 
     const { result } = renderHook(() => useStaffReplyStats(client))
     await act(async () => {
-      await result.current.load('7d')
+      await result.current.load()
     })
 
-    expect(result.current.error).toMatch(/Couldn't read the WhatsApp chats/)
+    expect(result.current.error).toMatch(/Couldn't read the open chats/)
     expect(result.current.data).toBeNull()
     expect(result.current.isLoading).toBe(false)
   })
