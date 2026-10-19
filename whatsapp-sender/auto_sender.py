@@ -26,6 +26,11 @@ Settings (environment, from /opt/mirai-inbox/auto-sender.env):
   GHL_API_URL    default https://services.leadconnectorhq.com
   OPEN_NEW_CHATS 1 lets it start a chat with a number that has not written to the school; default 0
 
+How often it asks: every question leaves lines in the CRM database's logs, so it asks only when it can be
+useful. The database says how long to wait (wait_seconds): until the sending hours open, until the 30-second
+gap after the last message has passed, a few minutes while sending is paused, and a minute when nothing is
+waiting. A message that is due goes out within that minute.
+
 Message texts are never written to the log.
 """
 import json
@@ -46,7 +51,14 @@ GHL_API_URL = os.environ.get("GHL_API_URL", "https://services.leadconnectorhq.co
 GHL_PREFIX = "ghl:"
 OPEN_NEW_CHATS = os.environ.get("OPEN_NEW_CHATS", "0") == "1"
 
-IDLE_SECONDS = 15
+# The database's wait is kept between these, so a wrong answer can neither spin nor stop the sender.
+MIN_WAIT_SECONDS = 2
+MAX_WAIT_SECONDS = 30 * 60
+# When the function gives no wait (an older auto-sender): once a minute, and every 15 seconds for two minutes
+# after a message went out, so a row of messages still goes at the 30-second gap.
+IDLE_SECONDS = 60
+BUSY_SECONDS = 15
+BUSY_WINDOW_SECONDS = 120
 ERROR_SECONDS = 60
 CONFIRM_SECONDS = 45
 API = f"{CHATWOOT_URL}/api/v1/accounts/{ACCOUNT}"
@@ -371,8 +383,21 @@ def send(item):
     return "failed", "WhatsApp did not confirm the message in time. Check the chat before sending again."
 
 
+def wait_after(answer, since_sent):
+    """Seconds to wait before asking again when no message came. since_sent: seconds since this sender last
+    sent one, or None."""
+    wait = answer.get("wait_seconds")
+    if isinstance(wait, (int, float)) and not isinstance(wait, bool) and wait > 0:
+        return max(MIN_WAIT_SECONDS, min(MAX_WAIT_SECONDS, wait))
+    if since_sent is not None and since_sent < BUSY_WINDOW_SECONDS:
+        return BUSY_SECONDS
+    return IDLE_SECONDS
+
+
 def main():
     log("auto-sender started")
+    last_sent = None
+    last_reason = None
     while True:
         try:
             answer = crm({"action": "claim"})
@@ -387,14 +412,22 @@ def main():
 
         item = answer.get("message")
         if not item:
-            time.sleep(IDLE_SECONDS)
+            wait = wait_after(answer, None if last_sent is None else time.time() - last_sent)
+            reason = answer.get("reason")
+            # Only a change is logged ("closed" once in the evening, not every half hour).
+            if reason != last_reason:
+                log(f"nothing to send ({reason or 'no reason given'}), next look in {round(wait)} s")
+                last_reason = reason
+            time.sleep(wait)
             continue
+        last_reason = None
 
         try:
             result, error = send(item)
         except Exception as problem:
             result, error = "failed", f"The sender could not reach WhatsApp ({type(problem).__name__})."
         log(f"message {item['id']} -> {result}" + (f" ({error})" if error else ""))
+        last_sent = time.time()
         try:
             crm({"action": "finish", "id": item["id"], "result": result, "error": error})
         except Exception as problem:

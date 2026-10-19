@@ -1,7 +1,11 @@
 // The door the WhatsApp server's sender program uses to send automation messages by itself.
 //
 //   POST /functions/v1/auto-sender   header x-sender-key: <the sender key>
-//   { "action": "claim" }                                  -> { ok, message: { id, phone, message, ... } | null }
+//   { "action": "claim" }                                  -> { ok, message: { id, phone, message, ... } | null,
+//                                                               wait_seconds, reason }
+//     wait_seconds: when no message came, how long the sender waits before asking again (until the sending
+//     hours open, until the gap has passed, ...). Missing while the database has no automation_claim_auto_next
+//     yet (migration 20261024950000 not pushed); the sender then uses its own pace.
 //   { "action": "finish", "id": 12, "result": "sent" | "failed" | "blocked", "error": "..." }
 //
 // Nothing is decided here. The database hands out one message at a time and only when every safety
@@ -47,6 +51,25 @@ Deno.serve(async (req) => {
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
 
   if (body.action === 'claim') {
+    const next = await admin.rpc('automation_claim_auto_next', { p_key: key })
+    if (!next.error) {
+      const answer = (next.data ?? {}) as { message?: unknown; wait_seconds?: unknown; reason?: unknown }
+      return jsonResponse({
+        ok: true,
+        message: answer.message ?? null,
+        wait_seconds: typeof answer.wait_seconds === 'number' ? answer.wait_seconds : null,
+        reason: typeof answer.reason === 'string' ? answer.reason : null,
+      })
+    }
+    if (next.error.code === '28000') {
+      return jsonResponse({ ok: false, error: 'The key is not right.' }, 401)
+    }
+    // Any other trouble than "this database does not have it yet" is a real error.
+    if (next.error.code !== 'PGRST202' && next.error.code !== '42883') {
+      console.error('Could not claim', next.error.code, next.error.message)
+      return jsonResponse({ ok: false, error: 'Could not claim.' }, 500)
+    }
+
     const { data, error } = await admin.rpc('automation_claim_auto', { p_key: key })
     if (error) {
       if (error.code === '28000') {

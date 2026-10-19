@@ -21,7 +21,7 @@ import { useConfirm } from '../../hooks/useConfirm'
 import { cn } from '../../lib/cn'
 import { EMPTY_FILTER_OPTIONS, describeFlow, type FilterOptions, type FlowDraft } from '../../lib/automationFlows'
 import { describeStats } from '../../lib/automationStats'
-import { senderState } from '../../lib/autoSend'
+import { senderIsFine, senderState } from '../../lib/autoSend'
 import type { FlowRecipe } from '../../lib/flowSteps'
 import type { Classroom, LeadOption } from '../../types/domain'
 
@@ -182,7 +182,8 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
   const autoFlowCount = flows.filter((entry) => entry.enabled && entry.graph.settings?.autoSend === true).length
   const settingsAlert = autoSend.settings.paused
     ? 'Paused'
-    : autoFlowCount > 0 && senderState(autoSend.settings.senderSeenAt) !== 'online'
+    : autoFlowCount > 0 &&
+        !senderIsFine(senderState(autoSend.settings.senderSeenAt, Date.now(), autoSend.settings.senderNextAt ?? null))
       ? 'Sender offline'
       : null
 

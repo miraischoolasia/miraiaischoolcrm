@@ -77,6 +77,7 @@ const extras = vi.hoisted(() => ({
     fromHour: 9,
     untilHour: 21,
     senderSeenAt: null as string | null,
+    senderNextAt: null as string | null,
   },
   saveAutoSend: vi.fn(),
   stats: new Map<number, unknown>(),
@@ -201,7 +202,7 @@ describe('AutomationsSection', () => {
     chatHook.state.isLoading = false
     chatHook.state.reload.mockReset()
     extras.stats = new Map()
-    extras.autoSend = { paused: false, dailyCap: 40, gapSeconds: 30, fromHour: 9, untilHour: 21, senderSeenAt: null }
+    extras.autoSend = { paused: false, dailyCap: 40, gapSeconds: 30, fromHour: 9, untilHour: 21, senderSeenAt: null, senderNextAt: null }
     extras.saveAutoSend.mockReset().mockResolvedValue(null)
     extras.forms = []
     extras.optouts = []
@@ -1006,6 +1007,18 @@ describe('AutomationsSection', () => {
       await userEvent.click(screen.getByRole('button', { name: /Sending by itself/ }))
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       expect(screen.getByText(/Sender program: running/)).toBeInTheDocument()
+    })
+
+    it('does not call a sender that sleeps until morning offline, and says when it wakes', async () => {
+      hook.state.flows = [{ ...autoFlow(), enabled: true }]
+      extras.autoSend.senderSeenAt = new Date(Date.now() - 20 * 60_000).toISOString()
+      extras.autoSend.senderNextAt = new Date(Date.now() + 10 * 60_000).toISOString()
+      setup()
+      expect(screen.getByRole('button', { name: /^Settings/ })).not.toHaveTextContent('Sender offline')
+      await openSettings()
+      await userEvent.click(screen.getByRole('button', { name: /Sending by itself/ }))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(screen.getByText(/Sender program: running, resting until \d\d:\d\d\./)).toBeInTheDocument()
     })
 
     it('does not let someone who cannot edit change the rules', async () => {

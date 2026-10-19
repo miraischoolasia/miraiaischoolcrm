@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_AUTO_SEND, autoSendErrorMessage, hourLabel, senderState, validateAutoSend } from './autoSend'
+import {
+  DEFAULT_AUTO_SEND,
+  autoSendErrorMessage,
+  hourLabel,
+  senderIsFine,
+  senderState,
+  senderWakesAt,
+  validateAutoSend,
+} from './autoSend'
 
 const NOW = Date.parse('2026-10-17T10:00:00+08:00')
 
@@ -8,6 +16,27 @@ describe('the sender program', () => {
     expect(senderState(null, NOW)).toBe('never')
     expect(senderState(new Date(NOW - 20_000).toISOString(), NOW)).toBe('online')
     expect(senderState(new Date(NOW - 10 * 60_000).toISOString(), NOW)).toBe('offline')
+  })
+
+  it('is resting, not offline, while it sleeps until the time it gave', () => {
+    const at = (minutes: number) => new Date(NOW + minutes * 60_000).toISOString()
+    // Seen 20 minutes ago, said it would ask again in 10 minutes: resting.
+    expect(senderState(at(-20), NOW, at(10))).toBe('resting')
+    expect(senderIsFine(senderState(at(-20), NOW, at(10)))).toBe(true)
+    // Asks again within the minute (the day): simply running.
+    expect(senderState(at(-0.5), NOW, at(0.5))).toBe('online')
+    // The time passed, but less than 3 minutes ago: still fine.
+    expect(senderState(at(-32), NOW, at(-2))).toBe('online')
+    // More than 3 minutes past the time it gave: stopped.
+    expect(senderState(at(-34), NOW, at(-4))).toBe('offline')
+    expect(senderIsFine('offline')).toBe(false)
+    expect(senderIsFine('never')).toBe(false)
+    // An older sender that writes no time, but asked just now, is running.
+    expect(senderState(at(-0.2), NOW, at(-60))).toBe('online')
+  })
+
+  it('tells the wake-up time in Kuala Lumpur time', () => {
+    expect(senderWakesAt('2026-10-19T01:00:00Z')).toBe('09:00')
   })
 })
 

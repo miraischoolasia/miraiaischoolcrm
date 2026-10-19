@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { CaretDown, CaretUp } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
-import { hourLabel, senderState, type AutoSendSettings } from '../../lib/autoSend'
+import { hourLabel, senderIsFine, senderState, senderWakesAt, type AutoSendSettings } from '../../lib/autoSend'
 
 type AutoSendCardProps = {
   settings: AutoSendSettings
@@ -22,7 +22,7 @@ const UNTIL_HOURS = Array.from({ length: 24 }, (_, index) => index + 1)
 export function AutoSendCard({ settings, autoFlows, canEdit, loadError, onSave }: AutoSendCardProps) {
   const [open, setOpen] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
-  const state = senderState(settings.senderSeenAt)
+  const state = senderState(settings.senderSeenAt, Date.now(), settings.senderNextAt ?? null)
 
   async function save(change: Partial<Omit<AutoSendSettings, 'senderSeenAt'>>) {
     setProblem(null)
@@ -57,7 +57,7 @@ export function AutoSendCard({ settings, autoFlows, canEdit, loadError, onSave }
       {open && (
         <div className="space-y-3 border-t border-slate-100 px-4 py-3">
           {loadError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{loadError}</p>}
-          {autoFlows > 0 && state !== 'online' && !settings.paused && (
+          {autoFlows > 0 && !senderIsFine(state) && !settings.paused && (
             <p role="alert" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
               {state === 'never'
                 ? 'The sender program has not connected yet, so these messages wait in the approval queue.'
@@ -153,7 +153,14 @@ export function AutoSendCard({ settings, autoFlows, canEdit, loadError, onSave }
             <li>A parent who writes STOP, or who replies, is not sent the messages that were still waiting.</li>
             <li>
               Sender program:{' '}
-              {state === 'online' ? 'running' : state === 'offline' ? 'not seen for a few minutes' : 'not connected yet'}.
+              {state === 'online'
+                ? 'running'
+                : state === 'resting' && settings.senderNextAt
+                  ? `running, resting until ${senderWakesAt(settings.senderNextAt)}`
+                  : state === 'offline'
+                    ? 'not seen for a few minutes'
+                    : 'not connected yet'}
+              .
             </li>
           </ul>
         </div>

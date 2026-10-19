@@ -14,6 +14,9 @@ export type AutoSendSettings = {
   untilHour: number
   // When the sender program on the WhatsApp server last asked for work.
   senderSeenAt: string | null
+  // When it said it would ask again (it sleeps up to 30 minutes at night or while paused); null before
+  // that was recorded.
+  senderNextAt?: string | null
 }
 
 export const DEFAULT_AUTO_SEND: AutoSendSettings = {
@@ -23,18 +26,42 @@ export const DEFAULT_AUTO_SEND: AutoSendSettings = {
   fromHour: 9,
   untilHour: 21,
   senderSeenAt: null,
+  senderNextAt: null,
 }
 
-// The sender asks about every 15 seconds.
+// The sender asks again at the time it gave (about every minute in the day); missing it by more than this
+// means it stopped. Without that time (an older sender) it must have asked within this long.
 const OFFLINE_AFTER_MS = 3 * 60 * 1000
+// Asking again further off than this is a rest (night, or paused), shown with the time it wakes.
+const RESTING_AFTER_MS = 2 * 60 * 1000
 
-export type SenderState = 'never' | 'online' | 'offline'
+// 'resting' is fine too: the sender said it sleeps until a set time (see senderWakesAt).
+export type SenderState = 'never' | 'online' | 'resting' | 'offline'
 
-export function senderState(seenAt: string | null, now = Date.now()): SenderState {
+export function senderState(seenAt: string | null, now = Date.now(), nextAt: string | null = null): SenderState {
   if (!seenAt) {
     return 'never'
   }
+  const next = nextAt ? Date.parse(nextAt) : Number.NaN
+  if (!Number.isNaN(next) && now <= next + OFFLINE_AFTER_MS) {
+    return next - now > RESTING_AFTER_MS ? 'resting' : 'online'
+  }
   return now - Date.parse(seenAt) > OFFLINE_AFTER_MS ? 'offline' : 'online'
+}
+
+// Running, or asleep until a time it gave: nothing to warn about.
+export function senderIsFine(state: SenderState) {
+  return state === 'online' || state === 'resting'
+}
+
+// "09:00": when a resting sender asks again, in Kuala Lumpur time.
+export function senderWakesAt(nextAt: string) {
+  return new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Kuala_Lumpur',
+  }).format(new Date(nextAt))
 }
 
 export function hourLabel(hour: number) {
@@ -65,6 +92,8 @@ function requireSupabase() {
 }
 
 const COLUMNS = 'paused, daily_cap, gap_seconds, send_from_hour, send_until_hour, sender_seen_at'
+// Before migration 20261024950000 there is no sender_next_at: then it is read without it.
+const COLUMNS_WITH_NEXT = `${COLUMNS}, sender_next_at`
 
 type Row = {
   paused: boolean
@@ -73,14 +102,19 @@ type Row = {
   send_from_hour: number
   send_until_hour: number
   sender_seen_at: string | null
+  sender_next_at?: string | null
 }
 
 export async function fetchAutoSend(): Promise<AutoSendSettings> {
-  const { data, error } = await requireSupabase().from('automation_settings').select(COLUMNS).maybeSingle()
+  const select = (columns: string) => requireSupabase().from('automation_settings').select(columns).maybeSingle()
+  let { data, error } = await select(COLUMNS_WITH_NEXT)
+  if (error?.code === '42703') {
+    ;({ data, error } = await select(COLUMNS))
+  }
   if (error) {
     throw error
   }
-  const row = data as Row | null
+  const row = data as unknown as Row | null
   return row
     ? {
         paused: row.paused,
@@ -89,6 +123,7 @@ export async function fetchAutoSend(): Promise<AutoSendSettings> {
         fromHour: row.send_from_hour,
         untilHour: row.send_until_hour,
         senderSeenAt: row.sender_seen_at,
+        senderNextAt: row.sender_next_at ?? null,
       }
     : DEFAULT_AUTO_SEND
 }
