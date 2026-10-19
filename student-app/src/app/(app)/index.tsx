@@ -1,3 +1,4 @@
+import { type Href, useRouter } from 'expo-router'
 import { Linking, Platform, StyleSheet, View } from 'react-native'
 
 import { formatDay, formatTime, todayInMalaysia } from '@/lib/format'
@@ -139,7 +140,15 @@ export default function Home() {
 }
 
 function NextClass({ item, isToday, color }: { item: UpcomingClass; isToday: boolean; color: string }) {
+  const router = useRouter()
+  // On the web the class opens inside the app (Zoom in the page, the
+  // teacher's questions and moments beside it); on phones in the Zoom app.
+  const inApp = Platform.OS === 'web' && Boolean(item.session_id && item.in_app_zoom)
   function join() {
+    if (inApp && item.session_id) {
+      router.push(`/class/${item.session_id}` as Href)
+      return
+    }
     if (!item.zoom_link) return
     if (Platform.OS === 'web') {
       window.open(item.zoom_link, '_blank', 'noopener')
@@ -158,7 +167,9 @@ function NextClass({ item, isToday, color }: { item: UpcomingClass; isToday: boo
         {item.class ?? item.title}
         {item.teacher ? ` · ${item.teacher}` : ''}
       </Muted>
-      {item.zoom_link ? (
+      {inApp ? (
+        <Button label="Enter class" color={color} onPress={join} />
+      ) : item.zoom_link ? (
         <Button label="Join class on Zoom" color={color} onPress={join} />
       ) : (
         <Muted>The class link will appear here.</Muted>

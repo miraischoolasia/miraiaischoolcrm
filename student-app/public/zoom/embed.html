@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Class video</title>
+    <!--
+      Runs Zoom's Meeting SDK (component view) on its own page, inside an iframe of the app.
+      The SDK brings its own React 18; keeping it here stops it clashing with the app's React.
+      The app sends { type: 'join', payload } with details from the zoom server function.
+      This page answers with { type: 'ready' | 'joined' | 'left' | 'error', message? }.
+      { type: 'leave' } leaves the meeting (the class page sends it when the child leaves the page).
+      Copied from EDUCINEVA's public/zoom/embed.html (Zoom Meeting SDK 6.5.0, component view).
+    -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #141833;
+        overflow: hidden;
+        font-family: system-ui, sans-serif;
+      }
+      #root {
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      const VERSION = '6.5.0';
+      const BASE = 'https://source.zoom.us/' + VERSION;
+      const SCRIPTS = [
+        BASE + '/lib/vendor/react.min.js',
+        BASE + '/lib/vendor/react-dom.min.js',
+        BASE + '/lib/vendor/redux.min.js',
+        BASE + '/lib/vendor/redux-thunk.min.js',
+        BASE + '/lib/vendor/react-redux.min.js',
+        BASE + '/lib/vendor/lodash.min.js',
+        'https://source.zoom.us/zoom-meeting-embedded-' + VERSION + '.min.js',
+      ];
+
+      function load(src) {
+        return new Promise(function (resolve, reject) {
+          const s = document.createElement('script');
+          s.src = src;
+          s.onload = resolve;
+          s.onerror = function () {
+            reject(new Error('Could not load the video player. Check your internet.'));
+          };
+          document.head.appendChild(s);
+        });
+      }
+
+      const ready = SCRIPTS.reduce(function (p, src) {
+        return p.then(function () {
+          return load(src);
+        });
+      }, Promise.resolve());
+
+      function send(msg) {
+        window.parent.postMessage(msg, window.location.origin);
+      }
+
+      // Zoom's player keeps its own default sizes (nothing set here). The page tells the app how big the player
+      // is, and whenever it changes (for example when the teacher shares a screen), and the app shapes its big
+      // box to match. The player starts 88px down, out of reach; the rule below puts it at the top left.
+      const placement = document.createElement('style');
+      document.head.appendChild(placement);
+      // The player is centred in the page. Its pop-ups (settings, people, chat) open beside it, so the page is
+      // kept bigger than the player. The nested draggable parts keep Zoom's own position.
+      function place(w, h) {
+        const left = Math.max(0, Math.round((window.innerWidth - w) / 2));
+        const top = Math.max(0, Math.round((window.innerHeight - h) / 2));
+        const css =
+          '.react-draggable:not(.zoom-MuiBox-root){transform:translate(' + left + 'px,' + top + 'px)!important}' +
+          '.react-draggable.zoom-MuiBox-root{transform:translate(0,0)!important}';
+        if (placement.textContent !== css) placement.textContent = css;
+      }
+      let activeClient = null;
+      let lastSize = '';
+      // A screen is being shared when Zoom has drawn the shared-screen canvas.
+      function isSharing() {
+        return /You are viewing .* screen/i.test(document.body.innerText || '') || !!document.querySelector('[aria-label="Pause screen sharing"],[aria-label="Stop Share"]');
+      }
+      function reportSize() {
+        const el = document.querySelector('.react-draggable');
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        place(r.width, r.height);
+        const sharing = isSharing();
+        const key = Math.round(r.width) + 'x' + Math.round(r.height) + (sharing ? 's' : '');
+        if (r.width < 50 || key === lastSize) return;
+        lastSize = key;
+        send({ type: 'size', width: Math.round(r.width), height: Math.round(r.height), sharing: sharing });
+      }
+      // Zoom draws the player a moment after joining, and redraws it on every change of view.
+      // While the teacher shares a screen the strip view (shared screen large, the class in a column) is the one that
+      // gives the shared screen room; the other views squeeze it into a corner. So the strip view is used for as
+      // long as a screen is shared, then the teacher view comes back.
+      let view = 'speaker';
+      let switching = false;
+      function keepViewRight() {
+        if (!activeClient || switching) return;
+        const sharing = isSharing();
+        const want = sharing ? 'ribbon' : 'speaker';
+        if (want === view) return;
+        switching = true;
+        Promise.resolve(activeClient.setViewType(want)).then(
+          function () {
+            view = want;
+            switching = false;
+          },
+          function () {
+            switching = false;
+          },
+        );
+      }
+      // Zoom opens its big pop-ups (settings, people, chat) beside the player, on whichever side has room. The player
+      // is centred and large, so neither side has room and the pop-up lands out of sight. Any big pop-up that is
+      // not fully on screen is moved to the middle of the page.
+      function keepPopupsVisible() {
+        Array.prototype.forEach.call(document.querySelectorAll('.zoom-MuiPopper-root'), function (el) {
+          const r = el.getBoundingClientRect();
+          if (r.width < 300 || r.height < 200) return;
+          if (r.left >= 0 && r.right <= window.innerWidth && r.top >= 0 && r.bottom <= window.innerHeight) return;
+          const x = Math.max(0, Math.round((window.innerWidth - r.width) / 2));
+          const y = Math.max(0, Math.round((window.innerHeight - r.height) / 2));
+          el.style.setProperty('transform', 'translate3d(' + x + 'px,' + y + 'px,0)', 'important');
+        });
+      }
+      new MutationObserver(function () {
+        reportSize();
+        keepPopupsVisible();
+        keepViewRight();
+      }).observe(document.body, { childList: true, subtree: true, attributes: true });
+      window.addEventListener('resize', reportSize);
+
+      let joined = false;
+      // Leave on purpose, so Zoom marks the child as gone at once (a closed tab is noticed only minutes later).
+      function leave() {
+        if (!activeClient || !joined) return;
+        joined = false;
+        try {
+          Promise.resolve(activeClient.leaveMeeting()).catch(function () {});
+        } catch (err) {}
+      }
+      window.addEventListener('pagehide', leave);
+      window.addEventListener('message', async function (e) {
+        if (e.origin !== window.location.origin || e.source !== window.parent) return;
+        const data = e.data || {};
+        if (data.type === 'leave') {
+          leave();
+          return;
+        }
+        if (data.type !== 'join' || joined) return;
+        const p = data.payload;
+        try {
+          await ready;
+          const client = window.ZoomMtgEmbedded.createClient();
+          await client.init({
+            zoomAppRoot: document.getElementById('root'),
+            language: 'en-US',
+            patchJsMedia: true,
+            leaveOnPageUnload: true,
+            customize: {
+              // Zoom's own defaults, nothing locked: its view, toolbar and buttons all show. We narrow
+              // this down after seeing what the real player offers.
+              video: {
+                isResizable: false,
+                // The teacher big, with the class in a small row above. While the teacher shares a screen Zoom
+                // itself switches to the strip view: the shared screen large, the class in a column at the right.
+                defaultViewType: 'speaker',
+              },
+            },
+          });
+          await client.join({
+            signature: p.signature,
+            meetingNumber: p.meetingNumber,
+            password: p.password,
+            userName: p.userName,
+            userEmail: p.userEmail,
+            tk: p.tk,
+            customerKey: p.customerKey,
+          });
+          joined = true;
+          activeClient = client;
+          send({ type: 'joined' });
+          client.on('connection-change', function (c) {
+            if (c && c.state === 'Closed') {
+              joined = false;
+              send({ type: 'left' });
+            }
+          });
+        } catch (err) {
+          send({ type: 'error', message: (err && (err.reason || err.message)) || 'Could not join the class video.' });
+        }
+      });
+
+      ready.then(
+        function () {
+          send({ type: 'ready' });
+        },
+        function (err) {
+          send({ type: 'error', message: err.message });
+        },
+      );
+    </script>
+  </body>
+</html>

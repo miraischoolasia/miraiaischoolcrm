@@ -10,7 +10,8 @@ export type ClassScreenState = {
   top: { name: string; points: number }[]
   question: { number: number; prompt: string; closesAt: string } | null
   // Points the teacher just gave, cheered on the screen for a moment.
-  cheer?: { id: number; name: string; points: number; reason: string } | null
+  // studentId lets the child who got them skip it (their own pop-up shows instead).
+  cheer?: { id: number; studentId?: number; name: string; points: number; reason: string } | null
   // Random pick: names roll on the screen and stop on the child picked (seq is new for each pick).
   roll?: { seq: number; people: ScreenPerson[]; chosenId: number } | null
   // Star of the day: the child on a stage under a spotlight.

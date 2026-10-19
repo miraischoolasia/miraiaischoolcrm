@@ -8,7 +8,7 @@ export type LateReminderSettings = { afterMinutes: number; text: string }
 
 export const defaultLateReminder: LateReminderSettings = {
   afterMinutes: 5,
-  text: "Hi! {child}'s {class} class started at {time}. Please help {child} join the Zoom from the app. Thank you!",
+  text: "Hi! {child}'s {class} class started at {time}. Please help {child} join the class here: {link} Thank you!",
 }
 
 export function readLateReminder(value: unknown): LateReminderSettings {
@@ -20,10 +20,23 @@ export function readLateReminder(value: unknown): LateReminderSettings {
   }
 }
 
-// {child} is the child's first name; {class} and {time} as given.
-export function fillLateReminder(text: string, values: { child: string; className: string; time: string }) {
+// {child} is the child's first name; {class} and {time} as given; {link}
+// opens the lesson's class page in the student app ("the app" while the
+// school has not set the app's address).
+export function fillLateReminder(text: string, values: { child: string; className: string; time: string; link?: string | null }) {
   const firstName = values.child.trim().split(/\s+/)[0] ?? values.child
-  return text.replaceAll('{child}', firstName).replaceAll('{class}', values.className).replaceAll('{time}', values.time)
+  return text
+    .replaceAll('{child}', firstName)
+    .replaceAll('{class}', values.className)
+    .replaceAll('{time}', values.time)
+    .replaceAll('{link}', values.link?.trim() || 'the app')
+}
+
+// The lesson's class page in the student app, from the school's app address
+// (Class Settings > Student app).
+export function classPageLink(appUrl: string | null | undefined, sessionId: number) {
+  const base = (appUrl ?? '').trim().replace(/\/+$/, '')
+  return base ? `${base}/class/${sessionId}` : null
 }
 
 // A link that opens the teacher's own WhatsApp with the message written in.

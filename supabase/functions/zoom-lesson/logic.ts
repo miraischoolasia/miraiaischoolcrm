@@ -72,6 +72,44 @@ export function registrantNames(fullName: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Joining in the student app's page (Zoom Meeting SDK)
+
+// The "tk" of a child's own sign-up link: with it the SDK joins as that
+// sign-up, so the webhook knows the child (registrant id) as with the link.
+export function tkFromJoinUrl(joinUrl: string | null | undefined) {
+  if (!joinUrl) return null
+  try {
+    return new URL(joinUrl).searchParams.get('tk')
+  } catch {
+    return null
+  }
+}
+
+// What the Meeting SDK signature says: the SDK app, the meeting, the role
+// (0 = attendee) and two hours of validity, started 30 s back for clock drift.
+export function sdkSignatureClaims(appKey: string, meetingNumber: string, role: 0 | 1, nowSeconds = Math.floor(Date.now() / 1000)) {
+  const iat = nowSeconds - 30
+  const exp = iat + 2 * 60 * 60
+  return { appKey, sdkKey: appKey, mn: meetingNumber, role, iat, exp, tokenExp: exp, video_webrtc_mode: 1 }
+}
+
+function base64Url(bytes: Uint8Array) {
+  let text = ''
+  for (const byte of bytes) text += String.fromCharCode(byte)
+  return btoa(text).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+// An HS256 JSON Web Token.
+export async function signHs256(claims: Record<string, unknown>, secret: string) {
+  const encoder = new TextEncoder()
+  const head = base64Url(encoder.encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })))
+  const body = base64Url(encoder.encode(JSON.stringify(claims)))
+  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const signature = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(`${head}.${body}`)))
+  return `${head}.${body}.${base64Url(signature)}`
+}
+
+// ---------------------------------------------------------------------------
 // Webhook
 
 async function hmacHex(secret: string, message: string) {

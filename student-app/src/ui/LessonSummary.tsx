@@ -23,6 +23,10 @@ export function findSummary(summaries: LessonSummary[], date: string, title: str
   return summaries.find((summary) => summary.date === date && summary.title === title) ?? null
 }
 
+export function findSessionSummary(summaries: LessonSummary[], sessionId: number) {
+  return summaries.find((summary) => summary.session_id === sessionId) ?? null
+}
+
 // One line of chips: time in Zoom, questions right, points.
 export function LessonSummaryChips({ summary, color }: { summary: LessonSummary; color: string }) {
   const chips: { key: string; text: string }[] = []

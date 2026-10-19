@@ -18,6 +18,10 @@ export type UpcomingClass = {
   class: string | null
   teacher: string | null
   zoom_link: string | null
+  // The lesson's class session once the teacher opened it, and whether it has
+  // a Zoom meeting to join inside the app (the class page).
+  session_id?: number | null
+  in_app_zoom?: boolean
 }
 
 export type Lesson = {

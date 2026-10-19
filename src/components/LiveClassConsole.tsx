@@ -25,12 +25,15 @@ import {
   defaultLateReminder,
   fetchLateReminderSettings,
   fetchLateReminders,
+  classPageLink,
   fillLateReminder,
   recordLateReminder,
   whatsAppLink,
   type LateReminderSettings,
 } from '../lib/lateReminder'
 import { classScreenChannel, classScreenUrl, firstName, topForScreen, type ClassScreenState } from '../lib/classScreen'
+import { useClassLiveBroadcast } from '../lib/classLive'
+import { fetchPortalSettings } from '../lib/portal'
 import { fetchLiveQuestionSettings } from '../lib/liveQuestions'
 import type { StudentBackground } from '../lib/studentBackground'
 import type { AgeGroup } from '../types/domain'
@@ -95,6 +98,8 @@ export function LiveClassConsole({
   const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [reminderSettings, setReminderSettings] = useState<LateReminderSettings>(defaultLateReminder)
+  // The student app's address, for the class page link in a late reminder.
+  const [appUrl, setAppUrl] = useState('')
   const [reminders, setReminders] = useState<Map<number, string>>(new Map())
   const [remindingAll, setRemindingAll] = useState(false)
   const [ending, setEnding] = useState<'idle' | 'confirm' | 'ending' | 'failed'>('idle')
@@ -186,6 +191,9 @@ export function LiveClassConsole({
     loadPoints()
     void fetchRewardPresets().then(setPresets).catch(() => setPresets([]))
     void fetchLateReminderSettings().then(setReminderSettings)
+    void fetchPortalSettings()
+      .then((settings) => setAppUrl(settings.app_url))
+      .catch(() => setAppUrl(''))
     void fetchLiveQuestionSettings().then((settings) => setLeaderboardTop(settings.leaderboardTop))
   }, [loadPoints])
 
@@ -215,7 +223,7 @@ export function LiveClassConsole({
       )
       if (entry.kind === 'award') {
         const name = (namesRef.current.get(entry.studentId) ?? '').trim().split(' ')[0] || 'Star'
-        setCheer({ id: entry.id, name, points: entry.points, reason: entry.reason })
+        setCheer({ id: entry.id, studentId: entry.studentId, name, points: entry.points, reason: entry.reason })
         timers.push(setTimeout(() => setCheer((current) => (current?.id === entry.id ? null : current)), 4000))
       }
     })
@@ -307,7 +315,7 @@ export function LiveClassConsole({
     const phone = parentPhones?.get(studentId) ?? null
     const name = names.get(studentId) ?? 'your child'
     const time = startsAtIso ? new Date(startsAtIso).toLocaleTimeString('en-MY', { hour: 'numeric', minute: '2-digit' }) : ''
-    const text = fillLateReminder(reminderSettings.text, { child: name, className: title, time })
+    const text = fillLateReminder(reminderSettings.text, { child: name, className: title, time, link: classPageLink(appUrl, sessionId) })
     if (!phone) return 'No phone number for this child.'
     if (sendWhatsApp) {
       const problem = await sendWhatsApp(phone, name, text)
@@ -405,6 +413,8 @@ export function LiveClassConsole({
       channel.close()
     }
   }, [lessonDate, scheduleId, screenState])
+  // The same, live on every child's class page in the student app.
+  useClassLiveBroadcast(sessionId, screenState)
 
   // Random pick: the class screen rolls the names of those it picks from.
   function picked(studentId: number | null, candidates: number[]) {

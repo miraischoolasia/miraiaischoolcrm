@@ -90,7 +90,10 @@ function friendly(message: string) {
 }
 
 // One subscription for the signed-in login's picked child, shared by every tab.
-export function LiveProvider({ children }: PropsWithChildren) {
+// On the class page (`sessionId` set) it listens to that lesson's questions
+// only and checks every minute instead of every 12 s, so a class of hundreds
+// does not keep asking the database.
+export function LiveProvider({ children, sessionId = null }: PropsWithChildren<{ sessionId?: number | null }>) {
   const { child, refresh: refreshHome } = useSession()
   const studentId = child?.studentId ?? null
   const [state, setState] = useState<LiveState | null>(null)
@@ -129,17 +132,23 @@ export function LiveProvider({ children }: PropsWithChildren) {
     }
     soon()
     const channel = supabase
-      .channel(`live-${studentId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'live_questions' }, soon)
+      .channel(`live-${studentId}-${sessionId ?? 'all'}`)
+      .on(
+        'postgres_changes',
+        sessionId
+          ? { event: '*', schema: 'public', table: 'live_questions', filter: `session_id=eq.${sessionId}` }
+          : { event: '*', schema: 'public', table: 'live_questions' },
+        soon,
+      )
       .subscribe()
-    const poll = setInterval(soon, 12000)
+    const poll = setInterval(soon, sessionId ? 60_000 : 12_000)
     return () => {
       cancelled = true
       if (timer) clearTimeout(timer)
       clearInterval(poll)
       void supabase.removeChannel(channel)
     }
-  }, [reload, studentId])
+  }, [reload, sessionId, studentId])
 
   const questionOpen = state?.active === true && state.question.open
   const closesAt = state?.active === true ? Date.parse(state.question.closes_at) : 0

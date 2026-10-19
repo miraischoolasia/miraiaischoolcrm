@@ -49,7 +49,7 @@ export function LateReminderSetting() {
         minutes after the start.
       </label>
       <label className="block space-y-1">
-        <span className="text-sm text-slate-700">Message ({'{child}'} = first name, {'{class}'} = class, {'{time}'} = start time)</span>
+        <span className="text-sm text-slate-700">Message ({'{child}'} = first name, {'{class}'} = class, {'{time}'} = start time, {'{link}'} = the class page in the student app)</span>
         <textarea
           rows={3}
           maxLength={1000}
@@ -61,7 +61,7 @@ export function LateReminderSetting() {
           className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
         />
       </label>
-      <p className="text-xs text-slate-500">Example: {fillLateReminder(draft.text, { child: 'Aisyah Tan', className: 'HOA 6-8', time: '10:00 am' })}</p>
+      <p className="text-xs text-slate-500">Example: {fillLateReminder(draft.text, { child: 'Aisyah Tan', className: 'HOA 6-8', time: '10:00 am', link: 'https://app.example.com/class/123' })}</p>
       {error && (
         <p role="alert" className="text-sm text-red-700">
           {error}

@@ -79,3 +79,14 @@ describe('class screen', () => {
     expect(readClassScreenState({ title: 'x', sentAt: 1, timer: { endsAt: null, pausedLeft: null }, top: [], picked: null, question: null })).not.toBeNull()
   })
 })
+
+describe('late reminder link', () => {
+  it('fills {link} with the class page, or says the app without one', async () => {
+    const { classPageLink, fillLateReminder } = await import('./lateReminder')
+    expect(classPageLink('https://app.test/', 42)).toBe('https://app.test/class/42')
+    expect(classPageLink('', 42)).toBeNull()
+    const base = { child: 'Ali Tan', className: 'C001', time: '8:30 pm' }
+    expect(fillLateReminder('Join {child}: {link}', { ...base, link: 'https://app.test/class/42' })).toBe('Join Ali: https://app.test/class/42')
+    expect(fillLateReminder('Join from {link}', { ...base, link: null })).toBe('Join from the app')
+  })
+})

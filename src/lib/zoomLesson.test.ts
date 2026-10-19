@@ -130,3 +130,28 @@ describe('Facebook stream address', () => {
     expect(splitStreamUrl('nothing')).toBeNull()
   })
 })
+
+describe('joining in the student app page', () => {
+  it('reads the tk of a sign-up link', async () => {
+    const { tkFromJoinUrl } = await import('../../supabase/functions/zoom-lesson/logic')
+    expect(tkFromJoinUrl('https://us06web.zoom.us/w/84019676062?tk=abc.def-123&pwd=x')).toBe('abc.def-123')
+    expect(tkFromJoinUrl('https://zoom.us/j/1')).toBeNull()
+    expect(tkFromJoinUrl('not a link')).toBeNull()
+    expect(tkFromJoinUrl(null)).toBeNull()
+  })
+
+  it('signs an attendee signature valid for two hours', async () => {
+    const { sdkSignatureClaims, signHs256 } = await import('../../supabase/functions/zoom-lesson/logic')
+    const claims = sdkSignatureClaims('KEY', '84019676062', 0, 1_000_000)
+    expect(claims).toMatchObject({ appKey: 'KEY', mn: '84019676062', role: 0, iat: 999_970, exp: 999_970 + 7200, tokenExp: 999_970 + 7200 })
+    const jwt = await signHs256(claims, 'secret')
+    const [head, body, signature] = jwt.split('.')
+    const decode = (part: string) => JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/')))
+    expect(decode(head)).toEqual({ alg: 'HS256', typ: 'JWT' })
+    expect(decode(body)).toEqual(claims)
+    // The signature checks out with the same secret.
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode('secret'), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
+    const raw = Uint8Array.from(atob(signature.replace(/-/g, '+').replace(/_/g, '/')), (char) => char.charCodeAt(0))
+    expect(await crypto.subtle.verify('HMAC', key, raw, new TextEncoder().encode(`${head}.${body}`))).toBe(true)
+  })
+})

@@ -10,6 +10,8 @@
 //             Zoom app's meeting:update:status scope
 //   facebook_status / facebook_on / facebook_off
 //             stream the lesson to the school's Facebook Page (facebook.ts)
+// A student app login (child or parent) asks with join_sdk { sessionId,
+// studentId } to join inside the app's page (studentJoin.ts).
 // The meeting follows the school's Zoom options (Class Settings > Zoom) and is
 // hosted by the teacher's own Zoom account, or when it is full at that time by
 // another of the school's (Class Settings > Zoom).
@@ -23,6 +25,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { meetingBody, registrantEmail, registrantNames, type MeetingOptions } from './logic.ts'
 import { zoomApi, zoomToken } from './zoomApi.ts'
 import { facebookConfigured, goLiveOnFacebook, stopFacebookLive } from './facebook.ts'
+import { joinInPage } from './studentJoin.ts'
 
 // Children signed up to Zoom at the same time, and how long one call may
 // spend on it before handing the rest to the next call.
@@ -62,11 +65,24 @@ Deno.serve(async (req) => {
   const authHeader = req.headers.get('Authorization')
   if (!authHeader) return jsonResponse({ ok: false, error: 'Missing authorization.' }, 401)
 
-  let body: { action?: unknown; scheduleId?: unknown; lessonDate?: unknown }
+  let body: { action?: unknown; scheduleId?: unknown; lessonDate?: unknown; sessionId?: unknown; studentId?: unknown }
   try {
     body = await req.json()
   } catch {
     return jsonResponse({ ok: false, error: 'Invalid request body.' }, 400)
+  }
+
+  // A child (or their parent) joining inside the student app's page.
+  if (body.action === 'join_sdk') {
+    try {
+      const answer = await joinInPage(
+        { supabaseUrl, anonKey, serviceRoleKey, authHeader, accountId, clientId, clientSecret, registrantDomain },
+        { sessionId: body.sessionId, studentId: body.studentId },
+      )
+      return jsonResponse(answer.body, answer.status)
+    } catch (problem) {
+      return jsonResponse({ ok: false, error: problem instanceof Error ? problem.message : 'Zoom did not answer.' }, 502)
+    }
   }
   const action = (ACTIONS as readonly unknown[]).includes(body.action) ? (body.action as Action) : null
   const scheduleId = Number(body.scheduleId)
