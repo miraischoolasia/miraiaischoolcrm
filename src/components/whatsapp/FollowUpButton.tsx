@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { BellRinging, Check, Trash, X } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import type { CalendarItem, CalendarItemDraft } from '../../lib/calendarItems'
@@ -29,6 +29,13 @@ type FollowUpButtonProps = {
   now?: () => Date
 }
 
+export type FollowUpSummary = { count: number; late: boolean; ready: boolean }
+
+// Given by the message box, whose "+" menu has the Follow up row: the button then shows no bell of its own,
+// opens its card each time `asked` goes up, and says how many follow-ups are set (for the row's dot).
+export type FollowUpHost = { asked: number; onSummary: (summary: FollowUpSummary) => void }
+export const FollowUpHostContext = createContext<FollowUpHost | null>(null)
+
 const FIELD =
   'w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-[#fc0c97]'
 
@@ -43,13 +50,14 @@ export function FollowUpButton({ leadId, leadName, items, people, meId, onSave, 
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
   const box = useRef<HTMLDivElement>(null)
+  const host = useContext(FollowUpHostContext)
 
   const mine = useMemo(() => openFollowUps(items, leadId), [items, leadId])
   const choices = useMemo(() => (open ? followUpChoices(now()) : []), [open, now])
   const nameOf = (id: number | null) => people.find((person) => person.id === id)?.name ?? null
   const hasLate = mine.some((entry) => followUpState(entry, now()) === 'late')
 
-  // Closes when something else is pressed.
+  // Closes when something else is pressed, or on Escape.
   useEffect(() => {
     if (!open) {
       return undefined
@@ -59,9 +67,33 @@ export function FollowUpButton({ leadId, leadName, items, people, meId, onSave, 
         setOpen(false)
       }
     }
+    function escape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setOpen(false)
+      }
+    }
     document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
+    document.addEventListener('keydown', escape)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', escape)
+    }
   }, [open])
+
+  // The message box's Follow up row was pressed.
+  const asked = host?.asked ?? 0
+  const lastAsked = useRef(asked)
+  useEffect(() => {
+    if (asked !== lastAsked.current) {
+      lastAsked.current = asked
+      openPanel()
+    }
+  })
+
+  const report = host?.onSummary
+  useEffect(() => {
+    report?.({ count: mine.length, late: hasLate, ready: leadId !== null })
+  }, [report, mine.length, hasLate, leadId])
 
   function openPanel() {
     setDate('')
@@ -100,33 +132,39 @@ export function FollowUpButton({ leadId, leadName, items, people, meId, onSave, 
   }
 
   return (
-    <div ref={box} className="relative">
-      <button
-        type="button"
-        onClick={() => (open ? setOpen(false) : openPanel())}
-        disabled={leadId === null}
-        aria-label="Follow up: set a day and time to be reminded"
-        title={leadId === null ? 'Save this chat as a lead first, then you can set a follow-up' : 'Follow up: set a day and time to be reminded'}
-        aria-expanded={open}
-        className={cn(
-          'relative rounded-lg border p-1.5 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40',
-          mine.length > 0 ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100' : 'border-slate-200 text-slate-600',
-        )}
-      >
-        <BellRinging size={16} />
-        {mine.length > 0 && (
-          <span
-            aria-hidden="true"
-            className={cn('absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-white', hasLate ? 'bg-red-500' : 'bg-amber-500')}
-          />
-        )}
-      </button>
+    <div ref={box} className={host ? undefined : 'relative'}>
+      {!host && (
+        <button
+          type="button"
+          onClick={() => (open ? setOpen(false) : openPanel())}
+          disabled={leadId === null}
+          aria-label="Follow up: set a day and time to be reminded"
+          title={leadId === null ? 'Save this chat as a lead first, then you can set a follow-up' : 'Follow up: set a day and time to be reminded'}
+          aria-expanded={open}
+          className={cn(
+            'relative rounded-lg border p-1.5 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40',
+            mine.length > 0 ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100' : 'border-slate-200 text-slate-600',
+          )}
+        >
+          <BellRinging size={16} />
+          {mine.length > 0 && (
+            <span
+              aria-hidden="true"
+              className={cn('absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-white', hasLate ? 'bg-red-500' : 'bg-amber-500')}
+            />
+          )}
+        </button>
+      )}
 
       {open && (
         <div
           role="dialog"
           aria-label="Follow up"
-          className="absolute bottom-full right-0 z-30 mb-2 w-[300px] max-w-[calc(100vw-2rem)] space-y-3 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-lg"
+          className={cn(
+            'w-[300px] max-w-[calc(100vw-2rem)] space-y-3 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-lg',
+            // In the message box it is placed by the box; on its own it opens above its bell.
+            host ? 'max-h-[min(32rem,calc(100dvh-10rem))]' : 'absolute bottom-full right-0 z-30 mb-2',
+          )}
         >
           <div className="flex items-start justify-between gap-2">
             <div>

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { AddressBook, ChartBarHorizontal, FileText, Image as ImageIcon, Lightning, MapPin, Microphone, PaperPlaneTilt, Paperclip, Plus, Smiley, Sparkle, Sticker, Trash, VideoCamera, X } from '@phosphor-icons/react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AddressBook, BellRinging, ChartBarHorizontal, FileText, Image as ImageIcon, Lightning, MapPin, Microphone, PaperPlaneTilt, Paperclip, Plus, Smiley, Sparkle, Sticker, Trash, VideoCamera, X } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { useAutoGrow } from '../../hooks/useAutoGrow'
@@ -14,6 +14,7 @@ import { EmojiPicker } from './EmojiPicker'
 import { insertAt, rememberEmoji } from '../../lib/emoji'
 import { QuickReplyPicker } from './QuickReplyPicker'
 import { SpecialMessageDialog, type SpecialKind } from './SpecialMessageDialog'
+import { FollowUpHostContext, type FollowUpSummary } from './FollowUpButton'
 import type { SpecialMessage } from '../../lib/waActions'
 
 type ComposerProps = {
@@ -35,7 +36,7 @@ type ComposerProps = {
   onClearReply?: () => void
   // Sends a location, contact, poll or sticker; resolves to null when it went out, else what to tell the person.
   onSendSpecial?: (message: SpecialMessage) => Promise<string | null>
-  // The Follow up button, shown beside the voice button (only when the chat has a lead to follow up).
+  // The Follow up button: the "+" menu gets a Follow up row that opens its card above the box.
   followUpControl?: React.ReactNode
   // Called as the team writes a reply, so the parent can be shown "typing...".
   onTyping?: () => void
@@ -75,6 +76,15 @@ const SPECIAL_ICONS: Record<SpecialKind, Icon> = {
 function formatSeconds(total: number) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
 }
+
+// The round buttons in the box (+, emoji, quick replies, microphone, send). Phones make every button at least
+// 40px tall, so these are 40px round there and the text box matches, keeping them on one line with the text.
+const ROUND_BUTTON = 'flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition max-md:h-10 max-md:w-10'
+const PLAIN_ROUND_BUTTON = `${ROUND_BUTTON} text-slate-500 hover:bg-slate-100 hover:text-slate-800`
+
+// Every row of the "+" menu: the whole row can be pressed.
+const MENU_ROW =
+  'flex w-full items-center gap-3 px-3.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent'
 
 const isTouchDevice = () => window.matchMedia?.('(pointer: coarse)').matches ?? false
 
@@ -140,6 +150,15 @@ export function Composer({
 }: ComposerProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuBox = useRef<HTMLDivElement>(null)
+  // The Follow up card is opened from the menu but shown outside it, so closing the menu leaves it open.
+  const [followUpAsked, setFollowUpAsked] = useState(0)
+  const [followUp, setFollowUp] = useState<FollowUpSummary>({ count: 0, late: false, ready: true })
+  const takeFollowUpSummary = useCallback(
+    (next: FollowUpSummary) =>
+      setFollowUp((current) => (current.count === next.count && current.late === next.late && current.ready === next.ready ? current : next)),
+    [],
+  )
+  const followUpHost = useMemo(() => ({ asked: followUpAsked, onSummary: takeFollowUpSummary }), [followUpAsked, takeFollowUpSummary])
   const [special, setSpecial] = useState<SpecialKind | null>(null)
   const [mode, setMode] = useState<'reply' | 'note'>(draft?.mode ?? 'reply')
   const [text, setText] = useState(draft?.text ?? '')
@@ -357,6 +376,11 @@ ${draftRequest.text}` : draftRequest.text))
 
   return (
     <div className="relative border-t border-slate-200 bg-white px-3 py-3 sm:px-4">
+      {followUpControl && (
+        <FollowUpHostContext.Provider value={followUpHost}>
+          <div className="absolute bottom-full left-3 z-30 mb-2 sm:left-4">{followUpControl}</div>
+        </FollowUpHostContext.Provider>
+      )}
       {pickerOpen && (
         <QuickReplyPicker
           replies={quickReplies.replies}
@@ -542,10 +566,10 @@ ${draftRequest.text}` : draftRequest.text))
               type="button"
               onClick={() => setMenuOpen((open) => !open)}
               aria-label="Attach and more"
-              title="Attach a file, quick replies and more"
+              title="Attach a file, follow up and more"
               aria-expanded={menuOpen}
               aria-haspopup="menu"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+              className={PLAIN_ROUND_BUTTON}
             >
               <Plus size={20} className={cn('transition-transform', menuOpen && 'rotate-45')} />
             </button>
@@ -556,7 +580,6 @@ ${draftRequest.text}` : draftRequest.text))
               >
                 {[
                   { label: 'Photo, video or file', icon: Paperclip, run: () => fileInput.current?.click(), aria: 'Attach a photo, video or file' },
-                  { label: 'Quick replies', icon: Lightning, run: () => (pickerOpen ? setPickerOpen(false) : openPicker()), aria: 'Quick replies' },
                   ...(onSendSpecial && mode === 'reply'
                     ? SPECIAL_CHOICES.map((choice) => ({
                         label: choice.label,
@@ -575,7 +598,7 @@ ${draftRequest.text}` : draftRequest.text))
                         setMenuOpen(false)
                         item.run()
                       }}
-                      className="flex w-full items-center gap-3 px-3.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                      className={MENU_ROW}
                     >
                       <item.icon size={18} className="shrink-0 text-slate-500" aria-hidden="true" />
                       {item.label}
@@ -583,9 +606,28 @@ ${draftRequest.text}` : draftRequest.text))
                   </li>
                 ))}
                 {followUpControl && (
-                  <li role="none" className="flex items-center gap-3 px-3.5 py-1.5 text-sm text-slate-700">
-                    {followUpControl}
-                    Follow up
+                  <li role="none">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      aria-label="Follow up"
+                      disabled={!followUp.ready}
+                      title={followUp.ready ? 'Set a day and time to be reminded' : 'Save this chat as a lead first, then you can set a follow-up'}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        setFollowUpAsked((count) => count + 1)
+                      }}
+                      className={MENU_ROW}
+                    >
+                      <BellRinging size={18} className="shrink-0 text-slate-500" aria-hidden="true" />
+                      Follow up
+                      {followUp.count > 0 && (
+                        <span
+                          title={followUp.late ? 'A follow-up is late' : 'A follow-up is set'}
+                          className={cn('ml-auto h-2.5 w-2.5 shrink-0 rounded-full', followUp.late ? 'bg-red-500' : 'bg-amber-500')}
+                        />
+                      )}
+                    </button>
                   </li>
                 )}
               </ul>
@@ -610,9 +652,19 @@ ${draftRequest.text}` : draftRequest.text))
             aria-label="Add an emoji"
             aria-expanded={emojiOpen}
             title="Add an emoji"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+            className={PLAIN_ROUND_BUTTON}
           >
             <Smiley size={20} />
+          </button>
+          <button
+            type="button"
+            onClick={() => (pickerOpen ? setPickerOpen(false) : openPicker())}
+            aria-label="Quick replies"
+            aria-expanded={pickerOpen}
+            title="Quick replies (or type / in an empty box)"
+            className={cn(PLAIN_ROUND_BUTTON, pickerOpen && 'bg-slate-100 text-slate-800')}
+          >
+            <Lightning size={20} />
           </button>
           {emojiOpen && <EmojiPicker onPick={addEmoji} onClose={() => setEmojiOpen(false)} />}
           <div className="relative min-w-0 flex-1">
@@ -631,7 +683,7 @@ ${draftRequest.text}` : draftRequest.text))
                   onAiDismiss?.()
                 }
               }}
-              className="min-h-[36px] w-full cursor-pointer whitespace-pre-wrap py-2 pl-1 pr-8 text-sm leading-5 text-slate-400 outline-none"
+              className="min-h-9 w-full cursor-pointer whitespace-pre-wrap py-2 pl-1 pr-8 text-sm leading-5 text-slate-400 outline-none max-md:min-h-10 max-md:py-2.5"
             >
               {aiSuggestion.text}
             </div>
@@ -660,7 +712,7 @@ ${draftRequest.text}` : draftRequest.text))
             }}
             placeholder={mode === 'note' ? 'Write a note for your team' : 'Write a message'}
             aria-label={mode === 'note' ? 'Private note' : 'Message to parent'}
-            className="max-h-40 min-h-[36px] w-full resize-none bg-transparent py-2 pl-1 pr-1 text-sm leading-5 outline-none"
+            className="block max-h-40 min-h-9 w-full resize-none bg-transparent py-2! pl-1 pr-1 text-sm leading-5 outline-none placeholder:truncate max-md:min-h-10 max-md:px-1.5! max-md:py-2.5!"
           />
           )}
           {showSuggestion && (
@@ -681,7 +733,7 @@ ${draftRequest.text}` : draftRequest.text))
               onClick={() => void voice.start()}
               aria-label="Record a voice message"
               title="Record a voice message"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+              className={PLAIN_ROUND_BUTTON}
             >
               <Microphone size={20} />
             </button>
@@ -692,7 +744,7 @@ ${draftRequest.text}` : draftRequest.text))
               disabled={isLoadingMedia}
               aria-label={mode === 'note' ? 'Save note' : 'Send'}
               title={mode === 'note' ? 'Save note' : 'Send'}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#fc0c97] text-white transition hover:bg-[#e00a87] disabled:opacity-60"
+              className={cn(ROUND_BUTTON, 'bg-[#fc0c97] text-white hover:bg-[#e00a87] disabled:opacity-60')}
             >
               <PaperPlaneTilt size={18} weight="fill" aria-hidden="true" />
             </button>

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { CalendarItem } from '../../lib/calendarItems'
 import { FollowUpButton, FollowUpChip } from './FollowUpButton'
+import { Composer } from './Composer'
 
 // Saturday 17 Oct 2026, 15:30.
 const now = () => new Date(2026, 9, 17, 15, 30)
@@ -121,6 +122,80 @@ describe('FollowUpButton', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(1))
     await userEvent.click(screen.getByRole('button', { name: 'Remove: Today 14:00' }))
     await waitFor(() => expect(onRemove).toHaveBeenCalledWith(3))
+  })
+  it('closes on Escape', async () => {
+    renderButton()
+    await userEvent.click(openButton())
+    expect(screen.getByRole('dialog', { name: 'Follow up' })).toBeInTheDocument()
+
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: 'Follow up' })).not.toBeInTheDocument()
+  })
+})
+
+describe('FollowUpButton in the message box', () => {
+  function renderInBox(props: Partial<React.ComponentProps<typeof FollowUpButton>> = {}) {
+    render(
+      <Composer
+        onSend={vi.fn().mockResolvedValue(true)}
+        quickReplies={{ replies: [], isLoading: false, error: null, reload: vi.fn().mockResolvedValue(undefined) }}
+        variables={{}}
+        followUpControl={
+          <FollowUpButton
+            leadId={11}
+            leadName="Mei Ling"
+            items={[]}
+            people={people}
+            meId={1}
+            now={now}
+            onSave={vi.fn().mockResolvedValue(null)}
+            onDone={vi.fn().mockResolvedValue(null)}
+            onRemove={vi.fn().mockResolvedValue(null)}
+            {...props}
+          />
+        }
+      />,
+    )
+  }
+  const openMenu = () => userEvent.click(screen.getByRole('button', { name: 'Attach and more' }))
+
+  it('is a whole menu row like the others, with no bell of its own', async () => {
+    renderInBox()
+    expect(screen.queryByRole('button', { name: /^Follow up: set a day/ })).not.toBeInTheDocument()
+
+    await openMenu()
+    const rows = screen.getAllByRole('menuitem')
+    expect(rows.map((row) => row.textContent)).toEqual(['Photo, video or file', 'Follow up'])
+    expect(rows.every((row) => row.tagName === 'BUTTON' && row.className === rows[0].className)).toBe(true)
+  })
+
+  it('opens the card outside the menu, which closes, and Escape closes the card', async () => {
+    renderInBox()
+    await openMenu()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Follow up' }))
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    const card = screen.getByRole('dialog', { name: 'Follow up' })
+    expect(card).toHaveTextContent('Get a reminder to write to Mei Ling again.')
+
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: 'Follow up' })).not.toBeInTheDocument()
+
+    await openMenu()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Follow up' }))
+    expect(screen.getByRole('dialog', { name: 'Follow up' })).toBeInTheDocument()
+  })
+
+  it('is switched off for a chat with no lead', async () => {
+    renderInBox({ leadId: null })
+    await openMenu()
+    expect(screen.getByRole('menuitem', { name: 'Follow up' })).toBeDisabled()
+  })
+
+  it('shows a dot on the row when a follow-up is set, red when it is late', async () => {
+    renderInBox({ items: [item(1, { date: '2026-10-17', startTime: '09:00' })] })
+    await openMenu()
+    expect(screen.getByTitle('A follow-up is late')).toBeInTheDocument()
   })
 })
 

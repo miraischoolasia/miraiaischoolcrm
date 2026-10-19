@@ -330,6 +330,7 @@ describe('Messenger and Instagram chats', () => {
 
     setup([message(1, 'Hi', 100)], { meta: { channel: 'Channel::FacebookPage', sender: { id: 1, name: 'Mei', phone_number: null, identifier: null } } }, false, { onSendSpecial })
     await userEvent.click(screen.getByRole('button', { name: 'Attach and more' }))
-    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Photo, video or file', 'Quick replies'])
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Photo, video or file'])
+    expect(screen.getByRole('button', { name: 'Quick replies' })).toBeInTheDocument()
   })
 })
