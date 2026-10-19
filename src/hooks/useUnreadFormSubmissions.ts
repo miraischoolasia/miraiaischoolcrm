@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { countFormSubmissionsSince } from '../lib/api'
+import { everyWhileVisible } from '../lib/visibleTimer'
 
 const SEEN_KEY = 'mirai-forms-seen-at'
 const REFRESH_MS = 60_000
@@ -40,8 +41,8 @@ export function useUnreadFormSubmissions(enabled: boolean) {
       return
     }
     void refresh()
-    const timer = window.setInterval(() => void refresh(), REFRESH_MS)
-    return () => window.clearInterval(timer)
+    // Not while the tab is in the background; at once when it is looked at again.
+    return everyWhileVisible(() => void refresh(), REFRESH_MS)
   }, [enabled, refresh])
 
   const markSeen = useCallback((newestIso: string) => {

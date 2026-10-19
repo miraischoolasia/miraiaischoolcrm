@@ -308,7 +308,9 @@ describe('cancelling a single class day', () => {
     const dialogCancel = (await screen.findAllByRole('button', { name: 'Cancel' })).at(-1)!
     await userEvent.click(dialogCancel)
 
-    expect(mocks.rpc).not.toHaveBeenCalled()
+    // Nothing written (the page's own reads, such as each table's change number, do not count).
+    const reads = ['crm_table_versions', 'automation_snapshot']
+    expect(mocks.rpc.mock.calls.filter(([name]) => !reads.includes(name))).toEqual([])
   })
 
   it('offers Restore or Add Replacement Class when the cancelled card is clicked', async () => {

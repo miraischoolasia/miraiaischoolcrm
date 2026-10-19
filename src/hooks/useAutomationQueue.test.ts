@@ -17,6 +17,8 @@ vi.mock('../lib/automationQueue', async (original) => ({
   ...(await original<typeof import('../lib/automationQueue')>()),
   ...api,
 }))
+// No database: the queue is read the old way, through the mocks above.
+vi.mock('../lib/supabase', () => ({ supabase: null }))
 
 const item = (id: number, change: Partial<QueueItem> = {}): QueueItem => ({
   id,

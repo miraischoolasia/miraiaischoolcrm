@@ -41,6 +41,7 @@ import {
 import type { Icon } from '@phosphor-icons/react'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { useLiveSync } from './hooks/useLiveSync'
+import { fetchTableVersions, type CoreGroup, type CoreSyncTarget, type TableVersions } from './lib/coreSync'
 import { useWhatsAppNumbers } from './hooks/useWhatsAppNumbers'
 import { formatDate, getTodayString, parseLocalDate } from './domain/studentStatus'
 import type { Database } from './types/database'
@@ -858,7 +859,11 @@ function App() {
   // The school's WhatsApp numbers: which the signed-in person may see (an admin sees all).
   const whatsAppNumbers = useWhatsAppNumbers(Boolean(whatsAppApiUrl) && canUseWhatsApp)
   const whatsAppSiblings = useMemo(() => contactSiblings(leadChannels.rows), [leadChannels.rows])
-  const { unread: unreadWhatsApp, waiting: waitingWhatsApp } = useWhatsAppUnread(
+  const {
+    unread: unreadWhatsApp,
+    waiting: waitingWhatsApp,
+    openChats: everyOpenChat,
+  } = useWhatsAppUnread(
     // Nothing is counted until it is known which numbers this person may see.
     whatsAppNumbers.allowedInboxIds === undefined ? null : whatsAppClient,
     whatsAppNumbers.allowedInboxIds ?? null,
@@ -1525,6 +1530,9 @@ function App() {
         setLoadError(null)
         setLoadedUserId(null)
 
+        // Each table's change number, asked before the data: a change made while the data is read then
+        // shows up in the next check (useLiveSync), which reads again only what changed.
+        const nextVersions = await fetchTableVersions()
         const [
           nextClassrooms,
           nextTeachers,
@@ -1600,6 +1608,7 @@ function App() {
           if (nextProgramLevels) {
             setProgramLevels(nextProgramLevels)
           }
+          coreVersions.current = nextVersions
           setLoadedUserId(authUserId)
         }
       } catch (error) {
@@ -1620,9 +1629,13 @@ function App() {
     }
   }, [authUserId, loadAttempt])
 
+  // The change number of each table the data on screen matches (see useLiveSync).
+  const coreVersions = useRef<TableVersions | null>(null)
   // Reads the core data again without the loading screen and swaps in only what changed, so another
-  // staff member's change (or a teacher's) shows up by itself.
-  async function syncCoreQuietly() {
+  // staff member's change (or a teacher's) shows up by itself. Given some parts, only those are read.
+  async function syncCoreQuietly(target: CoreSyncTarget = 'all') {
+    const read = <T,>(group: CoreGroup, load: () => Promise<T>): Promise<T | null> =>
+      target === 'all' || target.has(group) ? load() : Promise.resolve(null)
     const [
       nextClassrooms,
       nextTeachers,
@@ -1644,39 +1657,65 @@ function App() {
       nextAgeGroups,
       nextProgramLevels,
     ] = await Promise.all([
-      fetchClassroomsFromSupabase(),
-      fetchTeachersFromSupabase(),
-      fetchStudentsFromSupabase(),
-      fetchSchedulesFromSupabase(),
-      fetchScheduleParticipantsFromSupabase(),
-      fetchScheduleExceptionsFromSupabase(),
-      fetchTrialBookingsFromSupabase(),
-      fetchLessonLogSummariesFromSupabase(),
-      fetchLessonLogStudentReviewsFromSupabase(),
-      fetchLeadsFromSupabase(),
-      fetchMakeupPlansFromSupabase(),
-      fetchLeadOptionsFromSupabase(),
-      fetchPackagesFromSupabase(),
-      loadReviewCriteria(),
-      loadAttendanceStatuses(),
-      loadRewards(),
-      loadSubjects(),
-      loadAgeGroups(),
-      loadProgramLevels(),
+      read('classrooms', fetchClassroomsFromSupabase),
+      read('teachers', fetchTeachersFromSupabase),
+      read('students', fetchStudentsFromSupabase),
+      read('schedules', fetchSchedulesFromSupabase),
+      read('participants', fetchScheduleParticipantsFromSupabase),
+      read('exceptions', fetchScheduleExceptionsFromSupabase),
+      read('trialBookings', fetchTrialBookingsFromSupabase),
+      read('lessonLogs', fetchLessonLogSummariesFromSupabase),
+      read('lessonReviews', fetchLessonLogStudentReviewsFromSupabase),
+      read('leads', fetchLeadsFromSupabase),
+      read('makeupPlans', fetchMakeupPlansFromSupabase),
+      read('leadOptions', fetchLeadOptionsFromSupabase),
+      read('packages', fetchPackagesFromSupabase),
+      read('reviewCriteria', loadReviewCriteria),
+      read('attendanceStatuses', loadAttendanceStatuses),
+      read('rewards', loadRewards),
+      read('subjects', loadSubjects),
+      read('ageGroups', loadAgeGroups),
+      read('programLevels', loadProgramLevels),
     ])
-    setClassrooms((current) => (sameData(current, nextClassrooms) ? current : nextClassrooms))
-    setTeachers((current) => (sameData(current, nextTeachers) ? current : nextTeachers))
-    setStudents((current) => (sameData(current, nextStudents) ? current : nextStudents))
-    setSchedules((current) => (sameData(current, nextSchedules) ? current : nextSchedules))
-    setScheduleParticipants((current) => (sameData(current, nextParticipants) ? current : nextParticipants))
-    setScheduleExceptions((current) => (sameData(current, nextScheduleExceptions) ? current : nextScheduleExceptions))
-    setTrialBookings((current) => (sameData(current, nextTrialBookings) ? current : nextTrialBookings))
-    setLessonLogs((current) => (sameData(current, nextLessonLogs) ? current : nextLessonLogs))
-    setLessonReviews((current) => (sameData(current, nextLessonReviews) ? current : nextLessonReviews))
-    setLeads((current) => (sameData(current, nextLeads) ? current : nextLeads))
-    setMakeupPlans((current) => (sameData(current, nextMakeupPlans) ? current : nextMakeupPlans))
-    setLeadOptions((current) => (sameData(current, nextLeadOptions) ? current : nextLeadOptions))
-    setPackages((current) => (sameData(current, nextPackages) ? current : nextPackages))
+    if (nextClassrooms) {
+      setClassrooms((current) => (sameData(current, nextClassrooms) ? current : nextClassrooms))
+    }
+    if (nextTeachers) {
+      setTeachers((current) => (sameData(current, nextTeachers) ? current : nextTeachers))
+    }
+    if (nextStudents) {
+      setStudents((current) => (sameData(current, nextStudents) ? current : nextStudents))
+    }
+    if (nextSchedules) {
+      setSchedules((current) => (sameData(current, nextSchedules) ? current : nextSchedules))
+    }
+    if (nextParticipants) {
+      setScheduleParticipants((current) => (sameData(current, nextParticipants) ? current : nextParticipants))
+    }
+    if (nextScheduleExceptions) {
+      setScheduleExceptions((current) => (sameData(current, nextScheduleExceptions) ? current : nextScheduleExceptions))
+    }
+    if (nextTrialBookings) {
+      setTrialBookings((current) => (sameData(current, nextTrialBookings) ? current : nextTrialBookings))
+    }
+    if (nextLessonLogs) {
+      setLessonLogs((current) => (sameData(current, nextLessonLogs) ? current : nextLessonLogs))
+    }
+    if (nextLessonReviews) {
+      setLessonReviews((current) => (sameData(current, nextLessonReviews) ? current : nextLessonReviews))
+    }
+    if (nextLeads) {
+      setLeads((current) => (sameData(current, nextLeads) ? current : nextLeads))
+    }
+    if (nextMakeupPlans) {
+      setMakeupPlans((current) => (sameData(current, nextMakeupPlans) ? current : nextMakeupPlans))
+    }
+    if (nextLeadOptions) {
+      setLeadOptions((current) => (sameData(current, nextLeadOptions) ? current : nextLeadOptions))
+    }
+    if (nextPackages) {
+      setPackages((current) => (sameData(current, nextPackages) ? current : nextPackages))
+    }
     if (nextReviewCriteria) {
       setReviewCriteria((current) => (sameData(current, nextReviewCriteria) ? current : nextReviewCriteria))
     }
@@ -1699,7 +1738,11 @@ function App() {
       setProgramLevels((current) => (sameData(current, nextProgramLevels) ? current : nextProgramLevels))
     }
   }
-  useLiveSync(Boolean(authUserId) && loadedUserId === authUserId && !isLoading && !loadError, syncCoreQuietly)
+  useLiveSync(
+    Boolean(authUserId) && loadedUserId === authUserId && !isLoading && !loadError,
+    syncCoreQuietly,
+    coreVersions,
+  )
 
   useEffect(() => {
     if (!authUserId) {

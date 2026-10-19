@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ensureContactPeople, fetchPeople, type Person } from '../lib/peopleApi'
 import { getChatRole, getRealPhone, type ChatwootConversation } from '../lib/whatsappInbox'
+import { everyWhileVisible } from '../lib/visibleTimer'
 
 const REFRESH_MS = 60_000
 const BATCH = 100
@@ -41,8 +42,8 @@ export function usePeople({ enabled, canEdit, conversations }: Args) {
       return
     }
     void refresh()
-    const timer = window.setInterval(() => void refresh(), REFRESH_MS)
-    return () => window.clearInterval(timer)
+    // Not while the tab is in the background; at once when it is looked at again.
+    return everyWhileVisible(() => void refresh(), REFRESH_MS)
   }, [enabled, refresh])
 
   useEffect(() => {

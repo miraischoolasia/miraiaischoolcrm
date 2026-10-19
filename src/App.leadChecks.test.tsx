@@ -24,7 +24,12 @@ vi.mock('./lib/supabase', () => ({
       signOut: vi.fn(),
     },
     from: () => ({ insert: vi.fn() }),
-    rpc: (...args: unknown[]) => mocks.rpc(...args),
+    // The page also asks other functions (each table's change number, the automation queue's numbers):
+    // answered "not set up yet", so only the tick reaches the mock.
+    rpc: (...args: unknown[]) =>
+      args[0] === 'set_lead_check'
+        ? mocks.rpc(...args)
+        : Promise.resolve({ data: null, error: { code: 'PGRST202' } }),
   },
 }))
 vi.mock('@fullcalendar/react', () => ({ default: () => <div>Calendar ready</div> }))

@@ -1,15 +1,6 @@
 import { useEffect, useState } from 'react'
-import {
-  DEFAULT_SETTINGS,
-  fetchQueue,
-  fetchSentToday,
-  fetchSettings,
-  isExpired,
-  isStuck,
-  type AutomationSettings,
-} from '../lib/automationQueue'
-
-const REFRESH_MS = 60_000
+import { isExpired, isStuck, type AutomationSettings } from '../lib/automationQueue'
+import { subscribeAutomationSnapshot } from '../lib/automationSnapshot'
 
 export type AutomationSummary = {
   // Waiting for a person to approve.
@@ -21,7 +12,8 @@ export type AutomationSummary = {
 }
 
 // A read-only count of the automation approval queue for the admin's Today. Approving, editing and
-// sending stay on the WhatsApp page.
+// sending stay on the WhatsApp page. It shares one read with the ⚡ window: once a minute while the tab
+// is looked at, and at once when it is looked at again.
 export function useAutomationSummary(enabled: boolean) {
   const [summary, setSummary] = useState<AutomationSummary | null>(null)
   // Automations may not be set up in the database yet: then there is nothing to show.
@@ -31,39 +23,21 @@ export function useAutomationSummary(enabled: boolean) {
     if (!enabled) {
       return
     }
-    let cancelled = false
-
-    // The first look always happens; the timer skips a tab nobody is looking at.
-    async function refresh(fromTimer = false) {
-      if (fromTimer && document.hidden) {
+    return subscribeAutomationSnapshot((result) => {
+      if (result.snapshot === null) {
+        setUnavailable(true)
         return
       }
-      try {
-        const [queue, settings, sentToday] = await Promise.all([fetchQueue(), fetchSettings(), fetchSentToday()])
-        if (cancelled) {
-          return
-        }
-        const now = Date.now()
-        setSummary({
-          waiting: queue.filter((item) => item.status === 'pending' && !isExpired(item, now)).length,
-          failed: queue.filter((item) => item.status === 'failed' || isStuck(item, now)).length,
-          sentToday,
-          settings: settings ?? DEFAULT_SETTINGS,
-        })
-        setUnavailable(false)
-      } catch {
-        if (!cancelled) {
-          setUnavailable(true)
-        }
-      }
-    }
-
-    void refresh()
-    const timer = window.setInterval(() => void refresh(true), REFRESH_MS)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
+      const { queue, settings, sentToday } = result.snapshot
+      const now = Date.now()
+      setSummary({
+        waiting: queue.filter((item) => item.status === 'pending' && !isExpired(item, now)).length,
+        failed: queue.filter((item) => item.status === 'failed' || isStuck(item, now)).length,
+        sentToday,
+        settings,
+      })
+      setUnavailable(false)
+    })
   }, [enabled])
 
   return { summary, unavailable }

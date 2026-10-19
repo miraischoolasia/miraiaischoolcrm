@@ -113,6 +113,8 @@ describe('bulk lead import', () => {
 
     expect(await screen.findByText('insert denied')).toBeInTheDocument()
     expect(screen.getByText('Bulk Import Leads')).toBeInTheDocument()
-    expect(mocks.rpc).not.toHaveBeenCalled()
+    // Nothing written (the page's own reads, such as each table's change number, do not count).
+    const reads = ['crm_table_versions', 'automation_snapshot']
+    expect(mocks.rpc.mock.calls.filter(([name]) => !reads.includes(name))).toEqual([])
   })
 })

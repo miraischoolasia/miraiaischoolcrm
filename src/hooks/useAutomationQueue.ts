@@ -6,11 +6,6 @@ import {
   currentUserId,
   DEFAULT_SEND_HOURS,
   DEFAULT_SETTINGS,
-  fetchAutoSendRuleKeys,
-  fetchSendHours,
-  fetchQueue,
-  fetchSentToday,
-  fetchSettings,
   finishQueueItem,
   roomLeft,
   saveQueueMessage,
@@ -19,8 +14,9 @@ import {
   type QueueItem,
   type SendHours,
 } from '../lib/automationQueue'
+import { refreshAutomationSnapshot, subscribeAutomationSnapshot, type AutomationSnapshot } from '../lib/automationSnapshot'
 
-const REFRESH_MS = 60_000
+const LOAD_ERROR = "Couldn't load the automation queue."
 
 // Sends one message to its parent's WhatsApp chat. Resolves to an error message, or null when
 // WhatsApp accepted it.
@@ -60,46 +56,50 @@ export function useAutomationQueue({ enabled, sleep = defaultSleep }: Args) {
   const [progress, setProgress] = useState<SendProgress | null>(null)
   const busy = useRef(false)
 
+  const apply = useCallback((snapshot: AutomationSnapshot) => {
+    setItems(snapshot.queue)
+    setAutoRuleKeys(snapshot.autoRuleKeys)
+    setSendHours(snapshot.sendHours)
+    setSettings(snapshot.settings)
+    setSentToday(snapshot.sentToday)
+    setError(null)
+    setIsLoading(false)
+  }, [])
+
+  // A read started now (after a change, or before sending), not one already on its way.
   const reload = useCallback(async () => {
     if (!enabled) {
       return null
     }
     try {
-      const [queue, config, today, autoKeys, hours] = await Promise.all([
-        fetchQueue(),
-        fetchSettings(),
-        fetchSentToday(),
-        // Without it every message just looks like it needs approval, which is the safe way round.
-        fetchAutoSendRuleKeys().catch(() => new Set<string>()),
-        fetchSendHours().catch(() => DEFAULT_SEND_HOURS),
-      ])
-      setItems(queue)
-      setAutoRuleKeys(autoKeys)
-      setSendHours(hours)
-      setSettings(config)
-      setSentToday(today)
-      setError(null)
-      return { config, today }
+      const snapshot = await refreshAutomationSnapshot(true)
+      apply(snapshot)
+      return { config: snapshot.settings, today: snapshot.sentToday }
     } catch (problem) {
-      setError(automationErrorMessage(problem, "Couldn't load the automation queue."))
-      return null
-    } finally {
+      setError(automationErrorMessage(problem, LOAD_ERROR))
       setIsLoading(false)
+      return null
     }
-  }, [enabled])
+  }, [enabled, apply])
 
+  // Kept fresh with the rest of the page: once a minute while the tab is looked at, and at once when it is
+  // looked at again (one shared read, see automationSnapshot). Not while messages are being sent.
   useEffect(() => {
     if (!enabled) {
       return
     }
-    void reload()
-    const timer = window.setInterval(() => {
-      if (!busy.current) {
-        void reload()
+    return subscribeAutomationSnapshot((result) => {
+      if (busy.current) {
+        return
       }
-    }, REFRESH_MS)
-    return () => window.clearInterval(timer)
-  }, [enabled, reload])
+      if (result.snapshot !== null) {
+        apply(result.snapshot)
+      } else {
+        setError(automationErrorMessage(result.error, LOAD_ERROR))
+        setIsLoading(false)
+      }
+    })
+  }, [enabled, apply])
 
   const saveMessage = useCallback(
     async (id: number, message: string) => {

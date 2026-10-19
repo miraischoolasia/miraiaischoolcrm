@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { everyWhileVisible } from '../lib/visibleTimer'
 import { fetchFlowStats, type FlowStats } from '../lib/automationStats'
 import { deleteOptout, fetchOptouts, optoutsErrorMessage, type AutomationOptout } from '../lib/automationOptouts'
 import {
@@ -116,8 +117,8 @@ export function useAutoSend({ enabled }: { enabled: boolean }) {
       return
     }
     void reload()
-    const timer = window.setInterval(() => void reload(), 60_000)
-    return () => window.clearInterval(timer)
+    // Not while the tab is in the background; at once when it is looked at again.
+    return everyWhileVisible(() => void reload(), 60_000)
   }, [enabled, reload])
 
   const save = useCallback(

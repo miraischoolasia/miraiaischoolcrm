@@ -2952,6 +2952,16 @@ export type Database = {
           replied: number
         }[]
       }
+      // 20261024900000: each table's change number, so the page reads again only what changed.
+      crm_table_versions: {
+        Args: { p_tables: string[] }
+        Returns: { table_name: string; present: boolean; tracked: boolean; version: number }[]
+      }
+      // 20261024910000: the automation queue's numbers in one request.
+      automation_snapshot: {
+        Args: { p_since: string }
+        Returns: Json
+      }
       reorder_lead_stages: {
         Args: {
           p_keys: string[]

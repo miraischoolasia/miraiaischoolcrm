@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchFlowActivity, flowLogErrorMessage, type FlowActivity } from '../lib/automationLog'
+import { everyWhileVisible } from '../lib/visibleTimer'
 
 const REFRESH_MS = 60_000
 
@@ -30,12 +31,7 @@ export function useFlowActivity(flowId: number | null, active: boolean) {
       return
     }
     void reload()
-    const timer = window.setInterval(() => {
-      if (!document.hidden) {
-        void reload()
-      }
-    }, REFRESH_MS)
-    return () => window.clearInterval(timer)
+    return everyWhileVisible(() => void reload(), REFRESH_MS)
   }, [active, flowId, reload])
 
   return { activity, isLoading, error, reload }

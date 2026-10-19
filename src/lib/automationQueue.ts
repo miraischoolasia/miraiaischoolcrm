@@ -1,3 +1,4 @@
+import type { Database } from '../types/database'
 import { supabase } from './supabase'
 
 // Messages the automations (n8n) want to send, waiting for a person to approve them.
@@ -154,7 +155,37 @@ export async function fetchQueue(): Promise<QueueItem[]> {
   if (error) {
     throw error
   }
-  return (data ?? []).map((row) => ({
+  return (data ?? []).map(mapQueueRow)
+}
+
+type QueueRow = Pick<
+  Database['public']['Tables']['automation_queue']['Row'],
+  | 'id'
+  | 'rule_key'
+  | 'rule_name'
+  | 'phone'
+  | 'parent_name'
+  | 'child_name'
+  | 'lead_id'
+  | 'student_id'
+  | 'message'
+  | 'status'
+  | 'due_at'
+  | 'expires_at'
+  | 'decided_at'
+  | 'sent_at'
+  | 'error'
+  | 'created_at'
+  | 'auto_blocked'
+  | 'media_url'
+  | 'conversation_id'
+  | 'channel'
+  | 'kind'
+>
+
+// One automation_queue row (the COLUMNS above) as the page uses it.
+export function mapQueueRow(row: QueueRow): QueueItem {
+  return {
     id: row.id,
     ruleKey: row.rule_key,
     ruleName: row.rule_name,
@@ -176,7 +207,7 @@ export async function fetchQueue(): Promise<QueueItem[]> {
     createdAt: row.created_at,
     autoBlocked: row.auto_blocked,
     mediaUrl: row.media_url ?? null,
-  }))
+  }
 }
 
 // The rule keys ("flow_<id>") of the enabled flows that send by themselves.
