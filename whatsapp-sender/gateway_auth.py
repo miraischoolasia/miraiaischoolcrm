@@ -6,6 +6,13 @@ things with that same token: who is this, and may they see Leads (or, for
 /verify-admin, are they an admin). Only then does Caddy add the Chatwoot key and
 pass the request on.
 
+A request about one chat (Caddy passes the original method and path as X-Forwarded-Method /
+X-Forwarded-Uri) is also checked against that chat's channel and owner: inbox_conversation_access() in the
+database answers 'reply', 'view', 'none', or 'unknown' when the CRM's copy has not seen the chat yet (then the
+tick alone decides, as before). Sending, editing or deleting needs 'reply'; reading, and marking a chat read or
+unread, needs 'view'. A database without that function yet answers 404, which counts as 'unknown', so this
+file can go to the server before the migration (docs/teams-permissions-design.md, section 5).
+
 Answers are remembered so a chat that polls every few seconds does not call
 Supabase every time (each call leaves lines in Supabase's logs, which are limited
 on the free plan): a yes for 5 minutes, but never past the moment the login
@@ -24,6 +31,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import socket
 import threading
 import time
@@ -114,6 +122,35 @@ def ask(token: str, admin: bool) -> int | None:
     return None
 
 
+# /api/v1/accounts/1/conversations/123/messages, after whatever prefix the gateway puts in front.
+CONVERSATION = re.compile(r"/api/v1/accounts/\d+/conversations/(\d+)(/[^?]*)?$")
+# Marking a chat read or unread is looking at it, not answering it.
+VIEW_ACTIONS = ("/update_last_seen", "/unread")
+LEVELS = ("reply", "view", "none", "unknown")
+
+
+def needed_for(method: str, uri: str) -> tuple[int, str] | None:
+    """(chat number, 'view' or 'reply') for a request about one chat, or None for anything else."""
+    match = CONVERSATION.search(uri.split("?", 1)[0])
+    if not match:
+        return None
+    rest = match.group(2) or ""
+    reading = method.upper() in ("GET", "HEAD") or rest in VIEW_ACTIONS
+    return int(match.group(1)), "view" if reading else "reply"
+
+
+def ask_conversation(token: str, conversation_id: int) -> str | None:
+    """'reply' / 'view' / 'none' / 'unknown', or None when Supabase could not answer."""
+    status, level = supabase("/rest/v1/rpc/inbox_conversation_access", token, {"p_conversation_id": conversation_id})
+    if status == 200 and level in LEVELS:
+        return level
+    if status == 404:
+        return "unknown"
+    if is_refusal(status):
+        return "none"
+    return None
+
+
 def _remembered(key: str, now: float) -> int | None:
     hit = _cache.get(key)
     return hit[1] if hit and hit[0] > now else None
@@ -154,6 +191,37 @@ def decide(token: str, admin: bool = False) -> int:
         return result
 
 
+_levels: dict[str, tuple[float, str]] = {}
+
+
+def decide_conversation(token: str, conversation_id: int, need: str) -> int:
+    """200 or 403 for one chat, after decide() said yes; 503 when Supabase could not answer."""
+    key = hashlib.sha256(f"chat:{conversation_id}:{token}".encode()).hexdigest()
+    now = time.time()
+    with _lock:
+        hit = _levels.get(key)
+        level = hit[1] if hit and hit[0] > now else None
+    if level is None:
+        try:
+            level = ask_conversation(token, conversation_id)
+        except Exception:
+            level = None
+        if level is None:
+            return 503
+        until = now + ALLOWED_TTL
+        expiry = token_expiry(token)
+        if expiry is not None:
+            until = min(until, expiry)
+        with _lock:
+            if len(_levels) > MAX_CACHED:
+                _levels.clear()
+            if until > now:
+                _levels[key] = (until, level)
+    if level in ("reply", "unknown") or (level == "view" and need == "view"):
+        return 200
+    return 403
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         # Caddy keeps the original query string on the check request; ignore it.
@@ -165,7 +233,13 @@ class Handler(BaseHTTPRequestHandler):
         header = self.headers.get("Authorization", "")
         if not header.lower().startswith("bearer ") or len(header) < 20:
             return self.reply(401)
-        return self.reply(decide(header[7:].strip(), admin=(path == "/verify-admin")))
+        token = header[7:].strip()
+        result = decide(token, admin=(path == "/verify-admin"))
+        if result == 200 and path == "/verify":
+            chat = needed_for(self.headers.get("X-Forwarded-Method", "GET"), self.headers.get("X-Forwarded-Uri", ""))
+            if chat is not None:
+                result = decide_conversation(token, chat[0], chat[1])
+        return self.reply(result)
 
     def reply(self, status: int):
         self.send_response(status)

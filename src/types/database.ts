@@ -81,6 +81,7 @@ export type Database = {
           role: 'admin' | 'teacher' | 'staff'
           is_active: boolean
           permissions: Json
+          effective_permissions: Json
           created_at: string
           updated_at: string
           zoom_host_user: string | null
@@ -360,6 +361,8 @@ export type Database = {
           legacy_key: string | null
           color: string | null
           created_at: string
+          // A PIC name linked to an account (20261026010000).
+          teacher_id?: number | null
         }
         Insert: {
           id?: number
@@ -2786,6 +2789,83 @@ export type Database = {
         Update: { schedule_id?: number; lesson_date?: string; teacher_id?: number }
         Relationships: []
       }
+      // Teams and their people (20261026000000). Changed only through save_team / set_team_members.
+      teams: {
+        Row: {
+          id: number
+          name: string
+          color: string | null
+          description: string | null
+          permissions: Json
+          is_active: boolean
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: []
+      }
+      team_members: {
+        Row: { team_id: number; teacher_id: number; added_at: string }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: []
+      }
+      // Who may use each inbox channel (20261026020000). Changed only through set_inbox_channel.
+      inbox_channels: {
+        Row: {
+          chatwoot_inbox_id: number
+          kind: 'whatsapp' | 'messenger' | 'instagram' | 'other'
+          label: string
+          access: 'open' | 'limited'
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: []
+      }
+      inbox_channel_access: {
+        Row: { id: number; chatwoot_inbox_id: number; team_id: number | null; teacher_id: number | null; level: 'view' | 'reply'; created_at: string }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: []
+      }
+      // Working hours, time off and swaps (20261026030000). Changed only through the admin functions.
+      staff_shifts: {
+        Row: {
+          id: number
+          teacher_id: number
+          weekday: number
+          start_time: string
+          end_time: string
+          effective_from: string
+          effective_to: string | null
+          created_at: string
+        }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: []
+      }
+      staff_roster_changes: {
+        Row: {
+          id: number
+          teacher_id: number
+          starts_at: string
+          ends_at: string
+          change: 'off' | 'extra'
+          reason: string | null
+          swap_id: string | null
+          note: string | null
+          created_by: number | null
+          created_at: string
+        }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: []
+      }
       classroom_teacher_libraries: {
         Row: { classroom_id: number; teacher_id: number; library_id: number }
         Insert: { classroom_id: number; teacher_id: number; library_id: number }
@@ -2860,18 +2940,42 @@ export type Database = {
           waits: number[]
           within_target: number
           slowest: number | null
+          duty_waits?: number[]
+          duty_within_target?: number
+          duty_slowest?: number | null
           computed_at: string
         }
         Insert: Record<string, never>
         Update: Record<string, never>
         Relationships: []
       }
+      // One chat's scheduled messages and flow starts (20261025600000).
+      chat_schedules: {
+        Row: {
+          id: number
+          kind: string
+          conversation_id: number
+          message: string | null
+          media_url: string | null
+          flow_id: number | null
+          run_at: string
+          cancel_on_reply: boolean
+          status: string
+          created_by_name: string | null
+          created_at: string
+        }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: []
+      }
+      // Inbox sticker library (20261025500000).
       inbox_stickers: {
         Row: { id: number; path: string; name: string | null; sort_order: number; is_active: boolean; created_at: string }
         Insert: { path: string; name?: string | null; sort_order?: number; is_active?: boolean }
         Update: { name?: string | null; sort_order?: number; is_active?: boolean }
         Relationships: []
       }
+      // The inbox copy (20261024800000 + 20261025300000): only what the Inbox page reads back.
       inbox_chats: {
         Row: {
           conversation_id: number
@@ -2894,24 +2998,6 @@ export type Database = {
           conversation_id: number
           created_at: string
           raw: Json | null
-        }
-        Insert: Record<string, never>
-        Update: Record<string, never>
-        Relationships: []
-      }
-      chat_schedules: {
-        Row: {
-          id: number
-          kind: string
-          conversation_id: number
-          message: string | null
-          media_url: string | null
-          flow_id: number | null
-          run_at: string
-          cancel_on_reply: boolean
-          status: string
-          created_by_name: string | null
-          created_at: string
         }
         Insert: Record<string, never>
         Update: Record<string, never>
@@ -2952,6 +3038,9 @@ export type Database = {
           waits: number[]
           within_target: number
           slowest: number | null
+          duty_waits?: number[]
+          duty_within_target?: number
+          duty_slowest?: number | null
         }[]
       }
       team_reply_compute_range: {
@@ -3616,6 +3705,67 @@ export type Database = {
       }
       can_take_attendance: {
         Args: { p_schedule_id: number; p_lesson_date: string }
+        Returns: boolean
+      }
+      // Teams and permissions (20261026000000 .. 030000).
+      permission_scope: {
+        Args: { p_module: string; p_action?: string }
+        Returns: 'all' | 'own_unassigned' | 'own' | null
+      }
+      save_team: {
+        Args: { p_id: number | null; p_name: string; p_color: string | null; p_description: string | null; p_permissions: Json; p_is_active?: boolean }
+        Returns: number
+      }
+      set_team_members: {
+        Args: { p_team_id: number; p_teacher_ids: number[] }
+        Returns: undefined
+      }
+      set_account_teams: {
+        Args: { p_teacher_id: number; p_team_ids: number[] }
+        Returns: undefined
+      }
+      reorder_teams: {
+        Args: { p_team_ids: number[] }
+        Returns: undefined
+      }
+      my_inbox_access: {
+        Args: Record<string, never>
+        Returns: Json
+      }
+      inbox_access_level: {
+        Args: { p_inbox_id: number }
+        Returns: 'reply' | 'view' | null
+      }
+      set_inbox_channel: {
+        Args: { p_inbox_id: number; p_kind: string; p_label: string; p_access: string; p_grants?: Json; p_is_active?: boolean }
+        Returns: undefined
+      }
+      save_staff_week: {
+        Args: { p_teacher_id: number; p_shifts: Json; p_from?: string | null }
+        Returns: undefined
+      }
+      add_roster_change: {
+        Args: { p_teacher_id: number; p_starts_at: string; p_ends_at: string; p_change: string; p_reason?: string | null; p_note?: string | null }
+        Returns: number
+      }
+      add_shift_swap: {
+        Args: { p_from_teacher_id: number; p_to_teacher_id: number; p_starts_at: string; p_ends_at: string; p_reason?: string | null; p_note?: string | null }
+        Returns: string
+      }
+      delete_roster_change: {
+        Args: { p_id: number }
+        Returns: undefined
+      }
+      set_business_hours: {
+        Args: { p_value: Json }
+        Returns: undefined
+      }
+      set_leave_reasons: {
+        Args: { p_reasons: Json }
+        Returns: undefined
+      }
+      team_hours_in_use: {
+        Args: Record<string, never>
         Returns: boolean
       }
       my_classroom_ids: {

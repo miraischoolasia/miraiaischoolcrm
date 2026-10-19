@@ -184,6 +184,9 @@ export type Teacher = {
   role: TeacherRole
   isActive: boolean
   permissions: AccountPermissions
+  // The account's own ticks plus those of its teams, worked out by the database
+  // (teachers.effective_permissions). Missing on accounts made in the page itself.
+  effectivePermissions?: EffectivePermissions
 }
 
 export type TeacherRole = 'admin' | 'teacher' | 'staff'
@@ -196,12 +199,32 @@ export type PermissionModule =
   | 'forms'
   | 'activity'
   | 'team_replies'
+  | 'inbox'
+  | 'automations'
+  | 'ai_knowledge'
+  | 'videos'
+  | 'questions'
+  | 'app_logins'
+  | 'packages'
+  | 'class_settings'
+  | 'staff_hours'
 
 export type PermissionAction = 'view' | 'edit' | 'delete'
 
-// A missing module means no access. Delete is only ever set with edit.
+// Whose rows a tick covers: everyone's, mine and nobody's, or only mine.
+export type PermissionScope = 'all' | 'own_unassigned' | 'own'
+
+// A missing module means no access. Delete is only ever set with edit. No scope means 'all'.
 export type AccountPermissions = Partial<
-  Record<PermissionModule, { level: 'view' | 'edit'; delete?: boolean }>
+  Record<PermissionModule, { level: 'view' | 'edit'; delete?: boolean; scope?: PermissionScope }>
+>
+
+// The total of several sets of ticks: per action, the widest scope that gives it.
+export type EffectivePermissions = Partial<
+  Record<
+    PermissionModule,
+    { level: 'view' | 'edit'; delete: boolean; scope: PermissionScope; editScope?: PermissionScope; deleteScope?: PermissionScope }
+  >
 >
 
 export type LeadChild = {
@@ -536,7 +559,7 @@ export type TeacherRow = Pick<
   | 'role'
   | 'is_active'
   | 'permissions'
->
+> & { effective_permissions?: Database['public']['Tables']['teachers']['Row']['effective_permissions'] }
 
 export type LeadRow = Pick<
   Database['public']['Tables']['leads']['Row'],

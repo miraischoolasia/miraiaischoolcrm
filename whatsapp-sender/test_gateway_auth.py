@@ -142,5 +142,82 @@ class Decide(unittest.TestCase):
         self.assertEqual(len(fake.calls), 2)
 
 
+class FakeChats:
+    """Answers inbox_conversation_access like Supabase, per chat number."""
+
+    def __init__(self, levels, status=200):
+        self.levels = levels
+        self.status = status
+        self.calls = []
+
+    def __call__(self, path, token, body=None):
+        self.calls.append((path, body))
+        if self.status != 200:
+            return self.status, None
+        return 200, self.levels.get(body["p_conversation_id"], "unknown")
+
+
+class Conversations(unittest.TestCase):
+    def setUp(self):
+        gateway_auth._levels.clear()
+        self.clock = NOW
+        patcher = mock.patch.object(gateway_auth.time, "time", lambda: self.clock)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def use(self, fake):
+        patcher = mock.patch.object(gateway_auth, "supabase", fake)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return fake
+
+    def test_which_requests_are_about_one_chat(self):
+        base = "/chatwoot/api/v1/accounts/1/conversations"
+        self.assertEqual(gateway_auth.needed_for("POST", f"{base}/12/messages"), (12, "reply"))
+        self.assertEqual(gateway_auth.needed_for("GET", f"{base}/12/messages?before=5"), (12, "view"))
+        self.assertEqual(gateway_auth.needed_for("DELETE", f"{base}/12/messages/99"), (12, "reply"))
+        self.assertEqual(gateway_auth.needed_for("POST", f"{base}/12/custom_attributes"), (12, "reply"))
+        self.assertEqual(gateway_auth.needed_for("POST", f"{base}/12/update_last_seen"), (12, "view"))
+        self.assertEqual(gateway_auth.needed_for("POST", f"{base}/12/unread"), (12, "view"))
+        self.assertIsNone(gateway_auth.needed_for("GET", f"{base}?status=open&page=1"))
+        self.assertIsNone(gateway_auth.needed_for("GET", f"{base}/search?q=tan"))
+        self.assertIsNone(gateway_auth.needed_for("POST", "/wa/read"))
+
+    def test_levels(self):
+        token = token_with_exp(NOW + 3600)
+        self.use(FakeChats({1: "reply", 2: "view", 3: "none"}))
+        self.assertEqual(gateway_auth.decide_conversation(token, 1, "reply"), 200)
+        self.assertEqual(gateway_auth.decide_conversation(token, 2, "view"), 200)
+        self.assertEqual(gateway_auth.decide_conversation(token, 2, "reply"), 403)
+        self.assertEqual(gateway_auth.decide_conversation(token, 3, "view"), 403)
+        # Not in the CRM's copy yet: the tick alone decides (decide() already said yes).
+        self.assertEqual(gateway_auth.decide_conversation(token, 4, "reply"), 200)
+
+    def test_an_answer_is_remembered_for_5_minutes(self):
+        token = token_with_exp(NOW + 3600)
+        fake = self.use(FakeChats({1: "view"}))
+        gateway_auth.decide_conversation(token, 1, "view")
+        gateway_auth.decide_conversation(token, 1, "reply")
+        self.assertEqual(len(fake.calls), 1)
+        self.clock = NOW + 301
+        gateway_auth.decide_conversation(token, 1, "view")
+        self.assertEqual(len(fake.calls), 2)
+
+    def test_a_database_without_the_check_lets_the_tick_decide(self):
+        self.use(FakeChats({}, status=404))
+        self.assertEqual(gateway_auth.decide_conversation(token_with_exp(NOW + 3600), 1, "reply"), 200)
+
+    def test_supabase_down_is_503_and_not_remembered(self):
+        token = token_with_exp(NOW + 3600)
+        fake = self.use(FakeChats({}, status=502))
+        self.assertEqual(gateway_auth.decide_conversation(token, 1, "reply"), 503)
+        gateway_auth.decide_conversation(token, 1, "reply")
+        self.assertEqual(len(fake.calls), 2)
+
+    def test_a_refusal_is_403(self):
+        self.use(FakeChats({}, status=400))
+        self.assertEqual(gateway_auth.decide_conversation(token_with_exp(NOW + 3600), 1, "view"), 403)
+
+
 if __name__ == "__main__":
     unittest.main()

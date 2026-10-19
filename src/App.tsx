@@ -200,6 +200,13 @@ import {
 import { buildTeacherClasses } from './lib/teacherDetails'
 import { TeacherDetailsSection } from './components/sections/TeacherDetailsSection'
 import { TeacherManagementSection } from './components/sections/TeacherManagementSection'
+import { MyTeamTabs } from './components/teams/MyTeamTabs'
+import { TeamsPanel } from './components/teams/TeamsPanel'
+import { WorkingHoursPanel } from './components/teams/WorkingHoursPanel'
+import type { InboxOption } from './components/teams/ChannelAccessSection'
+import { useStaffTeams } from './hooks/useStaffTeams'
+import { teamsOf } from './lib/staffTeams'
+import { fetchHoursInUse } from './lib/staffHours'
 import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
 import { AiKnowledgeSection } from './components/sections/AiKnowledgeSection'
@@ -824,7 +831,7 @@ function App() {
   const calendarItems = useCalendarItems(Boolean(authUserId) && (can('calendar') || can('leads')), currentSession?.teacherId ?? null)
   const [calendarItemEditor, setCalendarItemEditor] = useState<{ item: CalendarItem | null; date: string } | null>(null)
   // The chats each lead has: WhatsApp numbers, Messenger Pages, Instagram.
-  const leadChannels = useLeadChannels(Boolean(authUserId) && can('leads'))
+  const leadChannels = useLeadChannels(Boolean(authUserId) && (can('leads') || can('inbox')))
   // The courses the school signs parents up for (Programmes page); the Inbox and the class form read them.
   const programmes = useProgrammes({ enabled: Boolean(authUserId) && can('leads') })
   // The stages leads go through (Leads page: Manage stages). Loading them fills the list every stage picker reads.
@@ -837,28 +844,29 @@ function App() {
   const allowedSections = useMemo(() => {
     const sections: AppSection[] = []
     // A teacher's own day, or the admin's / staff's overview of the school.
-    if (isTeacherAccount || isAdmin || can('calendar') || can('students') || can('leads')) {
+    if (isTeacherAccount || isAdmin || can('calendar') || can('students') || can('leads') || can('inbox')) {
       sections.push('home')
     }
     if (can('leads')) sections.push('leads')
     // Same ticks as Leads: whoever follows up leads answers their WhatsApp.
-    if (can('leads') && chatwootUrl) sections.push('whatsapp')
+    if (can('inbox') && chatwootUrl) sections.push('whatsapp')
     // Anyone who can see Leads can look at the automations; only an admin changes them.
-    if (can('leads')) sections.push('automations')
+    if (can('automations')) sections.push('automations')
     // What the AI reply drafts know about the school; same rule: everybody who sees Leads reads it, an admin edits.
-    if (can('leads')) sections.push('ai-knowledge')
+    if (can('ai_knowledge')) sections.push('ai-knowledge')
     if (can('forms')) sections.push('forms')
     if (isTeacherAccount || can('calendar')) sections.push('calendar')
     if (isTeacherAccount || can('classrooms')) sections.push('classrooms')
     // Every teacher keeps questions for class; an admin sees all of them.
-    if (isTeacherAccount || isAdmin) sections.push('questions')
+    if (isTeacherAccount || can('questions')) sections.push('questions')
     // A class's videos: whoever sees the classes (each teacher manages their own classes' videos).
-    if (isTeacherAccount || can('classrooms')) sections.push('videos')
+    if (isTeacherAccount || can('classrooms') || can('videos')) sections.push('videos')
     // The courses the school signs parents up for: an admin makes them, so the page is the admin's.
     if (can('students')) sections.push('students')
-    // The student app's logins: same ticks as the student page that makes them.
-    if (can('students')) sections.push('app-logins')
-    if (isAdmin) sections.push('teachers')
+    // The student app's logins: their own tick (copied from Students).
+    if (can('app_logins')) sections.push('app-logins')
+    // My Team: accounts and teams are the admin's; Working hours can be seen with its own tick.
+    if (isAdmin || can('staff_hours')) sections.push('teachers')
     // How each person answers the chats: its own tick, since it is about the team's work.
     if (can('team_replies')) sections.push('team-replies')
     if (can('activity')) sections.push('activity')
@@ -885,7 +893,8 @@ function App() {
   }, [visibleSection])
   const { unread: unreadFormSubmissions, markSeen: markFormSubmissionsSeen } =
     useUnreadFormSubmissions(can('forms'))
-  const canUseWhatsApp = can('leads')
+  // Teams and permissions (20261026000000): the Inbox has its own tick, copied from Leads.
+  const canUseWhatsApp = can('inbox')
   const whatsAppClient = useMemo(
     () => (whatsAppApiUrl && canUseWhatsApp ? createChatwootClient(whatsAppApiUrl) : null),
     [canUseWhatsApp],
@@ -910,11 +919,51 @@ function App() {
   const showAdminHome = visibleSection === 'home' && !isTeacherAccount
   const showTeacherDetails = visibleSection === 'teachers' && teacherDetailsId !== null
   const { summary: automationSummary, unavailable: automationUnavailable } = useAutomationSummary(
-    showAdminHome && can('leads'),
+    showAdminHome && can('automations'),
   )
   const whatsAppUser = useMemo(
     () => (effectiveTeacher ? { id: effectiveTeacher.id, name: effectiveTeacher.fullName } : null),
     [effectiveTeacher],
+  )
+  // Team Replies counts only working time first once anyone has working hours.
+  const [teamHoursInUse, setTeamHoursInUse] = useState(false)
+  useEffect(() => {
+    if (visibleSection !== 'team-replies') return
+    let cancelled = false
+    void fetchHoursInUse().then((inUse) => {
+      if (!cancelled) setTeamHoursInUse(inUse)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [visibleSection])
+  // Teams and working hours (My Team): the admin's, and Working hours with its own tick.
+  const staffTeams = useStaffTeams(Boolean(authUserId) && (isAdmin || can('staff_hours')))
+  const teamPeople = useMemo(
+    () =>
+      teachers
+        .filter((teacher) => teacher.isActive && teacher.role !== 'admin')
+        .map((teacher) => ({ id: teacher.id, name: teacher.fullName, role: teacher.role })),
+    [teachers],
+  )
+  // The Chatwoot inboxes, for picking a channel in My Team > Teams.
+  const listTeamInboxes = useMemo(
+    () =>
+      whatsAppClient
+        ? async (): Promise<InboxOption[]> =>
+            (await whatsAppClient.listInboxes()).map((inbox) => ({
+              id: inbox.id,
+              name: inbox.name,
+              kind: /instagram/i.test(inbox.channelType)
+                ? 'instagram'
+                : /facebook/i.test(inbox.channelType)
+                  ? 'messenger'
+                  : /api|whatsapp/i.test(inbox.channelType)
+                    ? 'whatsapp'
+                    : 'other',
+            }))
+        : undefined,
+    [whatsAppClient],
   )
   // Team Replies names everybody who may have answered a chat, those no longer active included.
   const teamReplyStaff = useMemo(
@@ -2205,11 +2254,11 @@ function App() {
               : undefined,
       })),
     // Windows that used to sit behind a button on a page.
-    ...(isAdmin
-      ? [
-          { id: 'packages', label: 'Packages', icon: PackageIcon, group: 'students' as const, onSelect: () => setIsPackagesOpen(true) },
-          { id: 'class-settings', label: 'Class Settings', icon: GearSix, group: 'admin' as const, onSelect: openClassSettings },
-        ]
+    ...(can('packages')
+      ? [{ id: 'packages', label: 'Packages', icon: PackageIcon, group: 'students' as const, onSelect: () => setIsPackagesOpen(true) }]
+      : []),
+    ...(can('class_settings')
+      ? [{ id: 'class-settings', label: 'Class Settings', icon: GearSix, group: 'admin' as const, onSelect: openClassSettings }]
       : []),
   ]
   // Students sit before Programmes and Packages; My Team before Class Settings and the log.
@@ -6768,12 +6817,12 @@ function App() {
                 leads={can('leads') ? leads : null}
                 unreadForms={can('forms') ? unreadFormSubmissions : null}
                 whatsApp={
-                  can('leads') && chatwootUrl && whatsAppApiUrl
+                  can('inbox') && chatwootUrl && whatsAppApiUrl
                     ? { unread: unreadWhatsApp, waiting: waitingWhatsApp }
                     : null
                 }
                 automations={
-                  can('leads') ? { summary: automationSummary, unavailable: automationUnavailable } : null
+                  can('automations') ? { summary: automationSummary, unavailable: automationUnavailable } : null
                 }
                 canRenew={can('students', 'edit')}
                 onTakeAttendance={(item) =>
@@ -7063,7 +7112,7 @@ function App() {
                 onEditClassroom={openEditClassroom}
                 onEditSchedule={openEditSchedule}
                 onOpenCreateClassroom={can('classrooms', 'edit') ? openCreateClassroom : undefined}
-                onOpenClassSettings={isAdmin ? openClassSettings : undefined}
+                onOpenClassSettings={can('class_settings') ? openClassSettings : undefined}
                 onOpenCreateRegularSchedule={
                   can('classrooms', 'edit')
                     ? (classroomId) => openCreateSchedule(undefined, classroomId)
@@ -7108,7 +7157,7 @@ function App() {
                       }
                     : undefined
                 }
-                onOpenPackages={isAdmin ? () => setIsPackagesOpen(true) : undefined}
+                onOpenPackages={can('packages') ? () => setIsPackagesOpen(true) : undefined}
                 deactivatingStudentId={deactivatingStudentId}
                 isLoading={isLoading}
                 students={listedStudents}
@@ -7148,15 +7197,46 @@ function App() {
             )}
 
             {visibleSection === 'teachers' && (teacherDetailsId === null || !teacherDetailsAgenda) && (
-              <TeacherManagementSection
-                onOpenTeacher={setTeacherDetailsId}
-                deletingTeacherId={deletingTeacherId}
-                isLoading={isLoading}
-                teachers={activeTeachers}
-                onDeleteTeacher={handleDeleteTeacher}
-                onEditTeacher={openEditTeacherModal}
-                onOpenCreateTeacher={openCreateTeacherModal}
-                protectedTeacherIds={protectedTeacherIds}
+              <MyTeamTabs
+                accounts={
+                  isAdmin ? (
+                    <TeacherManagementSection
+                      onOpenTeacher={setTeacherDetailsId}
+                      deletingTeacherId={deletingTeacherId}
+                      isLoading={isLoading}
+                      teachers={activeTeachers}
+                      onDeleteTeacher={handleDeleteTeacher}
+                      onEditTeacher={openEditTeacherModal}
+                      onOpenCreateTeacher={openCreateTeacherModal}
+                      protectedTeacherIds={protectedTeacherIds}
+                      teamsOf={(teacherId) => teamsOf(teacherId, staffTeams.teams, staffTeams.members)}
+                    />
+                  ) : null
+                }
+                teams={
+                  isAdmin ? (
+                    <TeamsPanel
+                      teams={staffTeams.teams}
+                      members={staffTeams.members}
+                      missing={staffTeams.missing}
+                      loadError={staffTeams.error}
+                      people={teamPeople}
+                      onChanged={async () => {
+                        // A team's ticks change its members' totals.
+                        await Promise.all([staffTeams.refresh(), refreshTeachers()])
+                      }}
+                      listInboxes={listTeamInboxes}
+                    />
+                  ) : null
+                }
+                hours={
+                  <WorkingHoursPanel
+                    people={teamPeople}
+                    canEdit={isAdmin}
+                    canEditSettings={can('class_settings', 'edit')}
+                    todayString={todayString}
+                  />
+                }
               />
             )}
 
@@ -7218,12 +7298,12 @@ function App() {
             )}
 
             {visibleSection === 'automations' && (
-              <AutomationsSection classrooms={classrooms} canEdit={isAdmin} leadOptions={leadOptions} />
+              <AutomationsSection classrooms={classrooms} canEdit={can('automations', 'edit')} leadOptions={leadOptions} />
             )}
 
             {visibleSection === 'ai-knowledge' && (
               <AiKnowledgeSection
-                canEdit={isAdmin}
+                canEdit={can('ai_knowledge', 'edit')}
                 loadThread={
                   whatsAppClient
                     ? (chatId, lastMessageId) => fetchThread(whatsAppClient, chatId, lastMessageId)
@@ -7234,7 +7314,7 @@ function App() {
             {visibleSection === 'questions' && (
               <QuestionBankSection
                 currentTeacherId={currentSession?.teacherId ?? null}
-                isAdmin={isAdmin}
+                isAdmin={can('questions', 'edit')}
                 teacherNames={new Map(Array.from(teacherMap.entries()).map(([id, teacher]) => [id, teacher.fullName]))}
                 subjects={subjects}
                 classrooms={visibleClassrooms}
@@ -7267,7 +7347,7 @@ function App() {
             )}
 
             {visibleSection === 'team-replies' && (
-              <TeamRepliesSection staff={teamReplyStaff} client={whatsAppClient} canCopy={isAdmin} />
+              <TeamRepliesSection staff={teamReplyStaff} client={whatsAppClient} canCopy={isAdmin} hoursInUse={teamHoursInUse} />
             )}
 
             {visibleSection === 'activity' && (
@@ -7531,6 +7611,14 @@ function App() {
           onAddTask={handleAddTask}
           onToggleTask={handleToggleTask}
           onDeleteTask={handleDeleteTask}
+          onOpenChat={
+            canOpenWhatsAppChat && chatTargetForLead(followUpLead, leadChannels.rows)
+              ? () => {
+                  closeFollowUpModal()
+                  openFollowUpChat(followUpLead.id)
+                }
+              : undefined
+          }
         />
       )}
 

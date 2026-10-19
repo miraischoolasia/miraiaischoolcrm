@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle, Circle, Plus, Trash, X } from '@phosphor-icons/react'
+import { ChatCircleText, CheckCircle, Circle, Plus, Trash, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { MAX_LEAD_FOLLOW_UPS } from '../../lib/constants'
 import { getTodayString } from '../../domain/studentStatus'
@@ -16,6 +16,8 @@ type LeadFollowUpModalProps = {
   onAddTask: (title: string, dueDate: string) => void
   onToggleTask: (taskId: string) => void
   onDeleteTask: (taskId: string) => void
+  // Opens this lead's chat; left out when the lead has no chat (or the inbox is not open to this person).
+  onOpenChat?: () => void
 }
 
 export function LeadFollowUpModal({
@@ -29,6 +31,7 @@ export function LeadFollowUpModal({
   onAddTask,
   onToggleTask,
   onDeleteTask,
+  onOpenChat,
 }: LeadFollowUpModalProps) {
   const [note, setNote] = useState('')
   const [taskTitle, setTaskTitle] = useState('')
@@ -62,6 +65,16 @@ export function LeadFollowUpModal({
             <p className="mt-2 text-sm text-slate-500">
               Log each follow-up touch so the whole team can see where this lead stands.
             </p>
+            {onOpenChat && (
+              <button
+                type="button"
+                onClick={onOpenChat}
+                className="mt-3 inline-flex items-center gap-1 rounded-lg bg-[#fc0c97] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#e00a87]"
+              >
+                <ChatCircleText size={14} aria-hidden="true" />
+                Open chat
+              </button>
+            )}
           </div>
           <button
             type="button"

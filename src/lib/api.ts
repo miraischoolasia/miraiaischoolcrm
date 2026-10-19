@@ -36,6 +36,7 @@ import type {
   LessonLogSummary,
   ScheduleExceptionRow,
   StudentRow,
+  TeacherRow,
 } from '../types/domain'
 
 function isMissingTableError(error: { code?: string }) {
@@ -240,17 +241,20 @@ export async function fetchTeachersFromSupabase() {
     return []
   }
 
-  const { data, error } = await supabase
-    .from('teachers')
-    .select('id, auth_user_id, username, full_name, email, phone, role, is_active, permissions')
-    .order('role', { ascending: true })
-    .order('full_name')
+  const select = (columns: string) =>
+    supabase!.from('teachers').select(columns).order('role', { ascending: true }).order('full_name')
+  const base = 'id, auth_user_id, username, full_name, email, phone, role, is_active, permissions'
+  // effective_permissions (own ticks + teams) comes with 20261026000000; before that, the own ticks are all there is.
+  let { data, error } = await select(`${base}, effective_permissions`)
+  if (error && (error.code === '42703' || error.message?.includes('effective_permissions'))) {
+    ;({ data, error } = await select(base))
+  }
 
   if (error) {
     throw error
   }
 
-  return data.map(mapTeacherRow)
+  return ((data ?? []) as unknown as TeacherRow[]).map(mapTeacherRow)
 }
 
 export async function fetchLeadsFromSupabase() {

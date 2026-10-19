@@ -1,4 +1,4 @@
-import { parseAccountPermissions } from './permissions'
+import { parseAccountPermissions, parseEffectivePermissions } from './permissions'
 import type {
   AdminActivity,
   AdminActivityRow,
@@ -116,6 +116,9 @@ export function mapTeacherRow(row: TeacherRow): Teacher {
     role: row.role,
     isActive: row.is_active,
     permissions: parseAccountPermissions(row.permissions),
+    ...(row.effective_permissions !== undefined
+      ? { effectivePermissions: parseEffectivePermissions(row.effective_permissions) }
+      : {}),
   }
 }
 

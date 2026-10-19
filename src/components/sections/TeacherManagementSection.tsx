@@ -4,6 +4,7 @@ import { SummaryBar } from '../SummaryBar'
 import { BrandMascot } from '../BrandMascot'
 import { describePermissions } from '../../lib/permissions'
 import type { Teacher } from '../../types/domain'
+import type { Team } from '../../lib/staffTeams'
 import {
   LockSimple,
   MagnifyingGlass,
@@ -22,6 +23,8 @@ type TeacherManagementSectionProps = {
   // Opens the teacher's details: their classes and the students in them.
   onOpenTeacher?: (teacherId: number) => void
   protectedTeacherIds: Set<number>
+  // The teams each account is in (My Team > Teams), shown beside its ticks.
+  teamsOf?: (teacherId: number) => Team[]
 }
 
 export function TeacherManagementSection({
@@ -33,6 +36,7 @@ export function TeacherManagementSection({
   onOpenCreateTeacher,
   onOpenTeacher,
   protectedTeacherIds,
+  teamsOf,
 }: TeacherManagementSectionProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [roleFilter, setRoleFilter] = useState<Teacher['role'] | 'all'>('all')
@@ -167,7 +171,7 @@ export function TeacherManagementSection({
                     </span>
                   </div>
 
-                  <AccessSummary teacher={teacher} />
+                  <AccessSummary teacher={teacher} teams={teamsOf?.(teacher.id) ?? []} />
 
                   <dl className="space-y-1 rounded-xl bg-slate-50 p-3 text-sm">
                     <div className="flex justify-between gap-3">
@@ -257,7 +261,7 @@ export function TeacherManagementSection({
                         >
                           {roleLabel[teacher.role]}
                         </span>
-                        <AccessSummary teacher={teacher} />
+                        <AccessSummary teacher={teacher} teams={teamsOf?.(teacher.id) ?? []} />
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
                         {teacher.email || '-'}
@@ -348,18 +352,35 @@ const roleBadgeClass: Record<Teacher['role'], string> = {
   staff: 'bg-amber-50 text-amber-700',
 }
 
-// What the account can use beyond its role, e.g. "Leads (edit) · Calendar (view)".
-function AccessSummary({ teacher }: { teacher: Teacher }) {
+// What the account can use beyond its role, e.g. "Leads (edit) · Calendar (view)": its own ticks and its
+// teams' together, and the teams it is in.
+function AccessSummary({ teacher, teams }: { teacher: Teacher; teams: Team[] }) {
   if (teacher.role === 'admin') {
     return null
   }
-  if (teacher.role === 'teacher' && Object.keys(teacher.permissions).length === 0) {
+  const total = teacher.effectivePermissions ?? teacher.permissions
+  if (teacher.role === 'teacher' && Object.keys(total).length === 0 && teams.length === 0) {
     return null
   }
   return (
-    <div className="mt-1 max-w-xs text-xs text-slate-500">
-      {teacher.role === 'teacher' ? 'Also: ' : ''}
-      {describePermissions(teacher.permissions)}
+    <div className="mt-1 max-w-xs space-y-1 text-xs text-slate-500">
+      {teams.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {teams.map((team) => (
+            <span
+              key={team.id}
+              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600"
+            >
+              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: team.color ?? '#94a3b8' }} />
+              {team.name}
+            </span>
+          ))}
+        </div>
+      )}
+      <div>
+        {teacher.role === 'teacher' ? 'Also: ' : ''}
+        {describePermissions(total)}
+      </div>
     </div>
   )
 }

@@ -9,9 +9,8 @@ describe('PermissionMatrix', () => {
     const { rerender } = render(<PermissionMatrix value={{}} onChange={onChange} />)
 
     expect(screen.getByRole('checkbox', { name: 'Leads: can delete' })).toBeDisabled()
-    await userEvent.click(
-      screen.getAllByRole('radio', { name: 'Edit' })[3], // Calendar, Classrooms, Students, Leads
-    )
+    const leadsRow = screen.getByRole('radiogroup', { name: 'Leads access' })
+    await userEvent.click(leadsRow.querySelectorAll('[role="radio"]')[2] as HTMLElement)
     expect(onChange).toHaveBeenLastCalledWith({ leads: { level: 'edit', delete: false } })
 
     rerender(<PermissionMatrix value={{ leads: { level: 'edit' } }} onChange={onChange} />)
@@ -35,6 +34,36 @@ describe('PermissionMatrix', () => {
     const forms = screen.getByRole('radiogroup', { name: 'Forms access' })
     await userEvent.click(forms.querySelectorAll('[role="radio"]')[0] as HTMLElement)
     expect(onChange).toHaveBeenLastCalledWith({ leads: { level: 'edit', delete: true } })
+  })
+
+  it('limits Leads, Inbox and Team Replies to whose rows, and keeps that when the level changes', async () => {
+    const onChange = vi.fn()
+    const { rerender } = render(<PermissionMatrix value={{ inbox: { level: 'view' } }} onChange={onChange} />)
+
+    expect(screen.getByRole('combobox', { name: 'Leads: whose' })).toBeDisabled()
+    expect(screen.queryByRole('combobox', { name: 'Calendar: whose' })).not.toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Inbox: whose' }), 'own')
+    expect(onChange).toHaveBeenLastCalledWith({ inbox: { level: 'view', scope: 'own' } })
+
+    rerender(<PermissionMatrix value={{ inbox: { level: 'view', scope: 'own' } }} onChange={onChange} />)
+    const inbox = screen.getByRole('radiogroup', { name: 'Inbox access' })
+    await userEvent.click(inbox.querySelectorAll('[role="radio"]')[2] as HTMLElement)
+    expect(onChange).toHaveBeenLastCalledWith({ inbox: { level: 'edit', delete: false, scope: 'own' } })
+
+    // Team Replies: everyone's or only own.
+    const teamReplies = screen.getByRole('combobox', { name: 'Team Replies: whose' })
+    expect(Array.from(teamReplies.querySelectorAll('option')).map((option) => option.value)).toEqual(['all', 'own'])
+  })
+
+  it('says what the teams already give', () => {
+    render(
+      <PermissionMatrix
+        value={{}}
+        onChange={vi.fn()}
+        inherited={{ leads: { from: ['Sales', 'Office'], text: 'edit' } }}
+      />,
+    )
+    expect(screen.getByText('From Sales, Office: edit')).toBeInTheDocument()
   })
 
   it('offers the activity log as view only', () => {

@@ -30,6 +30,8 @@ export type TeamRepliesSectionProps = {
   canCopy?: boolean
   // Fixed "now" for tests.
   now?: Date
+  // Someone has working hours (My Team > Working hours): count only working time to begin with.
+  hoursInUse?: boolean
 }
 
 type Mode = 'today' | '7d' | '30d' | 'month' | 'custom'
@@ -264,7 +266,7 @@ function TrendCharts({ points }: { points: TrendPoint[] }) {
   )
 }
 
-export function TeamRepliesSection({ staff, client, canCopy = false, now }: TeamRepliesSectionProps) {
+export function TeamRepliesSection({ staff, client, canCopy = false, now, hoursInUse = false }: TeamRepliesSectionProps) {
   const stats = useStaffReplyStats(client)
   const { load } = stats
   const today = dayOf(Math.floor((now ?? new Date()).getTime() / 1000))
@@ -281,10 +283,16 @@ export function TeamRepliesSection({ staff, client, canCopy = false, now }: Team
   const [isLoadingKept, setIsLoadingKept] = useState(false)
   // Bumped after "Copy old chats", so the numbers are read again.
   const [reloads, setReloads] = useState(0)
+  // Count only the time the person who answered was working (My Team > Working hours). On by itself once
+  // anyone has working hours; until then both ways give the same numbers.
+  const [workingTime, setWorkingTime] = useState(hoursInUse)
+  useEffect(() => {
+    if (hoursInUse) setWorkingTime(true)
+  }, [hoursInUse])
 
   const period = mode === 'today' ? null : periodDays(mode, today, month, custom)
   const periodKey = period ? `${period.first}|${period.last}` : 'today'
-  const loadKey = `${periodKey}#${reloads}`
+  const loadKey = `${periodKey}#${reloads}#${workingTime ? 'work' : 'clock'}`
 
   // Who owns the open chats and who is waiting: read when the page opens, and again when asked.
   useEffect(() => {
@@ -297,10 +305,13 @@ export function TeamRepliesSection({ staff, client, canCopy = false, now }: Team
     let cancelled = false
     setIsLoadingKept(true)
     setKeptError(null)
+    const byWork = loadKey.endsWith('#work')
     const read =
       key === 'today'
-        ? fetchToday().then((rows) => ({ rows, doneDays: new Set<string>() }))
-        : fetchKeptDays(key.split('|')[0], key.split('|')[1])
+        ? (byWork ? fetchToday(true) : fetchToday()).then((rows) => ({ rows, doneDays: new Set<string>() }))
+        : byWork
+          ? fetchKeptDays(key.split('|')[0], key.split('|')[1], true)
+          : fetchKeptDays(key.split('|')[0], key.split('|')[1])
     read
       .then((days) => {
         if (!cancelled) {
@@ -359,6 +370,18 @@ export function TeamRepliesSection({ staff, client, canCopy = false, now }: Team
               kept the night after (Malaysia time); today is worked out when you pick it.
             </p>
           </div>
+          <label
+            className="flex items-center gap-2 self-center text-sm font-semibold text-slate-600"
+            title="Waits count only while the person who answered was working (My Team > Working hours). Time off is left out."
+          >
+            <input
+              type="checkbox"
+              checked={workingTime}
+              onChange={(event) => setWorkingTime(event.target.checked)}
+              className="h-4 w-4 accent-[#fc0c97]"
+            />
+            Only working hours
+          </label>
           <div role="group" aria-label="Period" className="flex flex-wrap gap-1.5">
             {modes.map((entry) => (
               <button

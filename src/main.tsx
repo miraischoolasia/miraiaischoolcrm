@@ -114,6 +114,17 @@ async function start() {
     return
   }
 
+  // Dev server only: /?demo=teams shows My Team > Teams and Working hours on made-up data held in the page.
+  if (import.meta.env.DEV && params.get('demo') === 'teams') {
+    const { TeamsDemo } = await import('./dev/TeamsDemo.tsx')
+    root.render(
+      <StrictMode>
+        <TeamsDemo />
+      </StrictMode>,
+    )
+    return
+  }
+
   // Dev server only: /?demo=lessonlinks shows a weekly lesson's form with its FB group and fixed Zoom link.
   if (import.meta.env.DEV && params.get('demo') === 'lessonlinks') {
     const { LessonLinksDemo } = await import('./dev/LessonLinksDemo.tsx')

@@ -29,9 +29,14 @@ type DbDayRow = {
   waits: number[] | null
   within_target: number
   slowest: number | null
+  // The same waits counting only working time (20261026030000).
+  duty_waits?: number[] | null
+  duty_within_target?: number | null
+  duty_slowest?: number | null
 }
 
-function toDayRows(rows: DbDayRow[]): DayRow[] {
+// workingTime: use the waits that count only the time the person who answered was working.
+function toDayRows(rows: DbDayRow[], workingTime = false): DayRow[] {
   const result: DayRow[] = []
   for (const row of rows) {
     if (!REPLIER.test(row.replier)) {
@@ -43,16 +48,16 @@ function toDayRows(rows: DbDayRow[]): DayRow[] {
       staffId: row.staff_id,
       replies: row.replies,
       chatIds: (row.chat_ids ?? []).map(Number),
-      waits: (row.waits ?? []).map(Number),
-      withinTarget: row.within_target,
-      slowest: row.slowest,
+      waits: ((workingTime ? row.duty_waits : row.waits) ?? []).map(Number),
+      withinTarget: workingTime ? (row.duty_within_target ?? 0) : row.within_target,
+      slowest: workingTime ? (row.duty_slowest ?? null) : row.slowest,
     })
   }
   return result
 }
 
 // Today, worked out on the spot from the inbox copy (today is never kept).
-export async function fetchToday(): Promise<DayRow[]> {
+export async function fetchToday(workingTime = false): Promise<DayRow[]> {
   if (!supabase) {
     throw new Error('Supabase is not configured.')
   }
@@ -60,8 +65,9 @@ export async function fetchToday(): Promise<DayRow[]> {
   if (error) {
     throw error
   }
-  return toDayRows(data ?? [])
+  return toDayRows(data ?? [], workingTime)
 }
+
 
 export type CopySummary = {
   chats: number
@@ -93,14 +99,18 @@ export async function fetchCopySummary(): Promise<CopySummary | null> {
 }
 
 // The kept days from first to last (both "YYYY-MM-DD", Malaysian days).
-export async function fetchKeptDays(first: string, last: string): Promise<KeptDays> {
+export async function fetchKeptDays(first: string, last: string, workingTime = false): Promise<KeptDays> {
   if (!supabase) {
     throw new Error('Supabase is not configured.')
   }
   const [days, runs] = await Promise.all([
     supabase
       .from('team_reply_days')
-      .select('day, replier, staff_id, replies, chat_ids, waits, within_target, slowest')
+      .select(
+        workingTime
+          ? 'day, replier, staff_id, replies, chat_ids, waits, within_target, slowest, duty_waits, duty_within_target, duty_slowest'
+          : 'day, replier, staff_id, replies, chat_ids, waits, within_target, slowest',
+      )
       .gte('day', first)
       .lte('day', last)
       .order('day', { ascending: true })
@@ -113,5 +123,5 @@ export async function fetchKeptDays(first: string, last: string): Promise<KeptDa
   if (runs.error) {
     throw runs.error
   }
-  return { rows: toDayRows(days.data ?? []), doneDays: new Set((runs.data ?? []).map((run) => run.day)) }
+  return { rows: toDayRows((days.data ?? []) as unknown as DbDayRow[], workingTime), doneDays: new Set((runs.data ?? []).map((run) => run.day)) }
 }

@@ -2,6 +2,7 @@ import { getScheduleClassKind } from './schedule'
 import { teachesSchedule } from './attendanceTakers'
 import type { CalendarItem } from './calendarItems'
 import type { Classroom, Schedule } from '../types/domain'
+import { fetchTeamsWithMembers } from './staffTeams'
 
 // What the Calendar shows (both the day list and the month / week / agenda calendar): only my own things,
 // a team, some people, and which kinds of things. Kept in the browser per login.
@@ -115,8 +116,14 @@ export function saveCalendarFilter(login: string, filter: CalendarFilter) {
   }
 }
 
-// The school's teams for the Team filter. Teams are being built (docs/teams-permissions-design.md, department
-// ③); until then there are none and the Team filter says so.
+// The school's teams for the Team filter (My Team > Teams, docs/teams-permissions-design.md): every switched-on
+// team and its people. A database without teams yet gives none, and the Team filter says so.
 export async function fetchCalendarTeams(): Promise<CalendarTeam[]> {
-  return []
+  try {
+    const teams = await fetchTeamsWithMembers()
+    return teams.map((team) => ({ id: team.id, name: team.name, memberIds: team.memberIds }))
+  } catch {
+    // Only a filter: without the teams the calendar still works.
+    return []
+  }
 }
