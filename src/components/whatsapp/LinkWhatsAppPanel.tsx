@@ -1,19 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createWaConnect, type WaConnect, type WaLinkState, type WaQr } from '../../lib/waConnect'
 
-const QR_REFRESH_MS = 20_000
-const STATE_POLL_MS = 3_000
+// How often the panel looks at the code WhatsApp has now. Looking does not make a new code: WhatsApp makes one by
+// itself about every 20 seconds, and the picture changes only when it has. (Before, the panel asked for a code every
+// 20 seconds and the link every 3: more asking, and a linking that had ended was started again each time.)
+export const QR_LOOK_MS = 4_000
+// Every this many looks, also whether the phone got linked (the code answer says so too, when it can).
+const STATE_EVERY = 5
+// A try stops by itself after this long: too many codes in a row and WhatsApp refuses to link for a while.
+export const QR_TRY_MS = 2 * 60_000
 
-// Admin: link the school's WhatsApp number by scanning a QR code with the phone. Nothing is asked of
-// WhatsApp until the admin presses the button, and nothing shows when this school has no such door.
+type Phase = 'idle' | 'running' | 'stopped'
+
+// Admin: link the school's WhatsApp number by scanning a QR code with the phone. Nothing is asked of WhatsApp
+// until the admin presses the button, a try lasts at most 2 minutes, and nothing shows when this school has no
+// such door.
 export function LinkWhatsAppPanel({ apiUrl, connect }: { apiUrl: string; connect?: WaConnect }) {
   const api = useMemo(() => connect ?? createWaConnect(apiUrl), [apiUrl, connect])
   const [state, setState] = useState<WaLinkState | 'checking'>('checking')
-  const [showing, setShowing] = useState(false)
+  const [phase, setPhase] = useState<Phase>('idle')
   const [qr, setQr] = useState<WaQr | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [secondsLeft, setSecondsLeft] = useState(QR_TRY_MS / 1000)
   const stopped = useRef(false)
 
+  // Linked or not, once, when the panel opens. Nothing else is asked until the button is pressed.
   useEffect(() => {
     stopped.current = false
     api
@@ -33,20 +44,49 @@ export function LinkWhatsAppPanel({ apiUrl, connect }: { apiUrl: string; connect
     }
   }, [api])
 
-  // While the code is on screen: a fresh code every 20 seconds, and a look at the link every 3.
+  // While a try is going on: look at the current code every few seconds (the picture changes only when WhatsApp
+  // made a new one), see whether the phone got linked, and stop after 2 minutes, when the linking has ended, when
+  // the tab is hidden, or when the panel closes.
   useEffect(() => {
-    if (!showing) {
+    if (phase !== 'running') {
       return
     }
     let cancelled = false
-    const loadQr = () => {
+    let lastCount: number | null = null
+    let looks = 0
+    const startedAt = Date.now()
+    const stop = () => {
+      if (!cancelled) {
+        setPhase('stopped')
+        setQr(null)
+      }
+    }
+    const linked = () => {
+      if (!cancelled) {
+        setState('open')
+        setPhase('idle')
+        setQr(null)
+      }
+    }
+    const look = () => {
       api
         .qr()
         .then((next) => {
-          if (!cancelled) {
-            setQr(next)
-            setError(null)
+          if (cancelled) {
+            return
           }
+          if (next.linked) {
+            linked()
+            return
+          }
+          // The count started again: the linking had ended and asking began a new one. Once is enough.
+          if (next.count !== null && lastCount !== null && next.count < lastCount) {
+            stop()
+            return
+          }
+          lastCount = next.count ?? lastCount
+          setError(null)
+          setQr((shown) => (shown && shown.key !== null && shown.key === next.key ? shown : next))
         })
         .catch((problem: unknown) => {
           if (!cancelled) {
@@ -54,32 +94,49 @@ export function LinkWhatsAppPanel({ apiUrl, connect }: { apiUrl: string; connect
           }
         })
     }
-    const checkLink = () => {
-      api
-        .state()
-        .then((next) => {
-          if (cancelled) {
-            return
-          }
-          setState(next)
-          if (next === 'open') {
-            setShowing(false)
-          }
-        })
-        .catch(() => undefined)
+    const tick = () => {
+      if (Date.now() - startedAt >= QR_TRY_MS || document.hidden) {
+        stop()
+        return
+      }
+      setSecondsLeft(Math.max(0, Math.ceil((QR_TRY_MS - (Date.now() - startedAt)) / 1000)))
+      looks += 1
+      if (looks % STATE_EVERY === 0) {
+        api
+          .state()
+          .then((next) => {
+            if (next === 'open') {
+              linked()
+            }
+          })
+          .catch(() => undefined)
+      }
+      look()
     }
-    loadQr()
-    const qrTimer = window.setInterval(loadQr, QR_REFRESH_MS)
-    const stateTimer = window.setInterval(checkLink, STATE_POLL_MS)
+    look()
+    const timer = window.setInterval(tick, QR_LOOK_MS)
+    const onHidden = () => {
+      if (document.hidden) {
+        stop()
+      }
+    }
+    document.addEventListener('visibilitychange', onHidden)
     return () => {
       cancelled = true
-      window.clearInterval(qrTimer)
-      window.clearInterval(stateTimer)
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onHidden)
     }
-  }, [api, showing])
+  }, [api, phase])
 
   if (state === 'checking' || state === 'unavailable') {
     return null
+  }
+
+  const start = () => {
+    setQr(null)
+    setError(null)
+    setSecondsLeft(QR_TRY_MS / 1000)
+    setPhase('running')
   }
 
   return (
@@ -96,14 +153,10 @@ export function LinkWhatsAppPanel({ apiUrl, connect }: { apiUrl: string; connect
         {state === 'open' ? (
           <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Linked</span>
         ) : (
-          !showing && (
+          phase !== 'running' && (
             <button
               type="button"
-              onClick={() => {
-                setQr(null)
-                setError(null)
-                setShowing(true)
-              }}
+              onClick={start}
               className="rounded-xl bg-[#fc0c97] px-3 py-2 text-xs font-semibold text-white hover:bg-[#e00b88]"
             >
               Show QR code
@@ -112,7 +165,17 @@ export function LinkWhatsAppPanel({ apiUrl, connect }: { apiUrl: string; connect
         )}
       </div>
 
-      {showing && (
+      {phase === 'stopped' && state !== 'open' && (
+        <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600" role="status">
+          <p className="font-semibold text-slate-800">Stopped. Press the button to try again.</p>
+          <p className="mt-1">
+            If the phone says it couldn't link: update WhatsApp on the phone to the newest version; a phone can have at
+            most 4 linked devices; after several failed scans, wait 30 minutes before trying again.
+          </p>
+        </div>
+      )}
+
+      {phase === 'running' && (
         <div className="mt-4 flex flex-col items-center gap-3">
           {qr?.image ? (
             <img src={qr.image} alt="WhatsApp QR code" className="h-56 w-56 rounded-lg border border-slate-200" />
@@ -129,11 +192,12 @@ export function LinkWhatsAppPanel({ apiUrl, connect }: { apiUrl: string; connect
           <ol className="list-decimal space-y-1 pl-5 text-left text-xs text-slate-600">
             <li>On the phone, open WhatsApp.</li>
             <li>Go to Settings, then Linked devices, then Link a device.</li>
-            <li>Point the phone at this QR code. A new code appears by itself every 20 seconds.</li>
+            <li>Point the phone at this QR code. WhatsApp gives a new code by itself every 20 seconds or so.</li>
           </ol>
+          <p className="text-xs text-slate-500">Stops by itself in {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, '0')}.</p>
           <button
             type="button"
-            onClick={() => setShowing(false)}
+            onClick={() => setPhase('idle')}
             className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
           >
             Close

@@ -120,4 +120,36 @@ describe('LeadTagPicker', () => {
     expect(onCreate).not.toHaveBeenCalled()
     expect(screen.getByLabelText('Add a tag')).toBeInTheDocument()
   })
+
+  it('gives the name a row of its own, focused, with the colours under it and Cancel / Add last', async () => {
+    renderPicker()
+
+    await userEvent.selectOptions(screen.getByLabelText('Add a tag'), '+ Create new tag...')
+    const input = screen.getByPlaceholderText('New tag name')
+    expect(input).toHaveFocus()
+
+    const box = input.parentElement!
+    const parts = [...box.children]
+    expect(parts[0]).toBe(input)
+    expect(parts[1]).toHaveAttribute('role', 'radiogroup')
+    expect(within(parts[2] as HTMLElement).getAllByRole('button').map((button) => button.textContent)).toEqual(['Cancel', 'Add'])
+  })
+
+  it('goes back to the list on Escape without adding anything', async () => {
+    const { onCreate } = renderPicker()
+
+    await userEvent.selectOptions(screen.getByLabelText('Add a tag'), '+ Create new tag...')
+    await userEvent.type(screen.getByLabelText('New tag name'), 'VIP{Escape}')
+
+    expect(onCreate).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Add a tag')).toBeInTheDocument()
+  })
+
+  it('shows a long tag name in full on hover', () => {
+    render(
+      <LeadTagPicker tags={[tag(5, 'eduhero-experience-class-october')]} selectedIds={[5]} onChange={vi.fn()} onCreate={vi.fn()} />,
+    )
+
+    expect(screen.getByTitle('eduhero-experience-class-october')).toHaveTextContent('eduhero-experience-class-october')
+  })
 })

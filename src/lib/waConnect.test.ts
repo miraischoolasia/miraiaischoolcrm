@@ -36,10 +36,22 @@ describe('createWaConnect', () => {
   it('returns the QR picture only when it is a PNG data address', async () => {
     vi.stubGlobal('fetch', reply(200, { base64: 'data:image/png;base64,AAAA', pairingCode: 'AB12CD34' }))
     const connect = createWaConnect('https://wa.example', async () => 'tok')
-    expect(await connect.qr()).toEqual({ image: 'data:image/png;base64,AAAA', pairingCode: 'AB12CD34' })
+    expect(await connect.qr()).toEqual({ image: 'data:image/png;base64,AAAA', pairingCode: 'AB12CD34', count: null, key: 'data:image/png;base64,AAAA', linked: false })
 
     vi.stubGlobal('fetch', reply(200, { base64: 'https://evil.example/x.svg' }))
     expect((await connect.qr()).image).toBeNull()
+  })
+
+  it('says which code it is, and when the phone got linked meanwhile', async () => {
+    vi.stubGlobal('fetch', reply(200, { base64: 'data:image/png;base64,AAAA', code: '2@abc', count: 3, pairingCode: null }))
+    const connect = createWaConnect('https://wa.example', async () => 'tok')
+    expect(await connect.qr()).toMatchObject({ count: 3, key: '#3', linked: false })
+
+    vi.stubGlobal('fetch', reply(200, { code: '2@xyz' }))
+    expect((await connect.qr()).key).toBe('2@xyz')
+
+    vi.stubGlobal('fetch', reply(200, { instance: { instanceName: 'eduhero', state: 'open' } }))
+    expect(await connect.qr()).toMatchObject({ image: null, linked: true })
   })
 
   it('fails with a clear message when no QR can be had', async () => {

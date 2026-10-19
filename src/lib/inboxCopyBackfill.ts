@@ -138,6 +138,67 @@ async function copyOneChat(
   onMessages(waiting.length)
 }
 
+function emptyProgress(): CopyProgress {
+  return { phase: 'listing', chatsTotal: 0, chatsDone: 0, chatsSkipped: 0, chatsFailed: 0, messages: 0, daysTotal: 0, daysDone: 0 }
+}
+
+// Every finished day from the copy's first message to yesterday, worked out again from the copy (31 days a call).
+// No chat is read: this is what to press when the copy is complete but the days are not.
+async function workOutDays({
+  store,
+  progress,
+  report,
+  cancelled,
+  now,
+}: {
+  store: CopyStore
+  progress: CopyProgress
+  report: () => void
+  cancelled: () => boolean
+  now: Date
+}) {
+  const firstAt = await store.firstMessageAt()
+  if (!firstAt) {
+    return
+  }
+  const yesterday = addDays(dayOf(Math.floor(now.getTime() / 1000)), -1)
+  const firstDay = dayOf(Math.floor(Date.parse(firstAt) / 1000))
+  const spanDays = (first: string, last: string) => Math.round((Date.parse(last) - Date.parse(first)) / 86_400_000) + 1
+  progress.phase = 'days'
+  progress.daysTotal = firstDay <= yesterday ? spanDays(firstDay, yesterday) : 0
+  progress.daysDone = 0
+  report()
+  let day = firstDay
+  while (day <= yesterday && !cancelled()) {
+    const last = addDays(day, DAYS_PER_CALL - 1) < yesterday ? addDays(day, DAYS_PER_CALL - 1) : yesterday
+    await store.computeDays(day, last)
+    progress.daysDone = Math.min(progress.daysTotal, progress.daysDone + spanDays(day, last))
+    report()
+    day = addDays(last, 1)
+  }
+}
+
+export async function workOutAllDays({
+  store = databaseCopyStore,
+  onProgress,
+  cancelled = () => false,
+  now = new Date(),
+}: {
+  store?: CopyStore
+  onProgress: (progress: CopyProgress) => void
+  cancelled?: () => boolean
+  now?: Date
+}): Promise<CopyProgress> {
+  const progress = emptyProgress()
+  const report = () => onProgress({ ...progress })
+  await workOutDays({ store, progress, report, cancelled, now })
+  if (!cancelled()) {
+    progress.phase = 'done'
+    report()
+  }
+  return progress
+}
+
 export async function copyOldChats({
   client,
   store = databaseCopyStore,
@@ -151,9 +212,7 @@ export async function copyOldChats({
   cancelled?: () => boolean
   now?: Date
 }): Promise<CopyProgress> {
-  const progress: CopyProgress = {
-    phase: 'listing', chatsTotal: 0, chatsDone: 0, chatsSkipped: 0, chatsFailed: 0, messages: 0, daysTotal: 0, daysDone: 0,
-  }
+  const progress = emptyProgress()
   const report = () => onProgress({ ...progress })
   report()
 
@@ -218,23 +277,7 @@ export async function copyOldChats({
   }
 
   // Then every finished day from the first message on.
-  const firstAt = await store.firstMessageAt()
-  const yesterday = addDays(dayOf(Math.floor(now.getTime() / 1000)), -1)
-  if (firstAt) {
-    const firstDay = dayOf(Math.floor(Date.parse(firstAt) / 1000))
-    progress.phase = 'days'
-    let day = firstDay
-    const total = firstDay <= yesterday ? Math.round((Date.parse(yesterday) - Date.parse(firstDay)) / 86_400_000) + 1 : 0
-    progress.daysTotal = total
-    report()
-    while (day <= yesterday && !cancelled()) {
-      const last = addDays(day, DAYS_PER_CALL - 1) < yesterday ? addDays(day, DAYS_PER_CALL - 1) : yesterday
-      await store.computeDays(day, last)
-      progress.daysDone = Math.min(total, progress.daysDone + Math.round((Date.parse(last) - Date.parse(day)) / 86_400_000) + 1)
-      report()
-      day = addDays(last, 1)
-    }
-  }
+  await workOutDays({ store, progress, report, cancelled, now })
   if (!cancelled()) {
     progress.phase = 'done'
     report()

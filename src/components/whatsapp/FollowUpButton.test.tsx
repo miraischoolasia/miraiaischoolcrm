@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { CalendarItem } from '../../lib/calendarItems'
-import { FollowUpButton, FollowUpChip } from './FollowUpButton'
+import { FollowUpButton, FollowUpChip, placeFollowUpCard } from './FollowUpButton'
 import { Composer } from './Composer'
 
 // Saturday 17 Oct 2026, 15:30.
@@ -196,6 +196,28 @@ describe('FollowUpButton in the message box', () => {
     renderInBox({ items: [item(1, { date: '2026-10-17', startTime: '09:00' })] })
     await openMenu()
     expect(screen.getByTitle('A follow-up is late')).toBeInTheDocument()
+  })
+})
+
+describe('placeFollowUpCard', () => {
+  const card = { width: 300, height: 430 }
+
+  it('puts the card just above the message box when there is room', () => {
+    expect(placeFollowUpCard({ top: 700, bottom: 820, left: 600 }, card, { width: 1920, height: 900 })).toEqual({ top: 262, left: 612, maxHeight: 884 })
+  })
+
+  it('puts it below the box when only there is room, and keeps it inside the window on the right', () => {
+    expect(placeFollowUpCard({ top: 100, bottom: 200, left: 1800 }, card, { width: 1920, height: 900 })).toEqual({ top: 208, left: 1612, maxHeight: 884 })
+  })
+
+  it('keeps the title on screen when there is room neither above nor below, and lets the rest scroll', () => {
+    // A short window: the box starts 300px down, so 430px will not fit above it nor below it.
+    expect(placeFollowUpCard({ top: 300, bottom: 420, left: 0 }, card, { width: 375, height: 600 })).toEqual({ top: 8, left: 12, maxHeight: 584 })
+    expect(placeFollowUpCard({ top: 300, bottom: 420, left: 0 }, card, { width: 375, height: 400 })).toEqual({ top: 8, left: 12, maxHeight: 384 })
+  })
+
+  it('stays on screen when the message box has been scrolled below the window', () => {
+    expect(placeFollowUpCard({ top: 410, bottom: 514, left: 600 }, card, { width: 1366, height: 400 })).toEqual({ top: 8, left: 612, maxHeight: 384 })
   })
 })
 

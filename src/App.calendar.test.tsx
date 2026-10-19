@@ -186,16 +186,18 @@ async function signInAsAdmin() {
   await screen.findByRole('list', { name: 'calendar events' })
 }
 
-describe('calendar class-type filter', () => {
+describe('calendar kinds filter', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    window.localStorage.clear()
     mocks.exceptions.mockResolvedValue([])
     mocks.rpc.mockResolvedValue({ data: null, error: null })
   })
 
-  it('shows everything, then narrows to regular, trial or replacement classes', async () => {
+  it('shows everything, then only classes, trials or make-ups', async () => {
     await signInAsAdmin()
     const events = () => within(screen.getByRole('list', { name: 'calendar events' }))
+    const kinds = () => within(screen.getByRole('group', { name: 'Kinds shown' }))
 
     expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual([
       'Regular Coding',
@@ -203,16 +205,17 @@ describe('calendar class-type filter', () => {
       'Makeup Session',
     ])
 
-    await userEvent.click(screen.getByRole('button', { name: 'Trial Class' }))
+    await userEvent.click(kinds().getByRole('button', { name: 'Trials' }))
     expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual(['Trial Coding'])
 
-    await userEvent.click(screen.getByRole('button', { name: 'Regular Class' }))
-    expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual(['Regular Coding'])
+    await userEvent.click(kinds().getByRole('button', { name: 'Classes' }))
+    expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual(['Regular Coding', 'Trial Coding'])
 
-    await userEvent.click(screen.getByRole('button', { name: 'Replacement Class' }))
+    await userEvent.click(kinds().getByRole('button', { name: 'All kinds' }))
+    await userEvent.click(kinds().getByRole('button', { name: 'Make-ups' }))
     expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual(['Makeup Session'])
 
-    await userEvent.click(screen.getByRole('button', { name: 'All Classes' }))
+    await userEvent.click(kinds().getByRole('button', { name: 'All kinds' }))
     expect(events().getAllByRole('button')).toHaveLength(3)
   })
 })

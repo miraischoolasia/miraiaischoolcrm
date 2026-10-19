@@ -6,6 +6,7 @@ import { contactSiblings, leadOfContacts } from '../../lib/leadChannels'
 import { createChatwootClient, type Sender } from '../../lib/chatwootClient'
 import { useMessageSearch } from '../../hooks/useMessageSearch'
 import { useWhatsAppInbox } from '../../hooks/useWhatsAppInbox'
+import { useFillToBottom } from '../../hooks/useFillToBottom'
 import {
   type ChatwootConversation,
   type ChatwootMessage,
@@ -28,7 +29,7 @@ import {
   categoryOf,
   firstCategory,
   numbersContacted,
-  unreadByCategory,
+  countUnreadAcross,
   type InboxCategory,
   type InboxTab,
 } from '../../lib/whatsappInbox'
@@ -84,6 +85,9 @@ type WhatsAppInboxProps = {
   openRequest?: (WhatsAppTarget & { id: number }) | null
   // The school's WhatsApp numbers and who may see which. Without it the page is one inbox for everybody.
   numbersView?: WhatsAppNumbersView
+  // Every open chat, read now and then by the menu badge: the unread numbers on the WhatsApp / Messenger /
+  // Instagram buttons count all of them, as the badge does, not only the chats loaded in the list.
+  everyOpenChat?: ChatwootConversation[]
 }
 
 // What the inbox needs to know about the school's WhatsApp numbers.
@@ -112,6 +116,7 @@ export function WhatsAppInbox({
   active = true,
   openRequest = null,
   numbersView,
+  everyOpenChat,
 }: WhatsAppInboxProps) {
   const client = useMemo(() => createChatwootClient(apiUrl), [apiUrl])
   const waActions = useMemo(() => createWaActions(apiUrl), [apiUrl])
@@ -151,7 +156,10 @@ export function WhatsAppInbox({
     () => inbox.conversations.filter((conversation) => categoryOf(conversation) === category),
     [inbox.conversations, category],
   )
-  const categoryUnread = useMemo(() => unreadByCategory(inbox.conversations), [inbox.conversations])
+  const categoryUnread = useMemo(
+    () => countUnreadAcross(everyOpenChat ?? [], inbox.conversations, allowedInboxIds, siblings).byCategory,
+    [everyOpenChat, inbox.conversations, allowedInboxIds, siblings],
+  )
   useEffect(() => {
     if (categoryDecided.current || inbox.conversations.length === 0) {
       return
@@ -1087,6 +1095,10 @@ export function WhatsAppInbox({
     })
   }, [inbox.selected, crm, currentUser.name])
 
+  // On a computer the Inbox reaches down to the bottom of the window, whatever its height.
+  const inboxBox = useRef<HTMLDivElement>(null)
+  const inboxHeight = useFillToBottom(inboxBox)
+
   return (
     <div>
     <div role="group" aria-label="Channel" className={cn('mb-3 flex flex-wrap gap-2', hasChat && 'max-lg:hidden')}>
@@ -1121,6 +1133,8 @@ export function WhatsAppInbox({
       })}
     </div>
     <div
+      ref={inboxBox}
+      style={inboxHeight ? { height: inboxHeight } : undefined}
       className={cn(
         // The channel switch above the box takes 52px (40 + the gap), which the box gives back.
         'grid h-[calc(100dvh-314px)] min-h-[520px] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white lg:h-[calc(100dvh-234px)] lg:grid-cols-[380px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)_280px]',

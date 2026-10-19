@@ -193,19 +193,24 @@ export function filterStudentRows(
 
 const NO_DATE = '9999-12-31'
 
+// HOA rows, and a student with no package at a school that does not use them, have no classes or end date to count.
+function hasNoCount(row: StudentRow) {
+  return row.kind === 'hoa' || (row.student.studentType === 'regular' && !row.status.tracksClasses)
+}
+
 // Always breaks ties by ID, so the order never jumps between renders.
 export function sortStudentRows(rows: StudentRow[], sort: StudentSort) {
   const compare: Record<StudentSort, (a: StudentRow, b: StudentRow) => number> = {
     attention: (a, b) => a.rank - b.rank,
     name: (a, b) => a.student.name.localeCompare(b.student.name),
-    // HOA and Preview rows have no package dates, so they go last.
+    // Rows with no package dates or classes to count go last.
     ends: (a, b) =>
-      (a.kind === 'hoa' ? NO_DATE : a.student.lessonExpiryDate).localeCompare(
-        b.kind === 'hoa' ? NO_DATE : b.student.lessonExpiryDate,
+      (hasNoCount(a) ? NO_DATE : a.student.lessonExpiryDate).localeCompare(
+        hasNoCount(b) ? NO_DATE : b.student.lessonExpiryDate,
       ),
     left: (a, b) =>
-      (a.kind === 'hoa' ? Infinity : a.student.remainingHours) -
-      (b.kind === 'hoa' ? Infinity : b.student.remainingHours),
+      (hasNoCount(a) ? Infinity : a.student.remainingHours) -
+      (hasNoCount(b) ? Infinity : b.student.remainingHours),
   }
   return [...rows].sort((a, b) => compare[sort](a, b) || a.student.id - b.student.id)
 }

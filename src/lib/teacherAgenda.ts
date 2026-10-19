@@ -46,6 +46,9 @@ export type AgendaSources = {
   makeupEntries: MakeupEntry[]
   // Who is in the class on a day (the attendance roster).
   getRosterIds: (scheduleId: number, date: string) => number[]
+  // Given: the class days this teacher takes attendance for (their own, the
+  // classes they assist, the days they cover) instead of only their own classes.
+  takes?: (schedule: Schedule, date: string) => boolean
 }
 
 export type TeacherAgenda = {
@@ -87,10 +90,11 @@ export function getAgendaItems(
   fromDate: string,
   toDate: string,
 ): AgendaItem[] {
-  const { teacherId, exceptions, classroomMap, lessonLogs, makeupEntries, getRosterIds } = sources
+  const { teacherId, exceptions, classroomMap, lessonLogs, makeupEntries, getRosterIds, takes } = sources
   const latestLogs = getLatestLessonLogMap(lessonLogs)
   const mine = sources.schedules.filter(
-    (schedule) => (teacherId === null || schedule.teacherId === teacherId) && schedule.status === 'active',
+    (schedule) =>
+      (teacherId === null || takes !== undefined || schedule.teacherId === teacherId) && schedule.status === 'active',
   )
   const makeupByDay = new Map<string, MakeupEntry[]>()
   for (const entry of makeupEntries) {
@@ -102,6 +106,9 @@ export function getAgendaItems(
 
   for (let date = fromDate; date <= toDate; date = addDays(date, 1)) {
     for (const schedule of mine) {
+      if (takes && !takes(schedule, date)) {
+        continue
+      }
       const classroom = schedule.classroomId ? classroomMap.get(schedule.classroomId) ?? null : null
       let kind: AgendaItem['kind'] = 'replacement'
       let endTime = schedule.endTime

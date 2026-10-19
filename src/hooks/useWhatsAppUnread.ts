@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ChatwootClient } from '../lib/chatwootClient'
 import { isSoundOn, playAlertSound, showDesktopAlert } from '../lib/inboxAlerts'
 import {
-  countUnread,
+  countUnreadAcross,
   getChatIdentity,
   getPreview,
   isOverdue,
@@ -10,13 +10,36 @@ import {
   isRecentlyOverdue,
   onePerParent,
   type ChatwootConversation,
+  type InboxCategory,
+  type UnreadCounts,
 } from '../lib/whatsappInbox'
 
 const REFRESH_MS = 10_000
-// Chatwoot's page size; the chats on pages 2 to 4 are read again every third round (about 30 seconds).
+// Chatwoot's page size. The first page is read every round; every other page of open chats is read again now and
+// then, so the count covers all of them, not only the newest (EduHero has 36 pages of open chats). The more pages
+// there are, the less often: at least every 3 rounds (30 seconds), one round more per 3 pages (36 pages: 2 minutes).
 const PAGE_SIZE = 25
-const MAX_PAGES = 4
-const DEEP_EVERY = 3
+const MAX_PAGES = 80
+const PARALLEL_PAGES = 3
+
+export function deepEveryRounds(pages: number) {
+  return Math.max(3, Math.ceil(pages / 3))
+}
+
+const NO_UNREAD: Record<InboxCategory, number> = { whatsapp: 0, messenger: 0, instagram: 0 }
+
+// Reads pages 2..pages a few at a time (the gateway refuses a burst), each tried twice.
+async function readPages(client: ChatwootClient, pages: number, cancelled: () => boolean) {
+  const found: ChatwootConversation[] = []
+  for (let start = 2; start <= pages && !cancelled(); start += PARALLEL_PAGES) {
+    const batch = Array.from({ length: Math.min(PARALLEL_PAGES, pages - start + 1) }, (_, index) => start + index)
+    const results = await Promise.all(
+      batch.map((page) => client.listConversations('open', page).catch(() => client.listConversations('open', page))),
+    )
+    found.push(...results.flatMap((result) => result.conversations))
+  }
+  return found
+}
 
 // Counts chats nobody has looked at for the sidebar badge, and tells the team
 // when a new message arrives (sound and a desktop pop-up), wherever they are in
@@ -26,12 +49,20 @@ export function useWhatsAppUnread(
   allowedInboxIds: number[] | null = null,
   // Contacts the CRM knows to be one person (see contactSiblings): their chats count as one.
   siblings?: Map<number, number[]>,
+  // The inbox copy is live (it reports each new message): the full read of every page can be four times rarer.
+  slowFullRead = false,
 ) {
+  const slowRef = useRef(slowFullRead)
+  useEffect(() => {
+    slowRef.current = slowFullRead
+  }, [slowFullRead])
   const siblingsRef = useRef(siblings)
   useEffect(() => {
     siblingsRef.current = siblings
   }, [siblings])
-  const [unread, setUnread] = useState(0)
+  const [counts, setCounts] = useState<UnreadCounts>({ total: 0, byCategory: NO_UNREAD })
+  // Every open chat as last read (the first page fresh, the rest from the last full read), for the Inbox's buttons.
+  const [openChats, setOpenChats] = useState<ChatwootConversation[]>([])
   // Parents who have waited over 30 minutes (but under a day) for an answer.
   const [waiting, setWaiting] = useState(0)
   const seenUnread = useRef<Map<number, number> | null>(null)
@@ -56,26 +87,31 @@ export function useWhatsAppUnread(
         if (cancelled) {
           return
         }
-        // The badge counts the chats beyond the first page too (a few pages of them, read less often).
-        if (round % DEEP_EVERY === 0 && (first.totalCount ?? 0) > PAGE_SIZE) {
-          const pages = Math.min(MAX_PAGES, Math.ceil(first.totalCount / PAGE_SIZE))
+        // The badge counts the chats beyond the first page too: all of them, read less often (and not while
+        // the tab is hidden, when nobody sees the number).
+        const pages = Math.min(MAX_PAGES, Math.ceil((first.totalCount ?? 0) / PAGE_SIZE))
+        const publish = () => {
+          const onFirstPage = new Set(everyChat.map((entry) => entry.id))
+          const counted = [...everyChat, ...deepChats.current.filter((entry) => !onFirstPage.has(entry.id))]
+          setOpenChats(counted)
+          setCounts(countUnreadAcross(counted, [], allowedInboxIds, siblingsRef.current))
+        }
+        // The fresh first page shows at once; the full read (seconds, with many pages) updates it after.
+        publish()
+        if (pages <= 1) {
+          deepChats.current = []
+        } else if (round % (deepEveryRounds(pages) * (slowRef.current ? 4 : 1)) === 0 && (round === 0 || !document.hidden)) {
           try {
-            const more = await Promise.all(Array.from({ length: pages - 1 }, (_, index) => client!.listConversations('open', index + 2)))
-            deepChats.current = more.flatMap((page) => page.conversations)
+            deepChats.current = await readPages(client!, pages, () => cancelled)
           } catch {
             // Keep what was counted last time.
           }
-        } else if ((first.totalCount ?? 0) <= PAGE_SIZE) {
-          deepChats.current = []
+          if (cancelled) {
+            return
+          }
+          publish()
         }
         round += 1
-        const onFirstPage = new Set(everyChat.map((entry) => entry.id))
-        const counted = [...everyChat, ...deepChats.current.filter((entry) => !onFirstPage.has(entry.id))]
-        setUnread(
-          countUnread(
-            onePerParent(counted.filter((entry) => isOnAllowedNumber(entry, allowedInboxIds)), siblingsRef.current),
-          ),
-        )
 
         // A chat that has just passed 30 minutes unanswered rings once. The first look
         // only records who is already late, so opening the page is not a burst of alerts.
@@ -126,5 +162,5 @@ export function useWhatsAppUnread(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, JSON.stringify(allowedInboxIds)])
 
-  return { unread, waiting }
+  return { unread: counts.total, unreadByCategory: counts.byCategory, openChats, waiting }
 }

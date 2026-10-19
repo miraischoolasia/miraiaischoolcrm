@@ -158,7 +158,11 @@ export function Composer({
       setFollowUp((current) => (current.count === next.count && current.late === next.late && current.ready === next.ready ? current : next)),
     [],
   )
-  const followUpHost = useMemo(() => ({ asked: followUpAsked, onSummary: takeFollowUpSummary }), [followUpAsked, takeFollowUpSummary])
+  const composerBox = useRef<HTMLDivElement>(null)
+  const followUpHost = useMemo(
+    () => ({ asked: followUpAsked, onSummary: takeFollowUpSummary, anchor: composerBox }),
+    [followUpAsked, takeFollowUpSummary],
+  )
   const [special, setSpecial] = useState<SpecialKind | null>(null)
   const [mode, setMode] = useState<'reply' | 'note'>(draft?.mode ?? 'reply')
   const [text, setText] = useState(draft?.text ?? '')
@@ -375,12 +379,8 @@ ${draftRequest.text}` : draftRequest.text))
   }
 
   return (
-    <div className="relative border-t border-slate-200 bg-white px-3 py-3 sm:px-4">
-      {followUpControl && (
-        <FollowUpHostContext.Provider value={followUpHost}>
-          <div className="absolute bottom-full left-3 z-30 mb-2 sm:left-4">{followUpControl}</div>
-        </FollowUpHostContext.Provider>
-      )}
+    <div ref={composerBox} className="relative border-t border-slate-200 bg-white px-3 py-3 sm:px-4">
+      {followUpControl && <FollowUpHostContext.Provider value={followUpHost}>{followUpControl}</FollowUpHostContext.Provider>}
       {pickerOpen && (
         <QuickReplyPicker
           replies={quickReplies.replies}

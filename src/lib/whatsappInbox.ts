@@ -591,6 +591,31 @@ export function onePerParent(conversations: ChatwootConversation[], siblings?: M
   return conversations.filter((conversation) => newest.get(keyOf(conversation)) === conversation)
 }
 
+export type UnreadCounts = { total: number; byCategory: Record<InboxCategory, number> }
+
+// Chats nobody has looked at yet, over EVERY open chat, the same way for the menu badge, Today and the Inbox's
+// WhatsApp / Messenger / Instagram buttons. `everyOpen` is the whole list of open chats (read now and then, all
+// pages); `fresher` are chats read since (the Inbox's own list), which take the place of their older copies.
+// Counting only the chats already shown would miss the ones further down (EduHero: 822 unread, 48 shown).
+export function countUnreadAcross(
+  everyOpen: ChatwootConversation[],
+  fresher: ChatwootConversation[],
+  allowedInboxIds: number[] | null,
+  siblings?: Map<number, number[]>,
+): UnreadCounts {
+  const byId = new Map(everyOpen.map((conversation) => [conversation.id, conversation]))
+  for (const conversation of fresher) {
+    byId.set(conversation.id, conversation)
+  }
+  const byCategory = unreadByCategory(
+    onePerParent(
+      [...byId.values()].filter((conversation) => isOnAllowedNumber(conversation, allowedInboxIds)),
+      siblings,
+    ),
+  )
+  return { total: byCategory.whatsapp + byCategory.messenger + byCategory.instagram, byCategory }
+}
+
 // Open chats with something nobody has looked at yet.
 export function countUnread(conversations: ChatwootConversation[]) {
   return conversations.filter((c) => c.status !== 'resolved' && c.unread_count > 0).length

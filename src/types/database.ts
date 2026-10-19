@@ -2780,6 +2780,12 @@ export type Database = {
         Update: { classroom_id?: number; teacher_id?: number }
         Relationships: []
       }
+      lesson_substitutes: {
+        Row: { schedule_id: number; lesson_date: string; teacher_id: number; created_by: number | null; created_at: string }
+        Insert: { schedule_id: number; lesson_date: string; teacher_id: number }
+        Update: { schedule_id?: number; lesson_date?: string; teacher_id?: number }
+        Relationships: []
+      }
       classroom_teacher_libraries: {
         Row: { classroom_id: number; teacher_id: number; library_id: number }
         Insert: { classroom_id: number; teacher_id: number; library_id: number }
@@ -3357,6 +3363,12 @@ export type Database = {
         }
         Returns: undefined
       }
+      set_calendar_layout: {
+        Args: {
+          p_layout: string
+        }
+        Returns: undefined
+      }
       set_late_reminder_settings: {
         Args: {
           p_after_minutes: number
@@ -3479,6 +3491,18 @@ export type Database = {
       set_classroom_teachers: {
         Args: { p_classroom_id: number; p_teacher_ids: number[] }
         Returns: undefined
+      }
+      set_lesson_substitute: {
+        Args: { p_schedule_id: number; p_lesson_date: string; p_teacher_id: number | null }
+        Returns: undefined
+      }
+      set_attendance_takers: {
+        Args: { p_assistants: boolean; p_substitutes: boolean }
+        Returns: undefined
+      }
+      can_take_attendance: {
+        Args: { p_schedule_id: number; p_lesson_date: string }
+        Returns: boolean
       }
       my_classroom_ids: {
         Args: Record<string, never>

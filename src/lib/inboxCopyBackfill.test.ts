@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { copyOldChats, type CopyProgress, type CopyStore } from './inboxCopyBackfill'
+import { copyOldChats, workOutAllDays, type CopyProgress, type CopyStore } from './inboxCopyBackfill'
 import type { ChatwootClient } from './chatwootClient'
 import type { ChatwootConversation, ChatwootMessage } from './whatsappInbox'
 import type { CopyMessage } from '../../supabase/functions/chat-activity/copy'
@@ -129,5 +129,24 @@ describe('copyOldChats', () => {
 
     expect(result.chatsFailed).toBe(1)
     expect(done).toEqual([2])
+  })
+
+  it('works out every day from the first message without reading a chat ("Work out the days")', async () => {
+    const { store, messages, ranges } = memoryStore()
+    messages.set(1, {} as never)
+    const firstMessageAt = vi.spyOn(store, 'firstMessageAt').mockResolvedValue('2026-06-12T07:35:30+00:00')
+
+    const result = await workOutAllDays({ store, onProgress: () => {}, now: NOW })
+
+    expect(firstMessageAt).toHaveBeenCalled()
+    // 12 Jun to 18 Oct, 31 days a call.
+    expect(ranges).toEqual([
+      ['2026-06-12', '2026-07-12'],
+      ['2026-07-13', '2026-08-12'],
+      ['2026-08-13', '2026-09-12'],
+      ['2026-09-13', '2026-10-13'],
+      ['2026-10-14', '2026-10-18'],
+    ])
+    expect(result).toMatchObject({ phase: 'done', daysTotal: 129, daysDone: 129, messages: 0 })
   })
 })

@@ -22,6 +22,10 @@ export const brand = {
   // Whether the school charges the yearly Account Fee and membership fee. Mirai does; another brand starts with
   // none (nothing about fees shows) until it sets VITE_BRAND_FEES=true.
   usesFees: !customName || text(import.meta.env.VITE_BRAND_FEES) === 'true',
+  // Whether every student is meant to have a package (a number of classes and an end date). Mirai's are; another
+  // brand starts without (a student with no package is not chased for classes left or an end date, while one
+  // with a package still is) until it sets VITE_BRAND_PACKAGES=true.
+  usesPackages: !customName || text(import.meta.env.VITE_BRAND_PACKAGES) === 'true',
   // The tab icon: another brand's own picture (VITE_BRAND_FAVICON_URL, else its logo), or none; null for Mirai's.
   favicon: customName ? faviconUrl || logoUrl || null : null,
 }

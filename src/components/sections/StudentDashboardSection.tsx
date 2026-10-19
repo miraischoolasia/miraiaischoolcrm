@@ -210,7 +210,8 @@ export function StudentDashboardSection({
     const actions: RowAction[] = [
       { label: 'View details', onSelect: () => onOpenStudentDetail(student.id) },
     ]
-    if (canEdit && student.studentType !== 'preview') {
+    // A school that does not give every student a package renews only those who have one.
+    if (canEdit && student.studentType !== 'preview' && (brand.usesPackages || row.pkg)) {
       actions.push({ label: 'Renew', onSelect: () => onOpenRenewal(student.id) })
     }
     if (canDelete || !student.isActive) {
@@ -710,7 +711,8 @@ function PackageCell({ row }: { row: StudentRow }) {
 
 function ClassesLeftCell({ row }: { row: StudentRow }) {
   const { student, pkg, status } = row
-  if (student.studentType !== 'regular') {
+  // No package at a school that does not use them: there is no count to show.
+  if (student.studentType !== 'regular' || !status.tracksClasses) {
     return <span className={secondary}>—</span>
   }
   const low = status.hoursLow
@@ -736,7 +738,8 @@ function ClassesLeftCell({ row }: { row: StudentRow }) {
 
 function EndsCell({ row }: { row: StudentRow }) {
   const { student, status } = row
-  if (student.studentType !== 'regular') {
+  // No package at a school that does not use them: the far-off placeholder date means nothing.
+  if (student.studentType !== 'regular' || !status.tracksClasses) {
     return <span className={secondary}>—</span>
   }
   const { expired, dueSoon, daysUntil } = status.lessonExpiry

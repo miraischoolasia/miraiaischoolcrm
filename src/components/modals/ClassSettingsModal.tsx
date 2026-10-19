@@ -9,6 +9,10 @@ import { StudentAppSettings } from '../StudentAppSettings'
 import { LiveQuestionSettingsForm } from '../LiveQuestionSettingsForm'
 import { ZoomAttendanceRule } from '../ZoomAttendanceRule'
 import { LateReminderSetting } from '../LateReminderSetting'
+import { CalendarLayoutSetting } from '../CalendarLayoutSetting'
+import type { CalendarLayout } from '../../lib/calendarLayout'
+import { AttendanceTakersSetting } from '../AttendanceTakersSetting'
+import type { AttendanceTakerRules } from '../../lib/attendanceTakers'
 import { ZoomHostsSetting } from '../ZoomHostsSetting'
 import { RecordingsSettings } from '../RecordingsSettings'
 import { SubjectsSettings } from '../SubjectsSettings'
@@ -44,6 +48,10 @@ type ClassSettingsModalProps = {
   onSaveStatus: (status: AttendanceStatusOption, changes: StatusChanges) => Promise<string | null>
   // Points a status gives when attendance is submitted.
   onSaveStatusPoints: (status: AttendanceStatusOption, points: number) => Promise<string | null>
+  // How the Calendar page shows a day was changed (Class options > Calendar).
+  onCalendarLayoutSaved?: (layout: CalendarLayout) => void
+  // Who besides admin and the class teacher takes attendance was changed.
+  onAttendanceTakersSaved?: (rules: AttendanceTakerRules) => void
   rewardPresets: RewardPreset[]
   rewardLevels: RewardLevel[]
   onRewardsChanged: () => void
@@ -85,6 +93,8 @@ export function ClassSettingsModal({
   onAddStatus,
   onSaveStatus,
   onSaveStatusPoints,
+  onAttendanceTakersSaved,
+  onCalendarLayoutSaved,
   rewardPresets,
   rewardLevels,
   onRewardsChanged,
@@ -226,12 +236,15 @@ export function ClassSettingsModal({
         )}
 
         {tab === 'attendance' && (
-          <AttendanceStatusesForm
-            statuses={statuses}
-            onAdd={(draft) => run(onAddStatus(draft))}
-            onSave={(status, changes) => run(onSaveStatus(status, changes))}
-            onSavePoints={(status, points) => run(onSaveStatusPoints(status, points))}
-          />
+          <>
+            <AttendanceStatusesForm
+              statuses={statuses}
+              onAdd={(draft) => run(onAddStatus(draft))}
+              onSave={(status, changes) => run(onSaveStatus(status, changes))}
+              onSavePoints={(status, points) => run(onSaveStatusPoints(status, points))}
+            />
+            <AttendanceTakersSetting onSaved={onAttendanceTakersSaved} />
+          </>
         )}
 
         {tab === 'rewards' && (
@@ -250,6 +263,7 @@ export function ClassSettingsModal({
               placeholder="New level, e.g. Form 4"
               noun="level"
             />
+            <CalendarLayoutSetting onSaved={onCalendarLayoutSaved} />
           </>
         )}
 
@@ -314,7 +328,8 @@ function DraftFields({
         placeholder="e.g. Teamwork"
         aria-label={`${label} name`}
         onChange={(event) => onChange({ ...draft, name: event.target.value })}
-        className={inputClass}
+        // On a phone the name has the whole row, so a long one can be read; the two scores share the next.
+        className={cn(inputClass, 'col-span-2 sm:col-span-1')}
       />
       <input
         type="number"
@@ -368,14 +383,14 @@ function CriterionRow({
   const isDirty = JSON.stringify(draft) !== JSON.stringify(initial)
 
   return (
-    <li className="grid grid-cols-3 items-center gap-2 rounded-xl border border-slate-200 p-2 sm:grid-cols-[1fr_5rem_6.5rem_7.5rem] sm:border-0 sm:p-0">
+    <li className="grid grid-cols-2 items-center gap-2 rounded-xl border border-slate-200 p-2 sm:grid-cols-[1fr_5rem_6.5rem_7.5rem] sm:border-0 sm:p-0">
       <DraftFields
         draft={draft}
         onChange={setDraft}
         label={criterion.name}
         scaleLocked={criterion.legacyKey !== null}
       />
-      <div className="col-span-3 flex items-center justify-end gap-1 sm:col-span-1">
+      <div className="col-span-2 flex items-center justify-end gap-1 sm:col-span-1">
         {isDirty && (
           <button
             type="button"
@@ -431,9 +446,9 @@ function NewCriterionRow({ onAdd }: { onAdd: (draft: ReviewCriterionDraft) => Pr
   return (
     <div className="space-y-2 border-t border-slate-200 pt-4">
       <div className="text-sm font-semibold text-slate-700">Add a criterion</div>
-      <div className="grid grid-cols-3 items-center gap-2 sm:grid-cols-[1fr_5rem_6.5rem_7.5rem]">
+      <div className="grid grid-cols-2 items-center gap-2 sm:grid-cols-[1fr_5rem_6.5rem_7.5rem]">
         <DraftFields draft={draft} onChange={setDraft} label="New criterion" />
-        <div className="col-span-3 flex justify-end sm:col-span-1">
+        <div className="col-span-2 flex justify-end sm:col-span-1">
           <button
             type="button"
             disabled={!isValid(draft)}

@@ -32,6 +32,13 @@ describe('SideNav', () => {
     expect(screen.getByRole('button', { name: 'Leads' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Packages' })).toBeInTheDocument()
   })
+
+  it('marks an entry that opens a window, so it is not mistaken for a page', async () => {
+    render(<SideNav entries={entries} activeSection="home" collapsed={false} onSelect={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /Students/ }))
+
+    expect(within(screen.getByRole('button', { name: 'Packages' })).getByTitle('Opens in a window')).toBeInTheDocument()
+  })
 })
 
 describe('SideNav one group at a time', () => {

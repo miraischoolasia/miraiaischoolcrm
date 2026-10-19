@@ -128,53 +128,72 @@ async function signIn(role: 'admin' | 'teacher' = 'admin') {
   await screen.findByRole('list', { name: 'calendar events' })
 }
 
-describe('calendar teacher filter', () => {
+describe('calendar filters', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.rpc.mockResolvedValue({ data: null, error: null })
+    window.localStorage.clear()
   })
 
-  it('shows both classes by default, admin only', async () => {
+  const shown = () => within(screen.getByRole('list', { name: 'calendar events' })).queryAllByRole('listitem').map((item) => item.textContent)
+
+  async function pickPeople(...names: string[]) {
+    await userEvent.click(screen.getByRole('button', { name: /^People:/ }))
+    const picker = screen.getByRole('dialog', { name: 'Pick people' })
+    for (const name of names) await userEvent.click(within(picker).getByLabelText(name))
+    await userEvent.keyboard('{Escape}')
+  }
+
+  it("shows every teacher's classes by default, and offers the people and team filters to an admin", async () => {
     await signIn()
-    const events = () => within(screen.getByRole('list', { name: 'calendar events' }))
-
-    expect(events().getAllByRole('listitem').map((item) => item.textContent)).toEqual([
-      'Jia Hui Coding',
-      'Zen Ho Coding',
-    ])
-    expect(screen.getByLabelText('Filter calendar by teacher')).toBeInTheDocument()
+    expect(shown()).toEqual(['Jia Hui Coding', 'Zen Ho Coding'])
+    expect(screen.getByRole('button', { name: 'People: Everyone' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Filter by team')).toBeInTheDocument()
   })
 
-  it('narrows the calendar to one teacher when selected', async () => {
+  it('narrows the calendar to one or several people, and "Only mine" to the signed-in person', async () => {
     await signIn()
-    const events = () => within(screen.getByRole('list', { name: 'calendar events' }))
-    const select = screen.getByLabelText('Filter calendar by teacher')
+    await pickPeople('Jia Hui')
+    expect(shown()).toEqual(['Jia Hui Coding'])
 
-    await userEvent.selectOptions(select, 'Jia Hui')
-    expect(events().getAllByRole('listitem').map((item) => item.textContent)).toEqual([
-      'Jia Hui Coding',
-    ])
+    await pickPeople('Zen Ho')
+    expect(shown()).toEqual(['Jia Hui Coding', 'Zen Ho Coding'])
 
-    await userEvent.selectOptions(select, 'Zen Ho')
-    expect(events().getAllByRole('listitem').map((item) => item.textContent)).toEqual([
-      'Zen Ho Coding',
-    ])
+    // The admin teaches no class here.
+    await userEvent.click(screen.getByRole('button', { name: 'Only mine' }))
+    await waitFor(() => expect(shown()).toEqual([]))
 
-    await userEvent.selectOptions(select, 'All Teachers')
-    await waitFor(() =>
-      expect(events().getAllByRole('listitem').map((item) => item.textContent)).toEqual([
-        'Jia Hui Coding',
-        'Zen Ho Coding',
-      ]),
-    )
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+    await waitFor(() => expect(shown()).toEqual(['Jia Hui Coding', 'Zen Ho Coding']))
   })
 
-  it('does not offer a teacher filter to a teacher (their calendar is already just their own)', async () => {
+  it('remembers the filters for next time', async () => {
+    const { unmount } = await signInAndKeep()
+    await pickPeople('Zen Ho')
+    expect(shown()).toEqual(['Zen Ho Coding'])
+    unmount()
+
+    await signIn()
+    expect(shown()).toEqual(['Zen Ho Coding'])
+  })
+
+  it('starts a teacher on their own classes, with no people or team to pick', async () => {
     await signIn('teacher')
-
-    expect(screen.queryByLabelText('Filter calendar by teacher')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Only mine' })).toHaveAttribute('aria-pressed', 'true')
+    expect(shown()).toEqual(['Jia Hui Coding'])
+    expect(screen.queryByRole('button', { name: /^People:/ })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Filter by team')).not.toBeInTheDocument()
   })
 })
+
+async function signInAndKeep() {
+  const view = render(<App />)
+  await screen.findByText('Sign in to continue.')
+  await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'admin-1' } }))
+  await openMenu('Calendar')
+  await screen.findByRole('list', { name: 'calendar events' })
+  return view
+}
 
 describe('sidebar navigation order', () => {
   beforeEach(() => {

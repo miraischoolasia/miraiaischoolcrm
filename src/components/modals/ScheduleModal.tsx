@@ -7,6 +7,7 @@ import { useProgramLevels } from '../../lib/programLevels'
 import { useAgeGroups } from '../../lib/ageGroups'
 import { weekdayLabels } from '../../lib/schedule'
 import type { TeacherClash } from '../../lib/clash'
+import { LessonSubstitutePicker, type LessonSubstitutePickerProps } from '../LessonSubstitutePicker'
 import { LessonLinkFields } from '../LessonLinkFields'
 import { regularLessonOwner } from '../../lib/scheduleLinks'
 import type { Classroom, Schedule, ScheduleFormState, Student, Teacher } from '../../types/domain'
@@ -35,6 +36,9 @@ type ScheduleModalProps = {
   occurrenceDate: string | null
   isOccurrenceLogged: boolean
   onCancelOccurrence: (reason: string) => void
+  // Who covers the clicked day instead of the class teacher (left out when
+  // this account may not set one, or the school does not use substitutes).
+  substitute?: LessonSubstitutePickerProps
   // The teacher's other classes that overlap this time (empty when none).
   clashes?: TeacherClash[]
   clashTeacherName?: string
@@ -63,6 +67,7 @@ export function ScheduleModal({
   occurrenceDate,
   isOccurrenceLogged,
   onCancelOccurrence,
+  substitute,
   clashes = [],
   clashTeacherName = 'This teacher',
   onOpenStudent,
@@ -541,6 +546,16 @@ export function ScheduleModal({
             />
           </label>
         </div>
+
+        {canCancelOccurrence && substitute && (
+          <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+            <div className="font-semibold text-slate-900">Substitute teacher for {occurrenceDate}</div>
+            <p className="text-slate-500">
+              Covers only this day and can take its attendance. The weekly teacher stays the same.
+            </p>
+            <LessonSubstitutePicker {...substitute} />
+          </div>
+        )}
 
         {canCancelOccurrence && (
           <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">

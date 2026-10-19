@@ -588,6 +588,8 @@ export function ClassListingSection({
                             <tbody className="divide-y divide-slate-100">
                               {selectedRoster.map((student) => {
                                 const status = getStudentStatus(student, todayString)
+                                // No package at a school that does not use them: no classes or end date to show.
+                                const noCount = student.studentType === 'regular' && !status.tracksClasses
                                 return (
                                   <tr key={student.id} className="align-top">
                                     <td className="py-3 pr-4">
@@ -605,13 +607,17 @@ export function ClassListingSection({
                                       )}
                                     </td>
                                     <td className="py-3 pr-4 text-sm text-slate-700">
-                                      {student.remainingHours}
+                                      {noCount ? '—' : student.remainingHours}
                                     </td>
                                     <td className="py-3 pr-4">
-                                      <ExpiryCell
-                                        date={student.lessonExpiryDate}
-                                        meta={status.lessonExpiry}
-                                      />
+                                      {noCount ? (
+                                        <span className="text-sm text-slate-400">—</span>
+                                      ) : (
+                                        <ExpiryCell
+                                          date={student.lessonExpiryDate}
+                                          meta={status.lessonExpiry}
+                                        />
+                                      )}
                                     </td>
                                     {brand.usesFees && (
                                       <>
@@ -667,10 +673,13 @@ export function ClassListingSection({
                                   >
                                     {student.name}
                                   </button>
-                                  <div className="mt-1 text-xs text-slate-500">
-                                    Classes: {student.remainingHours} - Lesson Expiry:{' '}
-                                    {formatDate(student.lessonExpiryDate)}
-                                  </div>
+                                  {/* No package at a school that does not use them: no classes or end date to show. */}
+                                  {!(student.studentType === 'regular' && !status.tracksClasses) && (
+                                    <div className="mt-1 text-xs text-slate-500">
+                                      Classes: {student.remainingHours} - Lesson Expiry:{' '}
+                                      {formatDate(student.lessonExpiryDate)}
+                                    </div>
+                                  )}
                                   {brand.usesFees && (
                                     <div className="mt-1 text-xs text-slate-500">
                                       Account Fee: {formatDate(student.accountFeeExpiryDate)} - {brand.clubName}:{' '}

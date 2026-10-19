@@ -16,6 +16,7 @@ import { countRatedMetrics, getReviewProgress, isReviewComplete, lowScoreText } 
 import { createEmptyAttendanceReviewForm } from '../../lib/mappers'
 import { StarRatingInput } from '../StarRatingInput'
 import { GivePointsBar } from '../GivePointsBar'
+import { LessonSubstitutePicker } from '../LessonSubstitutePicker'
 import { fetchLessonZoom, fetchLessonZoomMinutes } from '../../lib/zoomLessons'
 import type { RewardPreset } from '../../lib/rewards'
 import type {
@@ -37,9 +38,19 @@ type AttendanceModalProps = {
   lateEditOpen?: boolean
   // A class after today: view the roster only, attendance opens on the day.
   isUpcoming?: boolean
-  // Someone who is neither admin nor the class teacher: they can look, but
-  // attendance is only ever taken by the class teacher (or admin).
+  // Someone who may not take this class's attendance: they can look, but
+  // attendance is taken by admin, the class's teachers or the day's substitute.
   isViewOnly?: boolean
+  // The day's substitute teacher. options: whoever may edit classes picks one
+  // (null: they cannot). role: why this viewer may take attendance.
+  substitute?: {
+    teacherId: number | null
+    teacherName: string | null
+    role: 'admin' | 'teacher' | 'assistant' | 'substitute' | null
+    options: { id: number; name: string }[] | null
+    isSaving: boolean
+    onChange: (teacherId: number | null) => void
+  }
   // Class teacher of a submitted log, shown so an admin reviewing it knows
   // whose feedback it is.
   teacherName?: string | null
@@ -77,6 +88,7 @@ export function AttendanceModal({
   lateEditOpen = false,
   isUpcoming = false,
   isViewOnly = false,
+  substitute,
   teacherName = null,
   adminAction,
   isLoadingAttendance,
@@ -152,7 +164,7 @@ export function AttendanceModal({
                 : isViewOnly
                 ? attendanceExistingLog
                   ? 'View only'
-                  : 'View only - attendance is taken by the class teacher'
+                  : "View only - attendance is taken by the class's teachers"
                 : attendanceExistingLog
                 ? attendanceLocked
                   ? 'Locked after 24 hours'
@@ -171,6 +183,29 @@ export function AttendanceModal({
                   minute: '2-digit',
                 })}
               </p>
+            )}
+            {substitute && (substitute.options || substitute.teacherName || substitute.role === 'assistant') && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                {substitute.options ? (
+                  <LessonSubstitutePicker {...substitute} options={substitute.options} />
+                ) : (
+                  substitute.teacherName && (
+                    <span>
+                      Substitute teacher: <span className="font-semibold text-slate-800">{substitute.teacherName}</span>
+                    </span>
+                  )
+                )}
+                {substitute.role === 'substitute' && (
+                  <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700">
+                    You are covering this class
+                  </span>
+                )}
+                {substitute.role === 'assistant' && (
+                  <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700">
+                    You assist this class
+                  </span>
+                )}
+              </div>
             )}
             {makeupNotes.length > 0 && (
               <div className="mt-3 space-y-1 rounded-xl bg-violet-50 px-3 py-2 text-sm text-violet-800">

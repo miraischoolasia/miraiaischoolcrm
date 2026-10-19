@@ -2,6 +2,7 @@ import type { WhatsAppTarget } from '../WhatsAppLink'
 import { ArrowSquareOut } from '@phosphor-icons/react'
 import type { Sender } from '../../lib/chatwootClient'
 import type { WhatsAppCrm } from '../whatsapp/crm'
+import type { ChatwootConversation } from '../../lib/whatsappInbox'
 import { WhatsAppInbox, type WhatsAppNumbersView } from '../whatsapp/WhatsAppInbox'
 
 type WhatsAppSectionProps = {
@@ -19,6 +20,8 @@ type WhatsAppSectionProps = {
   openRequest?: (WhatsAppTarget & { id: number }) | null
   // The school's WhatsApp numbers and who may see which.
   numbersView?: WhatsAppNumbersView
+  // Every open chat (read by the menu badge), so the Inbox's unread numbers count them all.
+  everyOpenChat?: ChatwootConversation[]
 }
 
 export function WhatsAppSection({
@@ -30,6 +33,7 @@ export function WhatsAppSection({
   active = true,
   openRequest = null,
   numbersView,
+  everyOpenChat,
 }: WhatsAppSectionProps) {
   if (apiUrl && currentUser) {
     return (
@@ -41,6 +45,7 @@ export function WhatsAppSection({
         active={active}
         openRequest={openRequest}
         numbersView={numbersView}
+        everyOpenChat={everyOpenChat}
       />
     )
   }

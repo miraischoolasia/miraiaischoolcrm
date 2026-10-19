@@ -15,6 +15,7 @@ import {
   firstCategory,
   numbersContacted,
   unreadByCategory,
+  countUnreadAcross,
   confirmsBySource,
   isGroupChat,
   isMessengerChannel,
@@ -605,6 +606,39 @@ describe('the parts of the inbox', () => {
   it('counts the unread chats of each part', () => {
     const all = [whatsapp(1, 2), whatsapp(2, 1), social(3, 'FB', 1), social(4, 'IG')]
     expect(unreadByCategory(all)).toEqual({ whatsapp: 2, messenger: 1, instagram: 0 })
+  })
+
+  describe('countUnreadAcross (the menu badge, Today and the Inbox buttons)', () => {
+    const chat = (id: number, unread: number, extra: Partial<ChatwootConversation> = {}) =>
+      conversation({ id, unread_count: unread, inbox_id: 1, meta: { sender: { id: 1000 + id, name: `P${id}`, phone_number: null, identifier: null } }, ...extra })
+
+    it('counts every open chat, not only the ones shown in the list', () => {
+      // 120 open chats, every third unread: the list shows 50 of them, the count is of all 120.
+      const everyOpen = Array.from({ length: 120 }, (_, index) => chat(index + 1, index % 3 === 0 ? 1 : 0))
+      const shown = everyOpen.slice(0, 50)
+      expect(countUnreadAcross(everyOpen, shown, null)).toEqual({ total: 40, byCategory: { whatsapp: 40, messenger: 0, instagram: 0 } })
+      // Before the whole list has been read once, the shown chats are all there is.
+      expect(countUnreadAcross([], shown, null).total).toBe(17)
+    })
+
+    it('lets a chat read just now take the place of its older copy', () => {
+      const everyOpen = [chat(1, 2), chat(2, 1), social(3, 'IG', 1)]
+      // The team opened chat 1 and closed chat 2 since the whole list was read.
+      const fresher = [chat(1, 0), chat(2, 0, { status: 'resolved' })]
+      expect(countUnreadAcross(everyOpen, fresher, null)).toEqual({ total: 1, byCategory: { whatsapp: 0, messenger: 0, instagram: 1 } })
+    })
+
+    it('keeps to the numbers the person may see, and counts one parent once', () => {
+      const everyOpen = [
+        chat(1, 1),
+        chat(2, 1, { inbox_id: 2 }),
+        // Two chats of one parent on the same number: the newest stands for both.
+        chat(3, 1, { meta: { sender: { id: 77, name: 'A', phone_number: null, identifier: null } }, last_activity_at: 200 }),
+        chat(4, 0, { meta: { sender: { id: 77, name: 'A', phone_number: null, identifier: null } }, last_activity_at: 300 }),
+      ]
+      expect(countUnreadAcross(everyOpen, [], [1]).total).toBe(1)
+      expect(countUnreadAcross(everyOpen, [], null).total).toBe(2)
+    })
   })
 
   it('opens on WhatsApp when the school has a WhatsApp chat, even if Messenger has more', () => {

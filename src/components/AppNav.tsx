@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CaretDown, ChalkboardTeacher, GearSix, Megaphone, UsersThree, type Icon } from '@phosphor-icons/react'
+import { AppWindow, CaretDown, ChalkboardTeacher, GearSix, Megaphone, UsersThree, type Icon } from '@phosphor-icons/react'
 import { cn } from '../lib/cn'
 import type { AppSection } from '../types/domain'
 
@@ -34,6 +34,18 @@ export function groupNav(entries: NavEntry[]) {
       (group) => group.entries.length > 0,
     ),
   }
+}
+
+// An entry that opens a window over the page (Packages, Class Settings) instead of going to a page.
+const opensWindow = (entry: NavEntry) => entry.section === undefined && entry.onSelect !== undefined
+
+// A small window sign after such an entry's name, so it is not mistaken for a page.
+function WindowMark({ className }: { className?: string }) {
+  return (
+    <span title="Opens in a window" className={cn('inline-flex shrink-0', className)}>
+      <AppWindow size={14} aria-hidden="true" />
+    </span>
+  )
 }
 
 function badgeTotal(entries: NavEntry[]) {
@@ -95,6 +107,7 @@ export function SideNav({
       >
         <entry.icon size={collapsed ? 22 : 18} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
         {!collapsed && <span className="ml-3 flex-1">{entry.label}</span>}
+        {!collapsed && opensWindow(entry) && <WindowMark className="ml-2 opacity-60" />}
         {entry.badge && <Badge count={entry.badge.count} noun={entry.badge.noun} corner={collapsed} />}
       </button>
     )
@@ -198,6 +211,7 @@ export function MobileNav({
                 >
                   <entry.icon size={20} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
                   <span className="flex-1">{entry.label}</span>
+                  {opensWindow(entry) && <WindowMark className="text-slate-400" />}
                   {entry.badge && <Badge count={entry.badge.count} noun={entry.badge.noun} />}
                 </button>
               )

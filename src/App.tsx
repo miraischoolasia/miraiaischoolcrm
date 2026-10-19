@@ -139,15 +139,31 @@ import {
   buildScheduleEvents,
   buildScheduleFormState,
   buildTrialBookingMap,
-  calendarClassFilterOptions,
-  filterSchedulesByClassKind,
-  filterSchedulesByTeacher,
   getDateKeyFromDate,
   getTrialSlotKey,
   weekdayLabels,
-  type CalendarClassFilter,
 } from './lib/schedule'
-import { normalizeLessonLink, regularLessonOwner, SCHEDULE_SELECT } from './lib/scheduleLinks'
+import { lessonFixedZoomLink, normalizeLessonLink, regularLessonOwner, SCHEDULE_SELECT } from './lib/scheduleLinks'
+import { fetchCalendarLayout, readCalendarLayout, usesDayList, type CalendarLayout } from './lib/calendarLayout'
+import { monthWeeks, type DayListItem, type DayListLesson } from './lib/calendarDayList'
+import {
+  ALL_KINDS,
+  defaultCalendarFilter,
+  fetchCalendarTeams,
+  filterPeople,
+  isFiltered,
+  itemKind,
+  itemShown,
+  loadCalendarFilter,
+  saveCalendarFilter,
+  scheduleKind,
+  scheduleShown,
+  type CalendarFilter,
+  type CalendarTeam,
+} from './lib/calendarFilter'
+import { CalendarFilterBar } from './components/calendar/CalendarFilterBar'
+import { CalendarDayList, type CalendarView } from './components/calendar/CalendarDayList'
+import { LessonWindow } from './components/calendar/LessonWindow'
 import {
   MAX_LEAD_FOLLOW_UPS,
   ageGroupOptions,
@@ -168,10 +184,22 @@ import { AdminHomeSection } from './components/sections/AdminHomeSection'
 import { buildStudentRows } from './lib/studentRows'
 import { useAutomationSummary } from './hooks/useAutomationSummary'
 import { buildTeacherAgenda, formatClockTime, getAgendaItems, getWeekRange, type AgendaItem } from './lib/teacherAgenda'
+import {
+  attendanceTakerRole,
+  buildSubstituteMap,
+  canTakeAttendance,
+  coveredLessons,
+  defaultAttendanceTakerRules,
+  fetchAttendanceTakers,
+  saveLessonSubstitute,
+  substituteKey,
+  teachesSchedule,
+  type AttendanceTakerRules,
+  type LessonSubstitute,
+} from './lib/attendanceTakers'
 import { buildTeacherClasses } from './lib/teacherDetails'
 import { TeacherDetailsSection } from './components/sections/TeacherDetailsSection'
 import {
-  getClassFilterValues,
   getLegendKeys,
   getScheduleKinds,
   legendEntries,
@@ -526,8 +554,9 @@ function App() {
   const [authBlockedMessage, setAuthBlockedMessage] = useState<string | null>(null)
   const [viewAsTeacherId, setViewAsTeacherId] = useState<number | null>(null)
   const [selectedAgeGroup, setSelectedAgeGroup] = useState<AgeGroup>(ageGroupOptions[0])
-  const [calendarClassFilter, setCalendarClassFilter] = useState<CalendarClassFilter>('all')
-  const [calendarTeacherFilter, setCalendarTeacherFilter] = useState<number | 'all'>('all')
+  // The Calendar's filters (only mine, team, people, kinds), kept in the browser per login.
+  const [calendarFilter, setCalendarFilterState] = useState<CalendarFilter>(() => defaultCalendarFilter())
+  const [calendarTeams, setCalendarTeams] = useState<CalendarTeam[]>([])
 
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null)
   // A school with class videos gets a Videos tab on the student page.
@@ -675,6 +704,11 @@ function App() {
   const [attendanceLocked, setAttendanceLocked] = useState(false)
   // Admin switch: past attendance and feedback stay editable after 24 hours.
   const [lateFeedbackEdit, setLateFeedbackEdit] = useState(false)
+  // Who besides admin and the class teacher takes attendance (the school's
+  // switches), and each class day's substitute teacher.
+  const [attendanceTakerRules, setAttendanceTakerRules] = useState<AttendanceTakerRules>(defaultAttendanceTakerRules)
+  const [lessonSubstitutes, setLessonSubstitutes] = useState<LessonSubstitute[]>([])
+  const [isSavingSubstitute, setIsSavingSubstitute] = useState(false)
   const [isSavingLateFeedbackEdit, setIsSavingLateFeedbackEdit] = useState(false)
   // A class later than today opens read-only: who is coming, no attendance yet.
   const [attendanceUpcoming, setAttendanceUpcoming] = useState(false)
@@ -801,6 +835,8 @@ function App() {
   // Same rule as can_view_classes(): any class module shows every class.
   // Without one, a teacher sees only their own classes.
   const seesAllClasses = can('calendar') || can('classrooms') || can('students')
+  // Same rule as can_edit_classes(): may set a class day's substitute teacher.
+  const canEditClasses = can('calendar', 'edit') || can('classrooms', 'edit') || can('students', 'edit')
   const allowedSections = useMemo(() => {
     const sections: AppSection[] = []
     // A teacher's own day, or the admin's / staff's overview of the school.
@@ -860,7 +896,11 @@ function App() {
   // The school's WhatsApp numbers: which the signed-in person may see (an admin sees all).
   const whatsAppNumbers = useWhatsAppNumbers(Boolean(whatsAppApiUrl) && canUseWhatsApp)
   const whatsAppSiblings = useMemo(() => contactSiblings(leadChannels.rows), [leadChannels.rows])
-  const { unread: unreadWhatsApp, waiting: waitingWhatsApp } = useWhatsAppUnread(
+  const {
+    unread: unreadWhatsApp,
+    waiting: waitingWhatsApp,
+    openChats: everyOpenChat,
+  } = useWhatsAppUnread(
     // Nothing is counted until it is known which numbers this person may see.
     whatsAppNumbers.allowedInboxIds === undefined ? null : whatsAppClient,
     whatsAppNumbers.allowedInboxIds ?? null,
@@ -965,7 +1005,20 @@ function App() {
     () => buildStudentParents({ students, leads, trialBookings }),
     [students, leads, trialBookings],
   )
-  // What a teacher sees on Today: their own classes, by day.
+  const substituteMap = useMemo(() => buildSubstituteMap(lessonSubstitutes), [lessonSubstitutes])
+  // Mirrors can_take_attendance: admin, the class teacher, its assistants and the day's substitute.
+  const attendanceTakerContext = useMemo(
+    () => ({
+      isAdmin,
+      teacherId: currentSession?.teacherId,
+      rules: attendanceTakerRules,
+      substitutes: substituteMap,
+      classroomMap,
+    }),
+    [isAdmin, currentSession?.teacherId, attendanceTakerRules, substituteMap, classroomMap],
+  )
+  // What a teacher sees on Today: the classes they take attendance for (their own,
+  // the ones they assist, the days they cover), by day.
   const teacherAgenda = useMemo(
     () =>
       isTeacherAccount && currentSession?.teacherId
@@ -978,6 +1031,7 @@ function App() {
               lessonLogs,
               makeupEntries,
               getRosterIds: getScheduleRosterStudentIds,
+              takes: (schedule, date) => canTakeAttendance(attendanceTakerContext, schedule, date),
             },
             todayString,
           )
@@ -998,6 +1052,7 @@ function App() {
       makeupMap,
       scheduleParticipantMap,
       todayString,
+      attendanceTakerContext,
     ],
   )
   const teacherHomeClasses = useMemo(() => {
@@ -1005,9 +1060,12 @@ function App() {
     if (!teacherAgenda || !teacherId) {
       return []
     }
+    // Their own classes and the ones they assist.
+    const isMine = (schedule: Schedule) =>
+      teachesSchedule(schedule, schedule.classroomId !== null ? classroomMap.get(schedule.classroomId) : null, teacherId)
     const classroomIds = new Set<number>()
     for (const schedule of schedules) {
-      if (schedule.teacherId === teacherId && schedule.status === 'active' && schedule.classroomId !== null) {
+      if (isMine(schedule) && schedule.status === 'active' && schedule.classroomId !== null) {
         classroomIds.add(schedule.classroomId)
       }
     }
@@ -1026,7 +1084,7 @@ function App() {
           .filter(
             (schedule) =>
               schedule.classroomId === classroom.id &&
-              schedule.teacherId === teacherId &&
+              isMine(schedule) &&
               schedule.eventType === 'regular' &&
               schedule.status === 'active' &&
               schedule.dayOfWeek !== null,
@@ -1753,6 +1811,14 @@ function App() {
         }
       })
       .catch(() => undefined)
+    fetchAttendanceTakers()
+      .then((takers) => {
+        if (!cancelled) {
+          setAttendanceTakerRules(takers.rules)
+          setLessonSubstitutes(takers.substitutes)
+        }
+      })
+      .catch(() => undefined)
     return () => {
       cancelled = true
     }
@@ -1784,8 +1850,65 @@ function App() {
       return schedules
     }
 
-    return schedules.filter((schedule) => schedule.teacherId === currentSession.teacherId)
-  }, [currentSession, schedules, seesAllClasses])
+    // Their own classes and the ones they assist (a day they only cover is added on the calendar below).
+    return schedules.filter((schedule) =>
+      teachesSchedule(
+        schedule,
+        schedule.classroomId !== null ? classroomMap.get(schedule.classroomId) : null,
+        currentSession.teacherId,
+      ),
+    )
+  }, [currentSession, schedules, seesAllClasses, classroomMap])
+
+  // Whose things the Calendar shows: the filter's people, or (a teacher who sees only their own classes) them.
+  const calendarPeople = useMemo(() => {
+    const picked = filterPeople(calendarFilter, currentSession?.teacherId ?? null, calendarTeams)
+    return picked ?? (currentSession && !seesAllClasses && currentSession.teacherId !== null ? new Set<number>([currentSession.teacherId]) : null)
+  }, [calendarFilter, currentSession, calendarTeams, seesAllClasses])
+
+  // The days the people shown cover on someone else's class: only those days show on the calendar.
+  const coveredScheduleEvents = useMemo(() => {
+    if (!calendarPeople) {
+      return []
+    }
+    const ownById = new Map(
+      schedules.map((schedule) => [schedule.id, scheduleShown(schedule, classroomMap, { ...calendarFilter, kinds: ALL_KINDS }, calendarPeople)]),
+    )
+    return [...calendarPeople].flatMap((personId) =>
+      coveredLessons(lessonSubstitutes, personId, (id) => ownById.get(id) === true).flatMap((entry) => {
+        const schedule = schedules.find((candidate) => candidate.id === entry.scheduleId)
+        if (!schedule || !calendarFilter.kinds.includes(scheduleKind(schedule, classroomMap))) {
+          return []
+        }
+        const oneDay =
+          schedule.eventType === 'regular'
+            ? { ...schedule, startRecur: entry.lessonDate, endRecur: entry.lessonDate }
+            : schedule
+        return buildScheduleEvents(
+          [oneDay],
+          classroomMap,
+          classroomStudentMap,
+          teacherMap,
+          scheduleParticipantMap,
+          studentMap,
+          scheduleExceptions,
+          makeupEntries,
+        ).map((event) => ({ ...event, id: `${event.id}-cover-${entry.lessonDate}` }))
+      }),
+    )
+  }, [
+    calendarPeople,
+    calendarFilter,
+    lessonSubstitutes,
+    schedules,
+    classroomMap,
+    classroomStudentMap,
+    teacherMap,
+    scheduleParticipantMap,
+    studentMap,
+    scheduleExceptions,
+    makeupEntries,
+  ])
 
   const visibleClassrooms = useMemo(() => {
     if (!currentSession || seesAllClasses) {
@@ -1798,11 +1921,9 @@ function App() {
 
   const calendarEvents = useMemo(
     () => [
+      // A make-up day of a weekly class is a make-up; the rest go by the class's kind.
       ...buildScheduleEvents(
-        filterSchedulesByTeacher(
-          filterSchedulesByClassKind(visibleSchedules, classroomMap, calendarClassFilter),
-          calendarTeacherFilter,
-        ),
+        visibleSchedules.filter((schedule) => scheduleShown(schedule, classroomMap, { ...calendarFilter, kinds: ALL_KINDS }, calendarPeople)),
         classroomMap,
         classroomStudentMap,
         teacherMap,
@@ -1810,29 +1931,29 @@ function App() {
         studentMap,
         scheduleExceptions,
         makeupEntries,
-      ),
+      ).filter((event) => {
+        const props = event.extendedProps ?? {}
+        const kind = props.isMakeupOnly ? 'makeup' : props.classKind === 'trial' ? 'trial' : props.classKind === 'replacement' ? 'makeup' : 'class'
+        return calendarFilter.kinds.includes(kind)
+      }),
+      ...coveredScheduleEvents,
       ...malaysiaHolidayEvents,
-      // The class-type buttons are about classes; tasks, meetings and events show under "All".
-      ...(calendarClassFilter === 'all'
-        ? buildCalendarItemEvents(
-            itemsVisibleTo(calendarItems.items, {
-              teacherId: currentSession?.teacherId ?? null,
-              sees: canEditCalendar ? 'all' : 'own',
-            }).filter(
-              (item) =>
-                calendarTeacherFilter === 'all' || item.kind === 'event' || item.assigneeId === calendarTeacherFilter,
-            ),
-            (id) => (id === null ? null : (teacherMap.get(id)?.fullName ?? null)),
-          )
-        : []),
+      ...buildCalendarItemEvents(
+        itemsVisibleTo(calendarItems.items, {
+          teacherId: currentSession?.teacherId ?? null,
+          sees: canEditCalendar ? 'all' : 'own',
+        }).filter((item) => itemShown(item, calendarFilter, calendarPeople)),
+        (id) => (id === null ? null : (teacherMap.get(id)?.fullName ?? null)),
+      ),
     ],
     [
-      calendarClassFilter,
-      calendarTeacherFilter,
+      calendarFilter,
+      calendarPeople,
       calendarItems.items,
       canEditCalendar,
       classroomMap,
       classroomStudentMap,
+      coveredScheduleEvents,
       currentSession?.teacherId,
       makeupEntries,
       scheduleExceptions,
@@ -1841,6 +1962,159 @@ function App() {
       teacherMap,
       visibleSchedules,
     ],
+  )
+
+  // The Calendar's day list (a school with many classes a day; Class Settings > Calendar). Month, week and
+  // agenda stay one click away; null = the layout's own first view.
+  const [calendarLayout, setCalendarLayout] = useState<CalendarLayout>('auto')
+  const [calendarMode, setCalendarMode] = useState<'day_list' | CalendarView | null>(null)
+  const [dayListDate, setDayListDate] = useState<string | null>(null)
+  const [dayListMonth, setDayListMonth] = useState<string | null>(null)
+  const [openDayLesson, setOpenDayLesson] = useState<DayListLesson | null>(null)
+  const [dayListNow, setDayListNow] = useState(() => new Date())
+  // The filters this login used last time (a teacher starts on their own things).
+  useEffect(() => {
+    if (!currentSession) return
+    setCalendarFilterState(
+      loadCalendarFilter(String(currentSession.teacherId), defaultCalendarFilter(currentSession.role === 'teacher')),
+    )
+    void fetchCalendarTeams().then(setCalendarTeams)
+  }, [currentSession])
+  function setCalendarFilter(next: CalendarFilter) {
+    setCalendarFilterState(next)
+    if (currentSession) saveCalendarFilter(String(currentSession.teacherId), next)
+  }
+  useEffect(() => {
+    if (!currentSession) return
+    // Local development only: ?calendarLayout=day_list (or classic) previews a layout without saving it.
+    const preview = import.meta.env.DEV ? new URLSearchParams(window.location.search).get('calendarLayout') : null
+    void fetchCalendarLayout().then((saved) => setCalendarLayout(preview ? readCalendarLayout(preview) : saved))
+  }, [currentSession])
+  const dayListOn = usesDayList(calendarLayout, schedules)
+  const showDayList = dayListOn && (calendarMode ?? 'day_list') === 'day_list'
+  const shownDayListDate = dayListDate ?? todayString
+  const shownDayListMonth = dayListMonth ?? shownDayListDate.slice(0, 7)
+  useEffect(() => {
+    if (visibleSection !== 'calendar' || !showDayList) return undefined
+    const timer = window.setInterval(() => setDayListNow(new Date()), 60_000)
+    return () => window.clearInterval(timer)
+  }, [visibleSection, showDayList])
+  const dayListLessons = useMemo(() => {
+    if (visibleSection !== 'calendar' || !showDayList) return []
+    const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]))
+    const subjectName = new Map(subjects.map((subject) => [subject.id, subject.name]))
+    // The people shown: the classes each of them takes attendance for that day (their own, the ones they
+    // assist, the days they cover).
+    const takesFor = (schedule: Schedule, date: string) =>
+      [...(calendarPeople ?? [])].some((personId) =>
+        canTakeAttendance({ ...attendanceTakerContext, isAdmin: false, teacherId: personId }, schedule, date),
+      )
+    // Who is in a class: today's members for the month's counts (quick), the list on the day for the chosen day.
+    const quickRoster = (scheduleId: number, date: string) => {
+      const schedule = scheduleById.get(scheduleId)
+      const classroom = schedule?.classroomId ? classroomMap.get(schedule.classroomId) : null
+      return schedule?.eventType === 'regular' && classroom && classroom.category !== 'trial'
+        ? (classroomStudentMap.get(classroom.id) ?? []).map((student) => student.id)
+        : getScheduleRosterStudentIds(scheduleId, date)
+    }
+    const sources = {
+      teacherId: null,
+      schedules: calendarPeople ? schedules : visibleSchedules,
+      exceptions: scheduleExceptions,
+      classroomMap,
+      lessonLogs,
+      makeupEntries,
+      takes: calendarPeople ? takesFor : undefined,
+    }
+    const weeks = monthWeeks(shownDayListMonth)
+    const week = getWeekRange(shownDayListDate)
+    const from = [weeks[0][0], week.start].sort()[0]
+    const to = [weeks[weeks.length - 1][6], week.end].sort()[1]
+    const items = [
+      ...getAgendaItems({ ...sources, getRosterIds: quickRoster }, todayString, from, to).filter((item) => item.date !== shownDayListDate),
+      ...getAgendaItems({ ...sources, getRosterIds: getScheduleRosterStudentIds }, todayString, shownDayListDate, shownDayListDate),
+    ]
+    const kindOf = (item: AgendaItem) =>
+      item.isMakeupOnly || item.kind === 'replacement' ? 'makeup' : item.kind === 'trial' ? 'trial' : 'class'
+    return items.filter((item) => calendarFilter.kinds.includes(kindOf(item))).map((item): DayListLesson => {
+      const schedule = scheduleById.get(item.scheduleId)
+      const classroom = item.classroomId !== null ? classroomMap.get(item.classroomId) ?? null : null
+      return {
+        ...item,
+        teacherName: teacherMap.get(item.teacherId)?.fullName ?? 'Unknown teacher',
+        grade: classroom?.ageGroup ?? '',
+        subject: classroom?.subjectId ? subjectName.get(classroom.subjectId) ?? null : null,
+        fbGroupUrl: schedule?.fbGroupUrl ?? null,
+        zoomLink: lessonFixedZoomLink(schedule, classroom),
+      }
+    })
+    // getScheduleRosterStudentIds reads students, the maps and the bookings (see teacherAgenda above).
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    visibleSection,
+    showDayList,
+    schedules,
+    visibleSchedules,
+    subjects,
+    calendarPeople,
+    calendarFilter.kinds,
+    classroomMap,
+    classroomStudentMap,
+    scheduleExceptions,
+    lessonLogs,
+    makeupEntries,
+    attendanceTakerContext,
+    shownDayListMonth,
+    shownDayListDate,
+    todayString,
+    teacherMap,
+    students,
+    trialBookingMap,
+    makeupMap,
+    scheduleParticipantMap,
+  ])
+  // The tasks, meetings, events and follow-ups on the days the day list shows.
+  const dayListItems = useMemo((): DayListItem[] => {
+    if (visibleSection !== 'calendar' || !showDayList) return []
+    const weeks = monthWeeks(shownDayListMonth)
+    const week = getWeekRange(shownDayListDate)
+    const from = [weeks[0][0], week.start].sort()[0]
+    const to = [weeks[weeks.length - 1][6], week.end].sort()[1]
+    return itemsVisibleTo(calendarItems.items, {
+      teacherId: currentSession?.teacherId ?? null,
+      sees: canEditCalendar ? 'all' : 'own',
+    })
+      .filter((item) => item.date >= from && item.date <= to && itemShown(item, calendarFilter, calendarPeople))
+      .map((item) => ({
+        id: item.id,
+        kind: itemKind(item) as DayListItem['kind'],
+        title: item.title,
+        date: item.date,
+        startTime: item.startTime,
+        endTime: item.endTime,
+        assigneeName: item.assigneeId === null ? null : teacherMap.get(item.assigneeId)?.fullName ?? null,
+        isDone: item.isDone,
+      }))
+  }, [
+    visibleSection,
+    showDayList,
+    shownDayListMonth,
+    shownDayListDate,
+    calendarItems.items,
+    currentSession?.teacherId,
+    canEditCalendar,
+    calendarFilter,
+    calendarPeople,
+    teacherMap,
+  ])
+  // Teachers and staff for the People filter.
+  const calendarFilterPeople = useMemo(
+    () =>
+      teachers
+        .filter((teacher) => teacher.isActive)
+        .map((teacher) => ({ id: teacher.id, name: teacher.fullName }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [teachers],
   )
 
   const activeVisibleSchedules = visibleSchedules.filter(
@@ -1969,6 +2243,27 @@ function App() {
       .map((studentId) => studentMap.get(studentId))
       .filter((student): student is Student => Boolean(student))
   }, [attendanceModal, attendanceRosterIds, studentMap])
+
+  // A class day's substitute teacher, why this login may take its attendance,
+  // and (for whoever may edit classes, when the school uses substitutes) who
+  // may cover it: anyone who teaches, except the class's own teacher.
+  function getLessonSubstitute(scheduleId: number, lessonDate: string) {
+    const schedule = schedules.find((entry) => entry.id === scheduleId)
+    const teacherId = substituteMap.get(substituteKey(scheduleId, lessonDate)) ?? null
+    return {
+      teacherId,
+      teacherName: teacherId !== null ? (teacherMap.get(teacherId)?.fullName ?? 'Substitute teacher') : null,
+      role: schedule ? attendanceTakerRole(attendanceTakerContext, schedule, lessonDate) : null,
+      options:
+        canEditClasses && attendanceTakerRules.substitutes && schedule
+          ? teachers
+              .filter((teacher) => teacher.isActive && teacher.role !== 'staff' && teacher.id !== schedule.teacherId)
+              .map((teacher) => ({ id: teacher.id, name: teacher.fullName }))
+          : null,
+      isSaving: isSavingSubstitute,
+      onChange: (next: number | null) => void handleSetLessonSubstitute(scheduleId, lessonDate, next),
+    }
+  }
 
   function updateStudentForm<K extends keyof RenewalFormState>(
     key: K,
@@ -5543,9 +5838,9 @@ function App() {
     // Mirrors submit_lesson_attendance: no attendance ahead of the class day,
     // but the class can still be opened to see who is in it.
     const isUpcoming = occurrenceDate > todayString
-    // Mirrors submit_lesson_attendance: only admin or the class teacher.
-    const classTeacherId = schedules.find((entry) => entry.id === scheduleId)?.teacherId
-    const isViewOnly = !isAdmin && classTeacherId !== currentSession?.teacherId
+    // Mirrors can_take_attendance: admin, the class teacher, its assistants or the day's substitute.
+    const schedule = schedules.find((entry) => entry.id === scheduleId)
+    const isViewOnly = !schedule || !canTakeAttendance(attendanceTakerContext, schedule, occurrenceDate)
 
     setAttendanceSaveError(null)
     setAttendanceModal({
@@ -5702,6 +5997,27 @@ function App() {
     setAttendanceViewOnly(false)
   }
 
+  // Sets (or with null, clears) who covers one class day.
+  async function handleSetLessonSubstitute(scheduleId: number, lessonDate: string, teacherId: number | null) {
+    const classTeacherId = schedules.find((entry) => entry.id === scheduleId)?.teacherId
+    setIsSavingSubstitute(true)
+    const failure = await saveLessonSubstitute(scheduleId, lessonDate, teacherId)
+    setIsSavingSubstitute(false)
+    if (failure) {
+      showToast(failure)
+      return
+    }
+    setLessonSubstitutes((current) => [
+      ...current.filter((entry) => substituteKey(entry.scheduleId, entry.lessonDate) !== substituteKey(scheduleId, lessonDate)),
+      ...(teacherId === null || teacherId === classTeacherId ? [] : [{ scheduleId, lessonDate, teacherId }]),
+    ])
+    showToast(
+      teacherId === null || teacherId === classTeacherId
+        ? 'No substitute: the class teacher takes this class.'
+        : `${teacherMap.get(teacherId)?.fullName ?? 'The substitute'} covers this class and can take its attendance.`,
+    )
+  }
+
   // A score above the criterion's remark threshold clears its remark.
   function updateAttendanceReviewScore(studentId: number, metric: ReviewMetric, score: number) {
     setAttendanceReviews((currentState) => {
@@ -5845,7 +6161,12 @@ function App() {
       ? getDateKeyFromDate(eventInfo.event.start)
       : ''
     const eventClassroomId = (eventInfo.event.extendedProps.classroomId as number | null) ?? null
-    const makeupNotes = getClassroomMakeupNotes(eventClassroomId, eventOccurrenceDate)
+    const allMakeupNotes = getClassroomMakeupNotes(eventClassroomId, eventOccurrenceDate)
+    // A school with many classes (the day list) names no children on a card: how many make-ups, not whose.
+    const makeupNotes =
+      dayListOn && allMakeupNotes.length > 0
+        ? [`${allMakeupNotes.length} make-up${allMakeupNotes.length === 1 ? '' : 's'}`]
+        : allMakeupNotes
 
     // A make-up slot on the 29th-31st, when the class doesn't normally meet.
     if (eventInfo.event.extendedProps.isMakeupOnly) {
@@ -5970,7 +6291,8 @@ function App() {
           >
             {eventInfo.event.extendedProps.teacherName as string}
           </div>
-          {isBooked && (
+          {/* A school with many classes (the day list) names no children on a card: "2 booked" says enough. */}
+          {isBooked && !dayListOn && (
             <div
               className={cn(
                 'mt-0.5 truncate text-[10px]',
@@ -5996,9 +6318,12 @@ function App() {
       ? getDateKeyFromDate(eventInfo.event.start)
       : ''
     const cardClassroomId = eventInfo.event.extendedProps.classroomId as number | null
-    // A class card lists who was in the class that day, not everyone in it now.
+    // A class card lists who was in the class that day, not everyone in it now. A school with many classes
+    // (the day list) shows how many instead: dozens of names made the calendar unreadable.
     const participantNames =
-      eventInfo.event.extendedProps.eventType === 'regular' && cardClassroomId && occurrenceDate
+      dayListOn && eventInfo.event.extendedProps.eventType === 'regular' && cardClassroomId
+        ? ((count: number) => `${count} student${count === 1 ? '' : 's'}`)((classroomStudentMap.get(cardClassroomId) ?? []).length)
+        : eventInfo.event.extendedProps.eventType === 'regular' && cardClassroomId && occurrenceDate
         ? getClassroomRosterOn(students, cardClassroomId, occurrenceDate)
             .map((student) => student.name)
             .join(', ') || 'No students assigned'
@@ -6208,12 +6533,6 @@ function App() {
           )}
 
           <SideNav entries={navEntries} activeSection={activeSection} collapsed={isSidebarCollapsed} onSelect={selectNav} />
-
-          {!isSidebarCollapsed && brand.usesMiraiArt && (
-            <div className="border-t border-white/10 px-6 py-5 text-xs text-white/50">
-              Phase 4 attendance flow - mobile ready
-            </div>
-          )}
         </aside>
 
         <section className="min-w-0 flex-1">
@@ -6528,65 +6847,54 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-3 sm:px-6">
-                    <div
-                      className="flex flex-wrap gap-2"
-                      role="group"
-                      aria-label="Filter calendar by class type"
-                    >
-                      {calendarClassFilterOptions
-                        .filter((option) =>
-                          getClassFilterValues({
-                            canEdit: canEditCalendar,
-                            kinds: getScheduleKinds(visibleSchedules, classroomMap),
-                            all: calendarClassFilterOptions.map((entry) => entry.value),
-                          }).includes(option.value),
-                        )
-                        .map((option) => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          aria-pressed={calendarClassFilter === option.value}
-                          onClick={() => setCalendarClassFilter(option.value)}
-                          className={cn(
-                            'rounded-xl border px-4 py-2 text-sm font-semibold',
-                            calendarClassFilter === option.value
-                              ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]'
-                              : 'border-slate-200 text-slate-600',
-                          )}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {seesAllClasses && (
-                      <label className="flex items-center gap-2 text-sm text-slate-600">
-                        <span className="font-medium">Teacher</span>
-                        <select
-                          aria-label="Filter calendar by teacher"
-                          value={calendarTeacherFilter}
-                          onChange={(event) =>
-                            setCalendarTeacherFilter(
-                              event.target.value === 'all' ? 'all' : Number(event.target.value),
-                            )
-                          }
-                          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
-                        >
-                          <option value="all">All Teachers</option>
-                          {assignableTeachers.map((teacher) => (
-                            <option key={teacher.id} value={teacher.id}>
-                              {teacher.fullName}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
+                  <div className="border-b border-slate-200 px-5 py-3 sm:px-6">
+                    <CalendarFilterBar
+                      filter={calendarFilter}
+                      onChange={setCalendarFilter}
+                      people={calendarFilterPeople}
+                      teams={calendarTeams}
+                      canPickPeople={seesAllClasses}
+                    />
                   </div>
 
                   <div className="p-3 sm:p-4">
+                    {showDayList ? (
+                      <CalendarDayList
+                        today={todayString}
+                        now={dayListNow}
+                        date={shownDayListDate}
+                        onSelectDate={(date) => {
+                          setDayListDate(date)
+                          setDayListMonth(date.slice(0, 7))
+                        }}
+                        monthKey={shownDayListMonth}
+                        onMonthChange={setDayListMonth}
+                        lessons={dayListLessons}
+                        grades={schoolAgeGroupNames}
+                        items={dayListItems}
+                        filteredOutside={isFiltered(calendarFilter)}
+                        onOpenItem={(entry) => {
+                          const picked = calendarItems.items.find((item) => item.id === entry.id)
+                          if (picked) setCalendarItemEditor({ item: picked, date: picked.date })
+                        }}
+                        onOpenLesson={setOpenDayLesson}
+                        onTakeAttendance={(lesson) => void openAttendanceForEvent(lesson.scheduleId, lesson.date, lesson.title)}
+                        onRunLive={supabase ? openLiveLesson : undefined}
+                        onShowCalendar={setCalendarMode}
+                      />
+                    ) : (
+                    <>
+                    {dayListOn && (
+                      <button
+                        type="button"
+                        onClick={() => setCalendarMode('day_list')}
+                        className="mb-3 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-[#be185d] transition hover:bg-[#fff8fc]"
+                      >
+                        ← Back to the day list
+                      </button>
+                    )}
                     <FullCalendar
-                      key={`calendar-${isMobile ? 'mobile' : 'desktop'}-${currentSession?.key ?? 'anon'}`}
+                      key={`calendar-${isMobile ? 'mobile' : 'desktop'}-${currentSession?.key ?? 'anon'}-${calendarMode ?? 'first'}`}
                       plugins={[
                         dayGridPlugin,
                         timeGridPlugin,
@@ -6594,7 +6902,7 @@ function App() {
                         interactionPlugin,
                         rrulePlugin,
                       ]}
-                      initialView={isMobile ? 'listWeek' : 'dayGridMonth'}
+                      initialView={calendarMode && calendarMode !== 'day_list' ? calendarMode : isMobile ? 'listWeek' : 'dayGridMonth'}
                       headerToolbar={
                         isMobile
                           ? {
@@ -6759,6 +7067,8 @@ function App() {
                       }}
                       eventContent={renderCalendarEventContent}
                     />
+                    </>
+                    )}
                   </div>
                 </section>
               </>
@@ -6912,6 +7222,7 @@ function App() {
                   crm={whatsAppCrm}
                   active={visibleSection === 'whatsapp'}
                   openRequest={whatsAppRequest}
+                  everyOpenChat={everyOpenChat}
                   numbersView={{
                     numbers: whatsAppNumbers.numbers,
                     assignments: whatsAppNumbers.assignments,
@@ -7143,6 +7454,8 @@ function App() {
           onAddStatus={(draft) => saveAttendanceStatus(null, draft)}
           onSaveStatus={(status, changes) => saveAttendanceStatus(status, changes)}
           onSaveStatusPoints={saveAttendanceStatusPoints}
+          onAttendanceTakersSaved={setAttendanceTakerRules}
+          onCalendarLayoutSaved={setCalendarLayout}
           rewardPresets={rewardPresets}
           rewardLevels={rewardLevels}
           onRewardsChanged={() => void reloadRewards()}
@@ -7490,6 +7803,11 @@ function App() {
             latestLessonLogMap.has(`${editingSchedule.id}:${editingOccurrenceDate}`)
           }
           onCancelOccurrence={handleCancelOccurrence}
+          substitute={(() => {
+            if (!editingSchedule || editingOccurrenceDate === null) return undefined
+            const substitute = getLessonSubstitute(editingSchedule.id, editingOccurrenceDate)
+            return substitute.options ? { ...substitute, options: substitute.options } : undefined
+          })()}
           clashes={scheduleClashes}
           onOpenStudent={openStudentDetail}
           clashTeacherName={
@@ -7497,6 +7815,49 @@ function App() {
               ? (teacherMap.get(scheduleClashTeacherId)?.fullName ?? 'This teacher')
               : 'This teacher'
           }
+        />
+      )}
+
+      {openDayLesson && (
+        <LessonWindow
+          lesson={openDayLesson}
+          today={todayString}
+          now={dayListNow}
+          alongside={dayListLessons.filter(
+            (other) =>
+              other.key !== openDayLesson.key &&
+              other.date === openDayLesson.date &&
+              other.startTime === openDayLesson.startTime &&
+              other.classroomId !== null &&
+              other.classroomId === openDayLesson.classroomId,
+          )}
+          rosterNames={() =>
+            getScheduleRosterStudentIds(openDayLesson.scheduleId, openDayLesson.date)
+              .map((id) => studentMap.get(id)?.name ?? '')
+              .filter(Boolean)
+              .sort((a, b) => a.localeCompare(b))
+          }
+          onTakeAttendance={() => {
+            setOpenDayLesson(null)
+            void openAttendanceForEvent(openDayLesson.scheduleId, openDayLesson.date, openDayLesson.title)
+          }}
+          onRunLive={
+            supabase
+              ? () => {
+                  setOpenDayLesson(null)
+                  openLiveLesson(openDayLesson)
+                }
+              : undefined
+          }
+          onEdit={
+            canEditCalendar
+              ? () => {
+                  setOpenDayLesson(null)
+                  openEditSchedule(openDayLesson.scheduleId, openDayLesson.date)
+                }
+              : undefined
+          }
+          onClose={() => setOpenDayLesson(null)}
         />
       )}
 
@@ -7540,6 +7901,7 @@ function App() {
           lateEditOpen={lateFeedbackEdit}
           isUpcoming={attendanceUpcoming}
           isViewOnly={attendanceViewOnly}
+          substitute={getLessonSubstitute(attendanceModal.scheduleId, attendanceModal.occurrenceDate)}
           teacherName={
             attendanceExistingLog
               ? teacherMap.get(attendanceExistingLog.teacherId)?.fullName ?? null

@@ -48,9 +48,19 @@ h3 {
   min-height: 100vh;
 }
 
+/* Words only for screen readers (sr-only) are placed with position: absolute. In a table that scrolls
+   sideways on a phone (Forms), one sat where its column is, far past the right edge of the screen, and the
+   whole page grew that wide, pushing the bottom menu away. Kept at the left edge, they never widen the page. */
+.sr-only {
+  left: 0;
+}
+
 /* Shared compact density for the teaching administration workspace. */
 .compact-admin {
   font-size: 14px;
+  /* Nothing may make the page wider than the screen: a wide table scrolls in its own box. This is the last
+     catch for one that does not; "clip" (not "hidden") keeps sticky headers and menus working. */
+  overflow-x: clip;
 }
 
 .compact-admin .rounded-\[24px\] {
@@ -315,6 +325,28 @@ h3 {
   border: none;
 }
 
+/* Month view: a class card wraps inside its own day. FullCalendar keeps event text on one line, so with two
+   or three classes on a narrow day the time covered the class name and ran into the next day. Now the time
+   moves under the label when there is no room beside it, and long names wrap. */
+.fc .fc-daygrid-event {
+  white-space: normal;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.fc .fc-daygrid-event .justify-between {
+  flex-wrap: wrap;
+  column-gap: 0.25rem;
+  row-gap: 0.125rem;
+}
+
+/* Agenda (list) view, used on phones: the class cell takes the width that is left and cuts a long line with
+   "…", instead of growing to fit it, which made the calendar (and the page) 1300px wide. */
+.fc .fc-list-event-title {
+  width: 100%;
+  max-width: 0;
+}
+
 .fc .fc-timegrid-axis-cushion,
 .fc .fc-timegrid-slot-label-cushion {
   color: #64748b;
@@ -348,6 +380,11 @@ h3 {
 
   .fc .fc-toolbar-title {
     font-size: 1rem;
+  }
+
+  /* The agenda's time ("11:15am - 12:15pm") goes on two lines, leaving the class name more room. */
+  .fc .fc-list-event-time {
+    white-space: normal;
   }
 }
 

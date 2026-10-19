@@ -18,11 +18,13 @@ type LeadTagPickerProps = {
   onCreate: (label: string, color: string) => Promise<LeadOption | null>
   // Off where the page already puts a "Tags" heading above the picker.
   showLabel?: boolean
+  // The Inbox's small tag pills.
+  compact?: boolean
 }
 
 // The lead's tags as pills, a list to add one that exists, and a way to make a
 // new one on the spot (name and colour) that is picked right away.
-export function LeadTagPicker({ tags, selectedIds, onChange, onCreate, showLabel = true }: LeadTagPickerProps) {
+export function LeadTagPicker({ tags, selectedIds, onChange, onCreate, showLabel = true, compact = false }: LeadTagPickerProps) {
   const [isCreating, setIsCreating] = useState(false)
   const [name, setName] = useState('')
   const [color, setColor] = useState<string>(() => nextTagColor(tags))
@@ -51,11 +53,12 @@ export function LeadTagPicker({ tags, selectedIds, onChange, onCreate, showLabel
       {showLabel && <div className="text-sm font-semibold text-slate-700">Tags</div>}
 
       {selected.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
+        <div className={cn('flex flex-wrap', compact ? 'gap-1' : 'gap-1.5')}>
           {selected.map((tag) => (
             <LeadTagChip
               key={tag.id}
               tag={tag}
+              compact={compact}
               onRemove={() => onChange(selectedIds.filter((id) => id !== tag.id))}
             />
           ))}
@@ -65,45 +68,30 @@ export function LeadTagPicker({ tags, selectedIds, onChange, onCreate, showLabel
       )}
 
       {isCreating ? (
-        <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              autoFocus
-              value={name}
-              maxLength={60}
-              aria-label="New tag name"
-              placeholder="New tag name"
-              onChange={(event) => setName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  // Enter adds the tag instead of saving the whole lead.
-                  event.preventDefault()
-                  void create()
-                } else if (event.key === 'Escape') {
-                  event.stopPropagation()
-                  setIsCreating(false)
-                }
-              }}
-              className={inputClass}
-            />
-            <button
-              type="button"
-              disabled={isSaving || !name.trim()}
-              onClick={() => void create()}
-              className="shrink-0 rounded-lg bg-[#fc0c97] px-3 text-sm font-semibold text-white transition hover:bg-[#de0a84] disabled:opacity-50"
-            >
-              {isSaving ? 'Adding...' : 'Add'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsCreating(false)}
-              className="shrink-0 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-          </div>
-          <div role="radiogroup" aria-label="Tag colour" className="flex flex-wrap gap-2">
+        // The name has a row of its own (the side panel of the Inbox is narrow), the colours go under it,
+        // and Add / Cancel sit at the bottom right. Enter adds, Escape cancels.
+        <div className="space-y-2.5 rounded-xl border border-slate-200 bg-white p-2.5">
+          <input
+            type="text"
+            autoFocus
+            value={name}
+            maxLength={60}
+            aria-label="New tag name"
+            placeholder="New tag name"
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                // Enter adds the tag instead of saving the whole lead.
+                event.preventDefault()
+                void create()
+              } else if (event.key === 'Escape') {
+                event.stopPropagation()
+                setIsCreating(false)
+              }
+            }}
+            className={inputClass}
+          />
+          <div role="radiogroup" aria-label="Tag colour" className="flex flex-wrap gap-1.5">
             {TAG_COLORS.map((swatch) => (
               <button
                 key={swatch}
@@ -113,12 +101,30 @@ export function LeadTagPicker({ tags, selectedIds, onChange, onCreate, showLabel
                 aria-label={swatch}
                 onClick={() => setColor(swatch)}
                 className={cn(
-                  'h-6 w-6 rounded-full border-2 transition',
+                  // min-h-0: phones make every button 40px tall, which turned the circles into ovals.
+                  'h-6 w-6 shrink-0 rounded-full border-2 transition min-h-0!',
                   color === swatch ? 'border-slate-800' : 'border-white ring-1 ring-slate-200',
                 )}
                 style={{ backgroundColor: swatch }}
               />
             ))}
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsCreating(false)}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={isSaving || !name.trim()}
+              onClick={() => void create()}
+              className="rounded-lg bg-[#fc0c97] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#de0a84] disabled:opacity-50"
+            >
+              {isSaving ? 'Adding...' : 'Add'}
+            </button>
           </div>
         </div>
       ) : (

@@ -16,6 +16,18 @@ export type StudentStatusInput = {
   // False for a package without Account Fee / Mirai Club (Trial 1 Month,
   // Camp): those dates are not tracked, so they raise no alerts.
   feesApply?: boolean
+  // The student's package, if any. At a school that does not give every student a package, a student without
+  // one is not chased for classes left or an end date (see tracksClasses).
+  packageId?: number | null
+}
+
+// Whether the student's classes left and package end date are followed up: always at a school where every
+// student has a package (Mirai), otherwise only for a student who has one. Trial and preview students never.
+export function tracksClasses(student: Pick<StudentStatusInput, 'studentType' | 'packageId'>) {
+  if (student.studentType === 'preview' || student.studentType === 'trial') {
+    return false
+  }
+  return brand.usesPackages || (student.packageId !== null && student.packageId !== undefined)
 }
 
 export function getTodayString() {
@@ -74,6 +86,7 @@ export function getStudentStatus(
       miraiClubExpiry: meta,
       tags,
       isNormal: student.isActive,
+      tracksClasses: false,
     }
   }
 
@@ -98,11 +111,15 @@ export function getStudentStatus(
       miraiClubExpiry: meta,
       tags,
       isNormal: student.isActive,
+      tracksClasses: false,
     }
   }
 
-  const hoursLow = student.remainingHours <= 2
-  const lessonExpiry = getDateMeta(student.lessonExpiryDate, todayString)
+  const classesTracked = tracksClasses(student)
+  const hoursLow = classesTracked && student.remainingHours <= 2
+  const lessonExpiry = classesTracked
+    ? getDateMeta(student.lessonExpiryDate, todayString)
+    : { daysUntil: 0, expired: false, dueSoon: false }
   const feesApply = brand.usesFees && (student.feesApply ?? true)
   const noFee = { daysUntil: 0, expired: false, dueSoon: false }
   const accountFeeExpiry = feesApply
@@ -151,6 +168,7 @@ export function getStudentStatus(
     miraiClubExpiry,
     tags,
     isNormal: tags.length === 1 && tags[0].label === 'Normal',
+    tracksClasses: classesTracked,
   }
 }
 
@@ -196,7 +214,7 @@ export function getStudentIssues(
 
   if (status.lessonExpired) {
     issues.push({ label: 'Package ended', tone: 'critical', severity: 1 })
-  } else if (student.remainingHours <= 0) {
+  } else if (status.tracksClasses && student.remainingHours <= 0) {
     issues.push({ label: 'No classes left', tone: 'critical', severity: 1 })
   } else if (status.hoursLow) {
     issues.push({ label: 'Classes low', tone: 'warning', severity: 2 })

@@ -204,3 +204,57 @@ describe('AttendanceModal (submitted report)', () => {
     expect(screen.queryByRole('button', { name: 'Submit Attendance' })).not.toBeInTheDocument()
   })
 })
+
+describe('AttendanceModal (substitute teacher)', () => {
+  function renderWith(substitute: React.ComponentProps<typeof AttendanceModal>['substitute']) {
+    render(
+      <AttendanceModal
+        attendanceModal={{ scheduleId: 1, occurrenceDate: '2026-10-09', title: 'FRI C006' }}
+        attendanceExistingLog={null}
+        attendanceLocked={false}
+        isLoadingAttendance={false}
+        attendanceRoster={roster}
+        attendanceStatuses={{}}
+        attendanceReviews={{}}
+        reviewMetrics={metrics}
+        attendanceRemark=""
+        attendanceSaveError={null}
+        isSavingAttendance={false}
+        onClose={vi.fn()}
+        onSubmit={vi.fn()}
+        onSetStatus={vi.fn()}
+        onUpdateReviewScore={vi.fn()}
+        onUpdateReviewRemark={vi.fn()}
+        onUpdateLessonRemark={vi.fn()}
+        substitute={substitute}
+      />,
+    )
+  }
+
+  it('lets whoever may edit classes pick the day’s substitute, or none', async () => {
+    const onChange = vi.fn()
+    renderWith({
+      teacherId: null, teacherName: null, role: 'admin', isSaving: false, onChange,
+      options: [{ id: 4, name: 'Mei' }, { id: 5, name: 'Lim' }],
+    })
+
+    await userEvent.selectOptions(screen.getByLabelText('Substitute teacher'), 'Mei')
+    expect(onChange).toHaveBeenCalledWith(4)
+    await userEvent.selectOptions(screen.getByLabelText('Substitute teacher'), 'None (class teacher)')
+    expect(onChange).toHaveBeenLastCalledWith(null)
+  })
+
+  it('shows a teacher who may not change it who covers the day, and that it is them', () => {
+    renderWith({ teacherId: 4, teacherName: 'Mei', role: 'substitute', isSaving: false, onChange: vi.fn(), options: null })
+
+    expect(screen.queryByLabelText('Substitute teacher')).not.toBeInTheDocument()
+    expect(screen.getByText('Mei')).toBeInTheDocument()
+    expect(screen.getByText('You are covering this class')).toBeInTheDocument()
+  })
+
+  it('tells an assistant they assist the class', () => {
+    renderWith({ teacherId: null, teacherName: null, role: 'assistant', isSaving: false, onChange: vi.fn(), options: null })
+
+    expect(screen.getByText('You assist this class')).toBeInTheDocument()
+  })
+})

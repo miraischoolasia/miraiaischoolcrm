@@ -4,7 +4,9 @@ import { getSupabaseAccessToken } from './accessToken'
 // signed-in person may not.
 export type WaLinkState = 'open' | 'connecting' | 'close' | 'unavailable'
 
-export type WaQr = { image: string | null; pairingCode: string | null }
+// count: which code this is in the current linking (Evolution counts 1, 2, 3...); key: tells one code from the next
+// (the count, else the code itself); linked: the phone was linked meanwhile (Evolution answers with its state).
+export type WaQr = { image: string | null; pairingCode: string | null; count: number | null; key: string | null; linked: boolean }
 
 export type WaConnect = ReturnType<typeof createWaConnect>
 
@@ -31,17 +33,29 @@ export function createWaConnect(apiUrl: string, getAccessToken: () => Promise<st
       return state === 'open' || state === 'connecting' ? state : 'close'
     },
 
-    // A fresh QR code. WhatsApp only accepts one for about a minute, so ask again to get a new one.
+    // The QR code WhatsApp gave for linking right now. The first ask starts the linking; while it is going on,
+    // asking again only reads the current code (WhatsApp itself makes a new one about every 20 seconds). If the
+    // linking has ended, asking again starts a new one: the panel stops instead of doing that over and over.
     async qr(): Promise<WaQr> {
       const response = await get('/qr')
       if (!response.ok) {
         throw new Error(`Could not get a QR code (${response.status}).`)
       }
-      const data = (await response.json().catch(() => null)) as { base64?: unknown; pairingCode?: unknown } | null
+      const data = (await response.json().catch(() => null)) as {
+        base64?: unknown
+        pairingCode?: unknown
+        code?: unknown
+        count?: unknown
+        instance?: { state?: unknown }
+        state?: unknown
+      } | null
       const image =
         typeof data?.base64 === 'string' && data.base64.startsWith('data:image/png;base64,') ? data.base64 : null
       const pairingCode = typeof data?.pairingCode === 'string' && data.pairingCode ? data.pairingCode : null
-      return { image, pairingCode }
+      const count = typeof data?.count === 'number' && Number.isInteger(data.count) ? data.count : null
+      const code = typeof data?.code === 'string' && data.code ? data.code : null
+      const linked = (data?.instance?.state ?? data?.state) === 'open'
+      return { image, pairingCode, count, key: count !== null ? `#${count}` : (code ?? image), linked }
     },
   }
 }

@@ -248,6 +248,8 @@ export function StudentDetailModal({
   const currentPackage = packages.find((pkg) => pkg.id === student.packageId) ?? null
   const feesApply = currentPackage ? currentPackage.includesFees : true
   const status = getStudentStatus({ ...student, feesApply }, todayString)
+  // A school that does not give every student a package renews only those who have one.
+  const renew = brand.usesPackages || currentPackage ? onRenew : undefined
   const issues = getStudentIssues(student, status)
   const worstFee = getWorstFee(status)
   const teacherName = student.teacherId
@@ -327,10 +329,10 @@ export function StudentDetailModal({
             )}
           </div>
           <div className="flex shrink-0 items-center justify-end gap-2 max-sm:w-full max-sm:justify-start">
-            {onRenew && !isPreview && (
+            {renew && !isPreview && (
               <button
                 type="button"
-                onClick={onRenew}
+                onClick={renew}
                 className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
               >
                 Renew
@@ -388,7 +390,7 @@ export function StudentDetailModal({
               lessonDaysUntil={status.lessonExpiry.daysUntil}
               feeName={worstFee?.name ?? null}
               feeDaysUntil={worstFee?.meta.daysUntil ?? 0}
-              onRenew={onRenew}
+              onRenew={renew}
             />
 
             {isPreview && (
@@ -406,6 +408,9 @@ export function StudentDetailModal({
               <div className="grid gap-3 sm:grid-cols-2">
                 {isBilled ? (
                   <>
+                    {/* No package at a school that does not use them: no classes or end date to show. */}
+                    {status.tracksClasses && (
+                    <>
                     <Stat label="Classes left">
                       <div className="text-2xl font-semibold text-slate-900">
                         {student.remainingHours}
@@ -435,6 +440,8 @@ export function StudentDetailModal({
                         {currentPackage ? ` · ${currentPackage.name}` : ''}
                       </div>
                     </Stat>
+                    </>
+                    )}
                     {brand.usesFees && (
                     <Stat label="Fees">
                       {!feesApply ? (
@@ -726,10 +733,10 @@ export function StudentDetailModal({
                       Change Package
                     </button>
                   )}
-                  {onRenew && (
+                  {renew && (
                     <button
                       type="button"
-                      onClick={onRenew}
+                      onClick={renew}
                       className="rounded-xl bg-[#fc0c97] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
                     >
                       Renew
@@ -741,11 +748,15 @@ export function StudentDetailModal({
               <dl className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-2 text-sm">
                 <dt className="text-slate-500">Now on</dt>
                 <dd className="font-semibold text-slate-900">{currentPackage?.name ?? 'No package'}</dd>
-                <dt className="text-slate-500">Classes</dt>
-                <dd className="font-semibold text-slate-900">
-                  {student.remainingHours} left
-                  {currentPackage ? ` of ${currentPackage.classCount}` : ''}
-                </dd>
+                {status.tracksClasses && (
+                  <>
+                    <dt className="text-slate-500">Classes</dt>
+                    <dd className="font-semibold text-slate-900">
+                      {student.remainingHours} left
+                      {currentPackage ? ` of ${currentPackage.classCount}` : ''}
+                    </dd>
+                  </>
+                )}
                 <dt className="text-slate-500">Teacher</dt>
                 <dd className="font-semibold text-slate-900">{teacherName ?? 'Unassigned'}</dd>
               </dl>

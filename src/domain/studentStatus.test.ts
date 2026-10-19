@@ -185,3 +185,20 @@ describe('getAttentionRank', () => {
     expect(getAttentionRank(false, [])).toBe(11)
   })
 })
+
+describe('a school where every student has a package (Mirai)', () => {
+  it('still chases a regular student with no package for classes and an end date', () => {
+    const student = {
+      remainingHours: 0, lessonExpiryDate: '2026-10-01', accountFeeExpiryDate: '2027-03-01',
+      miraiClubExpiryDate: '2027-03-01', isActive: true, studentType: 'regular' as const, packageId: null,
+    }
+    const status = getStudentStatus(student, '2026-10-19')
+
+    expect(status.tracksClasses).toBe(true)
+    expect(status.hoursLow).toBe(true)
+    expect(status.lessonExpired).toBe(true)
+    expect(getStudentIssues(student, status)[0].label).toBe('Package ended')
+    const current = { ...student, lessonExpiryDate: '2027-03-01' }
+    expect(getStudentIssues(current, getStudentStatus(current, '2026-10-19'))[0].label).toBe('No classes left')
+  })
+})

@@ -299,14 +299,15 @@ export function TeamRepliesSection({ staff, client, canCopy = false, now }: Team
 
   const days = period ? daysBetween(period.first, period.last) : []
   const missing = period && kept && kept.key === loadKey ? days.filter((day) => !kept.days.doneDays.has(day)).length : 0
-  const trend = period && dayRows && days.length > 1 ? dailyTrend(dayRows, days) : null
+  // No chart of empty days: before the days are worked out it would only be two blank boxes.
+  const trend = period && dayRows && dayRows.length > 0 && days.length > 1 ? dailyTrend(dayRows, days) : null
   const isLoading = isLoadingKept
   const error = keptError
   const yesterday = addDays(today, -1)
 
   return (
-    <section aria-labelledby="team-replies-title" className="mx-auto max-w-[1600px] space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-white">
+    <section aria-labelledby="team-replies-title" className="mx-auto min-w-0 max-w-[1600px] space-y-4">
+      <div className="min-w-0 rounded-2xl border border-slate-200 bg-white">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
           <div>
             <h2 id="team-replies-title" className="text-lg font-semibold text-slate-900">
