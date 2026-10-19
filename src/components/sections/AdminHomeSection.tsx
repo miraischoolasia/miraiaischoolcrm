@@ -321,7 +321,7 @@ export function AdminHomeSection({
                       >
                         {row.student.name}
                       </button>
-                      <div className="truncate text-xs text-slate-500">
+                      <div className="text-xs text-slate-500">
                         {[row.classroom?.name, row.parent?.name, row.parent?.phone].filter(Boolean).join(' · ') ||
                           'No class yet'}
                       </div>
