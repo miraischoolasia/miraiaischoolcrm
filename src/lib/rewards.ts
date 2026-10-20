@@ -16,7 +16,7 @@ export type RewardLevel = {
   minPoints: number
 }
 
-export type PointsKind = 'attendance' | 'award' | 'redeem' | 'adjust' | 'question'
+export type PointsKind = 'attendance' | 'award' | 'redeem' | 'adjust' | 'question' | 'checkin' | 'task' | 'practice'
 
 export type PointsEntry = {
   id: number

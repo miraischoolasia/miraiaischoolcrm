@@ -28,6 +28,7 @@ import { isEditCopy, withoutEditHeading } from '../../lib/editCopy'
 import { isCheckingReaction } from '../../lib/reactionPreview'
 import { useAiSuggestion } from '../../hooks/useAiSuggestion'
 import { recordAiDraftSent, type AiDraftContext } from '../../lib/aiDraft'
+import type { ChatSwitchOption } from '../../lib/chatSwitch'
 
 type ChatPanelProps = {
   conversation: ChatwootConversation
@@ -99,6 +100,9 @@ type ChatPanelProps = {
   aiContext?: AiDraftContext | null
   // Where a reply goes out from (the WhatsApp number, or the Page), shown above the message box.
   sendingFrom?: string | null
+  // The family's other chats, to switch to from "Sending from".
+  chatChoices?: ChatSwitchOption[]
+  onSwitchChat?: (option: ChatSwitchOption) => void
 }
 
 // The round icon buttons at the top of a chat.
@@ -175,6 +179,8 @@ export function ChatPanel({
   onMakeQuickReply,
   aiContext = null,
   sendingFrom = null,
+  chatChoices,
+  onSwitchChat,
 }: ChatPanelProps) {
   const identity = getChatIdentity(conversation.meta.sender, leadName, conversation.meta.channel)
   // The grey reply suggestion; asked for only when the box is empty and the parent wrote last.
@@ -948,6 +954,8 @@ export function ChatPanel({
         draftRequest={draftRequest}
         droppedFiles={dropped}
         sendingFrom={sendingFrom}
+        chatChoices={chatChoices}
+        onSwitchChat={onSwitchChat}
         draft={draft}
         onDraftChange={onDraftChange}
         replyTo={replying ? { id: replying.id, author: authorOf(replying), text: describeMessage(replying) } : null}

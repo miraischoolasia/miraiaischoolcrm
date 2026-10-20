@@ -219,5 +219,131 @@ class Conversations(unittest.TestCase):
         self.assertEqual(gateway_auth.decide_conversation(token_with_exp(NOW + 3600), 1, "view"), 403)
 
 
+class FakeNumbers:
+    """Answers whatsapp_numbers and my_whatsapp_inbox_ids like Supabase."""
+
+    def __init__(self, active, given=None, status=200, given_status=200):
+        self.active = active  # number name -> inbox id, switched-on numbers only
+        self.given = given
+        self.status = status
+        self.given_status = given_status
+        self.calls = []
+
+    def __call__(self, path, token, body=None):
+        self.calls.append(path)
+        if path.startswith("/rest/v1/whatsapp_numbers?"):
+            if self.status != 200:
+                return self.status, None
+            name = path.rsplit("evolution_instance=eq.", 1)[1]
+            return 200, [{"chatwoot_inbox_id": self.active[name]}] if name in self.active else []
+        if path == "/rest/v1/rpc/my_whatsapp_inbox_ids":
+            return self.given_status, (self.given if self.given_status == 200 else None)
+        raise AssertionError(path)
+
+
+class Numbers(unittest.TestCase):
+    def setUp(self):
+        gateway_auth._cache.clear()
+        self.clock = NOW
+        patcher = mock.patch.object(gateway_auth.time, "time", lambda: self.clock)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.token = token_with_exp(NOW + 3600)
+
+    def use(self, fake):
+        patcher = mock.patch.object(gateway_auth, "supabase", fake)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return fake
+
+    def test_which_number_a_request_names(self):
+        self.assertIsNone(gateway_auth.instance_of("/wa/read"))
+        self.assertIsNone(gateway_auth.instance_of("/wa/evo/chat/findMessages?x=1"))
+        self.assertEqual(gateway_auth.instance_of("/wa/read?instance=eduhero-2"), "eduhero-2")
+        self.assertEqual(gateway_auth.instance_of("/wa/connect/qr?a=1&instance=eduhero-3&instance=x"), "eduhero-3")
+        self.assertEqual(gateway_auth.instance_of("/wa/read?instance=..%2F..%2Fx"), "../../x")
+
+    def test_a_switched_on_number_for_everyone(self):
+        self.use(FakeNumbers({"eduhero-2": 6}, given=None))
+        self.assertEqual(gateway_auth.decide_instance(self.token, "eduhero-2"), 200)
+
+    def test_a_number_given_to_this_person(self):
+        self.use(FakeNumbers({"eduhero-2": 6}, given=[3, 6]))
+        self.assertEqual(gateway_auth.decide_instance(self.token, "eduhero-2"), 200)
+
+    def test_a_number_not_given_to_this_person(self):
+        self.use(FakeNumbers({"eduhero-2": 6}, given=[3]))
+        self.assertEqual(gateway_auth.decide_instance(self.token, "eduhero-2"), 403)
+
+    def test_an_unknown_or_switched_off_number(self):
+        self.use(FakeNumbers({"eduhero": 3}))
+        self.assertEqual(gateway_auth.decide_instance(self.token, "eduhero-9"), 403)
+        self.assertEqual(gateway_auth.decide_instance(self.token, "mirai-test"), 403)
+
+    def test_a_strange_name_is_refused_without_asking(self):
+        fake = self.use(FakeNumbers({}))
+        self.assertEqual(gateway_auth.decide_instance(self.token, "../../x"), 403)
+        self.assertEqual(gateway_auth.decide_instance(self.token, ""), 403)
+        self.assertEqual(fake.calls, [])
+
+    def test_answers_are_remembered(self):
+        fake = self.use(FakeNumbers({"eduhero-2": 6}))
+        gateway_auth.decide_instance(self.token, "eduhero-2")
+        gateway_auth.decide_instance(self.token, "eduhero-2")
+        self.assertEqual(len(fake.calls), 2)  # one check: the number + who it is given to
+        self.clock = NOW + 301
+        gateway_auth.decide_instance(self.token, "eduhero-2")
+        self.assertEqual(len(fake.calls), 4)
+
+    def test_supabase_down_is_503_and_not_remembered(self):
+        fake = self.use(FakeNumbers({}, status=502))
+        self.assertEqual(gateway_auth.decide_instance(self.token, "eduhero-2"), 503)
+        gateway_auth.decide_instance(self.token, "eduhero-2")
+        self.assertEqual(len(fake.calls), 2)
+
+    def test_an_expired_login_is_401(self):
+        self.use(FakeNumbers({}, status=401))
+        self.assertEqual(gateway_auth.decide_instance(self.token, "eduhero-2"), 401)
+
+
+class Gateway(unittest.TestCase):
+    """The whole check through HTTP, as Caddy asks it."""
+
+    def setUp(self):
+        gateway_auth._cache.clear()
+        gateway_auth._levels.clear()
+        self.server = gateway_auth.ThreadingHTTPServer(("127.0.0.1", 0), gateway_auth.Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+
+    def ask(self, path, uri):
+        import urllib.request
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{self.server.server_address[1]}{path}",
+            headers={"Authorization": "Bearer " + token_with_exp(time.time() + 3600), "X-Forwarded-Uri": uri},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=5) as response:
+                return response.status
+        except urllib.error.HTTPError as error:
+            return error.code
+
+    def test_number_checks_on_both_doors(self):
+        def fake(path, token, body=None):
+            if path == "/auth/v1/user":
+                return 200, {"id": "u1"}
+            if path in ("/rest/v1/rpc/has_permission", "/rest/v1/rpc/is_admin"):
+                return 200, True
+            return FakeNumbers({"eduhero-2": 6}, given=[3])(path, token, body)
+
+        with mock.patch.object(gateway_auth, "supabase", fake):
+            self.assertEqual(self.ask("/verify", "/wa/read"), 200)
+            self.assertEqual(self.ask("/verify", "/wa/read?instance=eduhero-2"), 403)
+            self.assertEqual(self.ask("/verify", "/wa/read?instance=eduhero-7"), 403)
+            self.assertEqual(self.ask("/verify-admin", "/wa/connect/qr?instance=eduhero-9"), 403)
+            self.assertEqual(self.ask("/verify-admin", "/wa/numbers"), 200)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -15,8 +15,23 @@ type Phase = 'idle' | 'running' | 'stopped'
 // Admin: link the school's WhatsApp number by scanning a QR code with the phone. Nothing is asked of WhatsApp
 // until the admin presses the button, a try lasts at most 2 minutes, and nothing shows when this school has no
 // such door.
-export function LinkWhatsAppPanel({ apiUrl, connect }: { apiUrl: string; connect?: WaConnect }) {
-  const api = useMemo(() => connect ?? createWaConnect(apiUrl), [apiUrl, connect])
+// instance: which of the school's numbers (its Evolution name), with title its name on screen; left out for a school
+// with one number.
+export function LinkWhatsAppPanel({
+  apiUrl,
+  connect,
+  instance = null,
+  title = 'WhatsApp phone',
+  autoStart = false,
+}: {
+  apiUrl: string
+  connect?: WaConnect
+  instance?: string | null
+  title?: string
+  // A number the admin has just added: its QR code shows at once, without pressing the button.
+  autoStart?: boolean
+}) {
+  const api = useMemo(() => connect ?? createWaConnect(apiUrl, undefined, instance), [apiUrl, connect, instance])
   const [state, setState] = useState<WaLinkState | 'checking'>('checking')
   const [phase, setPhase] = useState<Phase>('idle')
   const [qr, setQr] = useState<WaQr | null>(null)
@@ -32,6 +47,9 @@ export function LinkWhatsAppPanel({ apiUrl, connect }: { apiUrl: string; connect
       .then((next) => {
         if (!stopped.current) {
           setState(next)
+          if (autoStart && (next === 'close' || next === 'connecting')) {
+            setPhase('running')
+          }
         }
       })
       .catch(() => {
@@ -42,6 +60,8 @@ export function LinkWhatsAppPanel({ apiUrl, connect }: { apiUrl: string; connect
     return () => {
       stopped.current = true
     }
+    // autoStart counts only when the panel opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api])
 
   // While a try is going on: look at the current code every few seconds (the picture changes only when WhatsApp
@@ -135,8 +155,8 @@ export function LinkWhatsAppPanel({ apiUrl, connect }: { apiUrl: string; connect
   // the admin's, so they are told rather than shown nothing; a number already linked keeps working as before.
   if (state === 'unavailable') {
     return (
-      <section className="rounded-xl border border-slate-200 px-4 py-3" aria-label="Link a WhatsApp phone">
-        <p className="text-sm font-semibold text-slate-900">WhatsApp phone</p>
+      <section className="rounded-xl border border-slate-200 px-4 py-3" aria-label={`Link ${title}`}>
+        <p className="text-sm font-semibold text-slate-900">{title}</p>
         <p className="text-xs text-slate-500">
           Linking the phone from the CRM is not turned on for this school yet (the inbox server needs it). A number that
           is already linked keeps sending and receiving as before.
@@ -153,10 +173,10 @@ export function LinkWhatsAppPanel({ apiUrl, connect }: { apiUrl: string; connect
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 px-4 py-3" aria-label="Link a WhatsApp phone">
+    <section className="rounded-xl border border-slate-200 px-4 py-3" aria-label={`Link ${title}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-slate-900">WhatsApp phone</p>
+          <p className="text-sm font-semibold text-slate-900">{title}</p>
           <p className="text-xs text-slate-500">
             {state === 'open'
               ? 'Linked. Messages come into this inbox.'

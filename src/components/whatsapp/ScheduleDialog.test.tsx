@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ScheduleDialog, type ScheduleApi } from './ScheduleDialog'
 import { ScheduledList } from './ScheduledList'
 import type { ChatSchedule, ScheduleTarget } from '../../lib/chatSchedules'
@@ -26,6 +26,15 @@ function fakeApi(): FakeApi {
 }
 
 describe('ScheduleDialog', () => {
+  // The dialog checks the real clock when saving; the tests' clock is NOW (before, the tests broke once NOW had passed).
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('schedules a message with a picture for this chat, cancelled if the parent replies first', async () => {
     const api = fakeApi()
     const onSaved = vi.fn()

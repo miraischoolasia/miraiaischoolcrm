@@ -13,6 +13,11 @@ tick alone decides, as before). Sending, editing or deleting needs 'reply'; read
 unread, needs 'view'. A database without that function yet answers 404, which counts as 'unknown', so this
 file can go to the server before the migration (docs/teams-permissions-design.md, section 5).
 
+A request that names one of the school's WhatsApp numbers (?instance=eduhero-2 on /wa/...; several numbers) is
+also checked against the CRM's whatsapp_numbers: the number must be there and switched on, and this person must
+be given it (my_whatsapp_inbox_ids(): null means every number). A request without ?instance= is the school's
+first number, as before.
+
 Answers are remembered so a chat that polls every few seconds does not call
 Supabase every time (each call leaves lines in Supabase's logs, which are limited
 on the free plan): a yes for 5 minutes, but never past the moment the login
@@ -36,6 +41,7 @@ import socket
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -151,6 +157,36 @@ def ask_conversation(token: str, conversation_id: int) -> str | None:
     return None
 
 
+INSTANCE = re.compile(r"^[A-Za-z0-9_-]{1,60}$")
+
+
+def instance_of(uri: str) -> str | None:
+    """The WhatsApp number a request names (?instance=), or None."""
+    values = urllib.parse.parse_qs(urllib.parse.urlsplit(uri).query).get("instance")
+    return values[0] if values else None
+
+
+def ask_instance(token: str, instance: str) -> int | None:
+    """200 / 401 / 403 for one WhatsApp number, or None when Supabase could not answer."""
+    status, found = supabase(
+        "/rest/v1/whatsapp_numbers?select=chatwoot_inbox_id&is_active=eq.true&evolution_instance=eq."
+        + urllib.parse.quote(instance),
+        token,
+    )
+    if status == 401:
+        return 401
+    if status != 200:
+        return 403 if is_refusal(status) else None
+    if not found:
+        return 403
+    status, given = supabase("/rest/v1/rpc/my_whatsapp_inbox_ids", token, {})
+    if status == 401:
+        return 401
+    if status != 200:
+        return 403 if is_refusal(status) else None
+    return 200 if given is None or found[0].get("chatwoot_inbox_id") in given else 403
+
+
 def _remembered(key: str, now: float) -> int | None:
     hit = _cache.get(key)
     return hit[1] if hit and hit[0] > now else None
@@ -189,6 +225,34 @@ def decide(token: str, admin: bool = False) -> int:
             if until > now:
                 _cache[key] = (until, result)
         return result
+
+
+def decide_instance(token: str, instance: str) -> int:
+    """200 / 401 / 403 for one WhatsApp number, after decide() said yes; 503 when Supabase could not answer."""
+    if not INSTANCE.match(instance):
+        return 403
+    key = hashlib.sha256(f"number:{instance}:{token}".encode()).hexdigest()
+    now = time.time()
+    with _lock:
+        hit = _remembered(key, now)
+    if hit is not None:
+        return hit
+    try:
+        result = ask_instance(token, instance)
+    except Exception:
+        result = None
+    if result is None:
+        return 503
+    until = now + (ALLOWED_TTL if result == 200 else DENIED_TTL)
+    expiry = token_expiry(token)
+    if result == 200 and expiry is not None:
+        until = min(until, expiry)
+    with _lock:
+        if len(_cache) > MAX_CACHED:
+            _cache.clear()
+        if until > now:
+            _cache[key] = (until, result)
+    return result
 
 
 _levels: dict[str, tuple[float, str]] = {}
@@ -235,6 +299,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(401)
         token = header[7:].strip()
         result = decide(token, admin=(path == "/verify-admin"))
+        if result == 200:
+            instance = instance_of(self.headers.get("X-Forwarded-Uri") or self.path)
+            if instance is not None:
+                result = decide_instance(token, instance)
         if result == 200 and path == "/verify":
             chat = needed_for(self.headers.get("X-Forwarded-Method", "GET"), self.headers.get("X-Forwarded-Uri", ""))
             if chat is not None:

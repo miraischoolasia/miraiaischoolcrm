@@ -28,6 +28,16 @@ export type LobbyTheme = {
     modePractice: string
     modeLiveReview: string
     close: string
+    // Daily check-in and tasks ({coins}, {days}).
+    checkinTitle: string
+    checkinButton: string
+    checkinDone: string
+    checkinStreak: string
+    tasksTitle: string
+    tasksEmpty: string
+    claim: string
+    claimed: string
+    taskCoins: string
   }
   // The game sign-in page's words ({school} = the school's name).
   signIn: {
@@ -73,6 +83,7 @@ export const lobbyThemes: Record<string, LobbyTheme> = {
       heroHeight: 0.7311,
       buttonsMaxScale: 2.18,
       heroMaxScale: 2.1,
+      heroVideo: { webm: 'hero-loop.webm', poster: 'hero-loop-poster.webp', width: 444, height: 708, feetX: 222, feetY: 679.5, heroPixels: 679 },
     },
     emblemWord: 'EDUHERO',
     words: {
@@ -88,6 +99,15 @@ export const lobbyThemes: Record<string, LobbyTheme> = {
       modePractice: '每日练习',
       modeLiveReview: 'Live 问答复习',
       close: '关闭',
+      checkinTitle: '每日签到',
+      checkinButton: '签到 +{coins} 金币',
+      checkinDone: '今天已经签到了！',
+      checkinStreak: '连续签到 {days} 天',
+      tasksTitle: '每日任务',
+      tasksEmpty: '今天没有任务',
+      claim: '领取',
+      claimed: '已领取',
+      taskCoins: '+{coins} 金币',
     },
     signIn: {
       welcome: 'Welcome to {school}',

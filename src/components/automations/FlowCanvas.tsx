@@ -34,6 +34,7 @@ import {
   type FlowGraph,
   type FlowPort,
 } from '../../lib/automationFlows'
+import { brand } from '../../lib/brand'
 
 type CanvasNodeData = {
   kind: 'trigger' | 'message' | 'action' | 'condition'
@@ -304,7 +305,7 @@ export function FlowCanvas({
         const key = edgeKey(edge)
         const on = highlight?.edges.has(key) ?? false
         const picked = key === selectedEdge
-        const color = on || picked ? '#fc0c97' : '#94a3b8'
+        const color = on || picked ? brand.primary : '#94a3b8'
         return {
           id: key,
           source: edge.from,

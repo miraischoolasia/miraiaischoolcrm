@@ -2,6 +2,7 @@ import { Redirect, useLocalSearchParams } from 'expo-router'
 import { useState } from 'react'
 import { Text } from 'react-native'
 
+import type { Daily } from '@/lib/daily'
 import { startButton } from '@/lib/lobby'
 import { lobbyThemes } from '@/lib/lobbyThemes'
 import type { UpcomingClass } from '@/lib/portal'
@@ -12,8 +13,19 @@ import { LobbyView } from '@/ui/LobbyView'
 // live (on now) | free (no class); ?theme=<picture set>. The built app sends
 // this page to Home.
 export default function DevLobby() {
-  const params = useLocalSearchParams<{ state?: string; theme?: string }>()
+  const params = useLocalSearchParams<{ state?: string; theme?: string; daily?: string }>()
   const [note, setNote] = useState('')
+  // Made-up daily check-in and tasks; ?daily=off shows them as "coming soon".
+  const [daily, setDaily] = useState<Daily>(() => ({
+    day: '2026-10-20',
+    checkin: { enabled: true, coins: 2, done: false, streak: 3 },
+    tasks: [
+      { id: 1, label: 'Watch a learning video', kind: 'video', target: 1, coins: 3, progress: 1, claimed: false },
+      { id: 2, label: 'Get a live question right', kind: 'live_right', target: 1, coins: 3, progress: 0, claimed: false },
+      { id: 3, label: 'Do 3 practice questions', kind: 'practice', target: 3, coins: 3, progress: 3, claimed: true },
+    ],
+    practice: { enabled: true, per_day: 5, coins: 1, done_today: 3, right_today: 2, has_questions: true },
+  }))
   if (!__DEV__) return <Redirect href="/" />
 
   const now = new Date()
@@ -54,6 +66,11 @@ export default function DevLobby() {
           return start.kind !== 'class' || Boolean(lesson.session_id)
         }}
         onGo={(place) => setNote(`onGo(${place})`)}
+        daily={params.daily === 'off' ? null : daily}
+        dailyBusy={false}
+        dailyError={null}
+        onCheckIn={() => setDaily((current) => ({ ...current, checkin: { ...current.checkin, done: true, streak: current.checkin.streak + 1 } }))}
+        onClaim={(taskId) => setDaily((current) => ({ ...current, tasks: current.tasks.map((task) => (task.id === taskId ? { ...task, claimed: true } : task)) }))}
       />
       {note ? (
         <Text style={{ position: 'absolute', right: 8, bottom: 8, zIndex: 99, backgroundColor: '#000', color: '#0f0', paddingHorizontal: 6, fontSize: 12 }} testID="dev-note">

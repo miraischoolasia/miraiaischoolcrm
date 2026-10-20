@@ -2,7 +2,8 @@ import type { WhatsAppTarget } from '../WhatsAppLink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { InstagramLogo, MessengerLogo, WhatsappLogo } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
-import { contactSiblings, leadOfContacts } from '../../lib/leadChannels'
+import { CHANNEL_LABEL, channelsByLead, contactSiblings, leadOfContacts, placeOf, type LeadChannel } from '../../lib/leadChannels'
+import { chatSwitchOptions, type ChatSwitchOption } from '../../lib/chatSwitch'
 import { createChatwootClient, type Sender } from '../../lib/chatwootClient'
 import { useMessageSearch } from '../../hooks/useMessageSearch'
 import { useWhatsAppInbox } from '../../hooks/useWhatsAppInbox'
@@ -58,7 +59,8 @@ import { useAutoChatRole } from '../../hooks/useAutoChatRole'
 import { usePeople } from '../../hooks/usePeople'
 import { linkContactToLead, linkContactToStudents, setContactRole } from '../../lib/peopleApi'
 import { draftPreview, draftsFirst, type Draft } from '../../lib/draft'
-import { createWaActions, waIdOf } from '../../lib/waActions'
+import { createWaActionsByInstance, waIdOf } from '../../lib/waActions'
+import { instanceOfInbox } from '../../lib/waInstance'
 import { useReactionPreviews } from '../../hooks/useReactionPreviews'
 import { findChatByPhone, startChat } from '../../lib/startChat'
 import { fileProblem, splitSequence } from '../../lib/outbox'
@@ -109,6 +111,8 @@ export type WhatsAppNumbersView = {
   staff: AssignableStaff[]
   onSave: (existing: WhatsAppNumber | null, draft: WhatsAppNumberDraft, teacherIds: number[]) => Promise<string | null>
   onRemove: (number: WhatsAppNumber) => Promise<string | null>
+  // Reads the numbers again (after the WhatsApp server added one).
+  onReload?: () => Promise<void>
 }
 
 const CATEGORY_BUTTONS = [
@@ -129,7 +133,14 @@ export function WhatsAppInbox({
   inboxCopy = null,
 }: WhatsAppInboxProps) {
   const client = useMemo(() => createChatwootClient(apiUrl), [apiUrl])
-  const waActions = useMemo(() => createWaActions(apiUrl), [apiUrl])
+  // Reactions, edits, deletes and read ticks go to the phone of the number the chat is on (its Evolution name in the
+  // numbers table); a school with no names set up has one number, as before.
+  const waActionsFor = useMemo(() => createWaActionsByInstance(apiUrl), [apiUrl])
+  const schoolNumbers = numbersView?.numbers
+  const instanceOf = useCallback(
+    (inboxId: number | undefined) => instanceOfInbox(schoolNumbers ?? [], inboxId),
+    [schoolNumbers],
+  )
   // While the numbers load nothing is listed, so a restricted person never sees a chat flash by.
   const allowedInboxIds = numbersView ? (numbersView.allowedInboxIds === undefined ? [] : numbersView.allowedInboxIds) : null
   // One person who writes from a phone number and from a hidden ID is one chat once they are one lead.
@@ -139,7 +150,8 @@ export function WhatsAppInbox({
     () => (inboxCopy ? { link: inboxCopy, everyOpen: everyOpenChat } : null),
     [inboxCopy, everyOpenChat],
   )
-  const inbox = useWhatsAppInbox(client, currentUser, active, allowedInboxIds, siblings, leadOfContact, copyLink)
+  const inbox = useWhatsAppInbox(client, currentUser, active, allowedInboxIds, siblings, leadOfContact, copyLink, instanceOf)
+  const waActions = waActionsFor(instanceOf(inbox.selected?.inbox_id))
   const [tab, setTab] = useState<InboxTab>('chats')
   const [tagId, setTagId] = useState<number | null>(null)
   const [sourceId, setSourceId] = useState<number | null>(null)
@@ -499,7 +511,7 @@ export function WhatsAppInbox({
   const hasChat = inbox.selected !== null
   // Reactions, edits and deletes of the open chat, and the team's own.
   const messageEvents = useMessageEvents(waActions, client, currentUser, inbox.selectedId, inbox.messages, active)
-  const reactionPreviews = useReactionPreviews(active ? waActions : null, visible)
+  const reactionPreviews = useReactionPreviews(active ? (conversation) => waActionsFor(instanceOf(conversation.inbox_id)) : null, visible)
   const showTyping = useTyping(waActions, inbox.selected ? getRealPhone(inbox.selected.meta.sender.phone_number) : null)
 
   // Ticks every 30 seconds so a chat turns red the moment it passes 30 minutes.
@@ -954,6 +966,90 @@ export function WhatsAppInbox({
     },
     [inbox],
   )
+  // "Sending from" above the reply box lists the family's other chats (another number, Messenger, Instagram, a
+  // child's own number); picking one opens it, so the reply goes out from there.
+  const leadChannelsByLead = useMemo(() => channelsByLead(crm.leadChannels), [crm.leadChannels])
+  const chatChoices = useMemo<ChatSwitchOption[]>(() => {
+    const current = inbox.selected
+    if (!current || isGroupChat(current.meta.sender)) {
+      return []
+    }
+    const leadId = leadIdOf(current) ?? leadOfContact.get(current.meta.sender.id) ?? null
+    if (leadId === null) {
+      return []
+    }
+    const rows = leadChannelsByLead.get(leadId) ?? []
+    const contacts = new Set(rows.map((row) => row.contactId))
+    const family = inbox.conversations.filter(
+      (conversation) =>
+        conversation.id !== current.id &&
+        !isGroupChat(conversation.meta.sender) &&
+        (contacts.has(conversation.meta.sender.id) || leadIdOf(conversation) === leadId),
+    )
+    const studentName = new Map(crm.students.map((student) => [student.id, student.name]))
+    const accountOfRow = (row: LeadChannel) => {
+      if (row.channel !== 'whatsapp') {
+        const place = placeOf(row)
+        return `${CHANNEL_LABEL[row.channel]}${place ? `: ${place}` : ''}`
+      }
+      const number = numbersView?.numbers.find((entry) => entry.inboxId === row.inboxId)
+      const phone = (number?.phone ?? '').replace(/\D/g, '')
+      return [number?.label ?? placeOf(row), phone ? formatPhone(phone) : null].filter(Boolean).join(' · ') || 'WhatsApp'
+    }
+    return chatSwitchOptions({
+      rows,
+      conversations: family,
+      current,
+      kindOf: categoryOf,
+      accountOfChat: (conversation) => sendingFromOf(conversation) ?? 'WhatsApp',
+      accountOfRow,
+      childNamesOf: (conversation) =>
+        getLinkedStudentIds(conversation)
+          .map((id) => studentName.get(id))
+          .filter((name): name is string => Boolean(name)),
+      allowedInboxIds,
+    })
+  }, [inbox.selected, inbox.conversations, leadIdOf, leadOfContact, leadChannelsByLead, crm.students, numbersView, sendingFromOf, allowedInboxIds])
+
+  // The chat picked there: opened at once when it is on the list, otherwise fetched first (an older chat).
+  const [switchRequest, setSwitchRequest] = useState<{ option: ChatSwitchOption; fetched: boolean } | null>(null)
+  useEffect(() => {
+    if (!switchRequest) {
+      return
+    }
+    const { option } = switchRequest
+    const chat =
+      option.conversationId !== null
+        ? loadedChats.find((entry) => entry.id === option.conversationId)
+        : loadedChats
+            .filter((entry) => entry.meta.sender.id === option.contactId)
+            .sort((a, b) => b.last_activity_at - a.last_activity_at)[0]
+    if (chat) {
+      setSwitchRequest(null)
+      categoryDecided.current = true
+      setCategory(categoryOf(chat))
+      setInboxFilter(null)
+      setTab(getTab(chat))
+      setSelectedId(chat.id)
+      return
+    }
+    if (switchRequest.fetched) {
+      return
+    }
+    setSwitchRequest({ option, fetched: true })
+    const fetched =
+      option.conversationId !== null
+        ? loadMissingConversations([option.conversationId])
+        : client.listContactConversations(option.contactId).then((found) => {
+            const newest = [...found].sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0) || b.id - a.id)[0]
+            if (newest) return loadMissingConversations([newest.id])
+          })
+    // A chat that cannot be fetched is let go, so it does not open by surprise later.
+    void Promise.resolve(fetched)
+      .catch(() => undefined)
+      .finally(() => window.setTimeout(() => setSwitchRequest((now) => (now?.option === option ? null : now)), 8000))
+  }, [switchRequest, loadedChats, setSelectedId, loadMissingConversations, client])
+
   const openNumbers = useCallback(() => {
     setManagingNumbers(true)
     client
@@ -1329,6 +1425,8 @@ export function WhatsAppInbox({
             onTyping={showTyping}
             aiContext={aiContext}
             sendingFrom={sendingFromOf(inbox.selected)}
+            chatChoices={chatChoices}
+            onSwitchChat={(option) => setSwitchRequest({ option, fetched: false })}
             onReact={(message, emoji) => {
               const waId = waIdOf(message.source_id)
               if (waId) {
@@ -1472,6 +1570,7 @@ export function WhatsAppInbox({
           onRemove={numbersView.onRemove}
           onClose={() => setManagingNumbers(false)}
           apiUrl={apiUrl}
+          onReload={numbersView.onReload}
         />
       )}
       {automationOpen && (

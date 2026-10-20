@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createWaActions, parseEvents, waIdOf } from './waActions'
+import { createWaActions, parseEvents, waIdOf, createWaActionsByInstance } from './waActions'
 
 const reaction = (target: string, text: string, fromMe: boolean, at: number) => ({
   key: { id: `r${at}`, fromMe, remoteJid: 'chat@lid' },
@@ -83,6 +83,25 @@ describe('createWaActions', () => {
     })
     const headers = (fetchMock.mock.calls.at(-1) as unknown as [string, RequestInit])[1].headers as Headers
     expect(headers.get('Authorization')).toBe('Bearer token')
+  })
+
+  it('sends the actions of a chat on another number to that number', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ messages: { records: [{ key: { id: 'A1', fromMe: false, remoteJid: 'chat@lid' } }] } }), { status: 200 }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const actionsFor = createWaActionsByInstance('https://gw.example', async () => 'token')
+    // The same set for the same number, so what watches it does not start again.
+    expect(actionsFor('school-2')).toBe(actionsFor('school-2'))
+    expect(actionsFor(null)).not.toBe(actionsFor('school-2'))
+
+    await actionsFor('school-2').react('A1', '👍')
+    const urls = fetchMock.mock.calls.map((call) => (call as unknown as [string])[0])
+    expect(urls.every((url) => url.endsWith('?instance=school-2'))).toBe(true)
+    expect(urls.at(-1)).toBe('https://gw.example/wa/evo/message/sendReaction?instance=school-2')
+
+    await actionsFor(null).react('A1', '👍')
+    expect((fetchMock.mock.calls.at(-1) as unknown as [string])[0]).toBe('https://gw.example/wa/evo/message/sendReaction')
   })
 
   it('deletes for everyone and edits with the same key', async () => {

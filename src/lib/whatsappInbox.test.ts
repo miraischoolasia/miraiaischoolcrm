@@ -195,6 +195,28 @@ describe('onePerParent', () => {
     expect(onePerParent(chats).map((chat) => chat.id)).toEqual([1, 2, 3])
   })
 
+  it('keeps a parent and a child who writes from their own phone as two chats, though they are one lead', () => {
+    const withPhone = (chat: ReturnType<typeof withSender>, phone: string | null) => ({
+      ...chat,
+      meta: { ...chat.meta, sender: { ...chat.meta.sender, phone_number: phone } },
+    })
+    // Michelle Hew (+60127633881, contact 415) and her son Lucas (+60179903881, contact 1727), both lead 183.
+    const mother = withPhone(withSender(413, 415, 100), '+60127633881')
+    const son = withPhone(withSender(648, 1727, 300), '+60179903881')
+    const siblings = new Map([
+      [415, [415, 1727]],
+      [1727, [415, 1727]],
+    ])
+    expect(onePerParent([mother, son], siblings).map((chat) => chat.id)).toEqual([413, 648])
+    // The mother's number and WhatsApp's hidden ID for her are still one chat.
+    const hidden = withPhone(withSender(700, 900, 500), null)
+    const pair = new Map([
+      [415, [415, 900]],
+      [900, [415, 900]],
+    ])
+    expect(onePerParent([mother, hidden], pair).map((chat) => chat.id)).toEqual([700])
+  })
+
   it('keeps the chat a parent has on each WhatsApp number', () => {
     const onNumber = (chat: ReturnType<typeof withSender>, inboxId: number) => ({ ...chat, inbox_id: inboxId })
     const chats = [

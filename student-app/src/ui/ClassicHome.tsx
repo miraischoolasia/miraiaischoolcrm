@@ -9,6 +9,8 @@ import { LiveQuestionCard } from '@/ui/LiveQuestionCard'
 import { LessonSummaryChips, useLessonSummaries } from '@/ui/LessonSummary'
 import { ZoomCheckCard } from '@/ui/ZoomCheckCard'
 import { LessonNotesList, useLessonNotes } from '@/ui/LessonNotes'
+import { TodayCard } from '@/ui/TodayCard'
+import { useDaily } from '@/lib/daily'
 
 // The classic home (phones, and schools without the game lobby): the next class with its Zoom button, the classes after it, and the
 // points so far (each part only when the school shows it to this login).
@@ -16,6 +18,8 @@ export function ClassicHome() {
   const { home, homeError, child, children, branding, isRefreshing, refresh } = useSession()
   const summaries = useLessonSummaries(child?.studentId ?? null, home)
   const notes = useLessonNotes(child?.studentId ?? null, home)
+  // Daily check-in, tasks and practice (coins reload the points).
+  const dailyToday = useDaily(child?.studentId ?? null, () => void refresh())
 
   if (!home) {
     return (
@@ -39,6 +43,8 @@ export function ClassicHome() {
       </View>
 
       <LiveQuestionCard color={branding.accentColor} />
+
+      <TodayCard today={dailyToday} color={branding.accentColor} />
 
       {home.sees.schedule && (
         <ZoomCheckCard key={home.student.id} studentId={home.student.id} nextClassDate={next?.date ?? null} today={today} color={branding.accentColor} />

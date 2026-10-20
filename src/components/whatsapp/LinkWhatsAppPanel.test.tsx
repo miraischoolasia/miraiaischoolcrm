@@ -132,6 +132,14 @@ describe('LinkWhatsAppPanel', () => {
     expect(connect.qr.mock.calls.length).toBe(asked)
   })
 
+  it('shows the code at once for a number just added, without the button', async () => {
+    const connect = fakeConnect(['close'])
+    render(<LinkWhatsAppPanel apiUrl="https://wa.example" connect={connect} autoStart />)
+    await wait(0)
+    expect(connect.qr).toHaveBeenCalledTimes(1)
+    expect(screen.getByAltText('WhatsApp QR code')).toBeInTheDocument()
+  })
+
   it('says linked straight away when the phone is already linked, and asks for no code', async () => {
     const connect = fakeConnect(['open'])
     render(<LinkWhatsAppPanel apiUrl="https://wa.example" connect={connect} />)

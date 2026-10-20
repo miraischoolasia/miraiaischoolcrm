@@ -4,18 +4,33 @@ import type { ChatwootClient } from '../../lib/chatwootClient'
 import { useStaffReplyStats } from '../../hooks/useStaffReplyStats'
 import {
   buildTeamRepliesReport,
+  AUTOMATION_LABEL,
   formatDuration,
+  PHONE_LABEL,
   TARGET_SECONDS,
   type StaffRef,
   type StaffReplyRow,
 } from '../../lib/staffReplyStats'
-import { fetchKeptDays, fetchToday, teamRepliesErrorMessage, type KeptDays } from '../../lib/teamReplyDaysApi'
+import {
+  fetchChannelDays,
+  fetchChannelToday,
+  fetchKeptDays,
+  fetchTeamRepliesScope,
+  fetchToday,
+  teamRepliesErrorMessage,
+  type ChannelDays,
+  type KeptDays,
+} from '../../lib/teamReplyDaysApi'
+import { fetchInboxChannels } from '../../lib/inboxChannels'
+import { buildChannelReport, channelInfo, channelNames, type ChannelInfo } from '../../lib/channelReplyStats'
 import { InboxCopyPanel } from './InboxCopyPanel'
+import { TeamRepliesChannels } from './TeamRepliesChannels'
 import {
   addDays,
   dailyTrend,
   dayOf,
   daysBetween,
+  type ReplierKey,
   type TrendPoint,
 } from '../../../supabase/functions/team-replies/logic'
 
@@ -32,12 +47,15 @@ export type TeamRepliesSectionProps = {
   now?: Date
   // Someone has working hours (My Team > Working hours): count only working time to begin with.
   hoursInUse?: boolean
+  // Fixed channel names for tests (otherwise read from My Team's channels and the inbox).
+  channels?: Map<number, ChannelInfo>
 }
 
-type Mode = 'today' | '7d' | '30d' | 'month' | 'custom'
+type Mode = 'today' | 'yesterday' | '7d' | '30d' | 'month' | 'custom'
 
 const modes: Array<{ key: Mode; label: string }> = [
   { key: 'today', label: 'Today' },
+  { key: 'yesterday', label: 'Yesterday' },
   { key: '7d', label: 'Last 7 days' },
   { key: '30d', label: 'Last 30 days' },
   { key: 'month', label: 'Month' },
@@ -56,6 +74,9 @@ const asDate = (day: string) => new Date(`${day}T00:00:00Z`)
 // The finished days a period covers (kept days end yesterday; today is never kept).
 export function periodDays(mode: Exclude<Mode, 'today'>, today: string, month: string, custom: { from: string; to: string }) {
   const yesterday = addDays(today, -1)
+  if (mode === 'yesterday') {
+    return { first: yesterday, last: yesterday }
+  }
   if (mode === '7d') {
     return { first: addDays(today, -7), last: yesterday }
   }
@@ -74,7 +95,7 @@ export function periodDays(mode: Exclude<Mode, 'today'>, today: string, month: s
 }
 
 const PERIOD_KEY = 'teamReplies.period'
-const MODES: Mode[] = ['today', '7d', '30d', 'month', 'custom']
+const MODES: Mode[] = ['today', 'yesterday', '7d', '30d', 'month', 'custom']
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 
 // The period picked last time (a per-computer convenience: anything odd or missing is ignored).
@@ -266,7 +287,7 @@ function TrendCharts({ points }: { points: TrendPoint[] }) {
   )
 }
 
-export function TeamRepliesSection({ staff, client, canCopy = false, now, hoursInUse = false }: TeamRepliesSectionProps) {
+export function TeamRepliesSection({ staff, client, canCopy = false, now, hoursInUse = false, channels }: TeamRepliesSectionProps) {
   const stats = useStaffReplyStats(client)
   const { load } = stats
   const today = dayOf(Math.floor((now ?? new Date()).getTime() / 1000))
@@ -278,7 +299,34 @@ export function TeamRepliesSection({ staff, client, canCopy = false, now, hoursI
   useEffect(() => {
     rememberPeriod({ mode, month, custom })
   }, [mode, month, custom])
-  const [kept, setKept] = useState<{ key: string; days: KeptDays } | null>(null)
+  const [kept, setKept] = useState<{ key: string; days: KeptDays; channels: ChannelDays; channelsFailed: boolean } | null>(null)
+  // One channel (Chatwoot inbox) or all of them; one person (or the automation, or the phone) or everybody.
+  const [inboxFilter, setInboxFilter] = useState<number | null>(null)
+  const [staffFilter, setStaffFilter] = useState<ReplierKey | null>(null)
+  // The channels' names: the school's own (My Team) first, then the inbox's.
+  const [names, setNames] = useState<Map<number, ChannelInfo>>(channels ?? new Map())
+  useEffect(() => {
+    if (channels) {
+      return
+    }
+    let cancelled = false
+    const saved = fetchInboxChannels().catch(() => [])
+    const inboxes = (async () => {
+      try {
+        return (await client?.listInboxes()) ?? []
+      } catch {
+        return []
+      }
+    })()
+    void Promise.all([saved, inboxes]).then(([mine, theirs]) => {
+      if (!cancelled) {
+        setNames(channelNames(mine, theirs))
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [client, channels])
   const [keptError, setKeptError] = useState<string | null>(null)
   const [isLoadingKept, setIsLoadingKept] = useState(false)
   // Bumped after "Copy old chats", so the numbers are read again.
@@ -312,10 +360,24 @@ export function TeamRepliesSection({ staff, client, canCopy = false, now, hoursI
         : byWork
           ? fetchKeptDays(key.split('|')[0], key.split('|')[1], true)
           : fetchKeptDays(key.split('|')[0], key.split('|')[1])
-    read
-      .then((days) => {
+    // The channel numbers come beside the people's; when they cannot be read the rest of the page still shows.
+    const readChannels = (async (): Promise<{ channels: ChannelDays; failed: boolean }> => {
+      try {
+        // Someone who sees only their own rows gets no whole-team channel numbers (the database says the same).
+        if ((await fetchTeamRepliesScope()) !== 'all') {
+          return { channels: null, failed: false }
+        }
+        const rows =
+          key === 'today' ? await fetchChannelToday(byWork) : await fetchChannelDays(key.split('|')[0], key.split('|')[1], byWork)
+        return { channels: rows, failed: rows === null }
+      } catch {
+        return { channels: null, failed: true }
+      }
+    })()
+    Promise.all([read, readChannels])
+      .then(([days, channelDays]) => {
         if (!cancelled) {
-          setKept({ key: loadKey, days })
+          setKept({ key: loadKey, days, channels: channelDays.channels, channelsFailed: channelDays.failed })
         }
       })
       .catch((failure) => {
@@ -333,8 +395,24 @@ export function TeamRepliesSection({ staff, client, canCopy = false, now, hoursI
     }
   }, [loadKey])
 
-  const dayRows = kept && kept.key === loadKey ? kept.days.rows : null
-  const live = stats.data?.live ?? null
+  const current = kept && kept.key === loadKey ? kept : null
+  const allDayRows = current ? current.days.rows : null
+  // The channel and the person picked narrow the whole page: the totals, the chart, the people's rows and the
+  // open chats (the channel cards stay the whole team's).
+  const dayRows = useMemo(
+    () =>
+      allDayRows && (inboxFilter !== null || staffFilter !== null)
+        ? allDayRows.filter(
+            (row) => (inboxFilter === null || (row.inboxId ?? 0) === inboxFilter) && (staffFilter === null || row.replier === staffFilter),
+          )
+        : allDayRows,
+    [allDayRows, inboxFilter, staffFilter],
+  )
+  const allLive = stats.data?.live ?? null
+  const live = useMemo(
+    () => (allLive && inboxFilter !== null ? allLive.filter((chat) => (chat.inboxId ?? 0) === inboxFilter) : allLive),
+    [allLive, inboxFilter],
+  )
   const report = useMemo(
     () =>
       dayRows
@@ -347,6 +425,49 @@ export function TeamRepliesSection({ staff, client, canCopy = false, now, hoursI
         : null,
     [dayRows, staff, live, stats.data?.loadedAt],
   )
+  const staffRows = report ? (staffFilter === null ? report.rows : report.rows.filter((row) => row.key === staffFilter)) : []
+  const channelReport = useMemo(
+    () =>
+      current
+        ? buildChannelReport({
+            channelRows: current.channels,
+            dayRows: current.days.rows,
+            names,
+            staff,
+            inboxFilter,
+            staffFilter,
+          })
+        : null,
+    [current, names, staff, inboxFilter, staffFilter],
+  )
+  // Every channel and every person seen in this period, for the filters (the one picked stays listed).
+  const channelChoices = useMemo(() => {
+    const ids = new Set<number>()
+    current?.days.rows.forEach((row) => ids.add(row.inboxId ?? 0))
+    current?.channels?.forEach((row) => ids.add(row.inboxId))
+    names.forEach((_, id) => ids.add(id))
+    if (inboxFilter !== null) ids.add(inboxFilter)
+    return [...ids].map((id) => channelInfo(names, id)).sort((a, b) => a.name.localeCompare(b.name))
+  }, [current, names, inboxFilter])
+  const staffChoices = useMemo(() => {
+    const seen = new Map<ReplierKey, string>()
+    const named = new Map(staff.map((member) => [member.id, member.name]))
+    for (const row of current?.days.rows ?? []) {
+      seen.set(
+        row.replier,
+        row.replier === 'automation'
+          ? AUTOMATION_LABEL
+          : row.replier === 'phone'
+            ? PHONE_LABEL
+            : (named.get(row.staffId ?? -1) ?? `Staff #${row.staffId}`),
+      )
+    }
+    if (staffFilter !== null && !seen.has(staffFilter)) {
+      const id = staffFilter.startsWith('staff:') ? Number(staffFilter.slice(6)) : -1
+      seen.set(staffFilter, named.get(id) ?? staffFilter)
+    }
+    return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+  }, [current, staff, staffFilter])
 
   const days = period ? daysBetween(period.first, period.last) : []
   const missing = period && kept && kept.key === loadKey ? days.filter((day) => !kept.days.doneDays.has(day)).length : 0
@@ -442,11 +563,46 @@ export function TeamRepliesSection({ staff, client, canCopy = false, now, hoursI
           </div>
         )}
 
+        <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-3 text-sm text-slate-600">
+          <label className="flex min-w-0 items-center gap-2">
+            Channel
+            <select
+              value={inboxFilter === null ? '' : String(inboxFilter)}
+              onChange={(event) => setInboxFilter(event.target.value === '' ? null : Number(event.target.value))}
+              className="min-w-0 max-w-[14rem] rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900"
+            >
+              <option value="">All channels</option>
+              {channelChoices.map((choice) => (
+                <option key={choice.inboxId} value={choice.inboxId}>
+                  {choice.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex min-w-0 items-center gap-2">
+            Staff
+            <select
+              value={staffFilter ?? ''}
+              onChange={(event) => setStaffFilter(event.target.value === '' ? null : (event.target.value as ReplierKey))}
+              className="min-w-0 max-w-[14rem] rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900"
+            >
+              <option value="">Everybody</option>
+              {staffChoices.map(([key, name]) => (
+                <option key={key} value={key}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-500">
           <span>
             {mode === 'today'
               ? `Today, ${dayLabel.format(asDate(today))}`
-              : period && period.first <= period.last
+              : mode === 'yesterday' && period
+                ? `Yesterday, ${dayLabel.format(asDate(period.first))}`
+                : period && period.first <= period.last
                 ? mode === 'month'
                   ? `${monthLabel.format(asDate(`${month}-01`))}: ${shortDay.format(asDate(period.first))} – ${shortDay.format(asDate(period.last))}`
                   : `${shortDay.format(asDate(period.first))} – ${shortDay.format(asDate(period.last))} (${days.length} days, up to yesterday)`
@@ -496,7 +652,7 @@ export function TeamRepliesSection({ staff, client, canCopy = false, now, hoursI
               )}
             </div>
             {trend && <TrendCharts points={trend} />}
-            {report.rows.length === 0 ? (
+            {staffRows.length === 0 ? (
               <p className="px-4 py-4 text-sm text-slate-500">Nobody has answered a chat in this period.</p>
             ) : (
               <div className="overflow-x-auto">
@@ -515,12 +671,19 @@ export function TeamRepliesSection({ staff, client, canCopy = false, now, hoursI
                     </tr>
                   </thead>
                   <tbody>
-                    {report.rows.map((row) => (
+                    {staffRows.map((row) => (
                       <StaffLine key={row.key} row={row} />
                     ))}
                   </tbody>
                 </table>
               </div>
+            )}
+            {channelReport && (
+              <TeamRepliesChannels
+                report={channelReport}
+                manyDays={mode !== 'today' && days.length > 1}
+                channelsHidden={current?.channels ? null : current?.channelsFailed ? 'setup' : 'scope'}
+              />
             )}
           </>
         )}

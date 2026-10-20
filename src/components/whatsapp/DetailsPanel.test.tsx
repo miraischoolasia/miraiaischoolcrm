@@ -705,6 +705,46 @@ describe('DetailsPanel', () => {
       expect(card).toHaveTextContent('9 years')
     })
 
+    it("says first that a child's own chat is the child, and that the lead below is the parent's", () => {
+      // Like Lucas (his own number) in Michelle Hew's family: the chat is the child, the lead is the mother's.
+      const childFamily = [
+        person(1, { kind: 'parent', name: 'Mei Ling', phone: '60127633881', contactId: 99, leadId: 11 }),
+        person(2, { kind: 'student', name: 'Ethan', phone: '60123456789', contactId: 3, parentId: 1 }),
+      ]
+      render(
+        <DetailsPanel
+          conversation={conversation({ crm_lead_id: 11 })}
+          messages={[firstMessage]}
+          hasOlder={false}
+          crm={makeCrm({ leads: [{ ...lead, fullName: null, phone: '012-763 3881' } as unknown as Lead] })}
+          sourceRules={[]}
+          onLoadOlder={vi.fn()}
+          onLinkLead={vi.fn()}
+          onLinkStudents={vi.fn()}
+          onOpenChat={vi.fn()}
+          people={childFamily}
+          chatOfContact={() => null}
+        />,
+      )
+
+      const who = screen.getByRole('region', { name: 'Whose chat this is' })
+      expect(who).toHaveTextContent('This chat is the child')
+      expect(who).toHaveTextContent('Ethan · +60 12-345 6789')
+      // The lead's header is the parent's name (the lead has none: the family's parent), never the child's.
+      expect(screen.getByText('Family lead · the parent')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Mei Ling' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: "Family lead details (the parent's)" })).toBeInTheDocument()
+      expect(screen.getByLabelText("Parent's phone number (not this chat's)")).toHaveValue('012-763 3881')
+    })
+
+    it("keeps the parent's own chat as it was", () => {
+      renderWithFamily(makeCrm({ leads: [lead] }))
+
+      expect(screen.queryByRole('region', { name: 'Whose chat this is' })).not.toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Lead details' })).toBeInTheDocument()
+      expect(screen.getByLabelText('Phone number')).toBeInTheDocument()
+    })
+
     it('folds the boxes that say who this is, and the other-chat box, once the card knows', () => {
       render(
         <DetailsPanel

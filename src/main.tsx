@@ -58,6 +58,10 @@ window.addEventListener('vite:preloadError', (event) => {
 async function start() {
   const root = createRoot(document.getElementById('root')!)
 
+  // The school's own name, logo and colours (Class Settings > Brand), before anything is drawn.
+  const { startBranding } = await import('./lib/branding.ts')
+  await startBranding()
+
   if (publicFormKey) {
     const { PublicFormPage } = await import('./components/PublicFormPage.tsx')
     root.render(
@@ -114,6 +118,28 @@ async function start() {
     return
   }
 
+  // Dev server only: /?demo=teamreplies shows Team replies split by channel on made-up days held in the page.
+  if (import.meta.env.DEV && params.get('demo') === 'teamreplies') {
+    const { TeamRepliesDemo } = await import('./dev/TeamRepliesDemo.tsx')
+    root.render(
+      <StrictMode>
+        <TeamRepliesDemo />
+      </StrictMode>,
+    )
+    return
+  }
+
+  // Dev server only: /?demo=brand shows Class Settings > Brand beside a piece of the CRM, saving only in the page.
+  if (import.meta.env.DEV && params.get('demo') === 'brand') {
+    const { BrandDemo } = await import('./dev/BrandDemo.tsx')
+    root.render(
+      <StrictMode>
+        <BrandDemo />
+      </StrictMode>,
+    )
+    return
+  }
+
   // Dev server only: /?demo=teams shows My Team > Teams and Working hours on made-up data held in the page.
   if (import.meta.env.DEV && params.get('demo') === 'teams') {
     const { TeamsDemo } = await import('./dev/TeamsDemo.tsx')
@@ -142,6 +168,28 @@ async function start() {
     root.render(
       <StrictMode>
         <ClassroomDemo />
+      </StrictMode>,
+    )
+    return
+  }
+
+  // Dev server only: /?demo=numbers shows the Inbox's Numbers window with two numbers, each with its own QR code.
+  if (import.meta.env.DEV && params.get('demo') === 'numbers') {
+    const { NumbersDemo } = await import('./dev/NumbersDemo.tsx')
+    root.render(
+      <StrictMode>
+        <NumbersDemo />
+      </StrictMode>,
+    )
+    return
+  }
+
+  // Dev server only: /?demo=familychat shows the Inbox side panel of a child's own chat beside the parent's chat.
+  if (import.meta.env.DEV && params.get('demo') === 'familychat') {
+    const { FamilyChatDemo } = await import('./dev/FamilyChatDemo.tsx')
+    root.render(
+      <StrictMode>
+        <FamilyChatDemo />
       </StrictMode>,
     )
     return

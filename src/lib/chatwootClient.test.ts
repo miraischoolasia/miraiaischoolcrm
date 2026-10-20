@@ -101,3 +101,19 @@ describe('a request that gets no answer', () => {
     vi.useRealTimers()
   })
 })
+
+describe('markReadOnPhone', () => {
+  it('tells the phone of the number the chat is on, and the one school phone without a name', async () => {
+    const fetchMock = stubFetch({})
+    const client = createChatwootClient('https://wa.example.com', '2', async () => 'login-token')
+
+    await client.markReadOnPhone('60123456789', ['ABC'], 'school-2')
+    await client.markReadOnPhone('60123456789', ['ABC'])
+
+    expect(fetchMock.mock.calls[0][0]).toBe('https://wa.example.com/wa/read?instance=school-2')
+    expect(fetchMock.mock.calls[1][0]).toBe('https://wa.example.com/wa/read')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      readMessages: [{ remoteJid: '60123456789@s.whatsapp.net', fromMe: false, id: 'ABC' }],
+    })
+  })
+})

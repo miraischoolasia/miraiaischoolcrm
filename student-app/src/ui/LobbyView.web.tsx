@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 
+import { canClaim } from '@/lib/daily'
 import { lobbyLayout } from '@/lib/lobbyLayout'
 
 import { Scenery, sceneryCss, useLobbyFonts, usePageVisible, useReducedMotion, useScene, useWindowSize } from './LobbyScenery'
@@ -76,6 +77,27 @@ const css = `
 .lb-mode { position: relative; display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255, 214, 107, 0.5); background: rgba(255, 255, 255, 0.08); color: #fff; font: 900 18px 'Noto Sans SC', 'Microsoft YaHei', sans-serif; cursor: pointer; transition: transform 160ms cubic-bezier(.3, 1.6, .5, 1); }
 .lb-mode:active { transform: scale(0.97); }
 .lb-mode em { font-style: normal; font-size: 13px; color: #ffe9a0; }
+.lb-dot { position: absolute; right: 10px; top: 10px; z-index: 4; min-width: 22px; height: 22px; padding: 0 6px; box-sizing: border-box; border-radius: 999px; background: #ff3b5c; border: 2px solid #fff; color: #fff; font: 900 13px/18px 'Nunito', sans-serif; font-style: normal; text-align: center; box-shadow: 0 2px 6px rgba(20, 6, 60, 0.5); }
+.lb-daily-shade { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(10, 6, 40, 0.55); }
+.lb-daily { position: relative; width: min(92vw, 520px); max-height: 86vh; overflow: auto; padding: 26px 26px 22px; border-radius: 22px; background: linear-gradient(180deg, #1d1466, #120a45); border: 3px solid #ffd34d; box-shadow: 0 0 26px rgba(255, 211, 77, 0.5), 0 30px 80px rgba(0, 0, 0, 0.45); color: #fff; text-align: center; font-family: 'Noto Sans SC', 'Microsoft YaHei', sans-serif; animation: lb-pop 220ms cubic-bezier(.3, 1.6, .5, 1); }
+.lb-daily h2 { margin: 0 0 12px; font-size: 26px; font-weight: 900; color: #ffd34d; }
+.lb-daily p { margin: 6px 0; font-size: 18px; font-weight: 700; }
+.lb-daily-big { font-size: 56px !important; margin: 4px 0 10px !important; }
+.lb-daily-note { color: #d9d6ff; font-size: 15px !important; }
+.lb-daily-error { color: #ff9cc8; font-size: 14px !important; }
+.lb-daily-close { position: absolute; right: 12px; top: 10px; width: 36px; height: 36px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.12); color: #fff; font-size: 16px; font-weight: 900; cursor: pointer; }
+.lb-daily-go { margin: 6px auto; padding: 12px 26px; border: 0; border-radius: 999px; background: linear-gradient(180deg, #fffbe0 0%, #ffe45c 22%, #ffc61a 58%, #f0a000 100%); color: #2a1050; font: 900 20px 'Noto Sans SC', 'Microsoft YaHei', sans-serif; cursor: pointer; box-shadow: 0 0 14px rgba(255, 214, 80, 0.6); transition: transform 160ms cubic-bezier(.3, 1.6, .5, 1); }
+.lb-daily-go:active { transform: scale(0.95); }
+.lb-daily-go:disabled { filter: grayscale(0.7) brightness(0.8); cursor: default; }
+.lb-daily-go.small { margin: 0; padding: 8px 16px; font-size: 16px; flex: none; }
+.lb-tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.lb-tasks li { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 214, 107, 0.35); }
+.lb-task-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.lb-task-text b { font-size: 17px; font-weight: 900; }
+.lb-task-text small { font-size: 13px; color: #d9d6ff; font-weight: 700; }
+.lb-task-bar { display: block; height: 8px; border-radius: 999px; background: rgba(10, 4, 40, 0.7); overflow: hidden; }
+.lb-task-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #7b4dff, #fc0c97); }
+.lb-task-done { flex: none; color: #2ee59d; font-weight: 900; font-size: 15px; }
 .lb-error { position: absolute; left: 50%; top: 220px; transform: translateX(-50%); z-index: 20; max-width: 640px; padding: 12px 20px; border-radius: 14px; background: rgba(120, 10, 60, 0.92); border: 2px solid #ffd0ea; font-size: 18px; font-weight: 700; text-align: center; }
 
 .lb-toast { --lb-x: -50%; }
@@ -122,7 +144,7 @@ function PicButton({ src, label, style, className = '', soon, lockStyle, onPress
   )
 }
 
-export function LobbyView({ theme, active, student, level, coins, start, hasVideos, error, onStart, onGo }: LobbyViewProps) {
+export function LobbyView({ theme, active, student, level, coins, start, hasVideos, error, onStart, onGo, daily, dailyBusy, dailyError, onCheckIn, onClaim }: LobbyViewProps) {
   useLobbyFonts()
   const reduced = useReducedMotion()
   const visible = usePageVisible()
@@ -140,6 +162,11 @@ export function LobbyView({ theme, active, student, level, coins, start, hasVide
   }, [toast])
 
   const layout = lobbyLayout(width, height, scene, window.devicePixelRatio || 1)
+  const [dailyOpen, setDailyOpen] = useState<'checkin' | 'tasks' | null>(null)
+  const checkinOn = Boolean(daily?.checkin.enabled)
+  const tasksOn = Boolean(daily && daily.tasks.length > 0)
+  const practiceOn = Boolean(daily?.practice.enabled && daily.practice.has_questions)
+  const claimable = daily ? daily.tasks.filter(canClaim).length : 0
   const soon = (label: string) => () => {
     setModesOpen(false)
     setToast(`${label} · ${words.comingSoon}`)
@@ -159,6 +186,55 @@ export function LobbyView({ theme, active, student, level, coins, start, hasVide
     <div className={`lb-root ${motionClass}`}>
       <style>{sceneryCss + css}</style>
       <Scenery folder={theme.folder} scene={scene} layout={layout} heroSrc={pic('hero')} reduced={reduced} paused={!active || !visible} />
+        {dailyOpen && daily && (
+          <div className="lb-daily-shade" onClick={(event) => event.target === event.currentTarget && setDailyOpen(null)}>
+            <div className="lb-daily" role="dialog" aria-label={dailyOpen === 'checkin' ? words.checkinTitle : words.tasksTitle}>
+              <button type="button" className="lb-daily-close" aria-label={words.close} onClick={() => setDailyOpen(null)}>
+                ✕
+              </button>
+              <h2>{dailyOpen === 'checkin' ? words.checkinTitle : words.tasksTitle}</h2>
+              {dailyOpen === 'checkin' ? (
+                <>
+                  <p className="lb-daily-big">{daily.checkin.done ? '✅' : '📅'}</p>
+                  {daily.checkin.done ? (
+                    <p>{words.checkinDone}</p>
+                  ) : (
+                    <button type="button" className="lb-daily-go" disabled={dailyBusy} onClick={onCheckIn}>
+                      {words.checkinButton.replace('{coins}', String(daily.checkin.coins))}
+                    </button>
+                  )}
+                  {daily.checkin.streak > 0 && <p className="lb-daily-note">{words.checkinStreak.replace('{days}', String(daily.checkin.streak))}</p>}
+                </>
+              ) : daily.tasks.length === 0 ? (
+                <p>{words.tasksEmpty}</p>
+              ) : (
+                <ul className="lb-tasks">
+                  {daily.tasks.map((task) => (
+                    <li key={task.id}>
+                      <div className="lb-task-text">
+                        <b>{task.label}</b>
+                        <span className="lb-task-bar">
+                          <i style={{ width: `${Math.round((task.progress / task.target) * 100)}%` }} />
+                        </span>
+                        <small>
+                          {task.progress}/{task.target} · {words.taskCoins.replace('{coins}', String(task.coins))}
+                        </small>
+                      </div>
+                      {task.claimed ? (
+                        <span className="lb-task-done">{words.claimed}</span>
+                      ) : (
+                        <button type="button" className="lb-daily-go small" disabled={dailyBusy || !canClaim(task)} onClick={() => onClaim(task.id)}>
+                          {words.claim}
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {dailyError && <p className="lb-daily-error">{dailyError}</p>}
+            </div>
+          </div>
+        )}
 
       {/* The buttons, pinned to the window's corners and edges */}
       <div
@@ -240,8 +316,12 @@ export function LobbyView({ theme, active, student, level, coins, start, hasVide
         <PicButton src={pic('btn-settings')} label="设定" style={{ right: 30, top: 30, width: 72 }} onPress={() => onGo('more')} />
 
         {/* 2 x 2 tiles packed into one block, a diamond where they meet */}
-        <PicButton src={pic('tile-check-in')} label={`签到 · ${words.comingSoon}`} style={{ right: 146, top: 132, width: 142 }} soon onPress={soon('签到')} />
-        <PicButton src={pic('tile-tasks')} label={`任务 · ${words.comingSoon}`} style={{ right: 17, top: 132, width: 142 }} soon onPress={soon('任务')} />
+        <PicButton src={pic('tile-check-in')} label={checkinOn ? words.checkinTitle : `签到 · ${words.comingSoon}`} style={{ right: 146, top: 132, width: 142 }} soon={!checkinOn} onPress={checkinOn ? () => setDailyOpen('checkin') : soon('签到')}>
+          {checkinOn && !daily?.checkin.done && <i className="lb-dot" aria-hidden="true" />}
+        </PicButton>
+        <PicButton src={pic('tile-tasks')} label={tasksOn ? words.tasksTitle : `任务 · ${words.comingSoon}`} style={{ right: 17, top: 132, width: 142 }} soon={!tasksOn} onPress={tasksOn ? () => setDailyOpen('tasks') : soon('任务')}>
+          {claimable > 0 && <i className="lb-dot" aria-hidden="true">{claimable}</i>}
+        </PicButton>
         <PicButton src={pic('tile-season')} label={`赛季 · ${words.comingSoon}`} style={{ right: 146, top: 254, width: 142 }} soon onPress={soon('赛季')} />
         <PicButton src={pic('tile-shop')} label={`商店 · ${words.comingSoon}`} style={{ right: 17, top: 254, width: 142 }} soon onPress={soon('商店')} />
         <div className="lb-gem" style={{ right: 150, top: 262 }} />
@@ -255,7 +335,7 @@ export function LobbyView({ theme, active, student, level, coins, start, hasVide
           <i className="lb-gym-fill" />
           <i className="lb-gym-line" />
           <span className="lb-orn" />
-          <PicButton src={pic('gym-ic')} label={`${words.modePractice} · ${words.comingSoon}`} style={{ left: 72, top: 16, width: 290 }} onPress={soon(words.modePractice)} />
+          <PicButton src={pic('gym-ic')} label={practiceOn ? words.modePractice : `${words.modePractice} · ${words.comingSoon}`} style={{ left: 72, top: 16, width: 290 }} onPress={practiceOn ? () => onGo('practice') : soon(words.modePractice)} />
           <PicButton src={pic('btn-switch-mode')} label={words.modes} className="lb-switch" style={{ left: 410, top: 38, width: 142 }} onPress={() => setModesOpen((open) => !open)} />
         </div>
         {modesOpen && (
@@ -266,9 +346,15 @@ export function LobbyView({ theme, active, student, level, coins, start, hasVide
                 {words.modeVideos} <span>›</span>
               </button>
             ) : null}
-            <button type="button" className="lb-mode" onClick={soon(words.modePractice)}>
-              {words.modePractice} <em>{words.comingSoon}</em>
-            </button>
+            {practiceOn ? (
+              <button type="button" className="lb-mode" onClick={() => onGo('practice')}>
+                {words.modePractice} <span>›</span>
+              </button>
+            ) : (
+              <button type="button" className="lb-mode" onClick={soon(words.modePractice)}>
+                {words.modePractice} <em>{words.comingSoon}</em>
+              </button>
+            )}
             <button type="button" className="lb-mode" onClick={soon(words.modeLiveReview)}>
               {words.modeLiveReview} <em>{words.comingSoon}</em>
             </button>

@@ -6987,7 +6987,7 @@ function App() {
                 <BrandMascot name="eggy" className="h-16 w-auto shrink-0" />
                 <div>
                   <div className="font-heading text-sm font-bold text-amber-900">
-                    {brand.usesMiraiArt ? 'Eggy hit a snag' : 'Something went wrong'}
+                    {brand.mascot === 'mirai' ? 'Eggy hit a snag' : 'Something went wrong'}
                   </div>
                   <div className="mt-0.5">{loadError}</div>
                 </div>
@@ -7546,6 +7546,7 @@ function App() {
                       .map((teacher) => ({ id: teacher.id, name: teacher.fullName })),
                     onSave: whatsAppNumbers.save,
                     onRemove: whatsAppNumbers.remove,
+                    onReload: whatsAppNumbers.reload,
                   }}
                 />
               </div>

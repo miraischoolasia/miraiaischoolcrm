@@ -63,7 +63,7 @@ export function buildPathwayReportHtml(studentName: string, stages: PathwayStage
   @page { margin: 16mm; }
 </style></head>
 <body>
-  <div style="font-size:12px;font-weight:600;color:#be185d;letter-spacing:.08em">${escapeHtml(brand.name.toUpperCase())}</div>
+  <div style="font-size:12px;font-weight:600;color:${brand.primaryDark};letter-spacing:.08em">${escapeHtml(brand.name.toUpperCase())}</div>
   <h1 style="margin:4px 0 0;font-size:24px">${escapeHtml(studentName)} &mdash; Progress Report</h1>
   <p style="margin:6px 0 20px;color:#64748b;font-size:13px">Average score (1&ndash;5) across five skills, per stage of ${stages.length > 0 ? '4 lessons' : 'lessons'}.</p>
   ${chart}

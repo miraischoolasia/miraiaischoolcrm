@@ -21,6 +21,20 @@ describe('createWaConnect', () => {
     expect((init.headers as Headers).get('Authorization')).toBe('Bearer tok')
   })
 
+  it('asks about one number of the school by its name, and about the one number of the school without', async () => {
+    const fetchMock = reply(200, { instance: { state: 'close' } })
+    vi.stubGlobal('fetch', fetchMock)
+    await createWaConnect('https://wa.example', async () => 'tok', 'school-2').state()
+    await createWaConnect('https://wa.example', async () => 'tok', 'school-2').qr()
+    await createWaConnect('https://wa.example', async () => 'tok').state()
+    const urls = fetchMock.mock.calls.map((call) => (call as unknown as [string])[0])
+    expect(urls).toEqual([
+      'https://wa.example/wa/connect/state?instance=school-2',
+      'https://wa.example/wa/connect/qr?instance=school-2',
+      'https://wa.example/wa/connect/state',
+    ])
+  })
+
   it('says unavailable when the gateway has no such door or refuses', async () => {
     vi.stubGlobal('fetch', reply(404, {}))
     expect(await createWaConnect('https://wa.example', async () => 'tok').state()).toBe('unavailable')

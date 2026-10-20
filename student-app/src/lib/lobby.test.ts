@@ -1,6 +1,7 @@
 // Run from the CRM folder: npx vitest run --root student-app
 import { describe, expect, it } from 'vitest'
 
+import { canClaim, dailyToDo, type Daily, type DailyTask } from './dailyRules'
 import { classEntry, earnedPoints, levelFrom, lobbyMinWidth, malaysiaClock, showsLobby, startButton } from './lobby'
 import { backgroundSources, designHeight, heroBox, lobbyLayout, margin, minLayerWidth, readScene, signInLayout } from './lobbyLayout'
 import { lobbyThemeKeys, lobbyThemes } from './lobbyThemes'
@@ -217,5 +218,36 @@ describe('game sign-in layout', () => {
       expect(background.x + background.width).toBeGreaterThanOrEqual(width - 0.001)
       expect(background.y + background.height).toBeGreaterThanOrEqual(height - 0.001)
     }
+  })
+})
+
+describe('daily check-in and tasks', () => {
+  const task = (extra: Partial<DailyTask> = {}): DailyTask => ({ id: 1, label: 'Watch a video', kind: 'video', target: 1, coins: 3, progress: 0, claimed: false, ...extra })
+  const daily = (extra: Partial<Daily> = {}): Daily => ({
+    day: '2026-10-20',
+    checkin: { enabled: true, coins: 2, done: false, streak: 0 },
+    tasks: [],
+    practice: { enabled: true, per_day: 5, coins: 1, done_today: 0, right_today: 0, has_questions: true },
+    ...extra,
+  })
+
+  it('lets a task be claimed only when done and not claimed yet', () => {
+    expect(canClaim(task())).toBe(false)
+    expect(canClaim(task({ progress: 1 }))).toBe(true)
+    expect(canClaim(task({ progress: 3, target: 3, claimed: true }))).toBe(false)
+  })
+
+  it('counts what is left to do today', () => {
+    expect(dailyToDo(null)).toBe(0)
+    expect(dailyToDo(daily())).toBe(2)
+    expect(dailyToDo(daily({ checkin: { enabled: true, coins: 2, done: true, streak: 1 }, tasks: [task({ progress: 1 })] }))).toBe(2)
+    expect(
+      dailyToDo(
+        daily({
+          checkin: { enabled: false, coins: 2, done: false, streak: 0 },
+          practice: { enabled: true, per_day: 5, coins: 1, done_today: 5, right_today: 3, has_questions: true },
+        }),
+      ),
+    ).toBe(0)
   })
 })

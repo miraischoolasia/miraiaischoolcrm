@@ -1,0 +1,66 @@
+--- a/node_modules/baileys/lib/Socket/socket.js
++++ b/node_modules/baileys/lib/Socket/socket.js
+@@ -679,6 +679,9 @@
+     ws.on('close', () => end(new Boom('Connection Terminated', { statusCode: DisconnectReason.connectionClosed })));
+     // the server terminated the connection
+     ws.on('CB:xmlstreamend', () => end(new Boom('Connection Terminated by Server', { statusCode: DisconnectReason.connectionClosed })));
++    // [Mirai patch, 2026-10-19] Re-renders the pairing QR that is on screen. Set while a pairing QR flow is live.
++    // Same fix as evolution-api PR #2727 / Baileys PR #2765, written for this Baileys (7.0.0-rc.9).
++    let refreshPairingQR;
+     // QR gen
+     ws.on('CB:iq,type:set,pair-device', async (stanza) => {
+         const iq = {
+@@ -694,7 +697,17 @@
+         const refNodes = getBinaryNodeChildren(pairDeviceNode, 'ref');
+         const noiseKeyB64 = Buffer.from(creds.noiseKey.public).toString('base64');
+         const identityKeyB64 = Buffer.from(creds.signedIdentityKey.public).toString('base64');
+-        const advB64 = creds.advSecretKey;
++        // creds.advSecretKey is read at every render, not once: companion_reg_refresh changes it mid-flow.
++        let currentRef;
++        const renderQR = (ref) => {
++            const qr = [ref, noiseKeyB64, identityKeyB64, creds.advSecretKey].join(',');
++            ev.emit('connection.update', { qr });
++        };
++        refreshPairingQR = () => {
++            if (currentRef !== undefined && ws.isOpen) {
++                renderQR(currentRef);
++            }
++        };
+         let qrMs = qrTimeout || 60000; // time to let a QR live
+         const genPairQR = () => {
+             if (!ws.isOpen) {
+@@ -705,14 +718,31 @@
+                 end(new Boom('QR refs attempts ended', { statusCode: DisconnectReason.timedOut }));
+                 return;
+             }
+-            const ref = refNode.content.toString('utf-8');
+-            const qr = [ref, noiseKeyB64, identityKeyB64, advB64].join(',');
+-            ev.emit('connection.update', { qr });
++            currentRef = refNode.content.toString('utf-8');
++            renderQR(currentRef);
+             qrTimer = setTimeout(genPairQR, qrMs);
+             qrMs = qrTimeout || 20000; // shorter subsequent qrs
+         };
+         genPairQR();
+     });
++    // [Mirai patch] Since about 2026-07-28 WhatsApp retires an unpaired companion's adv secret with this notification.
++    // A client that only acks it keeps showing a QR built on the retired secret: the phone says "Couldn't link
++    // device" and pair-success never comes. Make a new secret (as WhatsApp Web does) and show the same ref again.
++    ws.on('CB:notification,type:companion_reg_refresh', (node) => {
++        if (!getBinaryNodeChild(node, 'companion_reg_refresh') && !getBinaryNodeChild(node, 'pair-device-rotate-qr')) {
++            logger.warn({ id: node.attrs.id }, 'companion_reg_refresh without the expected child; ignoring');
++            return;
++        }
++        if (creds.me) {
++            // A paired session: its adv secret is what the pairing is checked against, so keep it.
++            logger.debug({ id: node.attrs.id }, 'companion_reg_refresh on a registered session; keeping the adv secret');
++            return;
++        }
++        creds.advSecretKey = randomBytes(32).toString('base64');
++        ev.emit('creds.update', { advSecretKey: creds.advSecretKey });
++        logger.info({ id: node.attrs.id }, 'rotated the adv secret the server retired; re-rendering the pairing QR');
++        refreshPairingQR?.();
++    });
+     // device paired for the first time
+     // if device pairs successfully, the server asks to restart the connection
+     ws.on('CB:iq,,pair-success', async (stanza) => {

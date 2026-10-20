@@ -6,20 +6,27 @@ export function LeadHeader({
   lead,
   byPhone,
   isStudent = false,
+  parentName,
   onUnlink,
 }: {
   lead: Lead
   byPhone: boolean
   // The chat is the student themself.
   isStudent?: boolean
+  // Given when the chat is a child's own number: the lead is the family's, called by the parent's name (the
+  // family's parent when the lead has no name), never by the child's.
+  parentName?: string | null
   onUnlink: () => void
 }) {
-  const name = lead.fullName || lead.children[0]?.name || lead.phone || 'Unnamed lead'
+  const forChild = parentName !== undefined
+  const name = forChild
+    ? lead.fullName || parentName || "Parent's name not saved"
+    : lead.fullName || lead.children[0]?.name || lead.phone || 'Unnamed lead'
   return (
     <div className="flex items-start justify-between gap-2 text-xs">
       <div className="min-w-0">
         <p className="text-slate-500">
-          {isStudent ? 'Lead · the student themself' : 'Lead'}
+          {forChild ? "Family lead · the parent" : isStudent ? 'Lead · the student themself' : 'Lead'}
           {byPhone ? ' (found by phone number)' : ''}
         </p>
         <h4 className="truncate text-sm font-semibold text-slate-900">{name}</h4>

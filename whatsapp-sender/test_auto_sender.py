@@ -89,5 +89,75 @@ class MainLoop(unittest.TestCase):
         self.assertEqual(sleeps, [2, 15])
 
 
+class WhatsAppInboxes(unittest.TestCase):
+    """With WHATSAPP_INBOX_IDS, only the WhatsApp numbers' chats count; without it, every chat (as before)."""
+
+    CHATS = [{"id": 10, "inbox_id": 3}, {"id": 30, "inbox_id": 4}, {"id": 20, "inbox_id": 6}]
+    INBOXES = [{"id": 3, "channel_type": "Channel::Api"}, {"id": 4, "channel_type": "Channel::Api"},
+               {"id": 6, "channel_type": "Channel::Api"}]
+
+    def fake_chatwoot(self, method, path, body=None):
+        if path.endswith("/conversations"):
+            return {"payload": self.CHATS}
+        if path == "/inboxes":
+            return {"payload": self.INBOXES}
+        raise AssertionError(path)
+
+    def patched(self, inbox_ids):
+        return (
+            mock.patch.object(auto_sender, "WHATSAPP_INBOX_IDS", inbox_ids),
+            mock.patch.object(auto_sender, "chatwoot", self.fake_chatwoot),
+            mock.patch.object(auto_sender, "person_has_written", lambda conversation_id: True),
+        )
+
+    def pick(self, inbox_ids):
+        first, second, third = self.patched(inbox_ids)
+        with first, second, third:
+            return auto_sender.pick_conversation(1), auto_sender.whatsapp_inbox_id()
+
+    def test_unset_takes_the_latest_chat_of_any_inbox(self):
+        chat, inbox = self.pick([])
+        self.assertEqual(chat["id"], 30)
+        self.assertEqual(inbox, 3)
+
+    def test_set_takes_the_latest_chat_of_a_whatsapp_number(self):
+        chat, inbox = self.pick([3, 6])
+        self.assertEqual(chat["id"], 20)
+        self.assertEqual(inbox, 3)
+
+    def test_new_chats_go_to_the_first_listed_number(self):
+        _chat, inbox = self.pick([6, 3])
+        self.assertEqual(inbox, 6)
+
+    def test_auto_finds_the_whatsapp_inboxes_by_their_webhook(self):
+        inboxes = [
+            {"id": 3, "channel_type": "Channel::Api", "webhook_url": "http://evolution-eduhero:8080/chatwoot/webhook/eduhero"},
+            {"id": 4, "channel_type": "Channel::Api", "webhook_url": "http://ghl-bridge-eduhero:9100/ghl/out?key=x"},
+            {"id": 6, "channel_type": "Channel::Api", "webhook_url": "http://evolution-eduhero:8080/chatwoot/webhook/eduhero-2"},
+        ]
+        calls = []
+
+        def fake(method, path, body=None):
+            calls.append(path)
+            return {"payload": self.CHATS} if path.endswith("/conversations") else {"payload": inboxes}
+
+        with mock.patch.object(auto_sender, "FIND_INBOXES", True), \
+                mock.patch.dict(auto_sender._found_inboxes, {"at": 0.0, "ids": []}), \
+                mock.patch.object(auto_sender, "chatwoot", fake), \
+                mock.patch.object(auto_sender, "person_has_written", lambda conversation_id: True):
+            self.assertEqual(auto_sender.whatsapp_inbox_ids(), [3, 6])
+            self.assertEqual(auto_sender.pick_conversation(1)["id"], 20)
+            self.assertEqual(auto_sender.whatsapp_inbox_id(), 3)
+            # Looked up once, then remembered for 10 minutes.
+            self.assertEqual(calls.count("/inboxes"), 2)  # once by whatsapp_inbox_ids, once by whatsapp_inbox_id itself
+
+    def test_no_chat_on_a_whatsapp_number_means_none(self):
+        first, second, third = self.patched([7])
+        with first, second, third:
+            self.assertIsNone(auto_sender.pick_conversation(1))
+            with self.assertRaises(RuntimeError):
+                auto_sender.whatsapp_inbox_id()
+
+
 if __name__ == "__main__":
     unittest.main()

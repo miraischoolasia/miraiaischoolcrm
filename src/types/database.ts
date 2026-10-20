@@ -2996,6 +2996,25 @@ export type Database = {
           duty_waits?: number[]
           duty_within_target?: number
           duty_slowest?: number | null
+          inbox_id?: number
+          done_chat_ids?: number[]
+          computed_at: string
+        }
+        Insert: Record<string, never>
+        Update: Record<string, never>
+        Relationships: []
+      }
+      // Team Replies per channel (20261026900000).
+      team_channel_days: {
+        Row: {
+          day: string
+          inbox_id: number
+          incoming_messages: number
+          incoming_chat_ids: number[]
+          replied_chat_ids: number[]
+          done_chat_ids: number[]
+          first_waits: number[]
+          duty_first_waits: number[]
           computed_at: string
         }
         Insert: Record<string, never>
@@ -3094,6 +3113,21 @@ export type Database = {
           duty_waits?: number[]
           duty_within_target?: number
           duty_slowest?: number | null
+          inbox_id?: number
+          done_chat_ids?: number[]
+        }[]
+      }
+      team_channel_today: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          day: string
+          inbox_id: number
+          incoming_messages: number
+          incoming_chat_ids: number[]
+          replied_chat_ids: number[]
+          done_chat_ids: number[]
+          first_waits: number[]
+          duty_first_waits: number[]
         }[]
       }
       team_reply_compute_range: {

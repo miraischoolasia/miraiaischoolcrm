@@ -27,6 +27,8 @@ export function liveOf(conversation: ChatwootConversation): LiveChat {
     status: conversation.status,
     waitingSince: conversation.waiting_since,
     ownerId: ownerOf(conversation),
+    // The channel, when the chat says which (the Team replies channel filter).
+    ...(conversation.inbox_id != null ? { inboxId: conversation.inbox_id } : {}),
   }
 }
 

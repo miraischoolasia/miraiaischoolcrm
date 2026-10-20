@@ -1,9 +1,18 @@
 {
   "background": "bg-lobby-3344.webp",
   "backgrounds": [
-    { "file": "bg-lobby-1672.webp", "width": 1672 },
-    { "file": "bg-lobby-2560.webp", "width": 2560 },
-    { "file": "bg-lobby-3344.webp", "width": 3344 }
+    {
+      "file": "bg-lobby-1672.webp",
+      "width": 1672
+    },
+    {
+      "file": "bg-lobby-2560.webp",
+      "width": 2560
+    },
+    {
+      "file": "bg-lobby-3344.webp",
+      "width": 3344
+    }
   ],
   "width": 3344,
   "height": 1882,
@@ -13,5 +22,14 @@
   "platformY": 0.8289,
   "heroHeight": 0.7311,
   "buttonsMaxScale": 2.18,
-  "heroMaxScale": 2.1
+  "heroMaxScale": 2.1,
+  "heroVideo": {
+    "webm": "hero-loop.webm",
+    "poster": "hero-loop-poster.webp",
+    "width": 444,
+    "height": 708,
+    "feetX": 222.0,
+    "feetY": 679.5,
+    "heroPixels": 679
+  }
 }

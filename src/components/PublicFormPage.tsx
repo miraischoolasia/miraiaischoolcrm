@@ -4,8 +4,8 @@ import { FormFieldInput } from './forms/FormFieldInput'
 import { BrandLogo } from './BrandLogo'
 import { brand } from '../lib/brand'
 import miraiSeal from '../assets/mirai-seal-logo.png'
-import mascotEggy from '../assets/mascot-eggy.png'
 import { BrandMascot } from './BrandMascot'
+import { brandMascotSrc } from '../lib/branding'
 import {
   fetchPublicForm,
   notifyFormSubmission,
@@ -242,8 +242,9 @@ export function PublicFormPage({ formKey, preview = false }: { formKey: string; 
       }
     })
     // The thank-you picture is only needed later; fetch it quietly meanwhile.
-    if (brand.usesMiraiArt) {
-      new Image().src = mascotEggy
+    const thankYou = brandMascotSrc('eggy')
+    if (thankYou) {
+      new Image().src = thankYou
     }
     return () => {
       cancelled = true

@@ -1,11 +1,12 @@
-import mascotEggy from '../assets/mascot-eggy.png'
-import mascotGordo from '../assets/mascot-gordo.png'
-import { brand } from '../lib/brand'
+import { brandMascotSrc, useBrandVersion } from '../lib/branding'
 
-// Mirai's mascots belong to Mirai only: another brand shows no picture where Mirai shows one.
+// The school's mascot: its one picture from Class Settings > Brand everywhere, Mirai's Eggy and Gordo on the
+// Mirai deployment, or nothing (another brand without one, or the mascot switched off).
 export function BrandMascot({ name, className }: { name: 'eggy' | 'gordo'; className?: string }) {
-  if (!brand.usesMiraiArt) {
+  useBrandVersion()
+  const src = brandMascotSrc(name)
+  if (!src) {
     return null
   }
-  return <img src={name === 'eggy' ? mascotEggy : mascotGordo} alt="" aria-hidden="true" className={className} />
+  return <img src={src} alt="" aria-hidden="true" className={className} />
 }

@@ -14,6 +14,7 @@ import {
   isGroupChat,
   getLinkedLeadId,
   getLinkedStudentIds,
+  formatPhone,
   getRealPhone,
   type ChatRole,
   type ChatwootConversation,
@@ -323,6 +324,11 @@ export function DetailsPanel({
       kind: enrolled ? getStudentKind(enrolled, crm.packages) : null,
     }
   }
+  // A child writing from their own number, inside a family: the lead below is the family's (the parent's name and
+  // number), so the panel first says whose chat this is. Before, the parent's number under "Lead details" was taken
+  // for this chat's number, and the two looked merged.
+  const childChat = family && family.me.kind === 'student' ? family.me : null
+  const childChatPhone = childChat ? (phone ?? childChat.phone) : null
   // WhatsApp hid the number, so the name the chat shows (the username) is all there is to call the parent.
   const nameWithoutNumber = role !== 'student' ? getHiddenNumberName(sender) : ''
 
@@ -401,8 +407,26 @@ export function DetailsPanel({
             <div className="space-y-5">
         {/* The slots below keep their place whether or not the chat is a lead yet, so the
             form is the same one before and after saving and only says "Saved". */}
+        {childChat ? (
+          <section aria-label="Whose chat this is" className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+            <p className="font-semibold">This chat is the child</p>
+            <p className="mt-0.5 text-sm font-semibold text-slate-900">
+              {childChat.name?.trim() || 'Name not saved'}
+              {childChatPhone ? ` · ${formatPhone(childChatPhone)}` : ''}
+            </p>
+            {lead ? (
+              <p className="mt-0.5 text-slate-600">The lead below is the family's: the parent's name and number, not this chat's.</p>
+            ) : null}
+          </section>
+        ) : null}
         {lead ? (
-          <LeadHeader lead={lead} byPhone={byPhone} isStudent={role === 'student'} onUnlink={() => void onLinkLead(null)} />
+          <LeadHeader
+            lead={lead}
+            byPhone={byPhone}
+            isStudent={role === 'student'}
+            parentName={childChat ? (family?.parent?.name ?? null) : undefined}
+            onUnlink={() => void onLinkLead(null)}
+          />
         ) : null}
         {/* Who the school already has as students comes first: a parent of a student is not a new lead. */}
         {family && onOpenChat ? (
@@ -516,6 +540,7 @@ export function DetailsPanel({
             initialPhone={phone ? `+${phone}` : ''}
             guess={guess}
             role={role}
+            forChildChat={childChat !== null}
             onCreated={async (leadId) => {
               await onLinkLead(leadId)
             }}

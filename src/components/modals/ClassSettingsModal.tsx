@@ -6,6 +6,7 @@ import type { ZoomMeetingOptions } from '../../lib/api'
 import { RewardsSettings } from '../RewardsSettings'
 import { AiReportSettings } from '../AiReportSettings'
 import { StudentAppSettings } from '../StudentAppSettings'
+import { BrandSettings } from '../BrandSettings'
 import { LiveQuestionSettingsForm } from '../LiveQuestionSettingsForm'
 import { ZoomAttendanceRule } from '../ZoomAttendanceRule'
 import { LateReminderSetting } from '../LateReminderSetting'
@@ -33,7 +34,7 @@ export type AttendanceStatusDraft = Pick<AttendanceStatusOption, 'label' | 'atte
 
 type StatusChanges = Partial<AttendanceStatusDraft & Pick<AttendanceStatusOption, 'isActive'>>
 
-type Tab = 'criteria' | 'attendance' | 'rewards' | 'subjects' | 'flows' | 'ai' | 'live' | 'app' | 'zoom' | 'recordings'
+type Tab = 'criteria' | 'attendance' | 'rewards' | 'subjects' | 'flows' | 'ai' | 'live' | 'app' | 'brand' | 'zoom' | 'recordings'
 
 type ClassSettingsModalProps = {
   criteria: ReviewCriterion[]
@@ -149,6 +150,7 @@ export function ClassSettingsModal({
               ['ai', 'AI analysis'],
               ['live', 'Live questions'],
               ['app', 'Student app'],
+              ['brand', 'Brand'],
               ['zoom', 'Zoom'],
               ['recordings', 'Recordings'],
             ] as const
@@ -276,6 +278,7 @@ export function ClassSettingsModal({
         {tab === 'live' && <LiveQuestionSettingsForm />}
 
         {tab === 'app' && <StudentAppSettings />}
+        {tab === 'brand' && <BrandSettings />}
 
         {tab === 'zoom' && (
           <>

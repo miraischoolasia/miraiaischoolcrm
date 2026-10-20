@@ -44,6 +44,10 @@ export type DayRow = {
   waits: number[]
   withinTarget: number
   slowest: number | null
+  // The channel (Chatwoot inbox) of these replies, and the chats this replier marked Done that day
+  // (20261026900000; missing on days kept before it).
+  inboxId?: number
+  doneChatIds?: number[]
 }
 
 // "2026-10-19" for the Malaysian day a moment (seconds since epoch) falls on.

@@ -18,6 +18,7 @@ import {
   confirmsBySource,
   getOwner,
   getPhoneReadTarget,
+  getRealPhone,
   isOnAllowedNumber,
   onePerParent,
   togglePinnedMessage,
@@ -139,7 +140,13 @@ export function useWhatsAppInbox(
   // page reads chats and messages from the copy and hears of new ones by itself; without them, or while the copy
   // is not live, it asks Chatwoot every few seconds as before.
   copy: { link: InboxCopyLive; everyOpen?: ChatwootConversation[] } | null = null,
+  // The Evolution name of the number a chat is on (see waInstance), so its read ticks go to that phone.
+  instanceOfInbox: (inboxId: number | undefined) => string | null = () => null,
 ) {
+  const instanceOfInboxRef = useRef(instanceOfInbox)
+  useEffect(() => {
+    instanceOfInboxRef.current = instanceOfInbox
+  }, [instanceOfInbox])
   const copyRef = useRef(copy)
   useEffect(() => {
     copyRef.current = copy
@@ -474,7 +481,7 @@ export function useWhatsAppInbox(
       }
       const target = conversation ? getPhoneReadTarget(conversation.meta.sender, readNow) : null
       if (target) {
-        client.markReadOnPhone(target.phone, target.ids).catch(() => undefined)
+        client.markReadOnPhone(target.phone, target.ids, instanceOfInboxRef.current(conversation?.inbox_id)).catch(() => undefined)
       }
       client
         .markSeen(conversationId)
@@ -578,8 +585,20 @@ export function useWhatsAppInbox(
     // Only chats on the same number: the chat the parent has on another number is a chat of its own.
     const inboxId = mapRef.current.get(selectedId)?.inbox_id
     if (senderId !== undefined) {
-      // The same person under another WhatsApp identity (a hidden ID beside the phone number) is read too.
-      const contactIds = siblingsRef.current?.get(senderId) ?? [senderId]
+      // The same person under another WhatsApp identity (a hidden ID beside the phone number) is read too, but not a
+      // contact of the same lead with another number (a child writing from their own phone is a chat of its own).
+      const selectedPhone = getRealPhone(mapRef.current.get(selectedId)?.meta.sender.phone_number)
+      const phoneOfContact = new Map<number, string>()
+      for (const chat of mapRef.current.values()) {
+        const chatPhone = getRealPhone(chat.meta.sender.phone_number)
+        if (chatPhone) {
+          phoneOfContact.set(chat.meta.sender.id, chatPhone)
+        }
+      }
+      const contactIds = (siblingsRef.current?.get(senderId) ?? [senderId]).filter((contactId) => {
+        const theirs = phoneOfContact.get(contactId)
+        return contactId === senderId || selectedPhone === null || theirs === undefined || theirs === selectedPhone
+      })
       const fromChatwootList = () =>
         Promise.all(contactIds.map((contactId) => client.listContactConversations(contactId))).then((lists) => lists.flat())
       // The copy knows every chat of the contact once it is complete; Chatwoot is asked when it has not got this one.

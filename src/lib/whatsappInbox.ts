@@ -575,7 +575,36 @@ export function withLeadLink(conversation: ChatwootConversation, leadOfContact?:
 // siblings: a person who writes from two WhatsApp identities (their phone number and WhatsApp's hidden ID) has two
 // contacts. When the CRM knows they are one person (the same lead), each contact maps to all of them and their chats
 // count as one.
-export function onePerParent(conversations: ChatwootConversation[], siblings?: Map<number, number[]>) {
+// Two contacts of one lead are one person only while they do not show two different numbers: a parent's number and
+// WhatsApp's hidden ID for them are one person, but a parent and a child who writes from their own phone are two
+// (Mirai's Michelle Hew and her son Lucas, lead 183: her chat was hidden behind his, and searching her number found
+// nothing). A group whose chats show more than one number is not joined at all.
+export function samePersonSiblings(
+  siblings: Map<number, number[]> | undefined,
+  conversations: Pick<ChatwootConversation, 'meta'>[],
+): Map<number, number[]> | undefined {
+  if (!siblings || siblings.size === 0) {
+    return siblings
+  }
+  const phoneOf = new Map<number, string>()
+  for (const conversation of conversations) {
+    const phone = getRealPhone(conversation.meta.sender.phone_number)
+    if (phone) {
+      phoneOf.set(conversation.meta.sender.id, phone)
+    }
+  }
+  const kept = new Map<number, number[]>()
+  for (const [contactId, group] of siblings) {
+    const phones = new Set(group.map((id) => phoneOf.get(id)).filter((phone): phone is string => phone !== undefined))
+    if (phones.size <= 1) {
+      kept.set(contactId, group)
+    }
+  }
+  return kept
+}
+
+export function onePerParent(conversations: ChatwootConversation[], allSiblings?: Map<number, number[]>) {
+  const siblings = samePersonSiblings(allSiblings, conversations)
   const personOf = (contactId: number) => {
     const same = siblings?.get(contactId)
     return same && same.length > 0 ? Math.min(...same) : contactId

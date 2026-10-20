@@ -9,6 +9,7 @@ import {
 } from '../lib/portal'
 import { DEFAULT_LOGIN_MESSAGE, fillLoginMessage } from '../lib/portalLogins'
 import { PortalConsentSettings } from './PortalConsentSettings'
+import { StudentDailySettings } from './StudentDailySettings'
 import { PortalTermsSettings } from './PortalTermsSettings'
 
 const sections: Array<[keyof PortalVisibility, string]> = [
@@ -258,6 +259,8 @@ export function StudentAppSettings() {
       <PortalTermsSettings />
 
       <PortalConsentSettings />
+
+      <StudentDailySettings />
     </div>
   )
 }

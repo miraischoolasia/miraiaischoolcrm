@@ -74,6 +74,7 @@ export default function AppLayout() {
           <TabButton label="Me" icon="🙂" />
         </TabTrigger>
         <TabTrigger name="learn" href="/learn" style={styles.hidden} />
+        <TabTrigger name="practice" href="/practice" style={styles.hidden} />
       </TabList>
       {bursts.current && <PointsBurstView burst={bursts.current} color={branding.accentColor} onDone={bursts.done} />}
       </Tabs>

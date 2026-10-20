@@ -25,6 +25,11 @@ Settings (environment, from /opt/mirai-inbox/auto-sender.env):
                  messages (queue kind "ghl_workflow")
   GHL_API_URL    default https://services.leadconnectorhq.com
   OPEN_NEW_CHATS 1 lets it start a chat with a number that has not written to the school; default 0
+  WHATSAPP_INBOX_IDS optional, e.g. "3,6": the Chatwoot inboxes that are WhatsApp numbers. A WhatsApp message then
+                 only goes into a chat of these inboxes (the parent's latest one), and a new chat is made in the
+                 first. "auto": every inbox whose webhook is an Evolution number (looked up every 10 minutes, so
+                 a number added from the CRM counts by itself; Messenger / Instagram inboxes do not). Unset: any
+                 inbox, as before (an account with one WhatsApp number needs nothing)
 
 How often it asks: every question leaves lines in the CRM database's logs, so it asks only when it can be
 useful. The database says how long to wait (wait_seconds): until the sending hours open, until the 30-second
@@ -50,6 +55,12 @@ GHL_TOKEN = os.environ.get("GHL_TOKEN", "")
 GHL_API_URL = os.environ.get("GHL_API_URL", "https://services.leadconnectorhq.com").rstrip("/")
 GHL_PREFIX = "ghl:"
 OPEN_NEW_CHATS = os.environ.get("OPEN_NEW_CHATS", "0") == "1"
+WHATSAPP_INBOX_SETTING = os.environ.get("WHATSAPP_INBOX_IDS", "").strip()
+WHATSAPP_INBOX_IDS = [int(part) for part in WHATSAPP_INBOX_SETTING.split(",") if part.strip().isdigit()]
+FIND_INBOXES = WHATSAPP_INBOX_SETTING.lower() == "auto"
+FIND_INBOXES_SECONDS = 600
+EVOLUTION_WEBHOOK = "/chatwoot/webhook/"
+_found_inboxes = {"at": 0.0, "ids": []}
 
 # The database's wait is kept between these, so a wrong answer can neither spin nor stop the sender.
 MIN_WAIT_SECONDS = 2
@@ -171,9 +182,30 @@ def person_has_written(conversation_id):
     return False
 
 
+def whatsapp_inbox_ids():
+    """The WhatsApp numbers' inboxes (oldest first), or [] for any inbox."""
+    if not FIND_INBOXES:
+        return WHATSAPP_INBOX_IDS
+    if time.time() - _found_inboxes["at"] > FIND_INBOXES_SECONDS or not _found_inboxes["ids"]:
+        inboxes = chatwoot("GET", "/inboxes").get("payload", [])
+        found = sorted(
+            inbox["id"]
+            for inbox in inboxes
+            if EVOLUTION_WEBHOOK in (inbox.get("webhook_url") or "").split("?", 1)[0]
+        )
+        if not found:
+            raise RuntimeError("no WhatsApp inbox found")
+        _found_inboxes.update(at=time.time(), ids=found)
+    return _found_inboxes["ids"]
+
+
 def pick_conversation(contact_id):
-    """The latest chat of this contact in which the person has written, or None."""
+    """The latest chat of this contact in which the person has written, or None. With several WhatsApp numbers,
+    only their chats count: the message goes from the number the parent last wrote to."""
     conversations = chatwoot("GET", f"/contacts/{contact_id}/conversations").get("payload", [])
+    wanted = whatsapp_inbox_ids()
+    if wanted:
+        conversations = [item for item in conversations if item.get("inbox_id") in wanted]
     for conversation in sorted(conversations, key=lambda item: item["id"], reverse=True):
         if person_has_written(conversation["id"]):
             return conversation
@@ -183,6 +215,13 @@ def pick_conversation(contact_id):
 def whatsapp_inbox_id():
     """The inbox new WhatsApp chats are made in (the first API channel, as the CRM's New chat does)."""
     inboxes = chatwoot("GET", "/inboxes").get("payload", [])
+    wanted = whatsapp_inbox_ids()
+    if wanted:
+        listed = [inbox for inbox in inboxes if inbox.get("id") in wanted]
+        listed.sort(key=lambda inbox: wanted.index(inbox["id"]))
+        if not listed:
+            raise RuntimeError("none of WHATSAPP_INBOX_IDS is an inbox of this account")
+        return listed[0]["id"]
     api = [inbox for inbox in inboxes if inbox.get("channel_type") == "Channel::Api"]
     chosen = (api or inboxes or [None])[0]
     if not chosen:

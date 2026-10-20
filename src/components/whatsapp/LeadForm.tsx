@@ -32,6 +32,8 @@ type LeadFormProps = {
   guess: SourceGuess
   // Who the team said is on the chat. A student writing themself gets the student's own details first.
   role?: ChatRole | null
+  // The chat is a child's own number and the lead is the family's: the fields say they are the parent's.
+  forChildChat?: boolean
   // Called once a new lead is saved, so the chat can be tied to it.
   onCreated: (leadId: number) => Promise<void>
   // The team found the lead this person already is: ties the chat to that lead (after the two leads were
@@ -85,6 +87,7 @@ export function LeadForm({
   initialPhone,
   guess,
   role = null,
+  forChildChat = false,
   onCreated,
   onFindLead,
 }: LeadFormProps) {
@@ -327,7 +330,7 @@ export function LeadForm({
 
   return (
     <>
-      <PanelSection title={lead ? 'Lead details' : 'Add as a new lead'}>
+      <PanelSection title={lead ? (forChildChat && !isStudent ? "Family lead details (the parent's)" : 'Lead details') : 'Add as a new lead'}>
         {isStudent ? (
           <>
             <label className="block">
@@ -399,7 +402,7 @@ export function LeadForm({
           />
         </label>
         <label className="block">
-          <span className="text-slate-600">Phone number</span>
+          <span className="text-slate-600">{forChildChat ? "Parent's phone number (not this chat's)" : 'Phone number'}</span>
           <input
             type="tel"
             value={form.phone}

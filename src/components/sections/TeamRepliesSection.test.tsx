@@ -8,12 +8,23 @@ import type { DayRow } from '../../../supabase/functions/team-replies/logic'
 
 const fetchKeptDays = vi.fn()
 const fetchToday = vi.fn()
+const fetchChannelDays = vi.fn(async (..._args: unknown[]): Promise<unknown[]> => [])
+const fetchChannelToday = vi.fn(async (): Promise<unknown[]> => [])
 vi.mock('../../lib/teamReplyDaysApi', () => ({
   fetchKeptDays: (...args: unknown[]) => fetchKeptDays(...args),
   fetchToday: () => fetchToday(),
+  fetchChannelDays: (...args: unknown[]) => fetchChannelDays(...args),
+  fetchChannelToday: () => fetchChannelToday(),
+  fetchTeamRepliesScope: async () => 'all',
   fetchCopySummary: async () => ({ chats: 3, messages: 40, copiedChats: 1, chatsToCopy: 0, firstMessageAt: '2026-09-01T00:00:00Z' }),
   SETUP_MISSING: 'Team Replies is not set up in the database yet.',
   teamRepliesErrorMessage: () => 'Team Replies is not set up in the database yet.',
+}))
+
+// The channels' saved names are not read from the database in these tests.
+vi.mock('../../lib/inboxChannels', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/inboxChannels')>()),
+  fetchInboxChannels: async () => [],
 }))
 
 // 2026-10-19 10:00 in Kuala Lumpur.
@@ -49,6 +60,8 @@ beforeEach(() => {
   window.localStorage.clear()
   fetchKeptDays.mockReset()
   fetchToday.mockReset()
+  fetchChannelDays.mockReset().mockResolvedValue([])
+  fetchChannelToday.mockReset().mockResolvedValue([])
 })
 
 describe('periodDays', () => {
@@ -99,10 +112,51 @@ describe('TeamRepliesSection', () => {
     render(<TeamRepliesSection staff={staff} client={null} now={NOW} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Today' }))
-    const jun = await screen.findByRole('row', { name: /Jun/ })
+    // The people's table first; the same person shows again under "Who answered which channel".
+    const [jun] = await screen.findAllByRole('row', { name: /Jun/ })
     expect(jun).toHaveTextContent('5 min')
     // Nothing is waiting to be read: no trend for a single day, and no live columns without the inbox.
     expect(screen.queryByRole('img', { name: 'Replies per day' })).not.toBeInTheDocument()
+  })
+
+  it('splits the numbers by channel and filters by channel and person', async () => {
+    const day = (replier: DayRow['replier'], inboxId: number, waits: number[], chatIds: number[], doneChatIds: number[] = []) => ({
+      ...kept('2026-10-18', replier, waits, chatIds),
+      inboxId,
+      doneChatIds,
+    })
+    fetchKeptDays.mockResolvedValue({
+      rows: [day('staff:1', 3, [60, 600], [1, 2], [1]), day('staff:1', 6, [120], [9]), day('staff:2', 6, [300], [10], [10])],
+      doneDays: new Set(['2026-10-18']),
+    })
+    fetchChannelDays.mockResolvedValue([
+      { day: '2026-10-18', inboxId: 3, incomingMessages: 12, incomingChatIds: [1, 2, 3], repliedChatIds: [1, 2], doneChatIds: [1], firstWaits: [60, 600] },
+      { day: '2026-10-18', inboxId: 6, incomingMessages: 5, incomingChatIds: [9, 10], repliedChatIds: [9, 10], doneChatIds: [10], firstWaits: [120, 300] },
+    ] as never)
+    const channels = new Map([
+      [3, { inboxId: 3, name: 'EduHero WhatsApp', kind: 'whatsapp' as const }],
+      [6, { inboxId: 6, name: 'EduHero WhatsApp 2', kind: 'whatsapp' as const }],
+    ])
+    render(<TeamRepliesSection staff={staff} client={null} now={NOW} channels={channels} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Yesterday' }))
+    expect(fetchKeptDays).toHaveBeenLastCalledWith('2026-10-18', '2026-10-18')
+    const first = await screen.findByRole('article', { name: 'EduHero WhatsApp' })
+    expect(first).toHaveTextContent('Messages in12')
+    expect(first).toHaveTextContent('Answered2 of 3')
+    expect(first).toHaveTextContent('Marked Done1')
+    expect(first).toHaveTextContent('First answer, average6 min')
+    const who = screen.getByRole('table', { name: 'Who answered which channel' })
+    expect(within(who).getByRole('row', { name: /Mei/ })).toHaveTextContent('2 channels')
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Channel' }), 'EduHero WhatsApp 2')
+    expect(screen.queryByRole('article', { name: 'EduHero WhatsApp' })).not.toBeInTheDocument()
+    expect(screen.getByRole('article', { name: 'EduHero WhatsApp 2' })).toBeInTheDocument()
+    // The people's table counts only that channel too.
+    expect(screen.getAllByRole('row', { name: /Mei/ })[0]).toHaveTextContent('2 min')
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Staff' }), 'Jun')
+    expect(within(screen.getByRole('table', { name: 'Who answered which channel' })).queryByRole('row', { name: /Mei/ })).not.toBeInTheDocument()
   })
 
   it('offers "Copy old chats" to an admin only', async () => {

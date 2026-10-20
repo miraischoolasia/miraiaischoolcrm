@@ -16,6 +16,8 @@ export type LiveChat = {
   waitingSince: number
   // Who the team gave the chat to (crm_owner_id), if anybody.
   ownerId: number | null
+  // The channel (Chatwoot inbox) the chat is in, when known.
+  inboxId?: number | null
 }
 
 export type StaffReplyRow = {

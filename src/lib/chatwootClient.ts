@@ -1,4 +1,5 @@
 import { getSupabaseAccessToken } from './accessToken'
+import { withInstance } from './waInstance'
 import type { ChatAttributes, ChatwootConversation, ChatwootMessage } from './whatsappInbox'
 
 // Talks to Chatwoot through the school's gateway, which checks the login and adds
@@ -53,13 +54,13 @@ export function createChatwootClient(
   }
 
   // The phone's own WhatsApp (read ticks, unread dot) is reached through the same gateway and login.
-  async function phoneRequest(path: string, body: unknown) {
+  async function phoneRequest(path: string, body: unknown, instance: string | null = null) {
     const token = await getAccessToken()
     const headers = new Headers({ 'Content-Type': 'application/json' })
     if (token) {
       headers.set('Authorization', `Bearer ${token}`)
     }
-    const response = await fetchWithTimeout(`${apiUrl}/wa${path}`, { method: 'POST', headers, body: JSON.stringify(body) }, REQUEST_TIMEOUT_MS)
+    const response = await fetchWithTimeout(withInstance(`${apiUrl}/wa${path}`, instance), { method: 'POST', headers, body: JSON.stringify(body) }, REQUEST_TIMEOUT_MS)
     if (!response.ok) {
       throw new Error(`WhatsApp phone request failed (${response.status})`)
     }
@@ -170,11 +171,12 @@ export function createChatwootClient(
     },
 
     // Marks the parent's messages as read on the phone too, as if the chat was opened there.
-    // WhatsApp only allows it for a chat with a real phone number, not a hidden ID.
-    async markReadOnPhone(phone: string, whatsappIds: string[]) {
+    // WhatsApp only allows it for a chat with a real phone number, not a hidden ID. instance: the number the chat
+    // is on (see waInstance); null for the school's one number.
+    async markReadOnPhone(phone: string, whatsappIds: string[], instance: string | null = null) {
       await phoneRequest('/read', {
         readMessages: whatsappIds.map((id) => ({ remoteJid: `${phone}@s.whatsapp.net`, fromMe: false, id })),
-      })
+      }, instance)
     },
 
     // Chats with a message containing these words, and the message that matched.

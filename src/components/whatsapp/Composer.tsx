@@ -16,6 +16,8 @@ import { QuickReplyPicker } from './QuickReplyPicker'
 import { SpecialMessageDialog, type SpecialKind } from './SpecialMessageDialog'
 import { FollowUpHostContext, type FollowUpSummary } from './FollowUpButton'
 import type { SpecialMessage } from '../../lib/waActions'
+import type { ChatSwitchOption } from '../../lib/chatSwitch'
+import { ChatSwitcher } from './ChatSwitcher'
 
 // A file about to be sent, shown like WhatsApp Web shows it: a picture or a video as a small picture of
 // itself, anything else as its name.
@@ -94,6 +96,10 @@ type ComposerProps = {
   onAiDismiss?: () => void
   // Where the reply goes out from: the WhatsApp number, or the Page. Shown so nobody answers from the wrong one.
   sendingFrom?: string | null
+  // The family's other chats (another number, Messenger, Instagram, a child's own number): "Sending from" opens
+  // them, and picking one switches to that chat.
+  chatChoices?: ChatSwitchOption[]
+  onSwitchChat?: (option: ChatSwitchOption) => void
   // The "+" menu's Automation row: a message or a flow for this person at a chosen time.
   onSchedule?: () => void
   // Messenger and Instagram chats: the voice message is made as a WAV, which their apps can play.
@@ -187,6 +193,8 @@ export function Composer({
   onAiUse,
   onAiDismiss,
   sendingFrom = null,
+  chatChoices = [],
+  onSwitchChat,
   onSchedule,
   voiceAsWav = false,
 }: ComposerProps) {
@@ -462,13 +470,7 @@ ${draftRequest.text}` : draftRequest.text))
           </button>
         ))}
         {sendingFrom && (
-          <span
-            title="This reply goes out from here"
-            className="ml-auto inline-flex min-w-0 max-w-[60%] items-center gap-1 truncate rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800 ring-1 ring-sky-100"
-          >
-            <span className="shrink-0 text-sky-600 max-sm:hidden">Sending from</span>
-            <span className="truncate">{sendingFrom}</span>
-          </span>
+          <ChatSwitcher label={sendingFrom} options={onSwitchChat ? chatChoices : []} onPick={(option) => onSwitchChat?.(option)} />
         )}
         {onAiSuggest && aiAvailable && mode === 'reply' && !showSuggestion && text === '' && (
           <button

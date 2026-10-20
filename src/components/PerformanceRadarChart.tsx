@@ -1,4 +1,5 @@
 import { toFivePointScale, type ReviewMetric } from '../lib/reviewCriteria'
+import { brand } from '../lib/brand'
 
 // One axis per criterion; every criterion is drawn on 1-5 whatever its own
 // top score.
@@ -84,14 +85,15 @@ export function PerformanceRadarChart({
 
       <polygon
         points={polygonPoints}
-        fill="#fc0c9726"
-        stroke="#fc0c97"
+        fill={brand.primary}
+        fillOpacity={0.15}
+        stroke={brand.primary}
         strokeWidth="2"
       />
 
       {metrics.map((metric, index) => {
         const point = getPoint(index, scaled(metric))
-        return <circle key={metric.id} cx={point.x} cy={point.y} r="4" fill="#fc0c97" />
+        return <circle key={metric.id} cx={point.x} cy={point.y} r="4" fill={brand.primary} />
       })}
     </svg>
   )

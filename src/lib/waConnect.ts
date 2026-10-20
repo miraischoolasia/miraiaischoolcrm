@@ -1,4 +1,5 @@
 import { getSupabaseAccessToken } from './accessToken'
+import { withInstance } from './waInstance'
 
 // 'unavailable': this school has no number to link from here (the gateway has no such door), or the
 // signed-in person may not.
@@ -11,15 +12,20 @@ export type WaQr = { image: string | null; pairingCode: string | null; count: nu
 export type WaConnect = ReturnType<typeof createWaConnect>
 
 // Linking the school's WhatsApp number: the admin asks for a QR code and scans it with the phone.
-// The gateway only lets admins in, and only ever talks about this school's own instance.
-export function createWaConnect(apiUrl: string, getAccessToken: () => Promise<string | null> = getSupabaseAccessToken) {
+// The gateway only lets admins in, and only ever talks about this school's own numbers. instance: which number (its
+// Evolution name, from the numbers table); null for the school's one number.
+export function createWaConnect(
+  apiUrl: string,
+  getAccessToken: () => Promise<string | null> = getSupabaseAccessToken,
+  instance: string | null = null,
+) {
   async function get(path: string) {
     const token = await getAccessToken()
     const headers = new Headers()
     if (token) {
       headers.set('Authorization', `Bearer ${token}`)
     }
-    return fetch(`${apiUrl}/wa/connect${path}`, { headers })
+    return fetch(withInstance(`${apiUrl}/wa/connect${path}`, instance), { headers })
   }
 
   return {

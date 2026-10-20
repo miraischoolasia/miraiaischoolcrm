@@ -2,6 +2,7 @@ import { type Href, useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { Linking, Platform } from 'react-native'
 
+import { useDaily } from '@/lib/daily'
 import { useHasVideos } from '@/lib/hasVideos'
 import { classEntry, earnedPoints, levelFrom, startButton } from '@/lib/lobby'
 import type { LobbyTheme } from '@/lib/lobbyThemes'
@@ -12,9 +13,10 @@ import { LobbyView, type LobbyPlace } from '@/ui/LobbyView'
 // name, class, Lv and coins from portal_home, and the big button — "Enter
 // class" when a class is near or on, else "Start learning".
 export function LobbyHome({ theme }: { theme: LobbyTheme }) {
-  const { home, homeError, child, branding } = useSession()
+  const { home, homeError, child, branding, refresh } = useSession()
   const router = useRouter()
   const hasVideos = useHasVideos()
+  const today = useDaily(child?.studentId ?? null, () => void refresh())
   const [now, setNow] = useState(() => new Date())
   const [focused, setFocused] = useState(true)
 
@@ -40,7 +42,7 @@ export function LobbyHome({ theme }: { theme: LobbyTheme }) {
   const level = points ? levelFrom(earnedPoints(points), branding.levelPoints) : null
 
   function go(place: LobbyPlace) {
-    const to: Record<LobbyPlace, Href> = { learn: '/learn', results: '/progress', more: '/me', videos: '/videos' }
+    const to: Record<LobbyPlace, Href> = { learn: '/learn', results: '/progress', more: '/me', videos: '/videos', practice: '/practice' as Href }
     router.navigate(to[place])
   }
 
@@ -75,6 +77,11 @@ export function LobbyHome({ theme }: { theme: LobbyTheme }) {
       error={home ? null : homeError}
       onStart={enterClass}
       onGo={go}
+      daily={today.daily}
+      dailyBusy={today.busy}
+      dailyError={today.error}
+      onCheckIn={() => void today.checkIn()}
+      onClaim={(taskId) => void today.claim(taskId)}
     />
   )
 }

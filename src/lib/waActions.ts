@@ -1,4 +1,5 @@
 import { getSupabaseAccessToken } from './accessToken'
+import { withInstance } from './waInstance'
 import { describeWaRecord, type ReactionPreview } from './reactionPreview'
 
 // Things WhatsApp can do that Chatwoot does not carry (reactions, editing and deleting a sent
@@ -151,9 +152,11 @@ export function labelColor(index: string | number | null | undefined) {
 
 export type WaActions = ReturnType<typeof createWaActions>
 
+// instance: the Evolution name of the number these actions are for (see waInstance); null for the school's one number.
 export function createWaActions(
   apiUrl: string,
   getAccessToken: () => Promise<string | null> = getSupabaseAccessToken,
+  instance: string | null = null,
 ) {
   async function call<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
     const token = await getAccessToken()
@@ -164,7 +167,7 @@ export function createWaActions(
     if (body !== undefined) {
       headers.set('Content-Type', 'application/json')
     }
-    const response = await fetch(`${apiUrl}/wa/evo${path}`, {
+    const response = await fetch(withInstance(`${apiUrl}/wa/evo${path}`, instance), {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -310,5 +313,23 @@ export function createWaActions(
       }
       return parseEvents(rows)
     },
+  }
+}
+
+// One set of actions per number, made once each, so a chat on the second number reacts, edits and deletes on the
+// second phone. The same set comes back for the same name, so hooks that watch it do not start again.
+export function createWaActionsByInstance(
+  apiUrl: string,
+  getAccessToken: () => Promise<string | null> = getSupabaseAccessToken,
+) {
+  const made = new Map<string, WaActions>()
+  return (instance: string | null): WaActions => {
+    const key = instance ?? ''
+    let actions = made.get(key)
+    if (!actions) {
+      actions = createWaActions(apiUrl, getAccessToken, instance)
+      made.set(key, actions)
+    }
+    return actions
   }
 }

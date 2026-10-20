@@ -1,3 +1,5 @@
+import { brand } from '../lib/brand'
+
 export type LeadTrendPoint = {
   label: string
   value: number
@@ -38,9 +40,9 @@ export function LeadTrendChart({ data }: { data: LeadTrendPoint[] }) {
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="h-[180px] w-full">
-      {areaPath && <path d={areaPath} fill="#fc0c9714" stroke="none" />}
+      {areaPath && <path d={areaPath} fill={brand.primary} fillOpacity={0.08} stroke="none" />}
       {linePath && (
-        <path d={linePath} fill="none" stroke="#fc0c97" strokeWidth="2.5" strokeLinecap="round" />
+        <path d={linePath} fill="none" stroke={brand.primary} strokeWidth="2.5" strokeLinecap="round" />
       )}
       {points.map((point) => (
         <g key={point.label}>
@@ -48,7 +50,7 @@ export function LeadTrendChart({ data }: { data: LeadTrendPoint[] }) {
             cx={point.x}
             cy={point.y}
             r="5"
-            fill={point.color ?? '#fc0c97'}
+            fill={point.color ?? brand.primary}
             stroke="#ffffff"
             strokeWidth="2"
           />

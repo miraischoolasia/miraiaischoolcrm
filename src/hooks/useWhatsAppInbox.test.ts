@@ -209,8 +209,20 @@ describe('useWhatsAppInbox and the phone', () => {
     act(() => result.current.setSelectedId(40))
 
     // Two were unread, so the last two are marked; the first was already read.
-    await waitFor(() => expect(client.markReadOnPhone).toHaveBeenCalledWith('60123456789', ['A2', 'A3']))
+    await waitFor(() => expect(client.markReadOnPhone).toHaveBeenCalledWith('60123456789', ['A2', 'A3'], null))
     expect(client.markSeen).toHaveBeenCalledWith(40)
+  })
+
+  it('tells the phone of the number the chat is on, by its name in the numbers table', async () => {
+    const client = phoneClient()
+    // The test chats carry no inbox: every chat is on the number named school-2 here.
+    const instanceOf = () => 'school-2'
+    const { result } = renderHook(() => useWhatsAppInbox(client, staff, true, null, undefined, undefined, null, instanceOf))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    act(() => result.current.setSelectedId(40))
+
+    await waitFor(() => expect(client.markReadOnPhone).toHaveBeenCalledWith('60123456789', ['A2', 'A3'], 'school-2'))
   })
 
   it('does not try the phone for a chat whose number WhatsApp hides, but still reads it here', async () => {
@@ -238,7 +250,7 @@ describe('useWhatsAppInbox and the phone', () => {
     // Opened again: the CRM says it is unread again (1 at least), so one message is marked.
     act(() => result.current.setSelectedId(40))
     await waitFor(() => expect(client.markReadOnPhone).toHaveBeenCalledTimes(2))
-    expect(client.markReadOnPhone).toHaveBeenLastCalledWith('60123456789', ['A3'])
+    expect(client.markReadOnPhone).toHaveBeenLastCalledWith('60123456789', ['A3'], null)
   })
 
   it('marks a chat unread with a flag that opening it clears', async () => {
