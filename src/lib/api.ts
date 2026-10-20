@@ -202,8 +202,11 @@ export async function fetchClassroomsFromSupabase() {
       .order('program_level')
       .order('name')) as unknown as { data: ClassroomRow[] | null; error: { code?: string } | null }
 
-  let { data, error } = await select(`${base}, zoom_link, programme_id, subject_id`)
-  // Before the Zoom link / programmes / subjects migrations those columns do not exist yet.
+  let { data, error } = await select(`${base}, zoom_link, programme_id, subject_id, category_name`)
+  // Before the Zoom link / programmes / subjects / class categories migrations those columns do not exist yet.
+  if (error?.code === '42703') {
+    ;({ data, error } = await select(`${base}, zoom_link, programme_id, subject_id`))
+  }
   if (error?.code === '42703') {
     ;({ data, error } = await select(`${base}, zoom_link, programme_id`))
   }
@@ -409,11 +412,14 @@ export async function fetchScheduleExceptionsFromSupabase() {
   }
 
   let { data, error } = await select(
-    'id, schedule_id, exception_date, reason, moved_to_schedule_id',
+    'id, schedule_id, exception_date, reason, moved_to_schedule_id, replacement_schedule_id',
   )
 
-  // Before the drag-to-move migration the moved_to_schedule_id column does
-  // not exist yet: load without it rather than failing the workspace.
+  // Before the replacement link migration (and before the drag-to-move one)
+  // these columns do not exist yet: load without them rather than failing.
+  if (error?.code === '42703') {
+    ;({ data, error } = await select('id, schedule_id, exception_date, reason, moved_to_schedule_id'))
+  }
   if (error?.code === '42703') {
     ;({ data, error } = await select('id, schedule_id, exception_date, reason'))
   }

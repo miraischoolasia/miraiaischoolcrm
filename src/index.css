@@ -340,6 +340,29 @@ h3 {
   row-gap: 0.125rem;
 }
 
+/* Month view: it shows only the special class days, so a day without one says so under the date. The date
+   keeps its place on the right; the note sits on its own line below, on the left. */
+.fc .fc-day-no-special .fc-daygrid-day-number {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.fc .fc-day-empty-note {
+  align-self: stretch;
+  margin-top: 0.25rem;
+  text-align: left;
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  color: #94a3b8;
+}
+
+.fc .fc-daygrid-event:has([data-special-kind]) {
+  margin-top: 2px;
+  border-radius: 0.375rem;
+}
+
 /* Agenda (list) view: the day's heading sticks to the top while the list scrolls. FullCalendar puts each
    event's content at z-index 2 and the heading at none, so the class cards scrolled under it were drawn over
    the date. The heading now stays on top. */

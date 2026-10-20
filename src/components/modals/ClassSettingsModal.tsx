@@ -17,6 +17,7 @@ import { ZoomHostsSetting } from '../ZoomHostsSetting'
 import { RecordingsSettings } from '../RecordingsSettings'
 import { SubjectsSettings } from '../SubjectsSettings'
 import { AgeGroupsSettings } from '../AgeGroupsSettings'
+import { ClassCategoriesSettings } from '../ClassCategoriesSettings'
 import type { AgeGroupOption } from '../../lib/ageGroups'
 import type { Subject } from '../../lib/subjects'
 import type { RewardLevel, RewardPreset } from '../../lib/rewards'
@@ -263,6 +264,7 @@ export function ClassSettingsModal({
               placeholder="New level, e.g. Form 4"
               noun="level"
             />
+            <ClassCategoriesSettings />
             <CalendarLayoutSetting onSaved={onCalendarLayoutSaved} />
           </>
         )}

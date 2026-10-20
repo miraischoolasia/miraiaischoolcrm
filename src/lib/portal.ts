@@ -22,7 +22,19 @@ export type PortalSettings = {
   // Where families open the app, and the message sent with a new login ({school} {child} {link} {logins}).
   app_url: string
   login_message: string
+  // The app's home on a computer: the classic list, or the game lobby with a
+  // picture set the app ships (student-app/public/lobby/<set>/); and the
+  // points for one level (Lv) there.
+  home_style: 'classic' | 'lobby'
+  home_theme: string
+  level_points: number
+  // The school's WhatsApp for families (digits, country code first): the game
+  // sign-in page's "Contact the school". Empty: not shown.
+  support_whatsapp: string
 }
+
+// The lobby picture sets the student app has (student-app/src/lib/lobbyThemes.ts).
+export const studentHomeThemes: Array<{ key: string; label: string }> = [{ key: 'eduhero', label: 'EduHero' }]
 
 export const defaultPortalSettings: PortalSettings = {
   school_name: '',
@@ -31,6 +43,10 @@ export const defaultPortalSettings: PortalSettings = {
   parent_sees: { schedule: true, points: true, scores: true, package: true, report: true, recordings: true },
   app_url: '',
   login_message: '',
+  home_style: 'classic',
+  home_theme: '',
+  level_points: 50,
+  support_whatsapp: '',
 }
 
 // The student, and the parent the CRM links them to (people.parent_id).
@@ -124,17 +140,26 @@ export async function fetchPortalSettings(): Promise<PortalSettings> {
     parent_sees: { ...defaultPortalSettings.parent_sees, ...(value.parent_sees ?? {}) },
     app_url: value.app_url ?? '',
     login_message: value.login_message ?? '',
+    home_style: value.home_style === 'lobby' ? 'lobby' : 'classic',
+    home_theme: value.home_theme ?? '',
+    level_points: typeof value.level_points === 'number' ? value.level_points : defaultPortalSettings.level_points,
+    support_whatsapp: value.support_whatsapp ?? '',
   }
 }
 
 export async function savePortalSettings(settings: PortalSettings) {
   if (!supabase) return 'Supabase is not configured.'
   // Empty words are left out, so the settings still save on a database without them.
-  const { app_url, login_message, ...rest } = settings
+  // The same for the home choice: a school on the classic home sends none of it.
+  const { app_url, login_message, home_style, home_theme, level_points, support_whatsapp, ...rest } = settings
+  const whatsapp = support_whatsapp.replace(/\D/g, '')
   const payload = {
     ...rest,
     ...(app_url.trim() ? { app_url: app_url.trim() } : {}),
     ...(login_message.trim() ? { login_message } : {}),
+    ...(home_style === 'lobby' ? { home_style, home_theme } : {}),
+    ...(level_points !== defaultPortalSettings.level_points ? { level_points } : {}),
+    ...(whatsapp ? { support_whatsapp: whatsapp } : {}),
   }
   const { error } = await supabase.rpc('set_portal_settings', { p_settings: payload })
   return error ? error.message || 'Failed to save.' : null

@@ -9,6 +9,9 @@ import { StatusChip } from '../StatusChip'
 import { BrandMascot } from '../BrandMascot'
 import { ClassTeachersField } from '../ClassTeachersField'
 import { classroomTeacherIds } from '../../lib/classroomTeachers'
+import { pageSlice } from '../../lib/paging'
+import { classCategoryTabs, classroomCategoryName, useClassCategories } from '../../lib/classCategories'
+import { RosterPager } from '../RosterPager'
 import type { Subject } from '../../lib/subjects'
 import {
   ArrowCounterClockwise,
@@ -97,18 +100,29 @@ export function ClassListingSection({
       (group) => !schoolAgeGroups.includes(group),
     ),
   ]
-  const [category, setCategory] = useState<'all' | 'regular' | 'trial' | 'camp'>('all')
+  // 'all', or one of the school's class categories (Class Settings > Class options).
+  const [category, setCategory] = useState('all')
+  const { categories: schoolCategories } = useClassCategories()
   const activeClassrooms = classrooms.filter(
     (classroom) => classroom.status === 'active',
   )
+  const categoryTabs = classCategoryTabs(schoolCategories, activeClassrooms)
+  const categoryOf = (classroom: Classroom) => classroomCategoryName(classroom, schoolCategories)
+  const inCategory = (classroom: Classroom) => category === 'all' || categoryOf(classroom) === category
+  // The first category is the everyday one; a class in any other shows its category by its name.
+  const categoryBadge = (classroom: Classroom) => {
+    const name = categoryOf(classroom)
+    if (name === categoryTabs[0]?.name) return null
+    const tone = classroom.category === 'trial' ? 'text-[#be185d]' : classroom.category === 'camp' ? 'text-emerald-700' : 'text-slate-500'
+    return <span className={cn('ml-2 text-xs', tone)}>{name}</span>
+  }
   const archivedClassrooms = classrooms.filter(
     (classroom) => classroom.status === 'archived',
   )
   const filteredClassrooms = simple
     ? activeClassrooms
     : activeClassrooms.filter(
-        (classroom) => classroom.ageGroup === selectedAgeGroup &&
-          (category === 'all' || classroom.category === category),
+        (classroom) => classroom.ageGroup === selectedAgeGroup && inCategory(classroom),
       )
   // A level's classes by subject (subjects in the school's order), then by name.
   const subjectById = new Map(subjects.map((subject) => [subject.id, subject]))
@@ -162,10 +176,12 @@ export function ClassListingSection({
     'overview' | 'students' | 'timetable'
   >('overview')
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false)
+  const [rosterPage, setRosterPage] = useState(1)
 
   useEffect(() => {
     setActiveDetailTab('overview')
     setActionsMenuOpen(false)
+    setRosterPage(1)
   }, [selectedClassroom?.id])
 
   const selectedRoster = selectedClassroom
@@ -178,6 +194,8 @@ export function ClassListingSection({
           return left.name.localeCompare(right.name)
         })
     : []
+  // 20 students at a time; the Overview and Students tabs share the page.
+  const rosterPageView = pageSlice(selectedRoster, rosterPage)
 
   const selectedSchedules = selectedClassroom
     ? schedules
@@ -249,9 +267,9 @@ export function ClassListingSection({
           <div className="space-y-4 p-4">
             {!simple && (
             <div className="flex flex-wrap gap-2" aria-label="Classroom category">
-              {(['all', 'regular', 'trial', 'camp'] as const).map((value) => (
+              {['all', ...categoryTabs.map((entry) => entry.name)].map((value) => (
                 <button key={value} type="button" aria-pressed={category === value} onClick={() => setCategory(value)} className={cn('rounded-xl border px-4 py-2 text-sm font-semibold', category === value ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]' : 'border-slate-200 text-slate-600')}>
-                  {value === 'all' ? 'All Classes' : value === 'trial' ? 'Trial Class' : value === 'camp' ? 'Camp Class' : 'Regular Class'}
+                  {value === 'all' ? 'All Classes' : value}
                 </button>
               ))}
             </div>
@@ -266,8 +284,7 @@ export function ClassListingSection({
                   {ageGroupOptions.map((ageGroup) => {
                     const selected = selectedAgeGroup === ageGroup
                     const count = activeClassrooms.filter(
-                      (classroom) => classroom.ageGroup === ageGroup &&
-                        (category === 'all' || classroom.category === category),
+                      (classroom) => classroom.ageGroup === ageGroup && inCategory(classroom),
                     ).length
 
                     return (
@@ -294,8 +311,9 @@ export function ClassListingSection({
             </div>
             )}
 
+            {/* min-w-0: on a phone the roster table scrolls inside its card instead of widening the card. */}
             <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
-              <div className="space-y-3">
+              <div className="min-w-0 space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-sm font-semibold text-slate-900">Classroom List</h3>
                   <span className="text-xs font-medium text-slate-400">
@@ -343,7 +361,7 @@ export function ClassListingSection({
                           )}
                         >
                           <div className="text-base font-semibold text-slate-900">
-                            {classroom.name}{classroom.category === 'trial' && <span className="ml-2 text-xs text-[#be185d]">Trial Class</span>}{classroom.category === 'camp' && <span className="ml-2 text-xs text-emerald-700">Camp Class</span>}
+                            {classroom.name}{categoryBadge(classroom)}
                           </div>
                           <div className="mt-1 text-sm text-slate-500">
                             {teacherNames(classroom) || 'Unassigned teacher'}
@@ -371,11 +389,11 @@ export function ClassListingSection({
               </div>
 
               {selectedClassroom && (
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div>
                       <h3 className="text-2xl font-semibold text-slate-900">
-                        {selectedClassroom.name}{selectedClassroom.category === 'trial' && <span className="ml-2 text-xs text-[#be185d]">Trial Class</span>}{selectedClassroom.category === 'camp' && <span className="ml-2 text-xs text-emerald-700">Camp Class</span>}
+                        {selectedClassroom.name}{categoryBadge(selectedClassroom)}
                       </h3>
                       <div className="mt-1 text-sm text-slate-500">
                         {selectedClassroom.ageGroup}
@@ -586,7 +604,7 @@ export function ClassListingSection({
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                              {selectedRoster.map((student) => {
+                              {rosterPageView.items.map((student) => {
                                 const status = getStudentStatus(student, todayString)
                                 // No package at a school that does not use them: no classes or end date to show.
                                 const noCount = student.studentType === 'regular' && !status.tracksClasses
@@ -647,6 +665,7 @@ export function ClassListingSection({
                             </tbody>
                           </table>
                         </div>
+                        <RosterPager {...rosterPageView} onPage={setRosterPage} />
                       </div>
                     ))}
 
@@ -657,7 +676,7 @@ export function ClassListingSection({
                           No students assigned to this classroom yet.
                         </div>
                       ) : (
-                        selectedRoster.map((student) => {
+                        rosterPageView.items.map((student) => {
                           const status = getStudentStatus(student, todayString)
                           return (
                             <div
@@ -706,6 +725,7 @@ export function ClassListingSection({
                           )
                         })
                       )}
+                      <RosterPager {...rosterPageView} onPage={setRosterPage} />
                     </div>
                   )}
 

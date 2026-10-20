@@ -1,4 +1,5 @@
-import { getTodayString } from '../../domain/studentStatus'
+import { formatDate, getTodayString } from '../../domain/studentStatus'
+import { monthPlanEndDate } from '../../lib/studentExtras'
 import { brand } from '../../lib/brand'
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
@@ -19,6 +20,8 @@ type CreateStudentModalProps = {
   packages?: Package[]
   onPackageChange?: (packageId: string, startDate: string) => void
   packageNotice?: string | null
+  // The school uses student codes: a box for the child's code.
+  showStudentCode?: boolean
 }
 
 export function CreateStudentModal({
@@ -33,7 +36,15 @@ export function CreateStudentModal({
   packages = [],
   onPackageChange,
   packageNotice = null,
+  showStudentCode = false,
 }: CreateStudentModalProps) {
+  // A school that charges by the month (no package for every child): the class's first day and months paid.
+  const byMonth = !brand.usesPackages && formState.studentType === 'regular' && !formState.packageId
+  const monthCount = Number(formState.months ?? '')
+  const monthEnd =
+    byMonth && formState.startDate && Number.isInteger(monthCount) && monthCount >= 1 && monthCount <= 60
+      ? monthPlanEndDate(formState.startDate, monthCount)
+      : null
   const schoolLevels = useProgramLevels()
   const programLevelOptions = [
     ...schoolLevels,
@@ -110,6 +121,19 @@ export function CreateStudentModal({
             />
           </label>
 
+          {showStudentCode && (
+            <label className="space-y-2 sm:col-span-2">
+              <span className="text-sm font-semibold text-slate-700">Student Code</span>
+              <input
+                type="text"
+                maxLength={40}
+                value={formState.studentCode ?? ''}
+                onChange={(event) => onFieldChange('studentCode', event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+              />
+            </label>
+          )}
+
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-slate-700">
               Phone Number
@@ -154,7 +178,38 @@ export function CreateStudentModal({
             />
           )}
 
-          {!isPreviewStudent && (
+          {byMonth && (
+            <>
+              <label className="space-y-2">
+                <span className="text-sm font-semibold text-slate-700">First Day</span>
+                <input
+                  type="date"
+                  value={formState.startDate}
+                  onChange={(event) => onFieldChange('startDate', event.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Months</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="60"
+                  step="1"
+                  value={formState.months ?? ''}
+                  onChange={(event) => onFieldChange('months', event.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+                />
+              </label>
+              <p className="text-xs text-slate-500 sm:col-span-2">
+                {monthEnd
+                  ? `For the class picked below: ends ${formatDate(monthEnd)}. Each subject keeps its own months; add more in the student's profile.`
+                  : 'Optional. For the class picked below; each subject keeps its own months.'}
+              </p>
+            </>
+          )}
+
+          {!isPreviewStudent && !byMonth && (
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">
               Initial Classes
@@ -172,7 +227,7 @@ export function CreateStudentModal({
           </label>
           )}
 
-          {!isPreviewStudent && (
+          {!isPreviewStudent && !byMonth && (
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">
               Lesson Expiry Date

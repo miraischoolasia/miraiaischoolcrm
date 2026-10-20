@@ -77,7 +77,8 @@ begin
       'quick_replies','automation_flows','automation_contacts','automation_settings','automation_flow_log','automation_optouts',
       'automation_chat_optouts','automation_queue','ai_knowledge_notes','ai_knowledge_note_versions','ai_drafts','channel_avatars',
       'packages','questions','class_videos','portal_accounts','teachers','classrooms','students','calendar_items',
-      'team_reply_days','chat_schedules','forms','form_submissions','people','lead_options','programmes','lead_stages'] loop
+      'team_reply_days','chat_schedules','forms','form_submissions','people','lead_options','programmes','lead_stages',
+      'student_classroom_periods','student_consents','portal_terms_acceptances'] loop
       insert into t.results values (a.n, 'sees ' || v_table, t.ask(a.uid, format('select count(*)::text from public.%I', v_table)));
     end loop;
 

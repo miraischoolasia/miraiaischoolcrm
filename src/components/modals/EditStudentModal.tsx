@@ -13,6 +13,8 @@ type EditStudentModalProps = {
   onClose: () => void
   onSubmit: React.FormEventHandler<HTMLFormElement>
   onFieldChange: (field: keyof StudentDetailsFormState, value: string) => void
+  // The school uses student codes: a box for the child's code.
+  showStudentCode?: boolean
 }
 
 export function EditStudentModal({
@@ -25,6 +27,7 @@ export function EditStudentModal({
   onClose,
   onSubmit,
   onFieldChange,
+  showStudentCode = false,
 }: EditStudentModalProps) {
   const selectedClassroom = formState.classroomId
     ? classrooms.find((classroom) => classroom.id === Number(formState.classroomId))
@@ -134,6 +137,19 @@ export function EditStudentModal({
               Teacher is set automatically from the selected classroom above.
             </p>
           </div>
+          )}
+
+          {showStudentCode && (
+            <label className="space-y-2 sm:col-span-2">
+              <span className="text-sm font-semibold text-slate-700">Student Code</span>
+              <input
+                type="text"
+                maxLength={40}
+                value={formState.studentCode ?? ''}
+                onChange={(event) => onFieldChange('studentCode', event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+              />
+            </label>
           )}
 
           {!isPreviewStudent && (

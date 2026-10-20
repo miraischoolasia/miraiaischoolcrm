@@ -43,6 +43,32 @@ insert into public.students (id, full_name, lesson_expiry_date, account_fee_expi
 overriding system value
 values (9001, 'Test student', current_date + 30, current_date + 30, current_date + 30, 9001, (select teacher_id from t.accounts where n = 2), true);
 
+-- Students the teacher (account 2) sees although their main class is someone else's (EduHero has many):
+-- 9002 is in another class and also in the teacher's class for a while (several classes per student);
+-- 9003 is in another class but has the teacher written on the student. A rule that narrows "the students a
+-- teacher can see" to "the students of the teacher's own classes" loses them (20261026000000 did once, for
+-- the student app logins below; fixed before going live).
+insert into public.classrooms (id, name, age_group, program_level, teacher_id, category, status)
+overriding system value
+values (9002, 'Other class', 'Kids', 'Coder Foundation', null, 'regular', 'active');
+
+insert into public.students (id, full_name, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date, classroom_id, teacher_id, is_active)
+overriding system value
+values
+  (9002, 'Student in two classes', current_date + 30, current_date + 30, current_date + 30, 9002, null, true),
+  (9003, 'Student of the teacher elsewhere', current_date + 30, current_date + 30, current_date + 30, 9002, (select teacher_id from t.accounts where n = 2), true);
+
+insert into public.student_classroom_periods (student_id, classroom_id, start_date, end_date)
+values (9002, 9002, current_date - 60, null), (9002, 9001, current_date - 30, null), (9001, 9001, current_date - 60, null), (9003, 9002, current_date - 60, null);
+
+-- Each of the three has a student app login.
+insert into auth.users (id, email, aud, role, instance_id)
+select ('00000000-0000-0000-0000-0000000090' || lpad((n - 9000)::text, 2, '0'))::uuid, 's' || n || '@portal.internal', 'authenticated', 'authenticated', '00000000-0000-0000-0000-000000000000'
+from generate_series(9001, 9003) n;
+insert into public.portal_accounts (auth_user_id, username, kind, student_id)
+select ('00000000-0000-0000-0000-0000000090' || lpad((n - 9000)::text, 2, '0'))::uuid, 's' || n, 'student', n
+from generate_series(9001, 9003) n;
+
 insert into public.leads (id, full_name, phone, source) overriding system value values (9001, 'Test lead', '60123456789', 'other');
 insert into public.lead_channels (lead_id, channel, chatwoot_contact_id) values (9001, 'whatsapp', 77);
 insert into public.inbox_chats (conversation_id, inbox_id, owner_id) values (501, 5, (select teacher_id from t.accounts where n = 4));

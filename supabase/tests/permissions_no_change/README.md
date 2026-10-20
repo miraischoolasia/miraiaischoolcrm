@@ -19,4 +19,11 @@ How to run it:
    `storage` and `realtime` schemas, which other Supabase services create), and `docker commit` it as an image.
 2. `supabase/tests/permissions_no_change/run.sh <that image>`
 
-Last run (2026-10-19): 2156 checks, 0 differences.
+Every table whose rule a migration rewrites needs rows in `seed.sql`, or the check compares 0 with 0 and proves
+nothing. That is how a narrowing of `portal_accounts_select_staff` in `20261026000000` slipped past this check
+(teachers saw only the app logins of their own classes; EduHero teachers lost about half). ⑤ caught it before go-live
+and fixed it. `seed.sql` now has students a teacher sees outside their own classes (one in two classes, one with the
+teacher written on the student), each with an app login. With the old wrong rule put back, the check says
+`account 2 sees portal_accounts: before '3' after '1'`.
+
+Last run (2026-10-19, after ⑤'s fix): 2198 checks, 0 differences.

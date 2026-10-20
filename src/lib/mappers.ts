@@ -102,6 +102,7 @@ export function mapClassroomRow(row: ClassroomRow): Classroom {
     zoomLink: row.zoom_link,
     programmeId: row.programme_id,
     subjectId: row.subject_id,
+    categoryName: row.category_name,
   }
 }
 
@@ -229,6 +230,7 @@ export function mapScheduleExceptionRow(row: ScheduleExceptionRow): ScheduleExce
     exceptionDate: row.exception_date,
     reason: row.reason,
     movedToScheduleId: row.moved_to_schedule_id ?? null,
+    replacementScheduleId: row.replacement_schedule_id ?? null,
   }
 }
 

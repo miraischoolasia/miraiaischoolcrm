@@ -71,6 +71,10 @@ type StudentDashboardSectionProps = {
   onOpenStudentDetail: (studentId: number) => void
   onOpenRenewal: (studentId: number) => void
   onSelectFilter: (filter: FilterKey) => void
+  // Each student's code, when the school uses student codes (shown under the name).
+  studentCodes?: Map<number, string>
+  // Admin only: the school's student code switch.
+  studentCodeSetting?: { enabled: boolean; isSaving: boolean; onToggle: () => void }
 }
 
 const NO_CLASSROOMS: Classroom[] = []
@@ -114,6 +118,8 @@ export function StudentDashboardSection({
   onOpenStudentDetail,
   onOpenRenewal,
   onSelectFilter,
+  studentCodes,
+  studentCodeSetting,
 }: StudentDashboardSectionProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [sort, setSort] = useState<StudentSort>('attention')
@@ -275,8 +281,21 @@ export function StudentDashboardSection({
                 {followUpCount > 0 ? `${followUpCount} need follow-up` : 'Everyone is on track'}
               </p>
             </div>
-            {(canEdit || onOpenPackages) && (
+            {(canEdit || onOpenPackages || studentCodeSetting) && (
               <div className="flex flex-col gap-2 sm:flex-row">
+                {studentCodeSetting && (
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={studentCodeSetting.enabled}
+                    disabled={studentCodeSetting.isSaving}
+                    onClick={studentCodeSetting.onToggle}
+                    title="The school's own number for each child, shown under the name and in the profile."
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    Student code: {studentCodeSetting.enabled ? 'On' : 'Off'}
+                  </button>
+                )}
                 {onOpenPackages && (
                   <button
                     type="button"
@@ -464,7 +483,7 @@ export function StudentDashboardSection({
                   )}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <StudentIdentity row={row} todayString={todayString} onOpen={onOpenStudentDetail} />
+                    <StudentIdentity row={row} todayString={todayString} onOpen={onOpenStudentDetail} code={studentCodes?.get(row.student.id) ?? null} />
                     <StatusCell row={row} todayString={todayString} />
                   </div>
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-slate-50 p-3">
@@ -533,7 +552,7 @@ export function StudentDashboardSection({
                       )}
                     >
                       <td className="px-3 py-3">
-                        <StudentIdentity row={row} todayString={todayString} onOpen={onOpenStudentDetail} />
+                        <StudentIdentity row={row} todayString={todayString} onOpen={onOpenStudentDetail} code={studentCodes?.get(row.student.id) ?? null} />
                       </td>
                       <td className="px-3 py-3">
                         <ClassCell row={row} todayString={todayString} />
@@ -616,10 +635,13 @@ function StudentIdentity({
   row,
   todayString,
   onOpen,
+  code = null,
 }: {
   row: StudentRow
   todayString: string
   onOpen: (studentId: number) => void
+  // The school's student code, when it uses them.
+  code?: string | null
 }) {
   const { student, parent } = row
   const age = formatStudentAge(getStudentAge(student, todayString))
@@ -647,7 +669,7 @@ function StudentIdentity({
           )}
         </div>
         <div className={secondary}>
-          #{student.id.toString().padStart(3, '0')}
+          {code ? `${code} · ` : ''}#{student.id.toString().padStart(3, '0')}
           {age ? ` · ${age}` : ''}
           {parent?.name ? ` · ${parent.name}` : ''}
         </div>

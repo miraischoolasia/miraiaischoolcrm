@@ -172,6 +172,9 @@ export type Classroom = {
   // Everyone who teaches the class, the main teacher (teacherId) included.
   // Undefined before the class teachers migration.
   teacherIds?: number[]
+  // The school's category (My Classroom tab); category above is the kind it
+  // works like. Undefined before the class categories migration.
+  categoryName?: string | null
 }
 
 export type Teacher = {
@@ -338,6 +341,9 @@ export type ScheduleException = {
   // Set when the day was dragged to another date: the replacement class
   // created for it. Restoring the day removes that replacement.
   movedToScheduleId?: number | null
+  // The replacement class made for the cancelled day ("Add Replacement Class"). Unlike a moved day, Restore
+  // leaves it alone. Undefined before the replacement link migration.
+  replacementScheduleId?: number | null
 }
 
 // A missed class (whole class, or one student) made up by adding minutes
@@ -418,6 +424,10 @@ export type CreateStudentFormState = {
   studentType: StudentType
   // yyyy-mm-dd or empty.
   dateOfBirth: string
+  // The school's own number for the child (when the school uses student codes).
+  studentCode?: string
+  // A school that charges by the month: months paid for the class, from startDate.
+  months?: string
 }
 
 export type LeadChildFormState = {
@@ -458,6 +468,8 @@ export type StudentDetailsFormState = {
   studentType: StudentType
   // yyyy-mm-dd or empty.
   dateOfBirth: string
+  // The school's own number for the child (when the school uses student codes).
+  studentCode?: string
 }
 
 export type ScheduleFormState = {
@@ -494,6 +506,9 @@ export type ClassroomFormState = {
   programmeId: string
   // The class's subject, as a subject id, or empty for none.
   subjectId: string
+  // The school's category for the class (Class Settings > Class options), or
+  // left out before the class categories migration.
+  categoryName?: string
 }
 
 export type AttendanceModalState = {
@@ -546,7 +561,7 @@ export type ClassroomRow = Pick<
   | 'status'
   | 'notes'
   | 'archived_at'
-> & { zoom_link?: string | null; programme_id?: number | null; subject_id?: number | null }
+> & { zoom_link?: string | null; programme_id?: number | null; subject_id?: number | null; category_name?: string | null }
 
 export type TeacherRow = Pick<
   Database['public']['Tables']['teachers']['Row'],
@@ -636,7 +651,7 @@ export type ScheduleExceptionRow = Pick<
   'id' | 'schedule_id' | 'exception_date' | 'reason'
 > &
   Partial<
-    Pick<Database['public']['Tables']['schedule_exceptions']['Row'], 'moved_to_schedule_id'>
+    Pick<Database['public']['Tables']['schedule_exceptions']['Row'], 'moved_to_schedule_id' | 'replacement_schedule_id'>
   >
 
 export type MakeupPlanRow = Pick<

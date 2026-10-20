@@ -141,6 +141,7 @@ import {
   buildScheduleFormState,
   buildTrialBookingMap,
   getDateKeyFromDate,
+  getScheduleClassKind,
   getTrialSlotKey,
   weekdayLabels,
 } from './lib/schedule'
@@ -165,6 +166,8 @@ import {
 import { CalendarFilterBar } from './components/calendar/CalendarFilterBar'
 import { CalendarDayList, type CalendarView } from './components/calendar/CalendarDayList'
 import { LessonWindow } from './components/calendar/LessonWindow'
+import { SpecialMonthCard } from './components/calendar/SpecialMonthCard'
+import { bookedTrialEvents, busyDays, linkReplacements, monthSpecialEvents, type SpecialCard } from './lib/calendarSpecial'
 import {
   MAX_LEAD_FOLLOW_UPS,
   ageGroupOptions,
@@ -197,6 +200,13 @@ import {
   type AttendanceTakerRules,
   type LessonSubstitute,
 } from './lib/attendanceTakers'
+import {
+  addMonthPlan,
+  fetchStudentCodeEnabled,
+  fetchStudentCodes,
+  saveStudentCode,
+  setStudentCodeEnabled,
+} from './lib/studentExtras'
 import { buildTeacherClasses } from './lib/teacherDetails'
 import { TeacherDetailsSection } from './components/sections/TeacherDetailsSection'
 import { TeacherManagementSection } from './components/sections/TeacherManagementSection'
@@ -474,6 +484,8 @@ function App() {
   const [moveError, setMoveError] = useState<string | null>(null)
   // Why the spot under the dragged card was refused, shown when the drag ends.
   const dragBlockReasonRef = useRef<string | null>(null)
+  // The cancelled day an "Add Replacement Class" form is making up, until that form is saved or closed.
+  const replacementForDayRef = useRef<{ scheduleId: number; occurrenceDate: string } | null>(null)
   const [lessonLogs, setLessonLogs] = useState<LessonLogSummary[]>([])
   const [lessonReviews, setLessonReviews] = useState<LessonLogStudentReview[]>([])
   // The school's own review criteria (Settings > Review criteria).
@@ -713,6 +725,10 @@ function App() {
   const [attendanceTakerRules, setAttendanceTakerRules] = useState<AttendanceTakerRules>(defaultAttendanceTakerRules)
   const [lessonSubstitutes, setLessonSubstitutes] = useState<LessonSubstitute[]>([])
   const [isSavingSubstitute, setIsSavingSubstitute] = useState(false)
+  // The school's own number for each child, when the school switched student codes on.
+  const [studentCodeEnabled, setStudentCodeEnabledState] = useState(false)
+  const [studentCodes, setStudentCodes] = useState<Map<number, string>>(new Map())
+  const [isSavingStudentCodeSetting, setIsSavingStudentCodeSetting] = useState(false)
   const [isSavingLateFeedbackEdit, setIsSavingLateFeedbackEdit] = useState(false)
   // A class later than today opens read-only: who is coming, no attendance yet.
   const [attendanceUpcoming, setAttendanceUpcoming] = useState(false)
@@ -1587,6 +1603,7 @@ function App() {
       zoomLink: editingClassroom?.zoomLink ?? '',
       programmeId: editingClassroom?.programmeId ? String(editingClassroom.programmeId) : '',
       subjectId: editingClassroom?.subjectId ? String(editingClassroom.subjectId) : '',
+      categoryName: editingClassroom?.categoryName ?? '',
     })
   }, [editingClassroom, isCreatingClassroom, selectedAgeGroup, todayString])
 
@@ -1874,6 +1891,16 @@ function App() {
         }
       })
       .catch(() => undefined)
+    // Codes are read only when the school uses them (never before the database update).
+    fetchStudentCodeEnabled()
+      .then(async (enabled) => {
+        const codes = enabled ? await fetchStudentCodes() : new Map<number, string>()
+        if (!cancelled) {
+          setStudentCodeEnabledState(enabled)
+          setStudentCodes(codes)
+        }
+      })
+      .catch(() => undefined)
     return () => {
       cancelled = true
     }
@@ -2019,6 +2046,51 @@ function App() {
     ],
   )
 
+  // The month calendar shows only the special class days: cancelled, replacement, extra class and booked trial
+  // (lib/calendarSpecial). Week and agenda show everything. Null until the calendar says which view it shows.
+  const [calendarViewType, setCalendarViewType] = useState<string | null>(null)
+  const replacementLinks = useMemo(
+    () => linkReplacements(scheduleExceptions, schedules, classroomMap),
+    [scheduleExceptions, schedules, classroomMap],
+  )
+  const shownCalendarEvents = useMemo(() => {
+    if (calendarViewType !== 'dayGridMonth') return calendarEvents
+    const subjectName = new Map(subjects.map((subject) => [subject.id, subject.name]))
+    const trialSlots = visibleSchedules.filter(
+      (schedule) =>
+        getScheduleClassKind(schedule, classroomMap) === 'trial' &&
+        scheduleShown(schedule, classroomMap, calendarFilter, calendarPeople),
+    )
+    return [
+      ...monthSpecialEvents(calendarEvents, {
+        schedules,
+        classroomMap,
+        subjectName: (id) => subjectName.get(id) ?? null,
+        links: replacementLinks,
+        makeupPlans,
+      }),
+      ...bookedTrialEvents(trialBookings, trialSlots, scheduleExceptions, classroomMap, (id) => teacherMap.get(id)?.fullName ?? ''),
+    ]
+  }, [
+    calendarViewType,
+    calendarEvents,
+    subjects,
+    visibleSchedules,
+    classroomMap,
+    calendarFilter,
+    calendarPeople,
+    schedules,
+    replacementLinks,
+    makeupPlans,
+    trialBookings,
+    scheduleExceptions,
+    teacherMap,
+  ])
+  const monthBusyDays = useMemo(
+    () => (calendarViewType === 'dayGridMonth' ? busyDays(shownCalendarEvents) : null),
+    [calendarViewType, shownCalendarEvents],
+  )
+
   // The Calendar's day list (a school with many classes a day; Class Settings > Calendar). Month, week and
   // agenda stay one click away; null = the layout's own first view.
   const [calendarLayout, setCalendarLayout] = useState<CalendarLayout>('auto')
@@ -2128,6 +2200,41 @@ function App() {
     makeupMap,
     scheduleParticipantMap,
   ])
+
+  // One class day as the day list's window shows it (the month calendar opens a replacement or extra class in it).
+  function dayLessonFor(scheduleId: number, date: string): DayListLesson | null {
+    const schedule = schedules.find((entry) => entry.id === scheduleId)
+    if (!schedule) return null
+    const [item] = getAgendaItems(
+      {
+        teacherId: null,
+        schedules: [schedule],
+        exceptions: scheduleExceptions,
+        classroomMap,
+        lessonLogs,
+        makeupEntries,
+        getRosterIds: getScheduleRosterStudentIds,
+      },
+      todayString,
+      date,
+      date,
+    )
+    if (!item) return null
+    // A replacement made from a cancelled day is that day's class: its grade and subject.
+    const madeFor = replacementLinks.byReplacement.get(scheduleId)
+    const ownClass = schedule.classroomId !== null ? classroomMap.get(schedule.classroomId) ?? null : null
+    const madeForSchedule = madeFor ? schedules.find((entry) => entry.id === madeFor.scheduleId) : undefined
+    const classroom =
+      ownClass ?? (madeForSchedule?.classroomId != null ? classroomMap.get(madeForSchedule.classroomId) ?? null : null)
+    return {
+      ...item,
+      teacherName: teacherMap.get(item.teacherId)?.fullName ?? 'Unknown teacher',
+      grade: classroom?.ageGroup ?? '',
+      subject: classroom?.subjectId ? subjects.find((subject) => subject.id === classroom.subjectId)?.name ?? null : null,
+      fbGroupUrl: schedule.fbGroupUrl ?? null,
+      zoomLink: lessonFixedZoomLink(schedule, ownClass),
+    }
+  }
   // The tasks, meetings, events and follow-ups on the days the day list shows.
   const dayListItems = useMemo((): DayListItem[] => {
     if (visibleSection !== 'calendar' || !showDayList) return []
@@ -2428,6 +2535,36 @@ function App() {
       notes: student.notes ?? '',
       studentType: student.studentType,
       dateOfBirth: student.dateOfBirth ?? '',
+      studentCode: studentCodes.get(student.id) ?? '',
+    })
+  }
+
+  // Admin: switches the school's student codes on or off.
+  async function handleToggleStudentCode() {
+    const next = !studentCodeEnabled
+    setIsSavingStudentCodeSetting(true)
+    const failure = await setStudentCodeEnabled(next)
+    const codes = !failure && next ? await fetchStudentCodes() : studentCodes
+    setIsSavingStudentCodeSetting(false)
+    if (failure) {
+      showToast(failure)
+      return
+    }
+    setStudentCodeEnabledState(next)
+    setStudentCodes(codes)
+  }
+
+  // Saves a student's code and keeps the list in step. Throws with a reason to show.
+  async function saveStudentCodeFor(studentId: number, next: string | undefined) {
+    if (!studentCodeEnabled || next === undefined) {
+      return
+    }
+    await saveStudentCode(studentId, next, studentCodes.get(studentId) ?? null)
+    setStudentCodes((current) => {
+      const updated = new Map(current)
+      if (next.trim()) updated.set(studentId, next.trim())
+      else updated.delete(studentId)
+      return updated
     })
   }
 
@@ -3535,6 +3672,7 @@ function App() {
     if (!schedule) {
       return
     }
+    replacementForDayRef.current = { scheduleId, occurrenceDate }
 
     const classroom = schedule.classroomId ? classroomMap.get(schedule.classroomId) : null
     const label = classroom?.name ?? schedule.title
@@ -3565,7 +3703,29 @@ function App() {
     })
   }
 
+  // A replacement made with "Add Replacement Class" remembers the cancelled day it makes up, so the month
+  // calendar shows that day's green dot. Before the replacement link migration the call fails; the calendar
+  // then finds the replacement by its "Makeup for ... (cancelled ...)" note, so nothing is lost.
+  async function linkReplacementToCancelledDay(replacementScheduleId: number) {
+    const day = replacementForDayRef.current
+    if (!day || !supabase) return
+    const { error } = await supabase.rpc('link_replacement_to_cancelled_day', {
+      p_schedule_id: day.scheduleId,
+      p_occurrence_date: day.occurrenceDate,
+      p_replacement_schedule_id: replacementScheduleId,
+    })
+    if (error) return
+    setScheduleExceptions((current) =>
+      current.map((exception) =>
+        exception.scheduleId === day.scheduleId && exception.exceptionDate === day.occurrenceDate
+          ? { ...exception, replacementScheduleId }
+          : exception,
+      ),
+    )
+  }
+
   function closeScheduleModal() {
+    replacementForDayRef.current = null
     setIsCreatingSchedule(false)
     setEditingScheduleId(null)
     setEditingOccurrenceDate(null)
@@ -3726,6 +3886,7 @@ function App() {
       if (!isPreviewStudent) {
         await saveBirthDate(editingStudent.id, studentDetailsFormState.dateOfBirth, editingStudent.dateOfBirth)
       }
+      await saveStudentCodeFor(editingStudent.id, studentDetailsFormState.studentCode)
 
       await Promise.all([
         refreshStudentsAndLogs(),
@@ -3787,6 +3948,24 @@ function App() {
         : null
     const startingClasses =
       !isPreviewStudent && Number.isFinite(initialHours) && initialHours > 0 ? initialHours : 0
+    // A school that charges by the month, with no package picked: no class count, the far-off dates
+    // the other students without a package have, and the months go on the class instead.
+    const byMonth = !brand.usesPackages && createStudentFormState.studentType === 'regular' && !signUpPackage
+    const signUpMonths = byMonth ? Number(createStudentFormState.months ?? '') : NaN
+    if (byMonth && createStudentFormState.months?.trim()) {
+      if (!Number.isInteger(signUpMonths) || signUpMonths < 1 || signUpMonths > 60) {
+        setCreateStudentSaveError('Months must be a whole number from 1 to 60.')
+        return
+      }
+      if (!createStudentFormState.classroomId) {
+        setCreateStudentSaveError('Pick the class the months are for.')
+        return
+      }
+      if (!createStudentFormState.startDate) {
+        setCreateStudentSaveError('Pick the first day.')
+        return
+      }
+    }
 
     try {
       setIsCreatingStudentRecord(true)
@@ -3807,13 +3986,19 @@ function App() {
         p_initial_hours: signUpPackage ? 0 : startingClasses,
         p_lesson_expiry_date: isPreviewStudent
           ? todayString
-          : createStudentFormState.lessonExpiryDate,
+          : byMonth
+            ? NO_PACKAGE_END
+            : createStudentFormState.lessonExpiryDate,
         p_account_fee_expiry_date: isPreviewStudent
           ? todayString
-          : createStudentFormState.accountFeeExpiryDate,
+          : byMonth
+            ? NO_PACKAGE_END
+            : createStudentFormState.accountFeeExpiryDate,
         p_mirai_club_expiry_date: isPreviewStudent
           ? todayString
-          : createStudentFormState.miraiClubExpiryDate,
+          : byMonth
+            ? NO_PACKAGE_END
+            : createStudentFormState.miraiClubExpiryDate,
         p_notes: isPreviewStudent ? null : createStudentFormState.notes.trim() || null,
         p_student_type: createStudentFormState.studentType,
       })
@@ -3825,6 +4010,25 @@ function App() {
       const createdStudentId = (created as { student_id: number }[] | null)?.[0]?.student_id
       if (!isPreviewStudent && createdStudentId && createStudentFormState.dateOfBirth) {
         await saveBirthDate(createdStudentId, createStudentFormState.dateOfBirth, null)
+      }
+      if (createdStudentId && createStudentFormState.studentCode?.trim()) {
+        try {
+          await saveStudentCodeFor(createdStudentId, createStudentFormState.studentCode)
+        } catch (codeError) {
+          // The student exists now, so closing (not retrying) avoids a duplicate.
+          showToast(`Saved the student, but not the code: ${getErrorMessage(codeError, 'unknown error')}`)
+        }
+      }
+      if (createdStudentId && byMonth && Number.isInteger(signUpMonths) && createStudentFormState.classroomId) {
+        const failure = await addMonthPlan({
+          studentId: createdStudentId,
+          classroomId: Number(createStudentFormState.classroomId),
+          startDate: createStudentFormState.startDate,
+          months: signUpMonths,
+        })
+        if (failure) {
+          showToast(`Saved the student, but not the months: ${failure} Add them in the student's profile.`)
+        }
       }
       if (signUpPackage && createdStudentId) {
         const { error: enrollError } = await supabase.rpc('enroll_student_package', {
@@ -4975,6 +5179,10 @@ function App() {
       notes: classroomFormState.notes.trim() || null,
       status: 'active',
     }
+    // The school's category for the class; the classroom form only fills it once the database has them.
+    if (classroomFormState.categoryName) {
+      payload.category_name = classroomFormState.categoryName
+    }
     // Only sent once the database has the column (or a link is being added, which then reports it).
     if (zoomLink || editingClassroom?.zoomLink !== undefined) {
       payload.zoom_link = zoomLink || null
@@ -5474,6 +5682,7 @@ function App() {
         )
         if (scheduleFormState.eventType === 'replacement') {
           await syncScheduleParticipants(nextSchedule.id, participantIds)
+          await linkReplacementToCancelledDay(nextSchedule.id)
         } else {
           await refreshSchedulesAndParticipants()
         }
@@ -6167,6 +6376,14 @@ function App() {
   }
 
   function renderCalendarEventContent(eventInfo: EventContentArg) {
+    const special = eventInfo.event.extendedProps.special as SpecialCard | undefined
+    if (special && eventInfo.view.type === 'dayGridMonth') {
+      const done =
+        special.kind !== 'cancel' &&
+        latestLessonLogMap.has(`${Number(eventInfo.event.extendedProps.scheduleId)}:${String(eventInfo.event.extendedProps.occurrenceDate ?? (eventInfo.event.start ? getDateKeyFromDate(eventInfo.event.start) : ''))}`)
+      return <SpecialMonthCard card={special} done={done} />
+    }
+
     if (eventInfo.event.extendedProps.isHoliday) {
       return (
         <div className="rounded-lg border border-red-200 bg-red-500 px-2 py-1.5 text-white shadow-sm">
@@ -6950,8 +7167,25 @@ function App() {
                       }}
                       height="auto"
                       timeZone="local"
-                      events={calendarEvents}
-                      dayMaxEvents={2}
+                      events={shownCalendarEvents}
+                      // The month shows at most 4 special days a day; "+N more" opens the rest.
+                      dayMaxEvents={4}
+                      datesSet={(arg) => setCalendarViewType(arg.view.type)}
+                      dayCellClassNames={(arg) =>
+                        monthBusyDays && arg.view.type === 'dayGridMonth' && !arg.isOther && !monthBusyDays.has(getDateKeyFromDate(arg.date))
+                          ? ['fc-day-no-special']
+                          : []
+                      }
+                      dayCellContent={(arg) =>
+                        monthBusyDays && arg.view.type === 'dayGridMonth' && !arg.isOther && !monthBusyDays.has(getDateKeyFromDate(arg.date)) ? (
+                          <>
+                            <span>{arg.dayNumberText}</span>
+                            <span className="fc-day-empty-note">No class event scheduled.</span>
+                          </>
+                        ) : (
+                          arg.dayNumberText
+                        )
+                      }
                       nowIndicator
                       eventDisplay="block"
                       displayEventTime
@@ -7049,8 +7283,22 @@ function App() {
                         if (arg.event.extendedProps.isCancelledOccurrence) {
                           if (canEditCalendar) {
                             openCancelledOccurrenceOptions(scheduleId, occurrenceDate)
+                          } else {
+                            const cancelledCard = arg.event.extendedProps.special as SpecialCard | undefined
+                            showToast(cancelledCard?.madeUp ?? 'This class day is cancelled.')
                           }
                           return
+                        }
+
+                        // On the month calendar a replacement or extra class opens its window: the class, who
+                        // teaches it, attendance and (for an admin) change teacher, move or cancel.
+                        const monthCard = arg.event.extendedProps.special as SpecialCard | undefined
+                        if (monthCard && (monthCard.kind === 'replacement' || monthCard.kind === 'extra')) {
+                          const lesson = dayLessonFor(scheduleId, occurrenceDate)
+                          if (lesson) {
+                            setOpenDayLesson(lesson)
+                            return
+                          }
                         }
 
                         // A class with attendance already in opens as its
@@ -7135,6 +7383,12 @@ function App() {
 
             {visibleSection === 'students' && (
               <StudentDashboardSection
+                studentCodes={studentCodeEnabled ? studentCodes : undefined}
+                studentCodeSetting={
+                  isAdmin
+                    ? { enabled: studentCodeEnabled, isSaving: isSavingStudentCodeSetting, onToggle: () => void handleToggleStudentCode() }
+                    : undefined
+                }
                 activeFilter={studentFilter}
                 canEdit={can('students', 'edit')}
                 canDelete={can('students', 'delete')}
@@ -7376,6 +7630,7 @@ function App() {
           onClose={closeEditStudent}
           onSubmit={handleStudentDetailsSubmit}
           onFieldChange={updateStudentDetailsForm}
+          showStudentCode={studentCodeEnabled}
         />
       )}
 
@@ -7392,6 +7647,7 @@ function App() {
           onPackageChange={applyCreatePackage}
           packageNotice={getCreatePackageNotice()}
           onFieldChange={updateCreateStudentForm}
+          showStudentCode={studentCodeEnabled}
         />
       )}
 
@@ -7631,6 +7887,7 @@ function App() {
           }
           classrooms={classrooms}
           student={selectedStudentDetail}
+          studentCode={studentCodeEnabled ? (studentCodes.get(selectedStudentDetail.id) ?? null) : null}
           lessonLogs={lessonLogs}
           lessonReviews={lessonReviews}
           reviewCriteria={reviewCriteria}

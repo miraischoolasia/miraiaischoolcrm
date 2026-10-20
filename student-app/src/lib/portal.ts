@@ -4,7 +4,18 @@ import { supabase } from './supabase'
 // (supabase/migrations/20261021200000_student_portal.sql in the CRM): they
 // check who is signed in and return only that child's own data.
 
-export type Branding = { schoolName: string; accentColor: string }
+// homeStyle / homeTheme: the school's choice of home (the classic list, or
+// the game lobby with its picture set, on a computer); levelPoints: points
+// for one level (Lv) in the lobby.
+export type Branding = {
+  schoolName: string
+  accentColor: string
+  homeStyle: 'classic' | 'lobby'
+  homeTheme: string
+  levelPoints: number
+  // The school's WhatsApp for families (digits), for "Contact the school"; empty: none.
+  supportWhatsapp: string
+}
 
 export type Child = { studentId: number; name: string }
 
@@ -36,6 +47,8 @@ export type Lesson = {
 
 export type Points = {
   total: number
+  // Points earned in total, spent ones included (once the database sends it).
+  earned?: number
   level: string | null
   next_level: { name: string; min_points: number } | null
   level_start: number
@@ -83,15 +96,19 @@ export function loginEmail(username: string) {
   return `${name.replace(/[^a-z0-9._-]/g, '_')}@portal.internal`
 }
 
-export const defaultBranding: Branding = { schoolName: '', accentColor: '#fc0c97' }
+export const defaultBranding: Branding = { schoolName: '', accentColor: '#fc0c97', homeStyle: 'classic', homeTheme: '', levelPoints: 50, supportWhatsapp: '' }
 
 export async function fetchBranding(): Promise<Branding> {
   const { data, error } = await supabase.rpc('portal_branding')
   if (error || !data) return defaultBranding
-  const value = data as { school_name?: string; accent_color?: string }
+  const value = data as { school_name?: string; accent_color?: string; home_style?: string; home_theme?: string; level_points?: number; support_whatsapp?: string }
   return {
     schoolName: value.school_name ?? '',
     accentColor: /^#[0-9a-fA-F]{6}$/.test(value.accent_color ?? '') ? (value.accent_color as string) : defaultBranding.accentColor,
+    homeStyle: value.home_style === 'lobby' ? 'lobby' : 'classic',
+    homeTheme: typeof value.home_theme === 'string' ? value.home_theme : '',
+    levelPoints: typeof value.level_points === 'number' && value.level_points > 0 ? value.level_points : defaultBranding.levelPoints,
+    supportWhatsapp: /^[0-9]{8,15}$/.test(value.support_whatsapp ?? '') ? (value.support_whatsapp as string) : '',
   }
 }
 

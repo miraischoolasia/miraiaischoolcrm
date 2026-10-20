@@ -1,10 +1,12 @@
+import { useState } from 'react'
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { useProgramLevels } from '../../lib/programLevels'
 import { useAgeGroups } from '../../lib/ageGroups'
-import type { AgeGroup, ClassroomCategory, Classroom, ClassroomFormState, ProgramLevel, Teacher } from '../../types/domain'
+import type { AgeGroup, Classroom, ClassroomFormState, ProgramLevel, Teacher } from '../../types/domain'
 import type { Programme } from '../../lib/programmes'
 import type { Subject } from '../../lib/subjects'
+import { classCategoryOptions, classroomCategoryName, useClassCategories } from '../../lib/classCategories'
 
 type ClassroomModalProps = {
   isCreating: boolean
@@ -56,13 +58,44 @@ export function ClassroomModal({
   // A programme the school made has no use for the age group and level written for Mirai's own courses.
   const ownProgramme = programme !== null && programme.legacyKey === null
 
+  // The school's class categories; each works like a regular, trial or camp class.
+  const { categories, fromDatabase } = useClassCategories()
+  const categoryName = formState.categoryName || classroomCategoryName({ category: formState.category }, categories)
+  const categoryOptions = classCategoryOptions(categories, categoryName)
+
+  function chooseCategory(name: string) {
+    const chosen = categories.find((entry) => entry.name === name)
+    if (!chosen) return
+    onFieldChange('category', chosen.kind)
+    // Before the class categories migration only the kind is saved.
+    if (fromDatabase) onFieldChange('categoryName', chosen.name)
+  }
+
   function chooseProgramme(value: string) {
     onFieldChange('programmeId', value)
     const chosen = programmes.find((entry) => String(entry.id) === value)
     // A programme that keeps a place for the lead needs a trial class; one that enrols the lead, a regular class.
     if (chosen && chosen.legacyKey === null) {
-      onFieldChange('category', chosen.outcome === 'booking' ? 'trial' : 'regular')
+      const kind = chosen.outcome === 'booking' ? 'trial' : 'regular'
+      onFieldChange('category', kind)
+      if (fromDatabase) onFieldChange('categoryName', classroomCategoryName({ category: kind }, categories))
     }
+  }
+
+  // A new class is set up age group -> subject -> teacher, and is named after
+  // them ("SCI Form 1 · Ms Joey") until somebody types a name of their own.
+  const [nameTouched, setNameTouched] = useState(!isCreating || formState.name.trim() !== '')
+  const subjectName = (id: string) => subjects.find((subject) => String(subject.id) === id)?.name ?? ''
+  const teacherName = (id: string) => assignableTeachers.find((teacher) => String(teacher.id) === id)?.fullName ?? ''
+
+  function chooseStep(field: 'ageGroup' | 'subjectId' | 'teacherId', value: string) {
+    onFieldChange(field, value)
+    if (!isCreating || nameTouched) return
+    const next = { ageGroup: formState.ageGroup, subjectId: formState.subjectId, teacherId: formState.teacherId, [field]: value }
+    const subject = subjectName(next.subjectId)
+    if (!subject) return
+    const teacher = teacherName(next.teacherId)
+    onFieldChange('name', `${subject} ${next.ageGroup}${teacher ? ` · ${teacher}` : ''}`)
   }
 
   return (
@@ -137,41 +170,29 @@ export function ClassroomModal({
           )}
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-slate-700">Classroom Category</span>
-            <select value={formState.category} onChange={(event) => onFieldChange('category', event.target.value as ClassroomCategory)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900">
-              <option value="regular">Regular Class</option>
-              <option value="trial">Trial Class</option>
-              <option value="camp">Camp Class (Holiday Camp)</option>
+            <select value={categoryName} onChange={(event) => chooseCategory(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900">
+              {categoryOptions.map((entry) => (
+                <option key={entry.name} value={entry.name}>
+                  {entry.name}
+                  {entry.isActive ? '' : ' (hidden)'}
+                </option>
+              ))}
             </select>
           </label>
-          <label className="space-y-2 sm:col-span-2">
-            <span className="text-sm font-semibold text-slate-700">
-              Classroom Name
-            </span>
-            <input
-              type="text"
-              value={formState.name}
-              onChange={(event) =>
-                onFieldChange('name', event.target.value)
-              }
-              placeholder="Example: Tuesday Innovator Group A"
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
-            />
-          </label>
-
+          {isCreating && (
+            <p className="text-sm text-slate-500 sm:col-span-2">
+              Pick the age group, then the subject, then the teacher: the class is named after them until you type a name.
+            </p>
+          )}
           {!ownProgramme && (
             <>
-          <label className="space-y-2">
+          <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-slate-700">
               Age Group
             </span>
             <select
               value={formState.ageGroup}
-              onChange={(event) =>
-                onFieldChange(
-                  'ageGroup',
-                  event.target.value as AgeGroup,
-                )
-              }
+              onChange={(event) => chooseStep('ageGroup', event.target.value as AgeGroup)}
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
             >
               {ageGroupOptions.map((option) => (
@@ -181,29 +202,28 @@ export function ClassroomModal({
               ))}
             </select>
           </label>
-
-          <label className="space-y-2">
-            <span className="text-sm font-semibold text-slate-700">
-              Program Level
-            </span>
-            <select
-              value={formState.programLevel}
-              onChange={(event) =>
-                onFieldChange(
-                  'programLevel',
-                  event.target.value as ProgramLevel,
-                )
-              }
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
-            >
-              {programLevelOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
             </>
+          )}
+
+          {subjects.some((subject) => subject.isActive || String(subject.id) === formState.subjectId) && (
+            <label className="space-y-2 sm:col-span-2">
+              <span className="text-sm font-semibold text-slate-700">Subject</span>
+              <select
+                value={formState.subjectId}
+                onChange={(event) => chooseStep('subjectId', event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900"
+              >
+                <option value="">No subject</option>
+                {subjects
+                  .filter((subject) => subject.isActive || String(subject.id) === formState.subjectId)
+                  .map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </option>
+                  ))}
+              </select>
+              <p className="text-xs text-slate-500">The Question Bank shows this class the questions of its subject and age group.</p>
+            </label>
           )}
 
           <label className="space-y-2 sm:col-span-2">
@@ -212,9 +232,7 @@ export function ClassroomModal({
             </span>
             <select
               value={formState.teacherId}
-              onChange={(event) =>
-                onFieldChange('teacherId', event.target.value)
-              }
+              onChange={(event) => chooseStep('teacherId', event.target.value)}
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
             >
               <option value="">Select teacher</option>
@@ -254,25 +272,44 @@ export function ClassroomModal({
             </label>
           )}
 
-          {subjects.some((subject) => subject.isActive || String(subject.id) === formState.subjectId) && (
-            <label className="space-y-2 sm:col-span-2">
-              <span className="text-sm font-semibold text-slate-700">Subject</span>
-              <select
-                value={formState.subjectId}
-                onChange={(event) => onFieldChange('subjectId', event.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900"
-              >
-                <option value="">No subject</option>
-                {subjects
-                  .filter((subject) => subject.isActive || String(subject.id) === formState.subjectId)
-                  .map((subject) => (
-                    <option key={subject.id} value={subject.id}>
-                      {subject.name}
-                    </option>
-                  ))}
-              </select>
-              <p className="text-xs text-slate-500">The Question Bank shows this class the questions of its subject and age group.</p>
-            </label>
+          <label className="space-y-2 sm:col-span-2">
+            <span className="text-sm font-semibold text-slate-700">
+              Classroom Name
+            </span>
+            <input
+              type="text"
+              value={formState.name}
+              onChange={(event) => {
+                setNameTouched(true)
+                onFieldChange('name', event.target.value)
+              }}
+              placeholder="Example: SCI Form 1 · Ms Joey"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+            />
+          </label>
+
+          {!ownProgramme && (
+          <label className="space-y-2 sm:col-span-2">
+            <span className="text-sm font-semibold text-slate-700">
+              Program Level
+            </span>
+            <select
+              value={formState.programLevel}
+              onChange={(event) =>
+                onFieldChange(
+                  'programLevel',
+                  event.target.value as ProgramLevel,
+                )
+              }
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+            >
+              {programLevelOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
           )}
 
           <label className="space-y-2 sm:col-span-2">

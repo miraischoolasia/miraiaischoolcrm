@@ -27,6 +27,7 @@ import { PointsCard } from './PointsCard'
 import { AiReportCard } from './AiReportCard'
 import { AppLoginsCard } from './AppLoginsCard'
 import { ExtraClassesField } from './ExtraClassesField'
+import { MonthPlansCard } from './MonthPlansCard'
 import { StudentVideosTab } from './StudentVideosTab'
 import type { RewardLevel } from '../lib/rewards'
 import { PerformanceRadarChart } from './PerformanceRadarChart'
@@ -104,6 +105,8 @@ type StudentDetailModalProps = {
   // Adding the student to another class, or taking them out of one.
   onAddClass?: (classroomId: number) => Promise<string | null>
   onRemoveClass?: (classroomId: number) => Promise<string | null>
+  // The school's own number for the child, when the school uses student codes.
+  studentCode?: string | null
 }
 
 const NO_IDS: number[] = []
@@ -161,6 +164,7 @@ export function StudentDetailModal({
   onSetClassStart,
   onAddClass,
   onRemoveClass,
+  studentCode = null,
 }: StudentDetailModalProps) {
   const [tab, setTab] = useState<TabKey>('overview')
   const [copied, setCopied] = useState(false)
@@ -308,6 +312,7 @@ export function StudentDetailModal({
                 {typeLabel}
               </span>
               <span>#{String(student.id).padStart(3, '0')}</span>
+              {studentCode && <span>Student code {studentCode}</span>}
               <span>{student.isActive ? 'Active' : 'Deactivated'}</span>
             </div>
             {(parentName || student.phone) && (
@@ -526,6 +531,19 @@ export function StudentDetailModal({
                   )}
                 </Stat>
               </div>
+            )}
+
+            {/* A school that charges by the month: each subject's months. */}
+            {!brand.usesPackages && student.studentType === 'regular' && (
+              <MonthPlansCard
+                studentId={student.id}
+                classes={getStudentClassIds(student)
+                  .map((id) => classrooms.find((classroom) => classroom.id === id))
+                  .filter((classroom): classroom is Classroom => classroom !== undefined)
+                  .map((classroom) => ({ id: classroom.id, name: classroom.name }))}
+                canEdit={onEdit !== undefined}
+                todayString={todayString}
+              />
             )}
 
             {!isPreview && (

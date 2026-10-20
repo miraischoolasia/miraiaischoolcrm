@@ -3,6 +3,7 @@ import {
   defaultPortalSettings,
   fetchPortalSettings,
   savePortalSettings,
+  studentHomeThemes,
   type PortalSettings,
   type PortalVisibility,
 } from '../lib/portal'
@@ -39,6 +40,13 @@ export function StudentAppSettings() {
   const dirty = saved !== null && JSON.stringify(draft) !== JSON.stringify(saved)
   const colorOk = /^#[0-9a-fA-F]{6}$/.test(draft.accent_color)
   const linkOk = draft.app_url.trim() === '' || /^https?:\/\/\S+$/.test(draft.app_url.trim())
+  const homeOk =
+    (draft.home_style === 'classic' || studentHomeThemes.some((theme) => theme.key === draft.home_theme)) &&
+    Number.isInteger(draft.level_points) &&
+    draft.level_points >= 10 &&
+    draft.level_points <= 1000
+  const whatsappDigits = draft.support_whatsapp.replace(/\D/g, '')
+  const whatsappOk = whatsappDigits === '' || /^[0-9]{8,15}$/.test(whatsappDigits)
   const preview = fillLoginMessage(draft.login_message, {
     school: draft.school_name,
     childNames: ['Ethan Lim'],
@@ -114,6 +122,72 @@ export function StudentAppSettings() {
         <span className="block text-xs text-slate-500">Sent to families with their login, so they know where to sign in.</span>
       </label>
 
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="space-y-1.5">
+          <span className="text-sm font-semibold text-slate-900">Home page on a computer</span>
+          <select
+            value={draft.home_style}
+            onChange={(event) =>
+              change({
+                ...draft,
+                home_style: event.target.value === 'lobby' ? 'lobby' : 'classic',
+                home_theme: event.target.value === 'lobby' ? draft.home_theme || studentHomeThemes[0].key : draft.home_theme,
+              })
+            }
+            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+          >
+            <option value="classic">Classic list</option>
+            <option value="lobby">Game lobby</option>
+          </select>
+        </label>
+        {draft.home_style === 'lobby' && (
+          <label className="space-y-1.5">
+            <span className="text-sm font-semibold text-slate-900">Lobby pictures</span>
+            <select
+              value={draft.home_theme}
+              onChange={(event) => change({ ...draft, home_theme: event.target.value })}
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+            >
+              {studentHomeThemes.map((theme) => (
+                <option key={theme.key} value={theme.key}>
+                  {theme.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className="space-y-1.5">
+          <span className="text-sm font-semibold text-slate-900">Points for one level</span>
+          <input
+            type="number"
+            min={10}
+            max={1000}
+            value={draft.level_points}
+            onChange={(event) => change({ ...draft, level_points: Number(event.target.value) })}
+            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+          />
+        </label>
+        <label className="space-y-1.5 sm:col-span-3">
+          <span className="text-sm font-semibold text-slate-900">School WhatsApp for families</span>
+          <input
+            type="tel"
+            value={draft.support_whatsapp}
+            maxLength={20}
+            placeholder="e.g. 60123456789"
+            onChange={(event) => change({ ...draft, support_whatsapp: event.target.value })}
+            className={`w-full rounded-xl border px-3 py-2 text-sm ${whatsappOk ? 'border-slate-200' : 'border-red-300'}`}
+          />
+          <span className="block text-xs text-slate-500">
+            Country code first, no + or spaces. The game lobby's sign-in page shows "Forgot password?" and "Contact the school" with
+            it; leave empty to hide them.
+          </span>
+        </label>
+        <span className="block text-xs text-slate-500 sm:col-span-3">
+          The game lobby shows on a computer only; phones keep the classic list. The level (Lv) counts all the points a child has
+          earned.
+        </span>
+      </div>
+
       <div className="grid gap-3 lg:grid-cols-2">
         <label className="block space-y-1.5">
           <span className="text-sm font-semibold text-slate-900">Message sent with a new login</span>
@@ -173,7 +247,7 @@ export function StudentAppSettings() {
         {done && !dirty && <span className="text-sm font-semibold text-emerald-700">Saved</span>}
         <button
           type="button"
-          disabled={!dirty || !colorOk || !linkOk}
+          disabled={!dirty || !colorOk || !linkOk || !homeOk || !whatsappOk}
           onClick={() => void save()}
           className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84] disabled:opacity-50"
         >

@@ -26,6 +26,7 @@ export type Database = {
           created_at: string
           updated_at: string
           recording_library_id?: number | null
+          category_name?: string | null
         }
         Insert: {
           category?: 'regular' | 'trial' | 'camp'
@@ -40,6 +41,7 @@ export type Database = {
           zoom_link?: string | null
           programme_id?: number | null
           subject_id?: number | null
+          category_name?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -56,6 +58,7 @@ export type Database = {
           zoom_link?: string | null
           programme_id?: number | null
           subject_id?: number | null
+          category_name?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -166,6 +169,7 @@ export type Database = {
           phone: string | null
           age: number | null
           date_of_birth: string | null
+          student_code: string | null
           remaining_hours: number
           lesson_expiry_date: string
           account_fee_expiry_date: string
@@ -185,6 +189,7 @@ export type Database = {
           phone?: string | null
           age?: number | null
           date_of_birth?: string | null
+          student_code?: string | null
           remaining_hours?: number
           lesson_expiry_date: string
           account_fee_expiry_date: string
@@ -204,6 +209,7 @@ export type Database = {
           phone?: string | null
           age?: number | null
           date_of_birth?: string | null
+          student_code?: string | null
           remaining_hours?: number
           lesson_expiry_date?: string
           account_fee_expiry_date?: string
@@ -1330,6 +1336,7 @@ export type Database = {
           exception_date: string
           reason: string | null
           moved_to_schedule_id: number | null
+          replacement_schedule_id: number | null
           created_by: number | null
           created_at: string
         }
@@ -1339,6 +1346,7 @@ export type Database = {
           exception_date: string
           reason?: string | null
           moved_to_schedule_id?: number | null
+          replacement_schedule_id?: number | null
           created_by?: number | null
           created_at?: string
         }
@@ -1348,6 +1356,7 @@ export type Database = {
           exception_date?: string
           reason?: string | null
           moved_to_schedule_id?: number | null
+          replacement_schedule_id?: number | null
           created_by?: number | null
           created_at?: string
         }
@@ -2448,6 +2457,33 @@ export type Database = {
         }
         Relationships: []
       }
+      class_categories: {
+        Row: {
+          name: string
+          kind: 'regular' | 'trial' | 'camp'
+          sort_order: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          name: string
+          kind: 'regular' | 'trial' | 'camp'
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          name?: string
+          kind?: 'regular' | 'trial' | 'camp'
+          sort_order?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       portal_accounts: {
         Row: {
           auth_user_id: string
@@ -2781,6 +2817,23 @@ export type Database = {
         Row: { classroom_id: number; teacher_id: number; created_at: string }
         Insert: { classroom_id: number; teacher_id: number }
         Update: { classroom_id?: number; teacher_id?: number }
+        Relationships: []
+      }
+      student_month_plans: {
+        Row: {
+          id: number
+          student_id: number
+          classroom_id: number
+          start_date: string
+          months: number
+          end_date: string
+          remark: string | null
+          is_active: boolean
+          created_by: number | null
+          created_at: string
+        }
+        Insert: { student_id: number; classroom_id: number; start_date: string; months: number; end_date: string }
+        Update: { is_active?: boolean }
         Relationships: []
       }
       lesson_substitutes: {
@@ -3370,6 +3423,16 @@ export type Database = {
         }
         Returns: Database['public']['Tables']['age_groups']['Row']
       }
+      save_class_category: {
+        Args: {
+          p_name: string | null
+          p_new_name: string | null
+          p_kind: 'regular' | 'trial' | 'camp' | null
+          p_sort_order: number | null
+          p_is_active: boolean | null
+        }
+        Returns: Database['public']['Tables']['class_categories']['Row']
+      }
       save_program_level: {
         Args: {
           p_name: string | null
@@ -3572,6 +3635,14 @@ export type Database = {
         }
         Returns: undefined
       }
+      link_replacement_to_cancelled_day: {
+        Args: {
+          p_schedule_id: number
+          p_occurrence_date: string
+          p_replacement_schedule_id: number | null
+        }
+        Returns: undefined
+      }
       set_late_reminder_settings: {
         Args: {
           p_after_minutes: number
@@ -3693,6 +3764,18 @@ export type Database = {
       }
       set_classroom_teachers: {
         Args: { p_classroom_id: number; p_teacher_ids: number[] }
+        Returns: undefined
+      }
+      set_student_code_enabled: {
+        Args: { p_enabled: boolean }
+        Returns: undefined
+      }
+      add_student_month_plan: {
+        Args: { p_student_id: number; p_classroom_id: number; p_start_date: string; p_months: number; p_remark?: string | null }
+        Returns: Database['public']['Tables']['student_month_plans']['Row']
+      }
+      hide_student_month_plan: {
+        Args: { p_id: number }
         Returns: undefined
       }
       set_lesson_substitute: {

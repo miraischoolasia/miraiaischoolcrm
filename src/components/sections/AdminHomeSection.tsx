@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNow } from '../../hooks/useNow'
 import type { AutomationSummary } from '../../hooks/useAutomationSummary'
 import { cn } from '../../lib/cn'
+import { brand } from '../../lib/brand'
 import {
   countUntouchedLeads,
   getLeadTasksDue,
@@ -306,7 +307,7 @@ export function AdminHomeSection({
             }
           >
             {followUp.total === 0 ? (
-              <Empty>No package, class or fee is running out.</Empty>
+              <Empty>{brand.usesFees ? 'No package, class or fee is running out.' : 'No package or class is running out.'}</Empty>
             ) : (
               <ul className="divide-y divide-slate-200">
                 {followUp.all.slice(0, PREVIEW).map(({ row, reason, critical }) => (

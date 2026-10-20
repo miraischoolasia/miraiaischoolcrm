@@ -47,7 +47,7 @@ describe('fetchScheduleExceptionsFromSupabase', () => {
     }
 
     await expect(fetchScheduleExceptionsFromSupabase()).resolves.toEqual([
-      { id: 1, scheduleId: 10, exceptionDate: '2026-12-01', reason: 'Leave', movedToScheduleId: null },
+      { id: 1, scheduleId: 10, exceptionDate: '2026-12-01', reason: 'Leave', movedToScheduleId: null, replacementScheduleId: null },
     ])
   })
 
@@ -61,14 +61,36 @@ describe('fetchScheduleExceptionsFromSupabase', () => {
   )
 
   it('loads without moved_to_schedule_id before that column exists', async () => {
-    mocks.queue = [{ data: null, error: { code: '42703', message: 'column does not exist' } }]
+    mocks.queue = [
+      { data: null, error: { code: '42703', message: 'column does not exist' } },
+      { data: null, error: { code: '42703', message: 'column does not exist' } },
+    ]
     mocks.result = {
       data: [{ id: 1, schedule_id: 10, exception_date: '2026-12-01', reason: null }],
       error: null,
     }
 
     await expect(fetchScheduleExceptionsFromSupabase()).resolves.toEqual([
-      { id: 1, scheduleId: 10, exceptionDate: '2026-12-01', reason: null, movedToScheduleId: null },
+      { id: 1, scheduleId: 10, exceptionDate: '2026-12-01', reason: null, movedToScheduleId: null, replacementScheduleId: null },
+    ])
+  })
+
+  it('reads the replacement made for a cancelled day, and loads without it before that column exists', async () => {
+    mocks.result = {
+      data: [{ id: 1, schedule_id: 10, exception_date: '2026-12-01', reason: null, moved_to_schedule_id: null, replacement_schedule_id: 33 }],
+      error: null,
+    }
+    await expect(fetchScheduleExceptionsFromSupabase()).resolves.toEqual([
+      { id: 1, scheduleId: 10, exceptionDate: '2026-12-01', reason: null, movedToScheduleId: null, replacementScheduleId: 33 },
+    ])
+
+    mocks.queue = [{ data: null, error: { code: '42703', message: 'column does not exist' } }]
+    mocks.result = {
+      data: [{ id: 1, schedule_id: 10, exception_date: '2026-12-01', reason: null, moved_to_schedule_id: 20 }],
+      error: null,
+    }
+    await expect(fetchScheduleExceptionsFromSupabase()).resolves.toEqual([
+      { id: 1, scheduleId: 10, exceptionDate: '2026-12-01', reason: null, movedToScheduleId: 20, replacementScheduleId: null },
     ])
   })
 

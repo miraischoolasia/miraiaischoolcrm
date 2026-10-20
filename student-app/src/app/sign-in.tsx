@@ -1,13 +1,18 @@
 import { useState } from 'react'
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native'
 
+import { rememberLogin } from '@/lib/rememberMe'
 import { useSession } from '@/lib/session'
+import { useLobbyTheme } from '@/lib/useLobby'
+import { GameSignIn } from '@/ui/GameSignIn'
 import { Body, Button, Card, colors, Muted, Screen, Title } from '@/ui/kit'
 
 // Children and parents sign in with the login name and password the school
-// gave them (no email needed).
+// gave them (no email needed). A school with the game lobby gets the game
+// sign-in page on a computer; the sign-in itself is the same.
 export default function SignIn() {
   const { signIn, branding } = useSession()
+  const theme = useLobbyTheme()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -19,6 +24,20 @@ export default function SignIn() {
     const failure = await signIn(username, password)
     setBusy(false)
     if (failure) setError(failure)
+  }
+
+  if (theme) {
+    return (
+      <GameSignIn
+        theme={theme}
+        schoolName={branding.schoolName}
+        supportWhatsapp={branding.supportWhatsapp}
+        onSignIn={(name, secret, remember) => {
+          rememberLogin(remember)
+          return signIn(name, secret)
+        }}
+      />
+    )
   }
 
   return (

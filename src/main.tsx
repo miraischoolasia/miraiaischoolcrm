@@ -136,6 +136,17 @@ async function start() {
     return
   }
 
+  // Dev server only: /?demo=classes shows My Classroom on made-up classes: roster pages, class categories, new-class steps.
+  if (import.meta.env.DEV && params.get('demo') === 'classes') {
+    const { ClassroomDemo } = await import('./dev/ClassroomDemo.tsx')
+    root.render(
+      <StrictMode>
+        <ClassroomDemo />
+      </StrictMode>,
+    )
+    return
+  }
+
   const { default: App } = await import('./App.tsx')
   root.render(
     <StrictMode>

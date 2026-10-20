@@ -12,6 +12,7 @@ import {
   type Home,
   type Onboarding,
 } from './portal'
+import { clearRememberMark, loginShouldEnd } from './rememberMe'
 import { isConfigured, supabase } from './supabase'
 
 type SessionState = {
@@ -51,8 +52,12 @@ export function SessionProvider({ children: content }: PropsWithChildren) {
 
   useEffect(() => {
     fetchBranding().then(setBranding)
-    supabase.auth
-      .getSession()
+    // "Remember me" left blank last time and the browser closed since: that login ends here.
+    const ending = loginShouldEnd()
+      ? supabase.auth.signOut({ scope: 'local' }).then(clearRememberMark, clearRememberMark)
+      : Promise.resolve()
+    ending
+      .then(() => supabase.auth.getSession())
       .then(({ data }) => setSession(data.session))
       .finally(() => setIsLoading(false))
     const { data } = supabase.auth.onAuthStateChange((_event, next) => {
@@ -97,6 +102,7 @@ export function SessionProvider({ children: content }: PropsWithChildren) {
     setHomeError(null)
     if (next.school_name || next.accent_color) {
       setBranding((current) => ({
+        ...current,
         schoolName: next.school_name || current.schoolName,
         accentColor: next.accent_color || current.accentColor,
       }))
