@@ -4,6 +4,7 @@ import type { Icon } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { LeadTagChip } from '../LeadTagChip'
 import { ChannelBadge, type ChannelInfo } from './ChannelBadge'
+import { WifiSlash } from '@phosphor-icons/react'
 import { Highlighted } from './Highlighted'
 import { formatReactionLine, isCheckingReaction, type ReactionPreview } from '../../lib/reactionPreview'
 import { waIdOf } from '../../lib/waActions'
@@ -149,15 +150,19 @@ type ConversationListProps = {
   category?: InboxCategory
   // The words of the "all channels" choice in the channel filter ("All numbers" for WhatsApp).
   allChannelsLabel?: string
-  // WhatsApp numbers: shown on each chat, and a filter when the person sees more than one.
-  numberOf?: (conversation: ChatwootConversation) => string | null
+  // WhatsApp numbers: shown on each chat (short name, colour, and the full name on a long look), and a filter when
+  // the person sees more than one.
+  numberOf?: (conversation: ChatwootConversation) => { label: string; color: string | null; title: string } | null
   // Which channel a chat came through (WhatsApp, a Messenger Page, Instagram) and that Page's picture: shown as a
   // small badge on the chat's picture.
   channelOf?: (conversation: ChatwootConversation) => ChannelInfo | null
   inboxId?: number | null
   // The channels the inbox has (the numbers, Pages or accounts of this part): each is a button at the top of the left
   // bar; pressing one shows only its chats, and pressing it again (the X) shows them all.
-  numberChoices?: { inboxId: number; label: string; info?: ChannelInfo }[]
+  // `short` is what the button says (the short name, else the last 4 digits); `title` the full name and number,
+  // shown when the pointer rests on it or a finger holds it.
+  // `problem`: the channel stopped working (e.g. "Logged out"); its button gets a red mark (the red bar on top says more).
+  numberChoices?: { inboxId: number; label: string; short?: string; title?: string; info?: ChannelInfo; problem?: string | null }[]
   onInbox?: (inboxId: number | null) => void
   // Admin: opens the window where numbers are added and given to staff.
   onManageNumbers?: () => void
@@ -267,6 +272,10 @@ export function ConversationList({
     Boolean(kind),
   ].filter(Boolean).length
   const [filtersOpen, setFiltersOpen] = useState(false)
+  // A channel button held down on a phone shows its full name; the press that showed it does not also pick it.
+  const [heldChannel, setHeldChannel] = useState<number | null>(null)
+  const holdTimer = useRef<number | null>(null)
+  const heldPress = useRef(false)
   const showFilters = filtersOpen || activeFilters > 0
 
   const railButton =
@@ -288,18 +297,65 @@ export function ConversationList({
                 <button
                   key={choice.inboxId}
                   type="button"
-                  onClick={() => onInbox(on ? null : choice.inboxId)}
-                  aria-label={on ? `${choice.label}: show ${allChannelsLabel.toLowerCase()}` : `Only ${choice.label}`}
+                  onClick={() => {
+                    if (heldPress.current) {
+                      heldPress.current = false
+                      return
+                    }
+                    onInbox(on ? null : choice.inboxId)
+                  }}
+                  onPointerDown={(event) => {
+                    if (event.pointerType !== 'touch') {
+                      return
+                    }
+                    heldPress.current = false
+                    holdTimer.current = window.setTimeout(() => {
+                      heldPress.current = true
+                      setHeldChannel(choice.inboxId)
+                    }, 450)
+                  }}
+                  onPointerUp={() => {
+                    if (holdTimer.current !== null) {
+                      window.clearTimeout(holdTimer.current)
+                      holdTimer.current = null
+                    }
+                    window.setTimeout(() => setHeldChannel((current) => (current === choice.inboxId ? null : current)), 1500)
+                  }}
+                  onPointerLeave={() => {
+                    if (holdTimer.current !== null) {
+                      window.clearTimeout(holdTimer.current)
+                      holdTimer.current = null
+                    }
+                  }}
+                  onContextMenu={(event) => event.preventDefault()}
+                  aria-label={`${on ? `${choice.title ?? choice.label}: show ${allChannelsLabel.toLowerCase()}` : `Only ${choice.title ?? choice.label}`}${choice.problem ? ` (${choice.problem})` : ''}`}
                   aria-pressed={on}
-                  title={on ? `${choice.label} (press to see ${allChannelsLabel.toLowerCase()})` : choice.label}
+                  title={`${on ? `${choice.title ?? choice.label} (press to see ${allChannelsLabel.toLowerCase()})` : (choice.title ?? choice.label)}${choice.problem ? ` · ${choice.problem}` : ''}`}
                   className={cn(
                     railButton,
                     'gap-1 px-0.5',
                     on ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white',
+                    choice.problem && !on && 'border-red-300 bg-red-50 text-red-700',
                   )}
                 >
                   <ChannelBadge info={choice.info ?? { kind: category, name: choice.label, avatar: null }} size={26} className="ring-0" />
-                  <span className="w-full truncate text-center">{choice.label}</span>
+                  <span className="w-full truncate text-center">{choice.short ?? choice.label}</span>
+                  {heldChannel === choice.inboxId && (
+                    <span
+                      role="tooltip"
+                      className="absolute left-full top-1/2 z-30 ml-2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg"
+                    >
+                      {choice.title ?? choice.label}
+                    </span>
+                  )}
+                  {choice.problem && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute -left-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-white ring-2 ring-white"
+                    >
+                      <WifiSlash size={10} weight="bold" />
+                    </span>
+                  )}
                   {on && (
                     <span aria-hidden="true" className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#fc0c97] text-white">
                       <X size={10} weight="bold" />
@@ -611,8 +667,14 @@ export function ConversationList({
                       </span>
                     )}
                     {numberOf?.(conversation) && (
-                      <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
-                        {numberOf(conversation)}
+                      <span
+                        title={numberOf(conversation)!.title}
+                        className="inline-flex shrink-0 items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600"
+                      >
+                        {numberOf(conversation)!.color && (
+                          <span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ backgroundColor: numberOf(conversation)!.color! }} />
+                        )}
+                        {numberOf(conversation)!.label}
                       </span>
                     )}
                     {conversation.custom_attributes?.crm_pinned && (

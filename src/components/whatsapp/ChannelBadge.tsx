@@ -6,7 +6,8 @@ export type ChannelKind = 'whatsapp' | 'messenger' | 'instagram'
 
 // What the list shows for the channel a chat came through: its kind, the Page or number it is, and a picture
 // of the Page when there is one.
-export type ChannelInfo = { kind: ChannelKind; name: string | null; avatar: string | null }
+// `color` (a short name's colour, channel_labels) rings the badge, so two numbers or Pages are told apart.
+export type ChannelInfo = { kind: ChannelKind; name: string | null; avatar: string | null; color?: string | null }
 
 const KIND_LABEL: Record<ChannelKind, string> = { whatsapp: 'WhatsApp', messenger: 'Messenger', instagram: 'Instagram' }
 
@@ -32,7 +33,7 @@ export function ChannelBadge({ info, size = 18, className }: { info: ChannelInfo
       role="img"
       aria-label={channelTitle(info)}
       title={channelTitle(info)}
-      style={{ width: size, height: size }}
+      style={{ width: size, height: size, ...(info.color ? { boxShadow: `0 0 0 2px #ffffff, 0 0 0 4px ${info.color}` } : {}) }}
       className={cn(
         'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full ring-2 ring-white',
         picture ? 'bg-slate-100' : KIND_STYLE[info.kind],

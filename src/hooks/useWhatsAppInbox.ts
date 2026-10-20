@@ -39,6 +39,8 @@ const DEEP_REFRESH_MS = 30_000
 // While the copy is live, new messages arrive by themselves; this slow check (every 20th round, one minute)
 // only guards against one that was missed.
 const LIVE_SAFETY_EVERY = 20
+// With the copy but without its live line, the open chat's messages are asked about every fifth round (15 seconds).
+const COPY_SAFETY_EVERY = 5
 // The Done list from the copy is read again this often while live (it is the database, not Chatwoot).
 const LIVE_DONE_REFRESH_MS = 60_000
 // The newest messages of the chats at the top of the list are read ahead (one request for 40 chats), so opening
@@ -370,8 +372,9 @@ export function useWhatsAppInbox(
     // The list quietly goes stale when the inbox server stops answering: two refreshes in a row that fail say so.
     let failedRefreshes = 0
     const listTimer = window.setInterval(() => {
-      // Live: the badge reads the open chats every few seconds and the copy reports each new message.
-      const live = Boolean(copyRef.current?.link.live) && (copyRef.current?.everyOpen?.length ?? 0) > 0
+      // With the copy the menu badge holds every open chat, kept up to date by the copy (2026-10-20: asking Chatwoot
+      // every 4 seconds from every tab was most of Chatwoot's work).
+      const live = Boolean(copyRef.current?.link.available) && (copyRef.current?.everyOpen?.length ?? 0) > 0
       if (!document.hidden && !listBusy && !live) {
         listBusy = true
         refreshStatus('open')
@@ -485,6 +488,13 @@ export function useWhatsAppInbox(
       }
       client
         .markSeen(conversationId)
+        .then(() => {
+          // Chatwoot does not report a chat being read: the copy is told, so every tab's badge drops it too.
+          const read = mapRef.current.get(conversationId)
+          if (read && read.unread_count > 0 && copyRef.current?.link.available) {
+            fillCopy({ ...read, unread_count: 0 }, []).catch(() => undefined)
+          }
+        })
         .then(() =>
           setConversationMap((current) => {
             const conversation = current.get(conversationId)
@@ -638,9 +648,18 @@ export function useWhatsAppInbox(
     let round = 0
     const timer = window.setInterval(() => {
       round += 1
-      // Live: new messages come by themselves; Chatwoot is only asked now and then, in case one was missed.
-      const live = Boolean(copyRef.current?.link.live) && !behindChats.current.has(selectedId)
-      if (document.hidden || !activeRef.current || messagesBusy || (live && round % LIVE_SAFETY_EVERY !== 0)) {
+      // Live: new messages come by themselves; Chatwoot is only asked now and then, in case one was missed. With the
+      // copy but not its live line, every fifth round (15 seconds).
+      const behind = behindChats.current.has(selectedId)
+      const live = Boolean(copyRef.current?.link.live) && !behind
+      const copied = Boolean(copyRef.current?.link.available) && !behind
+      if (
+        document.hidden ||
+        !activeRef.current ||
+        messagesBusy ||
+        (live && round % LIVE_SAFETY_EVERY !== 0) ||
+        (!live && copied && round % COPY_SAFETY_EVERY !== 0)
+      ) {
         return
       }
       messagesBusy = true
@@ -971,7 +990,8 @@ export function useWhatsAppInbox(
             setMessages((current) => mergeMessages(current, [message]))
           }
           if (message.status === 'failed') {
-            throw new Error('failed')
+            // Why, when the gateway said (a Messenger chat outside Facebook's 24 hours, for one).
+            throw Object.assign(new Error('failed'), { reason: message.content_attributes?.external_error ?? null })
           }
           if (message.source_id) {
             return

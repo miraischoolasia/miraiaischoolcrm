@@ -85,6 +85,17 @@ async function start() {
     return
   }
 
+  // Dev server only: /?demo=unreadcopy shows the menu badge counting from the inbox copy, with its live changes.
+  if (import.meta.env.DEV && params.get('demo') === 'unreadcopy') {
+    const { UnreadCopyDemo } = await import('./dev/UnreadCopyDemo.tsx')
+    root.render(
+      <StrictMode>
+        <UnreadCopyDemo />
+      </StrictMode>,
+    )
+    return
+  }
+
   // Dev server only: /?demo=zoomstep shows the Zoom step with made-up times, without logging in.
   if (import.meta.env.DEV && params.get('demo') === 'zoomstep') {
     const { ZoomStepDemo } = await import('./dev/ZoomStepDemo.tsx')

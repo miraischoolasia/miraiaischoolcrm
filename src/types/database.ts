@@ -441,6 +441,13 @@ export type Database = {
         }
         Relationships: []
       }
+      // Short name and colour of each inbox channel (20261027700000).
+      channel_labels: {
+        Row: { channel_key: string; short_name: string | null; color: string | null; updated_at: string }
+        Insert: { channel_key: string; short_name?: string | null; color?: string | null; updated_at?: string }
+        Update: { short_name?: string | null; color?: string | null; updated_at?: string }
+        Relationships: []
+      }
       channel_avatars: {
         Row: {
           channel_key: string
@@ -3070,6 +3077,8 @@ export type Database = {
           conversation_id: number
           created_at: string
           raw: Json | null
+          // 0 from the parent, 1 from us (read for Facebook's 24-hour rule when forwarding).
+          message_type: number
         }
         Insert: Record<string, never>
         Update: Record<string, never>

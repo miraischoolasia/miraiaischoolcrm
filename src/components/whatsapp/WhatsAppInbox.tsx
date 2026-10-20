@@ -46,6 +46,8 @@ import { ConversationList } from './ConversationList'
 import { ChannelPicturesDialog, type ChannelPictureRow } from './ChannelPicturesDialog'
 import type { ChannelInfo } from './ChannelBadge'
 import { useChannelAvatars } from '../../hooks/useChannelAvatars'
+import { useChannelLabels } from '../../hooks/useChannelLabels'
+import { fullLabelOf, shortLabelOf } from '../../lib/channelLabels'
 import { channelKeyOf, facebookPictureUrl, mainPageOf } from '../../lib/channelAvatars'
 import { useQuickReplies } from '../../hooks/useQuickReplies'
 import { useAutomationQueue } from '../../hooks/useAutomationQueue'
@@ -66,7 +68,8 @@ import { findChatByPhone, startChat } from '../../lib/startChat'
 import { fileProblem, splitSequence } from '../../lib/outbox'
 import { summarizeMessage } from '../../lib/specialMessages'
 import { ForwardDialog } from './ForwardDialog'
-import { forwardInOrder } from '../../lib/forwardSend'
+import { forwardToEach, SOCIAL_WINDOW_REASON, SOCIAL_WINDOW_SECONDS } from '../../lib/forwardSend'
+import { fetchRecentInboundChats } from '../../lib/inboxCopyReader'
 import { useMessageEvents } from '../../hooks/useMessageEvents'
 import { useTyping } from '../../hooks/useTyping'
 import { describeStudent, getStudentKind, makeStudentResolver, type StudentKind } from '../../lib/studentLink'
@@ -76,6 +79,7 @@ import { AutomationQueueDialog } from './AutomationQueueDialog'
 import { NewChatDialog } from './NewChatDialog'
 import { FollowUpButton, FollowUpChip } from './FollowUpButton'
 import { NumbersDialog, type AssignableStaff } from './NumbersDialog'
+import { problemLabel, type ChannelAlert } from '../../lib/channelAlerts'
 import type { WhatsAppNumber, WhatsAppNumberDraft } from '../../lib/whatsappNumbers'
 import { QuickReplyManager, type QuickReplyStart } from './QuickReplyManager'
 import { quickReplyStartFrom } from '../../lib/quickReplyFromMessages'
@@ -113,6 +117,8 @@ export type WhatsAppNumbersView = {
   onRemove: (number: WhatsAppNumber) => Promise<string | null>
   // Reads the numbers again (after the WhatsApp server added one).
   onReload?: () => Promise<void>
+  // Numbers that stopped working (inbox id -> the alert): their buttons get a red mark.
+  problems?: Map<number, ChannelAlert>
 }
 
 const CATEGORY_BUTTONS = [
@@ -169,6 +175,8 @@ export function WhatsAppInbox({
   const askedInboxNames = useRef(false)
   // The pictures an admin uploaded for the Pages; the Pages window sets them.
   const channelAvatars = useChannelAvatars(active)
+  // Each number's / Page's short name and colour, so two of them are told apart (EduHero, 2026-10-20).
+  const channelLabels = useChannelLabels(active)
   const [managingChannels, setManagingChannels] = useState(false)
   const [managingNumbers, setManagingNumbers] = useState(false)
   const [inboxList, setInboxList] = useState<{ id: number; name: string; phone?: string | null }[]>([])
@@ -611,6 +619,26 @@ export function WhatsAppInbox({
   const [chatPrefill, setChatPrefill] = useState<{ phone: string; name: string; leadId: number | null } | null>(null)
   // The message being forwarded, while the person picks the chats.
   const [forwarding, setForwarding] = useState<ChatwootMessage[] | null>(null)
+  // Chats a person wrote in within Facebook's 24 hours, read from the inbox copy when the forward window opens
+  // (null: not known; then only the chat list's own last message decides).
+  const [recentInbound, setRecentInbound] = useState<Set<number> | null>(null)
+  useEffect(() => {
+    if (!forwarding) {
+      return
+    }
+    let cancelled = false
+    setRecentInbound(null)
+    fetchRecentInboundChats(SOCIAL_WINDOW_SECONDS)
+      .then((ids) => {
+        if (!cancelled) {
+          setRecentInbound(ids)
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [forwarding])
 
   // Another page asked for the chat of a number: open the one this page has, else look
   // for it on the server, and only when there is none offer to start one.
@@ -792,14 +820,31 @@ export function WhatsAppInbox({
     const allowed = numbersView.allowedInboxIds
     return numbersView.numbers
       .filter((entry) => entry.isActive && (allowed === null || allowed === undefined || allowed.includes(entry.inboxId)))
-      .map((entry) => ({ inboxId: entry.inboxId, label: entry.label }))
-  }, [numbersView])
-  // The name of the number a chat is on; shown only when there is more than one to tell apart.
+      .map((entry) => {
+        const look = channelLabels.labels.get(String(entry.inboxId))
+        return {
+          inboxId: entry.inboxId,
+          label: entry.label,
+          // The button says the short name, else the number's last 4 digits; the full name and number on a long look.
+          short: shortLabelOf(look, entry.phone, entry.label),
+          title: fullLabelOf(entry.label, entry.phone),
+          color: look?.color ?? null,
+          problem: (() => {
+            const alert = numbersView.problems?.get(entry.inboxId)
+            return alert ? problemLabel(alert.problem) : null
+          })(),
+        }
+      })
+  }, [numbersView, channelLabels.labels])
+  // The number a chat is on (its short name and colour); shown only when there is more than one to tell apart.
   const numberLabelOf = useCallback(
-    (conversation: ChatwootConversation) =>
-      numberChoices.length > 1
-        ? (numberChoices.find((choice) => choice.inboxId === conversation.inbox_id)?.label ?? null)
-        : null,
+    (conversation: ChatwootConversation) => {
+      if (numberChoices.length <= 1) {
+        return null
+      }
+      const choice = numberChoices.find((entry) => entry.inboxId === conversation.inbox_id)
+      return choice ? { label: choice.short, color: choice.color, title: choice.title } : null
+    },
     [numberChoices],
   )
   // Messenger and Instagram have no list of numbers; the inboxes their chats are in are the choices.
@@ -879,9 +924,12 @@ export function WhatsAppInbox({
           (pageId ? channelAvatars.avatars.get(`page:${pageId}`) : undefined) ??
           channelAvatars.avatars.get(channelKeyOf(inboxId)) ??
           (pageId ? facebookPictureUrl(pageId) : null),
+        color:
+          ((pageId ? channelLabels.labels.get(`page:${pageId}`) : undefined) ?? channelLabels.labels.get(channelKeyOf(inboxId)))?.color ??
+          null,
       }
     },
-    [channelAvatars.avatars, pages, socialInboxNames],
+    [channelAvatars.avatars, channelLabels.labels, pages, socialInboxNames],
   )
   // Where a reply in a chat goes out from: the WhatsApp number (its name and phone), or the Messenger / Instagram Page.
   const sendingFromOf = useCallback(
@@ -899,15 +947,30 @@ export function WhatsAppInbox({
     },
     [numbersView, inboxList, pageInfo, pageIdOf],
   )
+  // "Sending from" with the number's / Page's short name and colour when it has them (the full name on a long look).
+  const sendingLookOf = useCallback(
+    (conversation: ChatwootConversation) => {
+      const full = sendingFromOf(conversation) ?? 'WhatsApp'
+      const social = socialKindOf(conversation.meta.channel, conversation.meta.sender)
+      const pageId = social ? pageIdOf(conversation) : null
+      const look =
+        (pageId ? channelLabels.labels.get(`page:${pageId}`) : undefined) ?? channelLabels.labels.get(channelKeyOf(conversation.inbox_id))
+      const short = look?.shortName?.trim()
+      const label = short ? (social ? `${social === 'instagram' ? 'Instagram' : 'Messenger'}: ${short}` : short) : full
+      return { label, color: look?.color ?? null, title: full }
+    },
+    [sendingFromOf, pageIdOf, channelLabels.labels],
+  )
   const channelOf = useCallback(
     (conversation: ChatwootConversation): ChannelInfo | null => {
       const social = socialKindOf(conversation.meta.channel, conversation.meta.sender)
       if (!social) {
-        return { kind: 'whatsapp', name: null, avatar: null }
+        const number = numberChoices.find((entry) => entry.inboxId === conversation.inbox_id)
+        return { kind: 'whatsapp', name: number?.label ?? null, avatar: null, color: number?.color ?? null }
       }
       return pageInfo(social, pageIdOf(conversation), conversation.inbox_id)
     },
-    [pageInfo, pageIdOf],
+    [pageInfo, pageIdOf, numberChoices],
   )
   const channelRows = useMemo<ChannelPictureRow[]>(() => {
     const rows = new Map<string, ChannelPictureRow>()
@@ -934,16 +997,16 @@ export function WhatsAppInbox({
   }, [inbox.conversations, channelAvatars.avatars, channelKeyFor, channelOf])
   const channelChoices = useMemo(() => {
     // The icon of a channel is the one its chats show (the Page's picture, or the channel's logo).
-    const infoOf = (inboxId: number, label: string): ChannelInfo => {
+    const infoOf = (inboxId: number, label: string, color: string | null = null): ChannelInfo => {
       if (category === 'whatsapp') {
-        return { kind: 'whatsapp', name: label, avatar: null }
+        return { kind: 'whatsapp', name: label, avatar: null, color }
       }
       // An inbox stands for the Page most of its chats are on.
       const info = pageInfo(category, pages.main.get(inboxId) ?? inboxPageIds.get(inboxId) ?? null, inboxId)
-      return { kind: category, name: label, avatar: info.avatar }
+      return { kind: category, name: label, avatar: info.avatar, color: info.color }
     }
     if (category === 'whatsapp') {
-      return numberChoices.map((choice) => ({ ...choice, info: infoOf(choice.inboxId, choice.label) }))
+      return numberChoices.map((choice) => ({ ...choice, info: infoOf(choice.inboxId, choice.label, choice.color) }))
     }
     const ids = [...new Set(categoryChats.map((conversation) => conversation.inbox_id))]
       .filter((id): id is number => id !== undefined)
@@ -951,9 +1014,11 @@ export function WhatsAppInbox({
     const word = category === 'instagram' ? 'Instagram' : 'Messenger'
     return ids.map((id, index) => {
       const label = socialInboxNames.get(id) ?? `${word} ${index + 1}`
-      return { inboxId: id, label, info: infoOf(id, label) }
+      const pageId = pages.main.get(id) ?? inboxPageIds.get(id) ?? null
+      const look = (pageId ? channelLabels.labels.get(`page:${pageId}`) : undefined) ?? channelLabels.labels.get(channelKeyOf(id))
+      return { inboxId: id, label, short: shortLabelOf(look, null, label), title: label, info: infoOf(id, label) }
     })
-  }, [category, numberChoices, categoryChats, socialInboxNames, pageInfo, pages, inboxPageIds])
+  }, [category, numberChoices, categoryChats, socialInboxNames, pageInfo, pages, inboxPageIds, channelLabels.labels])
   const changeCategory = useCallback(
     (next: InboxCategory) => {
       categoryDecided.current = true
@@ -996,6 +1061,7 @@ export function WhatsAppInbox({
       const phone = (number?.phone ?? '').replace(/\D/g, '')
       return [number?.label ?? placeOf(row), phone ? formatPhone(phone) : null].filter(Boolean).join(' · ') || 'WhatsApp'
     }
+    const colorOf = (inboxId: number | undefined) => channelLabels.labels.get(channelKeyOf(inboxId))?.color ?? null
     return chatSwitchOptions({
       rows,
       conversations: family,
@@ -1008,8 +1074,8 @@ export function WhatsAppInbox({
           .map((id) => studentName.get(id))
           .filter((name): name is string => Boolean(name)),
       allowedInboxIds,
-    })
-  }, [inbox.selected, inbox.conversations, leadIdOf, leadOfContact, leadChannelsByLead, crm.students, numbersView, sendingFromOf, allowedInboxIds])
+    }).map((option) => ({ ...option, color: colorOf(option.inboxId) }))
+  }, [inbox.selected, inbox.conversations, leadIdOf, leadOfContact, leadChannelsByLead, crm.students, numbersView, sendingFromOf, allowedInboxIds, channelLabels.labels])
 
   // The chat picked there: opened at once when it is on the list, otherwise fetched first (an older chat).
   const [switchRequest, setSwitchRequest] = useState<{ option: ChatSwitchOption; fetched: boolean } | null>(null)
@@ -1058,17 +1124,31 @@ export function WhatsAppInbox({
       .catch(() => setInboxList([]))
   }, [client])
 
-  const forwardTargets = useMemo(
-    () =>
-      inbox.conversations.map((conversation) => {
-        const identity = getChatIdentity(conversation.meta.sender, chatLabelOf(conversation), conversation.meta.channel)
-        return { id: conversation.id, title: identity.title, subtitle: identity.subtitle, lastActivity: conversation.last_activity_at }
-      }),
-    [inbox.conversations, chatLabelOf],
-  )
+  const forwardTargets = useMemo(() => {
+    const nowSeconds = Math.floor(Date.now() / 1000)
+    return inbox.conversations.map((conversation) => {
+      const identity = getChatIdentity(conversation.meta.sender, chatLabelOf(conversation), conversation.meta.channel)
+      const social = socialKindOf(conversation.meta.channel, conversation.meta.sender)
+      // Facebook / Instagram: only within 24 hours of the person's last message. Their last message in the list
+      // tells when it is the newest one; otherwise the copy's list of chats written in lately.
+      const last = conversation.last_non_activity_message
+      const wroteLately =
+        (last?.message_type === 0 && nowSeconds - last.created_at < SOCIAL_WINDOW_SECONDS) ||
+        recentInbound === null ||
+        recentInbound.has(conversation.id)
+      return {
+        id: conversation.id,
+        title: identity.title,
+        subtitle: identity.subtitle,
+        lastActivity: conversation.last_activity_at,
+        channel: social === 'instagram' ? 'Instagram' : social === 'messenger' ? 'Messenger' : undefined,
+        blocked: social && !wroteLately ? SOCIAL_WINDOW_REASON : null,
+      }
+    })
+  }, [inbox.conversations, chatLabelOf, recentInbound])
 
   // Sends a copy of the messages (each one's text, then its files, oldest first) to every chat chosen.
-  // Null when all went out.
+  // Null when all went out; otherwise which chats did not get it, and why (the others did).
   async function forwardMessages(messages: ChatwootMessage[], targetIds: number[]) {
     try {
       const parts: ReturnType<typeof splitSequence> = []
@@ -1091,17 +1171,28 @@ export function WhatsAppInbox({
         parts.push(...splitSequence([(message.content ?? '').trim(), ...files]))
       }
       // One part at a time: the next only goes once WhatsApp has accepted the one before, so a file
-      // is never overtaken by the text that follows it.
-      await forwardInOrder(
+      // is never overtaken by the text that follows it. A chat that refuses does not stop the others.
+      const failures = await forwardToEach(
         targetIds,
         parts,
         (targetId, part) =>
           client.sendMessage(targetId, { content: part.content, isPrivate: false, files: part.files, sender: currentUser }),
         inbox.waitUntilSent,
       )
-      return null
+      if (failures.length === 0) {
+        return null
+      }
+      const nameOf = (id: number) => forwardTargets.find((target) => target.id === id)?.title ?? 'A chat'
+      const sent = targetIds.length - failures.length
+      return {
+        message: [
+          sent > 0 ? `Sent to ${sent} of ${targetIds.length} chats. Not sent to:` : 'Not sent:',
+          ...failures.map((failure) => `• ${nameOf(failure.targetId)}: ${failure.reason}`),
+        ].join('\n'),
+        failedIds: failures.map((failure) => failure.targetId),
+      }
     } catch {
-      return "Couldn't forward it to every chat. Check which ones got it, then try again."
+      return "A file of the message couldn't be downloaded to send it on. Nothing was sent."
     }
   }
   // Opens a new personal quick reply made of the messages: each one's text, then its photos, videos and PDFs.
@@ -1424,7 +1515,9 @@ export function WhatsAppInbox({
             onMakeQuickReply={(chosen) => void startQuickReplyFrom(chosen)}
             onTyping={showTyping}
             aiContext={aiContext}
-            sendingFrom={sendingFromOf(inbox.selected)}
+            sendingFrom={sendingLookOf(inbox.selected).label}
+            sendingFromColor={sendingLookOf(inbox.selected).color}
+            sendingFromTitle={sendingLookOf(inbox.selected).title}
             chatChoices={chatChoices}
             onSwitchChat={(option) => setSwitchRequest({ option, fetched: false })}
             onReact={(message, emoji) => {
@@ -1557,6 +1650,8 @@ export function WhatsAppInbox({
           channels={channelRows}
           onSave={channelAvatars.save}
           onRemove={channelAvatars.remove}
+          labels={channelLabels.labels}
+          onSaveLabel={channelLabels.save}
           onClose={() => setManagingChannels(false)}
         />
       )}
@@ -1571,6 +1666,8 @@ export function WhatsAppInbox({
           onClose={() => setManagingNumbers(false)}
           apiUrl={apiUrl}
           onReload={numbersView.onReload}
+          labels={channelLabels.labels}
+          onSaveLabel={channelLabels.save}
         />
       )}
       {automationOpen && (

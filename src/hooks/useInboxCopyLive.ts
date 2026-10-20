@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { conversationFromCopy, messageFromCopy } from '../lib/inboxCopyReader'
+import { conversationFromCopy, fillMissingCopyChats, messageFromCopy } from '../lib/inboxCopyReader'
+import type { ChatwootClient } from '../lib/chatwootClient'
 import type { ChatwootConversation, ChatwootMessage } from '../lib/whatsappInbox'
 
 // The live line to the CRM's copy of the inbox. While it is connected the Inbox page reads chats and messages from
@@ -13,6 +14,23 @@ import type { ChatwootConversation, ChatwootMessage } from '../lib/whatsappInbox
 export const HIDDEN_DISCONNECT_MS = 60_000
 // The copy is used once at most this share of its chats lacks Chatwoot's own shape (a chat or two always may).
 const MISSING_ALLOWED = 0.02
+// One browser fills the missing chats at a time, and tries again at most this often (another tab, a reload).
+const FILL_LOCK_KEY = 'crm-inbox-copy-fill'
+const FILL_AGAIN_MS = 15 * 60_000
+
+// This tab may fill the copy now (no other tab of this browser did in the last quarter hour); claims it if so.
+function claimFill() {
+  try {
+    const last = Number(window.localStorage.getItem(FILL_LOCK_KEY) ?? 0)
+    if (Date.now() - last < FILL_AGAIN_MS) {
+      return false
+    }
+    window.localStorage.setItem(FILL_LOCK_KEY, String(Date.now()))
+    return true
+  } catch {
+    return false
+  }
+}
 
 type Channel = ReturnType<NonNullable<typeof supabase>['channel']>
 type ChatListener = (conversation: ChatwootConversation) => void
@@ -31,8 +49,11 @@ export type InboxCopyLive = {
 
 let channelCount = 0
 
-export function useInboxCopyLive(enabled: boolean): InboxCopyLive {
+// client: with it, chats the copy has without Chatwoot's shape are filled from Chatwoot's list once (2026-10-20: most
+// chats lacked it, so the copy was never used and every tab kept reading every page of Chatwoot's list).
+export function useInboxCopyLive(enabled: boolean, client: ChatwootClient | null = null): InboxCopyLive {
   const [available, setAvailable] = useState(false)
+  const [checks, setChecks] = useState(0)
   const [connected, setConnected] = useState(false)
   const [visible, setVisible] = useState(() => typeof document === 'undefined' || !document.hidden)
   const chatListeners = useRef(new Set<ChatListener>())
@@ -55,7 +76,18 @@ export function useInboxCopyLive(enabled: boolean): InboxCopyLive {
           return
         }
         const total = all.count ?? 0
-        setAvailable(!all.error && !missing.error && total > 0 && (missing.count ?? total) <= total * MISSING_ALLOWED)
+        const usable = !all.error && !missing.error && total > 0 && (missing.count ?? total) <= total * MISSING_ALLOWED
+        setAvailable(usable)
+        // Too many chats without their shape: fill them from Chatwoot's list (one browser at a time), then look again.
+        if (!usable && client && !all.error && !missing.error && total > 0 && checks < 2 && claimFill()) {
+          void fillMissingCopyChats(client, () => cancelled)
+            .catch(() => undefined)
+            .then(() => {
+              if (!cancelled) {
+                setChecks((count) => count + 1)
+              }
+            })
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -65,7 +97,7 @@ export function useInboxCopyLive(enabled: boolean): InboxCopyLive {
     return () => {
       cancelled = true
     }
-  }, [enabled])
+  }, [enabled, client, checks])
 
   // Hidden for a minute: let go of the connection; looked at again: connect again.
   useEffect(() => {

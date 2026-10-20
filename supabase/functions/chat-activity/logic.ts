@@ -142,8 +142,13 @@ function directionOf(value: unknown): 'incoming' | 'outgoing' | null {
   return null
 }
 
+// What the server's number watch (whatsapp-sender/wa_watch.py) puts at the start of the WhatsApp note it sends to
+// the team when a school number stops working. Such a note is not a reply to a parent: it moves no lead and starts
+// no automation (the inbox copy still keeps it).
+export const SYSTEM_ALERT_MARK = '【CRM 系统提醒】'
+
 // Only a real message in a chat counts: a new message from the parent (incoming) or from the team
-// (outgoing). Private notes, activity lines and every other kind of event are ignored.
+// (outgoing). Private notes, the number watch's notes, activity lines and every other kind of event are ignored.
 export function parseChatwootEvent(payload: unknown): ParsedEvent {
   const body = asObject(payload)
   if (!body) {
@@ -158,6 +163,9 @@ export function parseChatwootEvent(payload: unknown): ParsedEvent {
   const direction = directionOf(body.message_type)
   if (!direction) {
     return { ok: false, reason: 'not an incoming or outgoing message' }
+  }
+  if (direction === 'outgoing' && (typeof body.content === 'string' ? body.content : '').startsWith(SYSTEM_ALERT_MARK)) {
+    return { ok: false, reason: 'number watch note' }
   }
 
   const conversation = asObject(body.conversation)

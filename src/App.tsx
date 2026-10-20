@@ -43,6 +43,8 @@ import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { useLiveSync } from './hooks/useLiveSync'
 import { fetchTableVersions, type CoreGroup, type CoreSyncTarget, type TableVersions } from './lib/coreSync'
 import { useWhatsAppNumbers } from './hooks/useWhatsAppNumbers'
+import { useChannelAlerts } from './hooks/useChannelAlerts'
+import { ChannelAlertBar } from './components/ChannelAlertBar'
 import { formatDate, getTodayString, parseLocalDate } from './domain/studentStatus'
 import type { Database } from './types/database'
 import type {
@@ -917,9 +919,11 @@ function App() {
   )
   // The school's WhatsApp numbers: which the signed-in person may see (an admin sees all).
   const whatsAppNumbers = useWhatsAppNumbers(Boolean(whatsAppApiUrl) && canUseWhatsApp)
+  // Channels that stopped working (a WhatsApp number logged out, restricted, silent): the red bar on Today and the Inbox.
+  const channelAlerts = useChannelAlerts(Boolean(whatsAppApiUrl) && canUseWhatsApp, whatsAppNumbers.allowedInboxIds, isAdmin)
   const whatsAppSiblings = useMemo(() => contactSiblings(leadChannels.rows), [leadChannels.rows])
   // The CRM's copy of the inbox, live: the Inbox reads from it and hears of new messages by itself.
-  const inboxCopy = useInboxCopyLive(Boolean(whatsAppClient))
+  const inboxCopy = useInboxCopyLive(Boolean(whatsAppClient), whatsAppClient)
   const {
     unread: unreadWhatsApp,
     waiting: waitingWhatsApp,
@@ -929,7 +933,7 @@ function App() {
     whatsAppNumbers.allowedInboxIds === undefined ? null : whatsAppClient,
     whatsAppNumbers.allowedInboxIds ?? null,
     whatsAppSiblings,
-    inboxCopy.live,
+    inboxCopy,
   )
   // The admin's / staff's Today (a teacher has their own).
   const showAdminHome = visibleSection === 'home' && !isTeacherAccount
@@ -6982,6 +6986,9 @@ function App() {
           </div>
 
           <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-4 lg:px-5">
+            {(showAdminHome || visibleSection === 'whatsapp') && (
+              <ChannelAlertBar alerts={channelAlerts.alerts} isAdmin={isAdmin} apiUrl={whatsAppApiUrl ?? undefined} />
+            )}
             {loadError && (
               <section className="flex items-center gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
                 <BrandMascot name="eggy" className="h-16 w-auto shrink-0" />
@@ -7547,6 +7554,7 @@ function App() {
                     onSave: whatsAppNumbers.save,
                     onRemove: whatsAppNumbers.remove,
                     onReload: whatsAppNumbers.reload,
+                    problems: channelAlerts.problemOf,
                   }}
                 />
               </div>

@@ -197,6 +197,13 @@ describe('reading what the WhatsApp inbox sends for a message', () => {
     expect(parseChatwootEvent('text')).toMatchObject({ ok: false })
   })
 
+  it("ignores the number watch's notes to the team, but not a parent who writes the same words", () => {
+    const note = { ...incoming, message_type: 'outgoing', content: '【CRM 系统提醒】EduHero WhatsApp「EduHero WhatsApp 2」被登出了' }
+    expect(parseChatwootEvent(note)).toEqual({ ok: false, reason: 'number watch note' })
+    expect(parseChatwootEvent({ ...note, message_type: 'incoming' })).toMatchObject({ ok: true })
+    expect(parseChatwootEvent({ ...note, content: '老师好【CRM 系统提醒】' })).toMatchObject({ ok: true })
+  })
+
   it('ignores a message in a WhatsApp group', () => {
     const group = {
       ...incoming,

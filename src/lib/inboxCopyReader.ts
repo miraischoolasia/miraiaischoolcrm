@@ -206,3 +206,97 @@ export function copyIsBehind(copied: ChatwootMessage[], chatwoot: ChatwootMessag
     return !mine || mine.status !== message.status || mine.content !== message.content || mine.source_id !== message.source_id
   })
 }
+
+// Every open chat of the copy the person may read (newest first), a thousand rows a request. Chats without
+// Chatwoot's own shape yet are left out (see fillMissingCopyChats).
+export async function fetchCopyOpenChats(max = 5000) {
+  const db = requireSupabase()
+  const found: ChatwootConversation[] = []
+  for (let from = 0; from < max; from += 1000) {
+    const { data, error } = await db
+      .from('inbox_chats')
+      .select('conversation_id, raw, last_message_raw')
+      .eq('status', 'open')
+      .not('raw', 'is', null)
+      .order('last_activity_at', { ascending: false, nullsFirst: false })
+      .order('conversation_id', { ascending: false })
+      .range(from, from + 999)
+    if (error) {
+      throw error
+    }
+    const rows = data ?? []
+    for (const row of rows) {
+      const conversation = conversationFromCopy(row.raw, row.last_message_raw)
+      if (conversation) {
+        found.push(conversation)
+      }
+    }
+    if (rows.length < 1000) {
+      break
+    }
+  }
+  return found
+}
+
+// Chats the copy has without Chatwoot's own shape (they were last active before the copy kept it). Until they have
+// it, the copy cannot stand in for Chatwoot's list.
+export async function fetchCopyChatsMissingShape(max = 5000) {
+  const { data, error } = await requireSupabase()
+    .from('inbox_chats')
+    .select('conversation_id')
+    .is('raw', null)
+    .limit(max)
+  if (error) {
+    throw error
+  }
+  return new Set((data ?? []).map((row) => row.conversation_id))
+}
+
+// Gives those chats their shape from Chatwoot's list of chats (25 a page), with their newest message, so the copy
+// can stand in for Chatwoot's list. One run reads each page once; only the chats missing it are written. Messages
+// further back are not read (a chat's older messages come from Chatwoot when it is opened, as before).
+export async function fillMissingCopyChats(
+  client: { listConversations: (status: 'all', page: number) => Promise<{ conversations: ChatwootConversation[] }> },
+  cancelled: () => boolean = () => false,
+  maxPages = 200,
+) {
+  const missing = await fetchCopyChatsMissingShape()
+  let filled = 0
+  for (let page = 1; page <= maxPages && missing.size > 0 && !cancelled(); page += 1) {
+    const { conversations } = await client.listConversations('all', page)
+    if (conversations.length === 0) {
+      break
+    }
+    const todo = conversations.filter((conversation) => missing.has(conversation.id))
+    // A few at a time; a chat this person may not read (another number) is refused and left for someone who may.
+    for (let start = 0; start < todo.length && !cancelled(); start += 5) {
+      await Promise.all(
+        todo.slice(start, start + 5).map((conversation) => {
+          const newest = conversation.last_non_activity_message
+          return fillCopy(conversation, newest ? [newest] : [])
+            .then(() => {
+              filled += 1
+              missing.delete(conversation.id)
+            })
+            .catch(() => undefined)
+        }),
+      )
+    }
+  }
+  return { filled, left: missing.size }
+}
+
+// The chats someone wrote in during the last `seconds` (from the copy), for Facebook's 24-hour rule.
+export async function fetchRecentInboundChats(seconds: number) {
+  const since = new Date(Date.now() - seconds * 1000).toISOString()
+  const { data, error } = await requireSupabase()
+    .from('inbox_messages')
+    .select('conversation_id')
+    .eq('message_type', 0)
+    .gte('created_at', since)
+    .limit(10000)
+  if (error) {
+    throw error
+  }
+  return new Set((data ?? []).map((row) => row.conversation_id))
+}

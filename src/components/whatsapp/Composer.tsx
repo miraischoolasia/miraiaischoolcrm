@@ -96,6 +96,9 @@ type ComposerProps = {
   onAiDismiss?: () => void
   // Where the reply goes out from: the WhatsApp number, or the Page. Shown so nobody answers from the wrong one.
   sendingFrom?: string | null
+  // Its colour and full name (the label may be the short name).
+  sendingFromColor?: string | null
+  sendingFromTitle?: string | null
   // The family's other chats (another number, Messenger, Instagram, a child's own number): "Sending from" opens
   // them, and picking one switches to that chat.
   chatChoices?: ChatSwitchOption[]
@@ -193,6 +196,8 @@ export function Composer({
   onAiUse,
   onAiDismiss,
   sendingFrom = null,
+  sendingFromColor = null,
+  sendingFromTitle = null,
   chatChoices = [],
   onSwitchChat,
   onSchedule,
@@ -470,7 +475,13 @@ ${draftRequest.text}` : draftRequest.text))
           </button>
         ))}
         {sendingFrom && (
-          <ChatSwitcher label={sendingFrom} options={onSwitchChat ? chatChoices : []} onPick={(option) => onSwitchChat?.(option)} />
+          <ChatSwitcher
+            label={sendingFrom}
+            color={sendingFromColor}
+            title={sendingFromTitle}
+            options={onSwitchChat ? chatChoices : []}
+            onPick={(option) => onSwitchChat?.(option)}
+          />
         )}
         {onAiSuggest && aiAvailable && mode === 'reply' && !showSuggestion && text === '' && (
           <button

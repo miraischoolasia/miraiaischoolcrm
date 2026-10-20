@@ -27,6 +27,18 @@ function setup(overrides: Partial<Parameters<typeof NumbersDialog>[0]> = {}) {
 }
 
 describe('NumbersDialog', () => {
+  it('saves a short name and a colour for a number, for the Inbox to tell numbers apart (2026-10-20)', async () => {
+    const onSaveLabel = vi.fn(async () => null as string | null)
+    const { onSave } = setup({ labels: new Map(), onSaveLabel })
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    expect(screen.getByLabelText(/Short name/)).toHaveAttribute('placeholder', '9133')
+    await userEvent.type(screen.getByLabelText(/Short name/), 'Dora')
+    await userEvent.click(screen.getByRole('radio', { name: 'Orange' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save number' }))
+    await waitFor(() => expect(onSaveLabel).toHaveBeenCalledWith('1', { shortName: 'Dora', color: '#ea580c' }))
+    expect(onSave).toHaveBeenCalled()
+  })
+
   it('lists each number with the staff it is given to', () => {
     setup()
     expect(screen.getByText('Main')).toBeInTheDocument()

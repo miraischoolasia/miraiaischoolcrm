@@ -13,10 +13,15 @@ const pill =
 // goes out from there.
 export function ChatSwitcher({
   label,
+  color = null,
+  title = null,
   options,
   onPick,
 }: {
   label: string
+  // The number's or Page's colour, and its full name when the label is its short name.
+  color?: string | null
+  title?: string | null
   options: ChatSwitchOption[]
   onPick: (option: ChatSwitchOption) => void
 }) {
@@ -42,13 +47,14 @@ export function ChatSwitcher({
   const words = (
     <>
       <span className="shrink-0 text-sky-600 max-sm:hidden">Sending from</span>
+      {color && <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />}
       <span className="truncate">{label}</span>
     </>
   )
 
   if (options.length < 2) {
     return (
-      <span title="This reply goes out from here" className={pill}>
+      <span title={title ? `This reply goes out from ${title}` : 'This reply goes out from here'} className={pill}>
         {words}
       </span>
     )
@@ -60,7 +66,7 @@ export function ChatSwitcher({
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        title="Switch to another chat of this family"
+        title={title ? `Sending from ${title}. Switch to another chat of this family` : 'Switch to another chat of this family'}
         onClick={() => setOpen(!open)}
         // The phone layout gives every button 40px; this pill stays its own height.
         className={cn(pill, 'ml-0 max-w-full min-h-0! cursor-pointer hover:bg-sky-100')}
@@ -93,7 +99,10 @@ export function ChatSwitcher({
                     option.current && 'bg-sky-50/70',
                   )}
                 >
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100">
+                  <span
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100"
+                    style={option.color ? { boxShadow: `0 0 0 2px ${option.color}` } : undefined}
+                  >
                     <ChannelIcon kind={option.kind} size={16} />
                   </span>
                   <span className="min-w-0 flex-1">

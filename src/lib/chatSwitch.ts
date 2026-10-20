@@ -19,6 +19,9 @@ export type ChatSwitchOption = {
   // The last message, in seconds; null when the chat is not loaded.
   lastAt: number | null
   current: boolean
+  // The number or Page it goes out from, and its colour (channel_labels).
+  inboxId?: number
+  color?: string | null
 }
 
 type Candidate = { kind: LeadChannelKind; contactId: number; inboxId: number; conversation: ChatwootConversation | null; row: LeadChannel | null }
@@ -111,6 +114,7 @@ export function chatSwitchOptions(sources: ChatSwitchSources): ChatSwitchOption[
         isChild,
         lastAt: conversation?.last_activity_at ?? null,
         current: conversation?.id === current.id,
+        inboxId: candidate.inboxId,
       }
     })
     .sort(

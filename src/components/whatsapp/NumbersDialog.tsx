@@ -4,6 +4,8 @@ import { ModalShell } from '../ModalShell'
 import { LinkWhatsAppPanel } from './LinkWhatsAppPanel'
 import type { WhatsAppNumber, WhatsAppNumberDraft } from '../../lib/whatsappNumbers'
 import { createWaNumbersApi, type ServerNumber, type WaNumbersApi } from '../../lib/waNumbersApi'
+import { channelLabelProblem, shortLabelOf, type ChannelLabel, type ChannelLabels } from '../../lib/channelLabels'
+import { ChannelLabelFields } from './ChannelLabelFields'
 
 export type AssignableStaff = { id: number; name: string }
 
@@ -23,6 +25,9 @@ type NumbersDialogProps = {
   onReload?: () => Promise<void>
   // The server's numbers (tests and the demo pass their own).
   numbersApi?: WaNumbersApi
+  // Each number's short name and colour (channel_labels, keyed by the inbox id), and how one is saved.
+  labels?: ChannelLabels
+  onSaveLabel?: (key: string, label: ChannelLabel) => Promise<string | null>
 }
 
 // A step that changes the phones waits for "Yes" first.
@@ -65,11 +70,15 @@ export function NumbersDialog({
   apiUrl,
   onReload,
   numbersApi,
+  labels,
+  onSaveLabel,
 }: NumbersDialogProps) {
   // null: not editing; 'new': a new number; otherwise the number being changed.
   const [editing, setEditing] = useState<WhatsAppNumber | 'new' | null>(null)
   const [draft, setDraft] = useState<WhatsAppNumberDraft>(emptyDraft)
   const [teacherIds, setTeacherIds] = useState<number[]>([])
+  // The short name and colour the Inbox shows for the number being changed.
+  const [look, setLook] = useState<ChannelLabel>({ shortName: null, color: null })
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [removing, setRemoving] = useState<number | null>(null)
@@ -149,7 +158,9 @@ export function NumbersDialog({
     if (editing === null || editing === 'new') {
       setDraft(emptyDraft)
       setTeacherIds([])
+      setLook({ shortName: null, color: null })
     } else {
+      setLook(labels?.get(String(editing.inboxId)) ?? { shortName: null, color: null })
       setDraft({
         label: editing.label,
         phone: editing.phone ?? '',
@@ -160,14 +171,25 @@ export function NumbersDialog({
       setTeacherIds(assignments.get(editing.id) ?? [])
     }
     setError(null)
+    // The labels are read once when a number is opened; a later read must not undo what is being typed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, assignments])
 
   async function save() {
+    const lookProblem = channelLabelProblem(look)
+    if (lookProblem) {
+      setError(lookProblem)
+      return
+    }
     setIsSaving(true)
     const problem = await onSave(editing === 'new' || editing === null ? null : editing, draft, teacherIds)
+    // The short name and colour go with the number's inbox.
+    const saved = labels?.get(String(draft.inboxId)) ?? { shortName: null, color: null }
+    const changed = (saved.shortName ?? '') !== (look.shortName?.trim() ?? '') || (saved.color ?? null) !== (look.color ?? null)
+    const lookFailed = !problem && onSaveLabel && draft.inboxId !== null && changed ? await onSaveLabel(String(draft.inboxId), look) : null
     setIsSaving(false)
-    if (problem) {
-      setError(problem)
+    if (problem || lookFailed) {
+      setError(problem ?? lookFailed)
       return
     }
     setEditing(null)
@@ -477,6 +499,14 @@ export function NumbersDialog({
                 />
                 This number is in use
               </label>
+
+              {onSaveLabel && (
+                <ChannelLabelFields
+                  value={look}
+                  onChange={setLook}
+                  placeholder={shortLabelOf(undefined, draft.phone, draft.label || 'Number')}
+                />
+              )}
 
               <fieldset>
                 <legend className="text-sm font-medium text-slate-700">Staff who answer this number</legend>

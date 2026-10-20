@@ -3,6 +3,8 @@ import { UploadSimple, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { pictureToDataUrl } from '../../lib/channelAvatars'
 import { ChannelBadge, type ChannelKind } from './ChannelBadge'
+import { channelLabelProblem, shortLabelOf, type ChannelLabel, type ChannelLabels } from '../../lib/channelLabels'
+import { ChannelLabelFields } from './ChannelLabelFields'
 
 // One Page (or Instagram account) the inbox has chats from. `auto` is the picture fetched from Facebook, `uploaded`
 // the one an admin set; the uploaded one wins.
@@ -19,12 +21,41 @@ type ChannelPicturesDialogProps = {
   onSave: (key: string, picture: string) => Promise<string | null>
   onRemove: (key: string) => Promise<string | null>
   onClose: () => void
+  // Each Page's short name and colour (channel_labels), and how one is saved.
+  labels?: ChannelLabels
+  onSaveLabel?: (key: string, label: ChannelLabel) => Promise<string | null>
 }
 
 // Where an admin sets the picture of each Messenger Page / Instagram account, shown on its chats in the list. The
 // CRM tries to fetch the Page's own picture first; a picture put here is used instead.
-export function ChannelPicturesDialog({ channels, onSave, onRemove, onClose }: ChannelPicturesDialogProps) {
+export function ChannelPicturesDialog({ channels, onSave, onRemove, onClose, labels, onSaveLabel }: ChannelPicturesDialogProps) {
   const [problem, setProblem] = useState<string | null>(null)
+  // The short names and colours being changed, by channel key.
+  const [looks, setLooks] = useState<Map<string, ChannelLabel>>(() => new Map())
+  const lookOf = (key: string) => looks.get(key) ?? labels?.get(key) ?? { shortName: null, color: null }
+
+  async function saveLook(row: ChannelPictureRow) {
+    if (!onSaveLabel) {
+      return
+    }
+    const look = lookOf(row.key)
+    const wrong = channelLabelProblem(look)
+    if (wrong) {
+      setProblem(wrong)
+      return
+    }
+    setBusyKey(row.key)
+    const failed = await onSaveLabel(row.key, look)
+    setProblem(failed)
+    if (!failed) {
+      setLooks((current) => {
+        const next = new Map(current)
+        next.delete(row.key)
+        return next
+      })
+    }
+    setBusyKey(null)
+  }
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const pickers = useRef(new Map<string, HTMLInputElement>())
 
@@ -55,7 +86,7 @@ export function ChannelPicturesDialog({ channels, onSave, onRemove, onClose }: C
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-sm font-medium text-[#be185d]">Inbox</div>
-            <h2 className="mt-1 text-2xl font-semibold text-slate-900">Page pictures</h2>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-900">Page pictures and short names</h2>
             <p className="mt-2 text-sm text-slate-500">
               Each chat shows the picture of the Page it came through. The CRM fetches the Page&apos;s own picture when
               it can; when it cannot, or you want another one, upload it here.
@@ -86,7 +117,7 @@ export function ChannelPicturesDialog({ channels, onSave, onRemove, onClose }: C
             const shown = row.uploaded ?? row.auto
             return (
               <li key={row.key} className="flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 px-3 py-3">
-                <ChannelBadge info={{ kind: row.kind, name: row.name, avatar: shown }} size={44} />
+                <ChannelBadge info={{ kind: row.kind, name: row.name, avatar: shown, color: lookOf(row.key).color }} size={44} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-slate-900">{row.name}</p>
                   <p className="text-xs text-slate-500">
@@ -129,6 +160,25 @@ export function ChannelPicturesDialog({ channels, onSave, onRemove, onClose }: C
                   >
                     Remove
                   </button>
+                )}
+                {onSaveLabel && (
+                  <div className="w-full space-y-2 border-t border-slate-200 pt-2">
+                    <ChannelLabelFields
+                      value={lookOf(row.key)}
+                      onChange={(next) => setLooks((current) => new Map(current).set(row.key, next))}
+                      placeholder={shortLabelOf(undefined, null, row.name)}
+                    />
+                    {looks.has(row.key) && (
+                      <button
+                        type="button"
+                        disabled={busyKey === row.key}
+                        onClick={() => void saveLook(row)}
+                        className="rounded-xl bg-[#fc0c97] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#de0a84] disabled:opacity-50"
+                      >
+                        Save short name and colour
+                      </button>
+                    )}
+                  </div>
                 )}
               </li>
             )

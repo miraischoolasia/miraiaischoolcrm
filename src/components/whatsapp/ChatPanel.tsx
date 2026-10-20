@@ -98,8 +98,11 @@ type ChatPanelProps = {
   // Turns on the grey AI reply suggestion for this chat, with what the AI may know about the child.
   // Left out where the feature is not wanted (people who cannot edit leads).
   aiContext?: AiDraftContext | null
-  // Where a reply goes out from (the WhatsApp number, or the Page), shown above the message box.
+  // Where a reply goes out from (the WhatsApp number, or the Page), shown above the message box: its short name
+  // and colour when it has them, with the full name on a long look.
   sendingFrom?: string | null
+  sendingFromColor?: string | null
+  sendingFromTitle?: string | null
   // The family's other chats, to switch to from "Sending from".
   chatChoices?: ChatSwitchOption[]
   onSwitchChat?: (option: ChatSwitchOption) => void
@@ -179,6 +182,8 @@ export function ChatPanel({
   onMakeQuickReply,
   aiContext = null,
   sendingFrom = null,
+  sendingFromColor = null,
+  sendingFromTitle = null,
   chatChoices,
   onSwitchChat,
 }: ChatPanelProps) {
@@ -954,6 +959,8 @@ export function ChatPanel({
         draftRequest={draftRequest}
         droppedFiles={dropped}
         sendingFrom={sendingFrom}
+        sendingFromColor={sendingFromColor}
+        sendingFromTitle={sendingFromTitle}
         chatChoices={chatChoices}
         onSwitchChat={onSwitchChat}
         draft={draft}

@@ -61,3 +61,33 @@ describe('ForwardDialog order', () => {
     expect(names[2]).toContain('Old chat')
   })
 })
+
+describe('ForwardDialog and Facebook / Instagram', () => {
+  it('greys a Messenger chat outside the 24 hours, with the reason, so it cannot be picked (2026-10-20)', async () => {
+    const onForward = vi.fn().mockResolvedValue(null)
+    const social = [
+      { id: 1, title: 'Mei Ling', subtitle: 'a', channel: 'Messenger', blocked: 'Facebook and Instagram only let the school write within 24 hours.' },
+      { id: 2, title: 'Aisha', subtitle: 'b', channel: 'Messenger' },
+    ]
+    render(<ForwardDialog targets={social} preview="x" onClose={vi.fn()} onForward={onForward} />)
+
+    const late = screen.getByRole('checkbox', { name: /Mei Ling/ })
+    expect(late).toBeDisabled()
+    expect(screen.getByText(/only let the school write within 24 hours/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('checkbox', { name: /Aisha/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Forward' }))
+    await waitFor(() => expect(onForward).toHaveBeenCalledWith([2]))
+  })
+
+  it('keeps only the chats that did not get it ticked, so a second press sends no copy twice', async () => {
+    const onForward = vi.fn().mockResolvedValueOnce({ message: 'Sent to 1 of 2 chats. Not sent to: Aisha: It did not go through.', failedIds: [2] })
+    render(<ForwardDialog targets={targets} preview="x" onClose={vi.fn()} onForward={onForward} />)
+    await userEvent.click(screen.getByRole('checkbox', { name: /Mei Ling/ }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Aisha/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Forward to 2 chats' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Aisha: It did not go through.')
+    expect(screen.getByRole('checkbox', { name: /Mei Ling/ })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: /Aisha/ })).toBeChecked()
+  })
+})

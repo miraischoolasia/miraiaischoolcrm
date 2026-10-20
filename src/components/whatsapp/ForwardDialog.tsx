@@ -2,9 +2,12 @@ import { useState } from 'react'
 import { MagnifyingGlass, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { formatListTime } from '../../lib/whatsappInbox'
+import { cn } from '../../lib/cn'
 
 // lastActivity: seconds since epoch of the last message; the newest chats come first, as in WhatsApp.
-export type ForwardTarget = { id: number; title: string; subtitle: string; lastActivity?: number }
+// blocked: why this chat cannot get it now (a Messenger / Instagram chat outside Facebook's 24 hours); it shows
+// greyed with the reason instead of failing after Forward is pressed.
+export type ForwardTarget = { id: number; title: string; subtitle: string; lastActivity?: number; channel?: string; blocked?: string | null }
 
 const MAX_TARGETS = 10
 
@@ -19,8 +22,9 @@ export function ForwardDialog({
   // One short line of what is being forwarded.
   preview: string
   onClose: () => void
-  // Null when it went out, otherwise what to tell the person.
-  onForward: (ids: number[]) => Promise<string | null>
+  // Null when it went out, otherwise what to tell the person; with failedIds, only those chats did not get it (the
+  // others did, so they are unticked and a second press does not send them a copy again).
+  onForward: (ids: number[]) => Promise<string | null | { message: string; failedIds: number[] }>
 }) {
   const [query, setQuery] = useState('')
   const [chosen, setChosen] = useState<number[]>([])
@@ -33,6 +37,9 @@ export function ForwardDialog({
     .slice(0, 60)
 
   function toggle(id: number) {
+    if (targets.find((target) => target.id === id)?.blocked) {
+      return
+    }
     setChosen((current) => (current.includes(id) ? current.filter((entry) => entry !== id) : current.length < MAX_TARGETS ? [...current, id] : current))
   }
 
@@ -41,6 +48,11 @@ export function ForwardDialog({
     setError(null)
     const problem = await onForward(chosen)
     setIsSending(false)
+    if (problem && typeof problem === 'object') {
+      setError(problem.message)
+      setChosen(problem.failedIds)
+      return
+    }
     if (problem) {
       setError(problem)
       return
@@ -74,11 +86,22 @@ export function ForwardDialog({
         <ul className="divide-y divide-slate-100">
           {shown.map((target) => (
             <li key={target.id}>
-              <label className="flex cursor-pointer items-center gap-3 px-1 py-2 hover:bg-slate-50">
-                <input type="checkbox" checked={chosen.includes(target.id)} onChange={() => toggle(target.id)} />
+              <label
+                title={target.blocked ?? undefined}
+                className={cn('flex items-center gap-3 px-1 py-2', target.blocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-slate-50')}
+              >
+                <input
+                  type="checkbox"
+                  checked={chosen.includes(target.id)}
+                  disabled={Boolean(target.blocked)}
+                  onChange={() => toggle(target.id)}
+                />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-slate-900">{target.title}</span>
-                  <span className="block truncate text-xs text-slate-500">{target.subtitle}</span>
+                  <span className="block truncate text-sm font-medium text-slate-900">
+                    {target.title}
+                    {target.channel && <span className="ml-1.5 text-xs font-normal text-slate-500">· {target.channel}</span>}
+                  </span>
+                  <span className="block truncate text-xs text-slate-500">{target.blocked ?? target.subtitle}</span>
                 </span>
                 {target.lastActivity ? (
                   <span className="shrink-0 text-[11px] text-slate-400">{formatListTime(target.lastActivity)}</span>
@@ -90,7 +113,7 @@ export function ForwardDialog({
         </ul>
         {chosen.length >= MAX_TARGETS && <p className="text-xs text-slate-500">You can forward to {MAX_TARGETS} chats at a time.</p>}
         {error && (
-          <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+          <p role="alert" className="whitespace-pre-line rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
           </p>
         )}

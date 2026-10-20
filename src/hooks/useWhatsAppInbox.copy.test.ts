@@ -131,7 +131,7 @@ describe('useWhatsAppInbox reading the inbox copy', () => {
     expect(api.markSeen).toHaveBeenCalled()
   })
 
-  it('when not live, keeps asking Chatwoot every few seconds as before', async () => {
+  it('when the copy is there but not live, asks Chatwoot about the open chat every 15 seconds (not every 3)', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const api = client({ 20: [message(1, 'hello')] })
     const copy = { link: { ...link(false).value, live: false } }
@@ -143,6 +143,10 @@ describe('useWhatsAppInbox reading the inbox copy', () => {
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(7_000)
+    })
+    expect(api.listMessages.mock.calls.length).toBe(messageCalls)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(9_000)
     })
     expect(api.listMessages.mock.calls.length).toBeGreaterThan(messageCalls)
   })
