@@ -54,6 +54,9 @@ type FormState = {
   studentPhone: string
   parentPhone: string
   state: string
+  // Optional extras of the lead details.
+  nameZh: string
+  secondParentPhone: string
   children: ChildRow[]
   sourceId: string
   tagIds: number[]
@@ -72,6 +75,8 @@ function fromLead(lead: Lead): FormState {
     studentPhone: studentPhoneOf(lead.phone ?? '', lead.children[0]?.phone),
     parentPhone: parentPhoneOf(lead.phone ?? '', lead.children[0]?.phone),
     state: lead.state ?? '',
+    nameZh: lead.nameZh ?? '',
+    secondParentPhone: lead.secondParentPhone ?? '',
     children: lead.children.map((child) => ({ name: child.name ?? '', age: String(child.age), phone: child.phone ?? null })),
     sourceId: lead.sourceId !== null ? String(lead.sourceId) : '',
     tagIds: lead.tagIds,
@@ -117,6 +122,8 @@ export function LeadForm({
           studentPhone: initialPhone,
           parentPhone: '',
           state: '',
+          nameZh: '',
+          secondParentPhone: '',
           children: [{ name: '', age: '', phone: null }],
           sourceId: String((guess.source ?? otherSource)?.id ?? ''),
           tagIds: guess.tags.map((tag) => tag.id),
@@ -281,6 +288,8 @@ export function LeadForm({
       fullName: sent.fullName,
       phone: sent.phone,
       state: sent.state,
+      nameZh: sent.nameZh,
+      secondParentPhone: sent.secondParentPhone,
       sourceId: sent.sourceId ? Number(sent.sourceId) : null,
       picId: sent.picId ? Number(sent.picId) : null,
       tagIds: sent.tagIds,
@@ -473,6 +482,7 @@ export function LeadForm({
         {lead && (
           <LeadChannelLines
             phone={null}
+            hasPhoneElsewhere={form.phone.trim() !== ''}
             leadId={lead.id}
             channels={crm.leadChannels.filter((row) => row.leadId === lead.id)}
             className="-mt-1 rounded-lg bg-slate-50 px-2.5 py-1.5"
@@ -550,6 +560,27 @@ export function LeadForm({
         </div>
           </>
         )}
+
+        <label className="block">
+          <span className="text-slate-600">Chinese name (optional)</span>
+          <input
+            value={form.nameZh}
+            disabled={!canEdit}
+            onChange={(event) => change({ nameZh: event.target.value }, true)}
+            className={fieldClass}
+          />
+        </label>
+        <label className="block">
+          <span className="text-slate-600">Another parent's phone (optional)</span>
+          <input
+            type="tel"
+            value={form.secondParentPhone}
+            disabled={!canEdit}
+            onChange={(event) => change({ secondParentPhone: event.target.value }, true)}
+            placeholder="012 345 6789"
+            className={fieldClass}
+          />
+        </label>
 
         <label className="block">
           <span className="text-slate-600">State</span>

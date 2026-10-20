@@ -830,6 +830,7 @@ export type Database = {
           student_id: number | null
           auth_user_id: string | null
           notes: string | null
+          tag_ids: number[]
           created_at: string
           updated_at: string
         }
@@ -845,6 +846,7 @@ export type Database = {
           student_id?: number | null
           auth_user_id?: string | null
           notes?: string | null
+          tag_ids?: number[]
         }
         Update: {
           kind?: 'contact' | 'parent' | 'student'
@@ -856,6 +858,7 @@ export type Database = {
           lead_id?: number | null
           student_id?: number | null
           notes?: string | null
+          tag_ids?: number[]
         }
         Relationships: []
       }
@@ -1092,6 +1095,8 @@ export type Database = {
           pic_id: number | null
           source_rule_id: number | null
           state: string | null
+          name_zh: string | null
+          second_parent_phone: string | null
           tag_ids: number[]
           checks: Record<string, { at: string | null; by: number | null }>
           status: string
@@ -1113,6 +1118,8 @@ export type Database = {
           pic_id?: number | null
           source_rule_id?: number | null
           state?: string | null
+          name_zh?: string | null
+          second_parent_phone?: string | null
           tag_ids?: number[]
           checks?: Record<string, boolean | { at: string | null; by: number | null }>
           status?: string
@@ -1134,6 +1141,8 @@ export type Database = {
           pic_id?: number | null
           source_rule_id?: number | null
           state?: string | null
+          name_zh?: string | null
+          second_parent_phone?: string | null
           tag_ids?: number[]
           checks?: Record<string, boolean | { at: string | null; by: number | null }>
           status?: string
@@ -3880,6 +3889,14 @@ export type Database = {
       }
       set_student_code_enabled: {
         Args: { p_enabled: boolean }
+        Returns: undefined
+      }
+      set_student_tags: {
+        Args: { p_student_id: number; p_tag_ids: number[] }
+        Returns: undefined
+      }
+      set_person_tags: {
+        Args: { p_person_id: number; p_tag_ids: number[] }
         Returns: undefined
       }
       set_student_fields: {

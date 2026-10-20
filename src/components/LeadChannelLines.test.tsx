@@ -90,4 +90,50 @@ describe('LeadChannelLines', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
     expect(screen.getByText('Sim Guatyin')).toBeInTheDocument()
   })
+
+  it('opens the WhatsApp chat of a lead with no phone from its hidden-number line, and says it is done', async () => {
+    const openChat = vi.fn()
+    const onOpened = vi.fn()
+    render(
+      <WhatsAppOpenProvider value={openChat}>
+        <LeadChannelLines
+          phone={null}
+          leadId={7}
+          onOpened={onOpened}
+          channels={[{ ...channels[0], channel: 'whatsapp', contactId: 21, conversationId: 201, name: '236998554123456' }]}
+        />
+      </WhatsAppOpenProvider>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /Open the WhatsApp chat/ }))
+
+    expect(openChat).toHaveBeenCalledWith(expect.objectContaining({ phone: '', leadId: 7, chat: { conversationId: 201, contactId: 21 } }))
+    expect(onOpened).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the hidden-number line as plain text when the chat is not known yet', () => {
+    render(<LeadChannelLines phone={null} leadId={7} channels={[{ ...channels[0], channel: 'whatsapp', contactId: 21, conversationId: null }]} />)
+
+    expect(screen.getByText('WhatsApp hidden number')).toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('shows no hidden-number line when the lead has a phone', () => {
+    render(<LeadChannelLines phone="+60123456789" leadId={7} channels={[{ ...channels[0], channel: 'whatsapp', contactId: 21, conversationId: 201 }]} />)
+
+    expect(screen.queryByText('WhatsApp hidden number')).not.toBeInTheDocument()
+  })
+
+  it('shows no hidden-number line where the phone of the lead is shown elsewhere', () => {
+    render(
+      <LeadChannelLines
+        phone={null}
+        hasPhoneElsewhere
+        leadId={7}
+        channels={[{ ...channels[0], channel: 'whatsapp', contactId: 21, conversationId: 201 }]}
+      />,
+    )
+
+    expect(screen.queryByText('WhatsApp hidden number')).not.toBeInTheDocument()
+  })
 })

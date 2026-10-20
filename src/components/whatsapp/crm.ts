@@ -25,6 +25,9 @@ export type LeadFormValues = {
   phone: string
   // One of the Malaysian states, '' when not set.
   state: string
+  // Optional; left out where the form does not have them.
+  nameZh?: string
+  secondParentPhone?: string
   sourceId: number | null
   picId: number | null
   tagIds: number[]
@@ -109,6 +112,8 @@ export type WhatsAppCrm = {
   // The lead's next trial day (or last one), written the way a parent reads it.
   trialDateFor: (leadId: number) => string | null
   onAddOption: (kind: LeadOptionKind, label: string, color?: string) => Promise<LeadOption | null>
+  // Puts these tags on a parent or student of the Family card (the same tags the leads use); resolves to the reason when refused.
+  onSetPersonTags?: (personId: number, tagIds: number[]) => Promise<string | null>
   // Writes the parent's number on a student who has none, so the chat finds them by phone too.
   onSetStudentPhone: (studentId: number, phone: string) => Promise<string | null>
   onOpenLead: (leadId: number) => void

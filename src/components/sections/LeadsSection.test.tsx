@@ -791,3 +791,18 @@ describe('LeadsSection bulk actions', () => {
     cards.forEach((card) => expect(within(card).queryByRole('checkbox', { name: /^Select / })).not.toBeInTheDocument())
   })
 })
+
+describe('LeadsSection hidden WhatsApp number', () => {
+  it('says the number is hidden beside a name that is only the long WhatsApp ID', () => {
+    renderSection([{ ...makeLead(1, null), phone: null, fullName: '236998554123456' }])
+
+    expect(within(screen.getByRole('table')).getAllByText('WhatsApp hidden number').length).toBeGreaterThan(0)
+  })
+
+  it('does not say it for a real name, or for a lead with a phone', () => {
+    renderSection([{ ...makeLead(1, null), phone: null, fullName: 'Mrs Lim' }, { ...makeLead(2, null), fullName: '236998554123456' }])
+
+    expect(screen.queryByText('WhatsApp hidden number')).not.toBeInTheDocument()
+  })
+})
+

@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   channelsByLead,
   contactSiblings,
+  isHiddenNumberName,
   leadOfContacts,
   matchesChannelFilter,
   NO_CHANNEL_FILTER,
   placeChoices,
   socialLines,
+  whatsappChatLines,
   whatsappPlaces,
   type LeadChannel,
 } from './leadChannels'
@@ -91,5 +93,34 @@ describe('leadOfContacts', () => {
     expect(map.get(390)).toBe(7)
     expect(map.get(55)).toBe(9)
     expect(map.get(1)).toBeUndefined()
+  })
+})
+
+describe('isHiddenNumberName', () => {
+  it('is true for a long WhatsApp ID used as the name of a lead with no phone', () => {
+    expect(isHiddenNumberName('236998554123456', null)).toBe(true)
+    expect(isHiddenNumberName('+236 998 554 123 456', '')).toBe(true)
+  })
+
+  it('is false for a real name, a short number, or a lead that has a phone', () => {
+    expect(isHiddenNumberName('Mei Tan', null)).toBe(false)
+    expect(isHiddenNumberName('60123456789', null)).toBe(false)
+    expect(isHiddenNumberName('236998554123456', '60123456789')).toBe(false)
+    expect(isHiddenNumberName(null, null)).toBe(false)
+  })
+})
+
+describe('whatsappChatLines', () => {
+  it('lists each WhatsApp chat once and leaves the other channels out', () => {
+    const lines = whatsappChatLines([
+      row({ id: 1, channel: 'whatsapp', leadId: 7, contactId: 21, inboxId: 1, conversationId: 201 }),
+      row({ id: 2, channel: 'whatsapp', leadId: 7, contactId: 21, inboxId: 1, conversationId: 201 }),
+      row({ id: 3, channel: 'whatsapp', leadId: 7, contactId: 22, inboxId: 2, conversationId: null }),
+      row({ id: 4, channel: 'instagram', leadId: 7, contactId: 55, inboxId: 3 }),
+    ])
+    expect(lines.map((line) => [line.contactId, line.conversationId])).toEqual([
+      [21, 201],
+      [22, null],
+    ])
   })
 })

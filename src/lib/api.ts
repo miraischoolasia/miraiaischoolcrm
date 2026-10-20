@@ -276,7 +276,12 @@ export async function fetchLeadsFromSupabase() {
 
   const columns =
     'id, full_name, phone, status, children, notes, follow_ups, tasks, converted_student_id, added_date, created_at, updated_at'
-  let { data, error } = await select(`${columns}, source_id, pic_id, tag_ids, checks, state`)
+  let { data, error } = await select(`${columns}, source_id, pic_id, tag_ids, checks, state, name_zh, second_parent_phone`)
+
+  // Before the lead details update (Chinese name, another parent) those two columns do not exist.
+  if (error?.code === '42703') {
+    ;({ data, error } = await select(`${columns}, source_id, pic_id, tag_ids, checks, state`))
+  }
 
   // Before the state migration the state column does not exist, before the tags
   // migration tag_ids / checks do not, and before the lead options migration

@@ -109,6 +109,8 @@ type StudentDetailModalProps = {
   studentCode?: string | null
   // The school's extra student fields (Chinese name, kind, consultant, second parent phone).
   extraSummary?: React.ReactNode
+  // The student's tags (the same tags the leads use), with the way to add and take off.
+  tagsSlot?: React.ReactNode
 }
 
 const NO_IDS: number[] = []
@@ -168,6 +170,7 @@ export function StudentDetailModal({
   onRemoveClass,
   studentCode = null,
   extraSummary,
+  tagsSlot,
 }: StudentDetailModalProps) {
   const [tab, setTab] = useState<TabKey>('overview')
   const [copied, setCopied] = useState(false)
@@ -338,6 +341,7 @@ export function StudentDetailModal({
               </div>
             )}
             {extraSummary && <div className="mt-2">{extraSummary}</div>}
+            {tagsSlot && <div className="mt-2">{tagsSlot}</div>}
           </div>
           <div className="flex shrink-0 items-center justify-end gap-2 max-sm:w-full max-sm:justify-start">
             {renew && !isPreview && (

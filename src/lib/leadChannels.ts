@@ -227,6 +227,39 @@ export function socialLines(rows: LeadChannel[]): SocialLine[] {
   return lines
 }
 
+// A person who writes from WhatsApp's hidden ID has no phone number: the chat has only a long number (13 to 15 digits).
+// The lead made from that chat is named with it. This says that name is such an ID, not a phone number.
+export const HIDDEN_NUMBER_LABEL = 'WhatsApp hidden number'
+
+export function isHiddenNumberName(name: string | null | undefined, phone: string | null | undefined) {
+  if (phone && phone.trim()) {
+    return false
+  }
+  const text = (name ?? '').trim()
+  return /^\+?[\d ]+$/.test(text) && text.replace(/\D/g, '').length >= 13
+}
+
+// The WhatsApp chats of a lead that has no phone number, one line each (a chat per number of the school):
+// what the lead is told by is the chat, since there is no number to find it by.
+export type WhatsAppLine = { place: string | null; conversationId: number | null; contactId: number; name: string | null }
+
+export function whatsappChatLines(rows: LeadChannel[]): WhatsAppLine[] {
+  const lines: WhatsAppLine[] = []
+  const seen = new Set<string>()
+  for (const row of rows) {
+    if (row.channel !== 'whatsapp') {
+      continue
+    }
+    const key = `${row.contactId}:${row.inboxId}`
+    if (seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    lines.push({ place: placeOf(row), conversationId: row.conversationId, contactId: row.contactId, name: row.name })
+  }
+  return lines
+}
+
 // The WhatsApp numbers (of the school) a lead wrote to, first contacted first.
 export function whatsappPlaces(rows: LeadChannel[]): string[] {
   const places: string[] = []

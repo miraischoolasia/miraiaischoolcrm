@@ -72,6 +72,8 @@ type DetailsPanelProps = {
   // The family table, and the way from a WhatsApp contact to its chat, for the family card.
   people?: Person[]
   chatOfContact?: (contactId: number) => number | null
+  // The family table is read again (after the team changed the tags of a parent or child).
+  onPeopleChanged?: () => Promise<void> | void
 }
 
 // The side panel: who the parent is, and what the school already knows about
@@ -172,6 +174,7 @@ export function DetailsPanel({
   onBack,
   people = [],
   chatOfContact = () => null,
+  onPeopleChanged,
 }: DetailsPanelProps) {
   const sender = conversation.meta.sender
   const phone = getRealPhone(sender.phone_number)
@@ -436,6 +439,22 @@ export function DetailsPanel({
             chatOf={chatOfContact}
             onOpenChat={onOpenChat}
             onOpenStudent={crm.onOpenStudent}
+            tags={
+              crm.onSetPersonTags
+                ? {
+                    options: crm.leadOptions.filter((option) => option.kind === 'tag'),
+                    // An enrolled student's tags follow the Students ticks; a parent's follow Leads or Students.
+                    canEdit: (person) => (person.studentId !== null ? crm.canEditStudents : crm.canEditLeads || crm.canEditStudents),
+                    onChange: async (person, tagIds) => {
+                      const problem = await crm.onSetPersonTags?.(person.id, tagIds)
+                      if (!problem) {
+                        await onPeopleChanged?.()
+                      }
+                    },
+                    onCreate: (label, color) => crm.onAddOption('tag', label, color),
+                  }
+                : undefined
+            }
           />
         ) : null}
         {!family ? rolePicker : null}

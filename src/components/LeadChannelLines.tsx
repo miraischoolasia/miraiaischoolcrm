@@ -5,11 +5,12 @@ import { getWhatsAppUrl } from '../lib/whatsapp'
 import { useOpenChat } from './WhatsAppLink'
 import {
   CHANNEL_LABEL,
+  HIDDEN_NUMBER_LABEL,
   socialLines,
+  whatsappChatLines,
   whatsappPlaces,
   type LeadChannel,
   type LeadChannelKind,
-  type SocialLine,
 } from '../lib/leadChannels'
 
 const ICON = {
@@ -42,23 +43,41 @@ type Props = {
   phoneAction?: ReactNode
   // The lead these lines belong to, so a click on a Messenger / Instagram line opens that lead's chat.
   leadId?: number | null
+  // Called after a chat was opened from a line (a window the line sits in closes itself).
+  onOpened?: () => void
+  // True where the lead has a phone number somewhere else on the screen (this one is not shown): its WhatsApp
+  // chat is then found by that number, so no hidden-number line is wanted.
+  hasPhoneElsewhere?: boolean
+}
+
+// "WhatsApp hidden number" beside a name that is only WhatsApp's long ID, so it reads as what it is.
+export function HiddenNumberNote({ className }: { className?: string }) {
+  return (
+    <span className={cn('ml-1.5 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500', className)}>
+      {HIDDEN_NUMBER_LABEL}
+    </span>
+  )
 }
 
 // What a lead writes on, one line each: the WhatsApp number first, then the Messenger names with the
 // Messenger icon at the right, then Instagram. A lead of Messenger only has just the Messenger lines.
-export function LeadChannelLines({ phone, channels, className, showPlaces = true, phoneAction, leadId = null }: Props) {
+export function LeadChannelLines({ phone, channels, className, showPlaces = true, phoneAction, leadId = null, onOpened, hasPhoneElsewhere = false }: Props) {
   const openChat = useOpenChat()
-  const open = (line: SocialLine) =>
+  const open = (line: { name: string | null; conversationId: number | null; contactId: number }) => {
     openChat?.({
       phone: '',
       name: line.name,
       leadId,
       chat: { conversationId: line.conversationId, contactId: line.contactId },
     })
+    onOpened?.()
+  }
   const social = socialLines(channels)
   const numbers = showPlaces ? whatsappPlaces(channels) : []
   const hasPhone = Boolean(phone && phone.trim())
-  if (!hasPhone && social.length === 0) {
+  // A lead with no phone number is found by its chat: one line for each WhatsApp chat it has.
+  const hiddenChats = hasPhone || hasPhoneElsewhere ? [] : whatsappChatLines(channels)
+  if (!hasPhone && social.length === 0 && hiddenChats.length === 0) {
     return null
   }
   return (
@@ -74,6 +93,49 @@ export function LeadChannelLines({ phone, channels, className, showPlaces = true
           </span>
         </li>
       )}
+      {hiddenChats.map((chat) => (
+        <li key={`whatsapp-${chat.contactId}-${chat.place ?? ''}`} className="flex items-center gap-1.5">
+          {openChat && chat.conversationId !== null ? (
+            <span
+              role="button"
+              tabIndex={0}
+              title="Open this WhatsApp chat in the Inbox"
+              aria-label={`Open the WhatsApp chat${chat.place ? ` on ${chat.place}` : ''}`}
+              onClick={(event) => {
+                event.stopPropagation()
+                open(chat)
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  open(chat)
+                }
+              }}
+              className="flex min-w-0 cursor-pointer items-center gap-1.5 rounded-lg hover:bg-slate-100"
+            >
+              <span className={ICON_SLOT}>
+                <ChannelIcon kind="whatsapp" />
+              </span>
+              <span className="min-w-0 truncate text-slate-900">
+                {HIDDEN_NUMBER_LABEL}
+                {chat.place && <span className="ml-1.5 text-xs text-slate-500">{chat.place}</span>}
+                <span className="ml-1.5 text-xs font-semibold text-[#be185d]">Open chat</span>
+              </span>
+            </span>
+          ) : (
+            <>
+              <span className={ICON_SLOT}>
+                <ChannelIcon kind="whatsapp" />
+              </span>
+              <span className="min-w-0 truncate text-slate-900">
+                {HIDDEN_NUMBER_LABEL}
+                {chat.place && <span className="ml-1.5 text-xs text-slate-500">{chat.place}</span>}
+              </span>
+            </>
+          )}
+        </li>
+      ))}
       {social.map((line) => (
         <li key={`${line.kind}-${line.name}-${line.place ?? ''}`} className="flex items-center gap-1.5">
           {openChat ? (

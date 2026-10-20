@@ -1198,3 +1198,23 @@ describe('DetailsPanel programmes', () => {
     expect(screen.getByText('Fee is RM300')).toBeInTheDocument()
   })
 })
+
+describe('DetailsPanel optional lead fields', () => {
+  it('shows the Chinese name and the second phone of the lead, filled in', () => {
+    renderPanel(makeCrm({ leads: [{ ...lead, nameZh: '美玲', secondParentPhone: '0123450099' } as Lead] }), { crm_lead_id: 11 })
+
+    expect(screen.getByLabelText('Chinese name (optional)')).toHaveValue('美玲')
+    expect(screen.getByLabelText("Another parent's phone (optional)")).toHaveValue('0123450099')
+  })
+
+  it('saves them with the lead', async () => {
+    const crm = makeCrm({ leads: [lead] })
+    renderPanel(crm, { crm_lead_id: 11 })
+
+    await userEvent.type(screen.getByLabelText("Another parent's phone (optional)"), '0123450099')
+
+    await waitFor(() =>
+      expect(crm.onUpdateLead).toHaveBeenLastCalledWith(11, expect.objectContaining({ secondParentPhone: '0123450099', nameZh: '' })),
+    )
+  })
+})

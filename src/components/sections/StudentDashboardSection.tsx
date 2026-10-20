@@ -17,6 +17,7 @@ import {
 import type { StudentParent } from '../../lib/studentParents'
 import { RowActionsMenu, type RowAction } from '../RowActionsMenu'
 import { StudentExtrasFilters } from '../StudentExtraFields'
+import { matchesTagFilter, NO_TAG } from '../../lib/personTags'
 import {
   matchesExtrasFilter,
   NO_EXTRAS_FILTER,
@@ -28,6 +29,7 @@ import { BrandMascot } from '../BrandMascot'
 import type {
   Classroom,
   FilterKey,
+  LeadOption,
   Package,
   Schedule,
   Student,
@@ -90,6 +92,8 @@ type StudentDashboardSectionProps = {
     kinds: StudentKind[]
     consultants: Teacher[]
   }
+  // The students' tags (the same tags the leads use): a filter on the list. The map holds only students that have tags.
+  studentTags?: { options: LeadOption[]; map: Map<number, number[]> }
 }
 
 const NO_CLASSROOMS: Classroom[] = []
@@ -136,6 +140,7 @@ export function StudentDashboardSection({
   studentCodes,
   studentCodeSetting,
   studentFields,
+  studentTags,
 }: StudentDashboardSectionProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [sort, setSort] = useState<StudentSort>('attention')
@@ -144,6 +149,7 @@ export function StudentDashboardSection({
   const [gradeFilter, setGradeFilter] = useState<string | null>(null)
   const [subjectFilter, setSubjectFilter] = useState<number | null>(null)
   const [extrasFilter, setExtrasFilter] = useState(NO_EXTRAS_FILTER)
+  const [tagFilter, setTagFilter] = useState('')
 
   const rows = useMemo(
     () =>
@@ -190,12 +196,15 @@ export function StudentDashboardSection({
     }
     matchedRows = matchedRows.filter((row) => matchesExtrasFilter(studentFields.extras.get(row.student.id), extrasFilter))
   }
+  if (studentTags && tagFilter !== '') {
+    matchedRows = matchedRows.filter((row) => matchesTagFilter(studentTags.map.get(row.student.id), tagFilter))
+  }
   const visibleRows = sortStudentRows(matchedRows, sort)
   // A big school's list is read PAGE_SIZE students at a time.
   const pageCount = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount - 1)
   const pageRows = visibleRows.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)
-  const filterKey = `${activeFilter}|${followUpOnly}|${searchTerm}|${sort}|${classFilter}|${gradeFilter}|${subjectFilter}|${extrasFilter.kind}|${extrasFilter.consultantId}`
+  const filterKey = `${activeFilter}|${followUpOnly}|${searchTerm}|${sort}|${classFilter}|${gradeFilter}|${subjectFilter}|${extrasFilter.kind}|${extrasFilter.consultantId}|${tagFilter}`
   const [lastFilterKey, setLastFilterKey] = useState(filterKey)
   if (filterKey !== lastFilterKey) {
     // A new search, tab or sort starts again on the first page.
@@ -215,7 +224,8 @@ export function StudentDashboardSection({
     gradeFilter !== null ||
     subjectFilter !== null ||
     extrasFilter.kind !== '' ||
-    extrasFilter.consultantId !== ''
+    extrasFilter.consultantId !== '' ||
+    tagFilter !== ''
   // The grades (age groups) and subjects the school's classes use, in the school's order.
   const schoolAgeGroups = useAgeGroups()
   const gradeOptions = useMemo(() => {
@@ -478,6 +488,24 @@ export function StudentDashboardSection({
               consultants={studentFields.consultants}
               onChange={setExtrasFilter}
             />
+          )}
+          {studentTags && studentTags.options.some((tag) => tag.isActive) && (
+            <select
+              aria-label="Filter by tag"
+              value={tagFilter}
+              onChange={(event) => setTagFilter(event.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+            >
+              <option value="">All tags</option>
+              {studentTags.options
+                .filter((tag) => tag.isActive)
+                .map((tag) => (
+                  <option key={tag.id} value={tag.id}>
+                    {tag.label}
+                  </option>
+                ))}
+              <option value={NO_TAG}>No tag</option>
+            </select>
           )}
           <select
             value={sort}

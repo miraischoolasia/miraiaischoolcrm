@@ -250,6 +250,9 @@ import { StudentDetailModal } from './components/StudentDetailModal'
 import { StudentExtraInputs, StudentExtraSummary } from './components/StudentExtraFields'
 import { StudentFieldsSettings } from './components/StudentFieldsSettings'
 import { useStudentFields } from './hooks/useStudentFields'
+import { useStudentTags } from './hooks/useStudentTags'
+import { PersonTags } from './components/PersonTags'
+import { setPersonTags } from './lib/personTags'
 import { anyStudentField, consultantOptions, EMPTY_STUDENT_EXTRAS_FORM, extrasChanges, extrasToForm, type StudentExtrasForm } from './lib/studentFields'
 import { buildStudentParents } from './lib/studentParents'
 import { getAttendedStudentIds } from './lib/studentLessons'
@@ -740,6 +743,9 @@ function App() {
   const [studentCodes, setStudentCodes] = useState<Map<number, string>>(new Map())
   // The school's extra student fields (Class Settings > Student fields) and the form's values for them.
   const studentFields = useStudentFields(authUserId !== null, loadAttempt)
+  // The students' tags: the same tags the leads use (Tags on the student details and in the list's filter).
+  const studentTags = useStudentTags(authUserId !== null, loadAttempt, students.length)
+  const tagOptions = useMemo(() => leadOptions.filter((option) => option.kind === 'tag'), [leadOptions])
   const [studentExtrasForm, setStudentExtrasForm] = useState<StudentExtrasForm>(EMPTY_STUDENT_EXTRAS_FORM)
   const studentConsultants = useMemo(() => consultantOptions(teachers), [teachers])
   const [isSavingStudentCodeSetting, setIsSavingStudentCodeSetting] = useState(false)
@@ -2953,6 +2959,8 @@ function App() {
       sourceId: lead.sourceId !== null ? String(lead.sourceId) : '',
       picId: lead.picId !== null ? String(lead.picId) : '',
       state: lead.state ?? '',
+      nameZh: lead.nameZh ?? '',
+      secondParentPhone: lead.secondParentPhone ?? '',
       tagIds: lead.tagIds,
       status: lead.status,
       children: lead.children.map((child) => ({
@@ -4311,6 +4319,11 @@ function App() {
         source_id: leadFormState.sourceId ? Number(leadFormState.sourceId) : null,
         pic_id: leadFormState.picId ? Number(leadFormState.picId) : null,
         state: leadFormState.state || null,
+        // Only sent when there is something to save or to clear, so a database without the columns still saves leads.
+        ...(leadFormState.nameZh?.trim() || editingLead?.nameZh ? { name_zh: leadFormState.nameZh?.trim() || null } : {}),
+        ...(leadFormState.secondParentPhone?.trim() || editingLead?.secondParentPhone
+          ? { second_parent_phone: leadFormState.secondParentPhone?.trim() || null }
+          : {}),
         tag_ids: leadFormState.tagIds,
         status: leadFormState.status,
         children,
@@ -4674,6 +4687,8 @@ function App() {
         full_name: fullName || null,
         phone: input.phone.trim() || null,
         state: input.state || null,
+        ...(input.nameZh?.trim() ? { name_zh: input.nameZh.trim() } : {}),
+        ...(input.secondParentPhone?.trim() ? { second_parent_phone: input.secondParentPhone.trim() } : {}),
         source_id: input.sourceId,
         pic_id: input.picId,
         tag_ids: input.tagIds,
@@ -4716,6 +4731,10 @@ function App() {
         full_name: fullName || null,
         phone: input.phone.trim() || null,
         state: input.state || null,
+        ...(input.nameZh !== undefined && (input.nameZh.trim() || lead.nameZh) ? { name_zh: input.nameZh.trim() || null } : {}),
+        ...(input.secondParentPhone !== undefined && (input.secondParentPhone.trim() || lead.secondParentPhone)
+          ? { second_parent_phone: input.secondParentPhone.trim() || null }
+          : {}),
         source_id: input.sourceId,
         pic_id: input.picId,
         tag_ids: input.tagIds,
@@ -5059,6 +5078,15 @@ function App() {
       return next ? formatDate(next) : null
     },
     onAddOption: handleAddLeadOption,
+    onSetPersonTags: async (personId, tagIds) => {
+      const problem = await setPersonTags(personId, tagIds)
+      if (problem) {
+        showToast(problem)
+      } else {
+        void studentTags.refresh()
+      }
+      return problem
+    },
     onSetStudentPhone: setStudentPhoneFromChat,
     onOpenLead: openEditLeadModal,
     zoomSlots: upcomingZoomSlots(calendarItems.items, new Date()),
@@ -7493,6 +7521,7 @@ function App() {
                     ? { setting: studentFields.setting, extras: studentFields.extras, kinds: studentFields.kinds, consultants: studentConsultants }
                     : undefined
                 }
+                studentTags={supabase && tagOptions.length > 0 ? { options: tagOptions, map: studentTags.tags } : undefined}
                 studentCodeSetting={
                   isAdmin
                     ? { enabled: studentCodeEnabled, isSaving: isSavingStudentCodeSetting, onToggle: () => void handleToggleStudentCode() }
@@ -7858,6 +7887,7 @@ function App() {
           onFieldChange={updateLeadForm}
           leadOptions={leadOptions}
           onAddLeadOption={handleAddLeadOption}
+          chats={editingLead ? leadChannels.rows.filter((row) => row.leadId === editingLead.id) : undefined}
           formSubmissions={editingLeadFormSubmissions}
           isLoadingFormSubmissions={isLoadingEditingLeadForms}
           focusFormAnswers={focusFormAnswers}
@@ -8031,6 +8061,23 @@ function App() {
           classrooms={classrooms}
           student={selectedStudentDetail}
           studentCode={studentCodeEnabled ? (studentCodes.get(selectedStudentDetail.id) ?? null) : null}
+          tagsSlot={
+            supabase && (tagOptions.length > 0 || can('students', 'edit')) ? (
+              <PersonTags
+                tags={tagOptions}
+                selectedIds={studentTags.tags.get(selectedStudentDetail.id) ?? []}
+                canEdit={can('students', 'edit')}
+                onChange={(ids) =>
+                  void studentTags.save(selectedStudentDetail.id, ids).then((problem) => {
+                    if (problem) {
+                      showToast(problem)
+                    }
+                  })
+                }
+                onCreate={(label, color) => handleAddLeadOption('tag', label, color)}
+              />
+            ) : undefined
+          }
           extraSummary={
             <StudentExtraSummary
               setting={studentFields.setting}

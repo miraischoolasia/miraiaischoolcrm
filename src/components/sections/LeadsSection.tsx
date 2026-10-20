@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { LeadChannelLines } from '../LeadChannelLines'
+import { HiddenNumberNote, LeadChannelLines } from '../LeadChannelLines'
 import {
   channelsByLead,
+  isHiddenNumberName,
   CHANNEL_LABEL,
   matchesChannelFilter,
   NO_CHANNEL_FILTER,
@@ -859,6 +860,7 @@ export function LeadsSection({
                     <div>
                       <div className="font-semibold text-slate-900">
                         {lead.fullName || 'Unnamed Lead'}
+                        {isHiddenNumberName(lead.fullName, lead.phone) && <HiddenNumberNote />}
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-slate-500">
                         <SourceLink
@@ -1071,7 +1073,10 @@ export function LeadsSection({
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
                         {lead.fullName && (
-                          <div className="font-semibold text-slate-900">{lead.fullName}</div>
+                          <div className="font-semibold text-slate-900">
+                            {lead.fullName}
+                            {isHiddenNumberName(lead.fullName, lead.phone) && <HiddenNumberNote />}
+                          </div>
                         )}
                         {lead.phone || channelsOfLead.has(lead.id) ? (
                           <LeadChannelLines

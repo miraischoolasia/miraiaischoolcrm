@@ -1568,6 +1568,7 @@ export function WhatsAppInbox({
             }}
             people={people}
             chatOfContact={chatOfContact}
+            onPeopleChanged={() => refreshPeople()}
             userName={currentUser.name}
             onWriteMessage={(text) => {
               setDraftRequest((current) => ({ id: (current?.id ?? 0) + 1, text }))

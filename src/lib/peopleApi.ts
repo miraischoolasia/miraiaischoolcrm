@@ -19,6 +19,8 @@ export type Person = {
   parentId: number | null
   leadId: number | null
   studentId: number | null
+  // The tags (lead_options, kind tag) of this parent or student.
+  tagIds?: number[]
 }
 
 type ContactInput = { contactId: number; name: string; phone: string | null; role: 'parent' | 'student' | null }
@@ -30,17 +32,45 @@ function requireSupabase() {
   return supabase
 }
 
+const PEOPLE_PAGE = 1000
+
+// Everyone in the family table, read 1000 at a time (a school has far more than one request returns).
 export async function fetchPeople(): Promise<Person[]> {
   const client = requireSupabase()
-  const { data, error } = await client
-    .from('people')
-    .select('id, kind, full_name, phone, email, chatwoot_contact_id, parent_id, lead_id, student_id')
-    .order('id', { ascending: true })
-    .limit(5000)
-  if (error) {
-    throw error
+  const columns = 'id, kind, full_name, phone, email, chatwoot_contact_id, parent_id, lead_id, student_id'
+  const read = async (selected: string) => {
+    const rows: Record<string, unknown>[] = []
+    for (let from = 0; ; from += PEOPLE_PAGE) {
+      const { data, error } = (await client
+        .from('people')
+        .select(selected)
+        .order('id', { ascending: true })
+        .range(from, from + PEOPLE_PAGE - 1)) as unknown as { data: Record<string, unknown>[] | null; error: { code?: string } | null }
+      if (error) {
+        return { rows: null, error }
+      }
+      rows.push(...(data ?? []))
+      if ((data ?? []).length < PEOPLE_PAGE) {
+        return { rows, error: null }
+      }
+    }
   }
-  return (data ?? []).map((row) => ({
+  // Before the tags update there is no tag_ids column: the family is read without it.
+  let result = await read(`${columns}, tag_ids`)
+  if (result.error?.code === '42703') {
+    result = await read(columns)
+  }
+  if (result.error) {
+    throw result.error
+  }
+  return (result.rows as unknown as (Pick<Person, 'id' | 'kind' | 'phone' | 'email'> & {
+    full_name: string | null
+    chatwoot_contact_id: number | null
+    parent_id: number | null
+    lead_id: number | null
+    student_id: number | null
+    tag_ids?: number[]
+  })[]).map((row) => ({
     id: row.id,
     kind: row.kind,
     name: row.full_name,
@@ -50,6 +80,7 @@ export async function fetchPeople(): Promise<Person[]> {
     parentId: row.parent_id,
     leadId: row.lead_id,
     studentId: row.student_id,
+    tagIds: row.tag_ids ?? [],
   }))
 }
 

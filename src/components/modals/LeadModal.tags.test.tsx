@@ -2,7 +2,9 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { LeadModal } from './LeadModal'
-import type { LeadFormState, LeadOption } from '../../types/domain'
+import type { Lead, LeadFormState, LeadOption } from '../../types/domain'
+import type { LeadChannel } from '../../lib/leadChannels'
+import { WhatsAppOpenProvider } from '../WhatsAppLink'
 
 const tag = (id: number, label: string): LeadOption => ({
   id,
@@ -90,5 +92,77 @@ describe('LeadModal tags', () => {
 
     expect(screen.getByLabelText('Add a tag')).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Remove tag Hot' })).toBeDisabled()
+  })
+})
+
+describe('LeadModal hidden WhatsApp number', () => {
+  const lead = {
+    id: 134,
+    fullName: '236998554123456',
+    phone: null,
+    sourceId: null,
+    picId: null,
+    state: null,
+    tagIds: [],
+    checks: {},
+    status: 'new',
+    children: [],
+    notes: null,
+    followUps: [],
+    tasks: [],
+    convertedStudentId: null,
+    addedDate: '2026-10-20',
+    createdAt: '',
+    updatedAt: '',
+  } as Lead
+  const chat: LeadChannel = {
+    id: 1,
+    leadId: 134,
+    channel: 'whatsapp',
+    contactId: 21,
+    inboxId: 1,
+    inboxName: null,
+    conversationId: 201,
+    name: '236998554123456',
+    pageName: null,
+    firstSeenAt: '2026-10-20T00:00:00Z',
+  }
+
+  it('opens the chat of the lead from the details and closes the window', async () => {
+    const openChat = vi.fn()
+    const onClose = vi.fn()
+    const { unmount } = render(
+      <WhatsAppOpenProvider value={openChat}>
+        <LeadModal
+          editingLead={lead}
+          formState={{ ...formState, fullName: '236998554123456', phone: '' }}
+          saveError={null}
+          isSaving={false}
+          onClose={onClose}
+          onSubmit={vi.fn()}
+          onFieldChange={vi.fn()}
+          leadOptions={[]}
+          onAddLeadOption={vi.fn()}
+          chats={[chat]}
+        />
+      </WhatsAppOpenProvider>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /Open the WhatsApp chat/ }))
+
+    expect(openChat).toHaveBeenCalledWith(expect.objectContaining({ leadId: 134, chat: { conversationId: 201, contactId: 21 } }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+    unmount()
+  })
+})
+
+describe('LeadModal optional fields', () => {
+  it('shows the Chinese name and the second phone, and passes what is typed on', async () => {
+    const { onFieldChange } = renderModal({ formState: { ...formState, nameZh: '小明', secondParentPhone: '' } })
+
+    expect(screen.getByLabelText(/Chinese name/)).toHaveValue('小明')
+    await userEvent.type(screen.getByLabelText(/Another parent's phone/), '7')
+
+    expect(onFieldChange).toHaveBeenCalledWith('secondParentPhone', '7')
   })
 })

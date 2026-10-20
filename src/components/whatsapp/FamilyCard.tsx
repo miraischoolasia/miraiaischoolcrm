@@ -1,6 +1,9 @@
+import { useState } from 'react'
 import { UsersThree } from '@phosphor-icons/react'
 import type { Family } from '../../lib/family'
 import type { Person } from '../../lib/peopleApi'
+import type { LeadOption } from '../../types/domain'
+import { PersonTags } from '../PersonTags'
 
 // kind says what the record is, so a child with an HOA record and a class record shows the class one.
 export type ChildDetail = { age: number | null; label: string | null; kind?: 'hoa' | 'trial' | 'regular' | 'camp' | null }
@@ -16,6 +19,14 @@ type FamilyCardProps = {
   chatOf: (contactId: number) => number | null
   onOpenChat: (conversationId: number) => void
   onOpenStudent?: (studentId: number) => void
+  // The tags of the parent and of each child (the same tags the leads use). Left out where tags are not offered.
+  tags?: {
+    options: LeadOption[]
+    canEdit: (person: Person) => boolean
+    // Resolves when the tags are saved and the family is read again.
+    onChange: (person: Person, tagIds: number[]) => Promise<void>
+    onCreate: (label: string, color: string) => Promise<LeadOption | null>
+  }
 }
 
 function nameOf(person: Person) {
@@ -54,7 +65,44 @@ const linkClass = 'font-medium text-[#be185d] hover:underline'
 
 // The family around the open chat: the parent, their children, and the way to the other chats of the
 // family. It is what the family table says, so the team sees one place instead of several boxes.
-export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStudent }: FamilyCardProps) {
+export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStudent, tags }: FamilyCardProps) {
+  // The tags just chosen show at once, until they are saved and the family is read again.
+  const [chosen, setChosen] = useState<Map<number, number[]>>(new Map())
+
+  // A person with tags, or one the team may tag, gets the tag line under their row.
+  function tagLine(person: Person) {
+    if (!tags) {
+      return null
+    }
+    const canEdit = tags.canEdit(person)
+    const selected = chosen.get(person.id) ?? person.tagIds ?? []
+    if (!canEdit && selected.length === 0) {
+      return null
+    }
+    return (
+      <div className="mt-1 pl-1">
+        <PersonTags
+          tags={tags.options}
+          selectedIds={selected}
+          canEdit={canEdit}
+          compact
+          showLabel={false}
+          onChange={(ids) => {
+            setChosen((current) => new Map(current).set(person.id, ids))
+            void tags.onChange(person, ids).finally(() =>
+              setChosen((current) => {
+                const next = new Map(current)
+                next.delete(person.id)
+                return next
+              }),
+            )
+          }}
+          onCreate={tags.onCreate}
+        />
+      </div>
+    )
+  }
+
   function openChatLink(person: Person) {
     const chat = person.contactId !== null ? chatOf(person.contactId) : null
     if (chat === null || person.id === family.me.id) {
@@ -77,21 +125,24 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
       </p>
 
       {parent ? (
-        <div className={`${rowClass} ${parent.id === me.id ? thisChatClass : ''}`}>
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-600">
-            {initialsOf(parent)}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium text-slate-900">{nameOf(parent)}</span>
-            <span className="block truncate text-slate-500">
-              Parent{parent.phone ? ` · +${parent.phone}` : parent.contactId !== null ? ' · number hidden by WhatsApp' : ''}
+        <div>
+          <div className={`${rowClass} ${parent.id === me.id ? thisChatClass : ''}`}>
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-600">
+              {initialsOf(parent)}
             </span>
-          </span>
-          {parent.id === me.id ? (
-            <span className="rounded-full bg-[#ffe4f2] px-2 py-0.5 text-[11px] font-medium text-[#be185d]">This chat</span>
-          ) : (
-            openChatLink(parent)
-          )}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-slate-900">{nameOf(parent)}</span>
+              <span className="block truncate text-slate-500">
+                Parent{parent.phone ? ` · +${parent.phone}` : parent.contactId !== null ? ' · number hidden by WhatsApp' : ''}
+              </span>
+            </span>
+            {parent.id === me.id ? (
+              <span className="rounded-full bg-[#ffe4f2] px-2 py-0.5 text-[11px] font-medium text-[#be185d]">This chat</span>
+            ) : (
+              openChatLink(parent)
+            )}
+          </div>
+          {tagLine(parent)}
         </div>
       ) : (
         <div className={`${rowClass} border-dashed`}>
@@ -124,6 +175,7 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
               (a, b) => (a.kind ? KIND_RANK[a.kind] : 9) - (b.kind ? KIND_RANK[b.kind] : 9),
             )
             const current = ranked[0]
+            const tagPerson = group.people.find((child) => child.studentId !== null) ?? first
             const didHoa = details.length > 1 && details.some((detail) => detail.kind === 'hoa' || detail.kind === 'trial')
               && current.kind !== 'hoa' && current.kind !== 'trial'
             return (
@@ -144,6 +196,7 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
                     <span className="rounded-full bg-[#ffe4f2] px-2 py-0.5 text-[11px] font-medium text-[#be185d]">This chat</span>
                   ) : null}
                 </div>
+                {tagLine(tagPerson)}
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 pl-1">
                   {current.child.studentId !== null && onOpenStudent ? (
                     <button type="button" onClick={() => onOpenStudent(current.child.studentId as number)} className={linkClass}>

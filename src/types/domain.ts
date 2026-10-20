@@ -256,6 +256,9 @@ export type Lead = {
   picId: number | null
   // One of the Malaysian states, or null when not known.
   state: string | null
+  // Optional: a Chinese name, and the number of another parent (shown in the lead details).
+  nameZh?: string | null
+  secondParentPhone?: string | null
   // Ids of lead_options of kind 'tag'.
   tagIds: number[]
   // Which tick columns are ticked, and when and by whom.
@@ -444,6 +447,9 @@ export type LeadFormState = {
   picId: string
   // '' = not set.
   state: string
+  // Optional, '' = none.
+  nameZh?: string
+  secondParentPhone?: string
   tagIds: number[]
   status: LeadStatus
   children: LeadChildFormState[]
@@ -595,7 +601,7 @@ export type LeadRow = Pick<
   | 'added_date'
   | 'created_at'
   | 'updated_at'
->
+> & { name_zh?: string | null; second_parent_phone?: string | null }
 
 export type AdminActivityRow = Pick<
   Database['public']['Tables']['admin_activity_logs']['Row'],

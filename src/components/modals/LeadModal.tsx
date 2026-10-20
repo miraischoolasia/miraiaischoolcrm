@@ -10,6 +10,8 @@ import {
 import { LeadOptionPicker } from '../LeadOptionPicker'
 import { LeadTagPicker } from '../LeadTagPicker'
 import { WhatsAppLink } from '../WhatsAppLink'
+import { HiddenNumberNote, LeadChannelLines } from '../LeadChannelLines'
+import { isHiddenNumberName, type LeadChannel } from '../../lib/leadChannels'
 import { formatDateTime } from '../../lib/forms'
 import { trafficSourceLabel } from '../../lib/formInsights'
 import type {
@@ -35,6 +37,8 @@ type LeadModalProps = {
     label: string,
     color?: string,
   ) => Promise<LeadOption | null>
+  // The chats this lead has (WhatsApp, Messenger, Instagram), to open them from here.
+  chats?: LeadChannel[]
   // What this lead answered in forms (read-only), newest first.
   formSubmissions?: LeadFormSubmission[]
   isLoadingFormSubmissions?: boolean
@@ -54,6 +58,7 @@ export function LeadModal({
   onFieldChange,
   leadOptions,
   onAddLeadOption,
+  chats = [],
   formSubmissions = [],
   isLoadingFormSubmissions = false,
   focusFormAnswers = false,
@@ -147,6 +152,11 @@ export function LeadModal({
               onChange={(event) => onFieldChange('fullName', event.target.value)}
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
             />
+            {isHiddenNumberName(formState.fullName, formState.phone) && (
+              <span className="block">
+                <HiddenNumberNote className="ml-0" />
+              </span>
+            )}
           </label>
 
           <label className="space-y-2">
@@ -158,6 +168,34 @@ export function LeadModal({
               type="text"
               value={formState.phone}
               onChange={(event) => onFieldChange('phone', event.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+            />
+            {/* A lead with no phone number is found by its chats: one line each, opening that chat in the Inbox. */}
+            {editingLead && chats.length > 0 && !formState.phone.trim() && (
+              <LeadChannelLines phone={null} channels={chats} leadId={editingLead.id} onOpened={onClose} className="pt-1" />
+            )}
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-slate-700">
+              Chinese name <span className="font-normal text-slate-400">(optional)</span>
+            </span>
+            <input
+              type="text"
+              value={formState.nameZh ?? ''}
+              onChange={(event) => onFieldChange('nameZh', event.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-semibold text-slate-700">
+              Another parent's phone <span className="font-normal text-slate-400">(optional)</span>
+            </span>
+            <input
+              type="text"
+              value={formState.secondParentPhone ?? ''}
+              onChange={(event) => onFieldChange('secondParentPhone', event.target.value)}
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
             />
           </label>
