@@ -7,7 +7,7 @@ import {
   leadChildAgeOptions,
   leadStatusOptions,
 } from '../../lib/constants'
-import { findLeadsByPhone, sameNumberMessage, type SourceGuess } from '../../lib/chatLink'
+import { canonicalPhone, findLeadsByPhone, sameNumberMessage, type SourceGuess } from '../../lib/chatLink'
 import { leadPhoneFor, parentPhoneOf, studentPhoneOf } from '../../lib/studentContact'
 import type { ChatRole } from '../../lib/whatsappInbox'
 import type { Lead, LeadOption, LeadStatus } from '../../types/domain'
@@ -32,8 +32,12 @@ type LeadFormProps = {
   guess: SourceGuess
   // Who the team said is on the chat. A student writing themself gets the student's own details first.
   role?: ChatRole | null
-  // The chat is a child's own number and the lead is the family's: the fields say they are the parent's.
+  // The chat is a child's own number and the lead is the family's: the parent's name, number and the children are
+  // only shown (they are changed in the parent's chat), and this chat's name and number are never saved as the parent's.
   forChildChat?: boolean
+  // That child, as the chat knows them.
+  childName?: string | null
+  childPhone?: string | null
   // Called once a new lead is saved, so the chat can be tied to it.
   onCreated: (leadId: number) => Promise<void>
   // The team found the lead this person already is: ties the chat to that lead (after the two leads were
@@ -88,10 +92,16 @@ export function LeadForm({
   guess,
   role = null,
   forChildChat = false,
+  childName = null,
+  childPhone = null,
   onCreated,
   onFindLead,
 }: LeadFormProps) {
-  const isStudent = role === 'student'
+  // A child's own chat with the family's lead: the family part is shown, not typed over (Lucas, 2026-10-20: his name and
+  // number were typed into the parent's boxes and his row removed, and every change saved itself).
+  const familyView = forChildChat && lead !== null
+  const [editParent, setEditParent] = useState(false)
+  const isStudent = role === 'student' && !familyView
   const sources = crm.leadOptions.filter((option) => option.kind === 'source' && option.isActive)
   const tags = crm.leadOptions.filter((option) => option.kind === 'tag')
   const otherSource = sources.find((option) => option.legacyKey === 'other')
@@ -157,7 +167,7 @@ export function LeadForm({
   // A lead with no parent name takes the name the chat shows, and keeps it.
   const leadHasName = lead ? lead.fullName !== null && lead.fullName.trim() !== '' : true
   useEffect(() => {
-    if (lead && !leadHasName && fallbackName && crm.canEditLeads && !isStudent && !dirtyRef.current) {
+    if (lead && !leadHasName && fallbackName && crm.canEditLeads && !isStudent && !forChildChat && !dirtyRef.current) {
       change({ fullName: fallbackName })
     }
     // Once per lead and name; change() only writes into the form.
@@ -233,11 +243,22 @@ export function LeadForm({
       return
     }
     const sent = formRef.current
+    // In a child's own chat this chat is never the parent: neither its name nor its number go into the parent's boxes.
+    const problem = familyView && lead
+      ? childAsParentProblem(sent, { fullName: lead.fullName ?? '', phone: lead.phone ?? '' }, childName, childPhone)
+      : null
+    if (problem) {
+      setError(problem)
+      return
+    }
     const filled = sent.children.filter((child) => child.age !== '' || child.name.trim() !== '')
     // A student writing themself keeps their own number on the child, whoever the lead's number is.
-    const children = isStudent
-      ? filled.map((child, position) => (position === 0 ? { ...child, phone: sent.studentPhone.trim() || null } : child))
-      : filled
+    // In a child's own chat the children are only shown, so the family's list is sent back as it is.
+    const children = familyView && lead
+      ? lead.children.map((child) => ({ name: child.name ?? '', age: String(child.age), phone: child.phone ?? null }))
+      : isStudent
+        ? filled.map((child, position) => (position === 0 ? { ...child, phone: sent.studentPhone.trim() || null } : child))
+        : filled
     if (children.some((child) => child.age === '')) {
       setError(isStudent ? "Choose the student's age to save." : "Choose the child's age to save.")
       return
@@ -330,8 +351,45 @@ export function LeadForm({
 
   return (
     <>
-      <PanelSection title={lead ? (forChildChat && !isStudent ? "Family lead details (the parent's)" : 'Lead details') : 'Add as a new lead'}>
-        {isStudent ? (
+      <PanelSection title={lead ? (forChildChat ? "Family lead details (the parent's)" : 'Lead details') : 'Add as a new lead'}>
+        {familyView ? (
+          <FamilyPart
+            parentName={form.fullName}
+            // Until the parent's number is known the lead holds the child's: that one is not shown as the parent's.
+            // A number typed here is always shown (and refused when it is the child's).
+            parentPhone={
+              lead && childPhone && form.phone === (lead.phone ?? '') && canonicalPhone(form.phone) === canonicalPhone(childPhone)
+                ? ''
+                : form.phone
+            }
+            childName={childName}
+            childrenRows={form.children}
+            canEdit={canEdit}
+            editing={editParent}
+            onEdit={() => setEditParent(true)}
+            problem={editParent ? error : null}
+            // Closing the boxes with a name or number that cannot be saved puts the family's back.
+            onDone={() => {
+              if (lead && error) {
+                change({ fullName: lead.fullName ?? '', phone: lead.phone ?? '' })
+              }
+              setEditParent(false)
+            }}
+            onParentName={(value) => change({ fullName: value }, true)}
+            // Until the parent's number is written, the lead keeps the child's (so the chat is still found by phone).
+            onParentPhone={(value) =>
+              change(
+                {
+                  phone:
+                    value.trim() || !lead || !childPhone || canonicalPhone(lead.phone ?? '') !== canonicalPhone(childPhone)
+                      ? value
+                      : (lead.phone ?? ''),
+                },
+                true,
+              )
+            }
+          />
+        ) : isStudent ? (
           <>
             <label className="block">
               <span className="text-slate-600">Student name</span>
@@ -585,7 +643,7 @@ export function LeadForm({
           </p>
         )}
 
-        {error && (
+        {error && !(familyView && editParent) && (
           <p role="alert" className="text-red-600">
             {error}
           </p>
@@ -613,4 +671,122 @@ function withCurrent(active: LeadOption[], all: LeadOption[], currentId: number 
   }
   const current = all.find((option) => option.id === currentId)
   return current ? [...active, current] : active
+}
+
+const sameText = (a: string, b: string) => a.toLowerCase().replace(/[\s\p{P}]/gu, '') === b.toLowerCase().replace(/[\s\p{P}]/gu, '')
+
+// Why the parent's boxes cannot be saved in a child's own chat: they were changed to this chat's (the child's) name or
+// number. What the lead held already is left alone (until the parent's number is known, the lead's number is the child's).
+export function childAsParentProblem(
+  sent: { fullName: string; phone: string },
+  saved: { fullName: string; phone: string },
+  childName: string | null,
+  childPhone: string | null,
+): string | null {
+  const nameChanged = !sameText(sent.fullName, saved.fullName)
+  if (nameChanged && childName?.trim() && sent.fullName.trim() && sameText(sent.fullName, childName)) {
+    return `${childName.trim()} is this chat (the child). Write the parent's name here, or leave it empty.`
+  }
+  const typed = canonicalPhone(sent.phone)
+  const phoneChanged = typed !== canonicalPhone(saved.phone)
+  if (phoneChanged && childPhone && typed !== null && typed === canonicalPhone(childPhone)) {
+    return "That is this chat's number (the child's). Write the parent's number here."
+  }
+  return null
+}
+
+// The family's part of the lead, seen from a child's own chat: the parent and the children are shown; the parent's
+// name and number open for typing only when asked, and the children are changed in the parent's chat.
+function FamilyPart({
+  parentName,
+  parentPhone,
+  childName,
+  childrenRows,
+  canEdit,
+  editing,
+  onEdit,
+  onDone,
+  problem,
+  onParentName,
+  onParentPhone,
+}: {
+  parentName: string
+  parentPhone: string
+  childName: string | null
+  childrenRows: ChildRow[]
+  canEdit: boolean
+  editing: boolean
+  onEdit: () => void
+  onDone: () => void
+  // Why the parent's boxes cannot be saved, shown right under them.
+  problem: string | null
+  onParentName: (value: string) => void
+  onParentPhone: (value: string) => void
+}) {
+  const child = childName?.trim() || 'the child'
+  return (
+    <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2" aria-label="The family">
+      <p className="text-xs text-slate-600">The family of this chat. These are the parent's details, not {child}'s.</p>
+      {editing ? (
+        <>
+          <label className="block">
+            <span className="text-slate-600">Parent's name (not {child})</span>
+            <input value={parentName} onChange={(event) => onParentName(event.target.value)} className={fieldClass} />
+          </label>
+          <label className="block">
+            <span className="text-slate-600">Parent's phone number (not this chat's)</span>
+            <input
+              type="tel"
+              value={parentPhone}
+              onChange={(event) => onParentPhone(event.target.value)}
+              placeholder="012 345 6789"
+              className={fieldClass}
+            />
+          </label>
+          {problem && (
+            <p role="alert" className="text-xs text-red-600">
+              {problem}
+            </p>
+          )}
+          <button type="button" onClick={onDone} className="text-xs font-medium text-[#be185d] hover:underline">
+            Done
+          </button>
+        </>
+      ) : (
+        <dl className="space-y-1">
+          <div className="flex justify-between gap-2">
+            <dt className="text-slate-600">Parent</dt>
+            <dd className="min-w-0 truncate text-right font-medium text-slate-900">{parentName.trim() || 'Not saved yet'}</dd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <dt className="text-slate-600">Parent's number</dt>
+            <dd className="min-w-0 truncate text-right font-medium text-slate-900">{parentPhone.trim() || 'Not saved yet'}</dd>
+          </div>
+        </dl>
+      )}
+      <div>
+        <span className="block text-slate-600">Children in the family</span>
+        {childrenRows.filter((row) => row.name.trim() || row.age).length === 0 ? (
+          <p className="text-xs text-slate-500">None written yet.</p>
+        ) : (
+          <ul className="mt-0.5 space-y-0.5">
+            {childrenRows
+              .filter((row) => row.name.trim() || row.age)
+              .map((row, index) => (
+                <li key={index} className="flex justify-between gap-2 text-slate-900">
+                  <span className="min-w-0 truncate">{row.name.trim() || 'Name not saved'}</span>
+                  <span className="shrink-0 text-slate-500">{row.age ? `${row.age} years` : ''}</span>
+                </li>
+              ))}
+          </ul>
+        )}
+        <p className="mt-1 text-xs text-slate-500">Add or change the children in the parent's chat.</p>
+      </div>
+      {canEdit && !editing && (
+        <button type="button" onClick={onEdit} className="text-xs font-medium text-[#be185d] hover:underline">
+          Change the parent's name or number
+        </button>
+      )}
+    </div>
+  )
 }

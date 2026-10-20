@@ -41,6 +41,12 @@ const numbers = [
   { id: 3, label: 'Third (no name yet)', phone: null, inboxId: 7, instance: null, isActive: true },
 ]
 
+// &staff=40 adds that many made-up staff, to see a long list of ticks (the window must scroll, its buttons stay in view).
+const extraStaff = Array.from({ length: Math.min(200, Number(new URLSearchParams(window.location.search).get('staff')) || 0) }, (_, index) => ({
+  id: 100 + index,
+  name: `Staff member ${index + 1}`,
+}))
+
 export function NumbersDemo() {
   return (
     <NumbersDialog
@@ -49,6 +55,7 @@ export function NumbersDemo() {
       staff={[
         { id: 7, name: 'Amy' },
         { id: 8, name: 'Ben' },
+        ...extraStaff,
       ]}
       inboxes={[
         { id: 3, name: 'School WhatsApp' },

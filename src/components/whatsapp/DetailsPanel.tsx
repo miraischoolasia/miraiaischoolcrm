@@ -541,6 +541,8 @@ export function DetailsPanel({
             guess={guess}
             role={role}
             forChildChat={childChat !== null}
+            childName={childChat?.name ?? null}
+            childPhone={childChatPhone}
             onCreated={async (leadId) => {
               await onLinkLead(leadId)
             }}

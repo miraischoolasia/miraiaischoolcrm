@@ -734,7 +734,74 @@ describe('DetailsPanel', () => {
       expect(screen.getByText('Family lead · the parent')).toBeInTheDocument()
       expect(screen.getByRole('heading', { name: 'Mei Ling' })).toBeInTheDocument()
       expect(screen.getByRole('heading', { name: "Family lead details (the parent's)" })).toBeInTheDocument()
-      expect(screen.getByLabelText("Parent's phone number (not this chat's)")).toHaveValue('012-763 3881')
+      // The family's part is shown, not typed over: no parent box, no child row to remove, no "Add a child".
+      const familyPart = screen.getByLabelText('The family')
+      expect(familyPart).toHaveTextContent('012-763 3881')
+      expect(screen.queryByLabelText("Parent's phone number (not this chat's)")).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Add a child' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Remove child/ })).not.toBeInTheDocument()
+    })
+
+    it("never saves the child's own name or number as the parent's, and keeps the children (Lucas, 2026-10-20)", async () => {
+      const childFamily = [
+        person(1, { kind: 'parent', name: 'Michelle Hew', phone: '60127633881', contactId: 99, leadId: 11 }),
+        person(2, { kind: 'student', name: 'Lucas Chin Jun Hao', phone: '60123456789', contactId: 3, parentId: 1 }),
+      ]
+      const familyLead = {
+        ...lead,
+        fullName: 'Michelle Hew',
+        phone: '60127633881',
+        children: [{ name: 'Lucas Chin Jun Hao', age: 15, phone: '60123456789' }],
+      } as Lead
+      const crm = makeCrm({ leads: [familyLead] })
+      render(
+        <DetailsPanel
+          conversation={conversation({ crm_lead_id: 11 })}
+          messages={[firstMessage]}
+          hasOlder={false}
+          crm={crm}
+          sourceRules={[]}
+          onLoadOlder={vi.fn()}
+          onLinkLead={vi.fn()}
+          onLinkStudents={vi.fn()}
+          onOpenChat={vi.fn()}
+          people={childFamily}
+          chatOfContact={() => null}
+        />,
+      )
+
+      const familyPart = screen.getByLabelText('The family')
+      expect(familyPart).toHaveTextContent('Michelle Hew')
+      expect(familyPart).toHaveTextContent('Lucas Chin Jun Hao')
+      expect(familyPart).toHaveTextContent('15 years')
+
+      await userEvent.click(screen.getByRole('button', { name: "Change the parent's name or number" }))
+      const name = screen.getByLabelText("Parent's name (not Lucas Chin Jun Hao)")
+      await userEvent.clear(name)
+      await userEvent.type(name, 'Lucas Chin Jun Hao')
+      expect(await screen.findByRole('alert')).toHaveTextContent('Lucas Chin Jun Hao is this chat (the child)')
+      const phoneBox = screen.getByLabelText("Parent's phone number (not this chat's)")
+      await userEvent.clear(name)
+      await userEvent.type(name, 'Michelle Hew')
+      await userEvent.clear(phoneBox)
+      await userEvent.type(phoneBox, '012-345 6789')
+      expect(await screen.findByRole('alert')).toHaveTextContent("That is this chat's number")
+      expect(crm.onUpdateLead).not.toHaveBeenCalledWith(11, expect.objectContaining({ fullName: 'Lucas Chin Jun Hao' }))
+      expect(crm.onUpdateLead).not.toHaveBeenCalledWith(11, expect.objectContaining({ phone: '012-345 6789' }))
+
+      // A real change of the parent's number is saved, with the children as they were.
+      await userEvent.clear(phoneBox)
+      await userEvent.type(phoneBox, '012-763 3882')
+      await waitFor(() =>
+        expect(crm.onUpdateLead).toHaveBeenLastCalledWith(
+          11,
+          expect.objectContaining({
+            fullName: 'Michelle Hew',
+            phone: '012-763 3882',
+            children: [{ name: 'Lucas Chin Jun Hao', age: 15, phone: '60123456789' }],
+          }),
+        ),
+      )
     })
 
     it("keeps the parent's own chat as it was", () => {

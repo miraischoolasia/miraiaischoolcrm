@@ -71,7 +71,8 @@ const crm = {
   onCancelHoa: nothing,
   onEnrolCamp: nothing,
   leadOptions: [{ id: 1, kind: 'source', label: 'Facebook', isActive: true, legacyKey: null, color: null }],
-  canEditLeads: false,
+  // &edit=1: the forms can be typed in (nothing is saved), to try what a child's chat lets the team change.
+  canEditLeads: new URLSearchParams(window.location.search).get('edit') === '1',
   canEditStudents: false,
   canBookMakeup: false,
   onCreateLead: async () => ({ leadId: 0, error: 'Demo only' }),

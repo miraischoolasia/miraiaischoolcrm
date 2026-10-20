@@ -181,324 +181,332 @@ export function NumbersDialog({
 
   return (
     <ModalShell maxWidth="2xl" onClose={onClose}>
-      <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
-        <div>
-          <h2 className="text-xl font-semibold text-slate-900">WhatsApp numbers</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Give each number to the staff who answer it. Admins always see every number. Until a number is added
-            here, everyone sees the one inbox.
-          </p>
+      {/* Never taller than the screen: the title and the buttons stay in view, the middle scrolls (a long staff list). */}
+      <div className="flex max-h-[calc(100dvh-3rem)] flex-col">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-4 py-4 sm:px-6 sm:py-5">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900">WhatsApp numbers</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Give each number to the staff who answer it. Admins always see every number. Until a number is added
+              here, everyone sees the one inbox.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
+          >
+            <X size={16} />
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
-        >
-          <X size={16} />
-        </button>
-      </div>
 
-      <div className="space-y-4 px-6 py-5">
-        {editing === null && (
-          <>
-            {apiUrl && !named && <LinkWhatsAppPanel apiUrl={apiUrl} />}
-            {numbers.length > 1 && unnamed.length > 0 && (
-              <p role="note" className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                With more than one number, every number needs its Evolution name, the first one too. Without it,
-                reactions, edits, read ticks and the QR code of that number go to the school's first phone. Missing on:{' '}
-                {unnamed.map((number) => `${number.label} (inbox ${number.inboxId})`).join(', ')}. Press Edit to fill
-                it in; the server team gives the names.
-              </p>
-            )}
-            {numbers.length === 0 ? (
-              <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                No number is set up yet. Add the number the school uses now first, then the next ones. Give each
-                number the staff who answer it: once a number is added, staff see only the numbers given to them.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {numbers.map((number) => {
-                  const given = assignments.get(number.id) ?? []
-                  return (
-                    <li key={number.id} className="rounded-xl border border-slate-200 px-4 py-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-slate-900">
-                            {number.label}
-                            {(!number.isActive || serverOf(number.instance)?.active === false) && (
-                              <span className="ml-2 text-xs font-medium text-slate-500">(off: chats can be read, not answered)</span>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
+          {editing === null && (
+            <>
+              {apiUrl && !named && <LinkWhatsAppPanel apiUrl={apiUrl} />}
+              {numbers.length > 1 && unnamed.length > 0 && (
+                <p role="note" className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  With more than one number, every number needs its Evolution name, the first one too. Without it,
+                  reactions, edits, read ticks and the QR code of that number go to the school's first phone. Missing on:{' '}
+                  {unnamed.map((number) => `${number.label} (inbox ${number.inboxId})`).join(', ')}. Press Edit to fill
+                  it in; the server team gives the names.
+                </p>
+              )}
+              {numbers.length === 0 ? (
+                <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  No number is set up yet. Add the number the school uses now first, then the next ones. Give each
+                  number the staff who answer it: once a number is added, staff see only the numbers given to them.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {numbers.map((number) => {
+                    const given = assignments.get(number.id) ?? []
+                    return (
+                      <li key={number.id} className="rounded-xl border border-slate-200 px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-900">
+                              {number.label}
+                              {(!number.isActive || serverOf(number.instance)?.active === false) && (
+                                <span className="ml-2 text-xs font-medium text-slate-500">(off: chats can be read, not answered)</span>
+                              )}
+                            </p>
+                            <p className="truncate text-xs text-slate-500">
+                              {number.phone ? `+${number.phone} · ` : ''}Inbox {number.inboxId}
+                              {number.instance ? ` · ${number.instance}` : ''}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {selfService && number.instance && serverOf(number.instance) && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setAsking(
+                                    serverOf(number.instance)?.active === false
+                                      ? { kind: 'on', instance: number.instance!, label: number.label }
+                                      : { kind: 'off', instance: number.instance!, label: number.label, first: number.id === numbers[0]?.id },
+                                  )
+                                }
+                                className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                              >
+                                {serverOf(number.instance)?.active === false ? 'Turn on' : 'Turn off'}
+                              </button>
                             )}
-                          </p>
-                          <p className="truncate text-xs text-slate-500">
-                            {number.phone ? `+${number.phone} · ` : ''}Inbox {number.inboxId}
-                            {number.instance ? ` · ${number.instance}` : ''}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {selfService && number.instance && serverOf(number.instance) && (
                             <button
                               type="button"
-                              onClick={() =>
-                                setAsking(
-                                  serverOf(number.instance)?.active === false
-                                    ? { kind: 'on', instance: number.instance!, label: number.label }
-                                    : { kind: 'off', instance: number.instance!, label: number.label, first: number.id === numbers[0]?.id },
-                                )
-                              }
+                              onClick={() => setEditing(number)}
                               className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                             >
-                              {serverOf(number.instance)?.active === false ? 'Turn on' : 'Turn off'}
+                              Edit
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setEditing(number)}
-                            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                          >
-                            Edit
-                          </button>
-                          {removing === number.id ? (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                const problem = await onRemove(number)
-                                setRemoving(null)
-                                if (problem) {
-                                  setError(problem)
-                                }
-                              }}
-                              className="rounded-lg bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700"
-                            >
-                              Really remove?
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setRemoving(number.id)}
-                              className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
-                            >
-                              Remove
-                            </button>
-                          )}
+                            {removing === number.id ? (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const problem = await onRemove(number)
+                                  setRemoving(null)
+                                  if (problem) {
+                                    setError(problem)
+                                  }
+                                }}
+                                className="rounded-lg bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700"
+                              >
+                                Really remove?
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setRemoving(number.id)}
+                                className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <p className="mt-2 text-xs text-slate-600">
-                        {given.length === 0 ? 'Only admins see this number.' : `Given to: ${given.map(staffName).join(', ')}`}
-                      </p>
-                      {apiUrl && number.instance && number.isActive && serverOf(number.instance)?.active !== false && (
-                        <div className="mt-3">
-                          <LinkWhatsAppPanel
-                            key={`${number.instance}:${justAdded === number.instance ? 'new' : 'shown'}`}
-                            apiUrl={apiUrl}
-                            instance={number.instance}
-                            title={`Phone of ${number.label}`}
-                            autoStart={justAdded === number.instance}
-                          />
-                        </div>
-                      )}
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-            {missing.length > 0 && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                <p className="font-semibold">On the WhatsApp server, not in this list yet</p>
-                <p className="mt-1 text-xs">Add them, so their reactions, read ticks and QR code go to the right phone.</p>
-                <ul className="mt-2 space-y-1.5">
-                  {missing.map((entry) => (
-                    <li key={entry.instance} className="flex flex-wrap items-center justify-between gap-2">
-                      <span>
-                        {entry.label} · inbox {entry.inboxId} · {entry.instance}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => void addToList(entry)}
-                        className="rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100"
-                      >
-                        Add to the list
-                      </button>
-                    </li>
-                  ))}
+                        <p className="mt-2 text-xs text-slate-600">
+                          {given.length === 0 ? 'Only admins see this number.' : `Given to: ${given.map(staffName).join(', ')}`}
+                        </p>
+                        {apiUrl && number.instance && number.isActive && serverOf(number.instance)?.active !== false && (
+                          <div className="mt-3">
+                            <LinkWhatsAppPanel
+                              key={`${number.instance}:${justAdded === number.instance ? 'new' : 'shown'}`}
+                              apiUrl={apiUrl}
+                              instance={number.instance}
+                              title={`Phone of ${number.label}`}
+                              autoStart={justAdded === number.instance}
+                            />
+                          </div>
+                        )}
+                      </li>
+                    )
+                  })}
                 </ul>
-              </div>
-            )}
-            {asking && (
-              <div ref={askingBox} role="alertdialog" aria-label="Are you sure?" className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800">
-                <p className="font-semibold">{ASKING_TEXT[asking.kind].title(asking.label)}</p>
-                <p className="mt-1 text-xs text-slate-600">{askingDetail(asking)}</p>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    disabled={isWorking}
-                    onClick={() => void confirm()}
-                    className={
-                      asking.kind === 'off'
-                        ? 'rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60'
-                        : 'rounded-lg bg-[#fc0c97] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#de0a84] disabled:opacity-60'
+              )}
+              {missing.length > 0 && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <p className="font-semibold">On the WhatsApp server, not in this list yet</p>
+                  <p className="mt-1 text-xs">Add them, so their reactions, read ticks and QR code go to the right phone.</p>
+                  <ul className="mt-2 space-y-1.5">
+                    {missing.map((entry) => (
+                      <li key={entry.instance} className="flex flex-wrap items-center justify-between gap-2">
+                        <span>
+                          {entry.label} · inbox {entry.inboxId} · {entry.instance}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void addToList(entry)}
+                          className="rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                        >
+                          Add to the list
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {asking && (
+                <div ref={askingBox} role="alertdialog" aria-label="Are you sure?" className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800">
+                  <p className="font-semibold">{ASKING_TEXT[asking.kind].title(asking.label)}</p>
+                  <p className="mt-1 text-xs text-slate-600">{askingDetail(asking)}</p>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      disabled={isWorking}
+                      onClick={() => void confirm()}
+                      className={
+                        asking.kind === 'off'
+                          ? 'rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60'
+                          : 'rounded-lg bg-[#fc0c97] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#de0a84] disabled:opacity-60'
+                      }
+                    >
+                      {isWorking ? 'Working...' : ASKING_TEXT[asking.kind].yes}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isWorking}
+                      onClick={() => setAsking(null)}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              {error && (
+                <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {error}
+                </p>
+              )}
+              {selfService && newLabel !== null ? (
+                <form
+                  className="flex flex-wrap items-end gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    const label = newLabel.trim()
+                    if (label === '' || label.length > 60) {
+                      setError('Give the new number a name of 1 to 60 letters, for example "Sales" or "Branch 2".')
+                      return
                     }
-                  >
-                    {isWorking ? 'Working...' : ASKING_TEXT[asking.kind].yes}
+                    setError(null)
+                    setAsking({ kind: 'add', label })
+                  }}
+                >
+                  <label className="min-w-0 flex-1">
+                    <span className="text-sm font-medium text-slate-700">Name of the new number</span>
+                    <input
+                      value={newLabel}
+                      onChange={(event) => setNewLabel(event.target.value)}
+                      placeholder="Sales, Branch 2..."
+                      className={fieldClass}
+                    />
+                  </label>
+                  <button type="submit" className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white hover:bg-[#de0a84]">
+                    Next
                   </button>
                   <button
                     type="button"
-                    disabled={isWorking}
-                    onClick={() => setAsking(null)}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    onClick={() => setNewLabel(null)}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                   >
                     Cancel
                   </button>
-                </div>
-              </div>
-            )}
-            {error && (
-              <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
-                {error}
-              </p>
-            )}
-            {selfService && newLabel !== null ? (
-              <form
-                className="flex flex-wrap items-end gap-2"
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  const label = newLabel.trim()
-                  if (label === '' || label.length > 60) {
-                    setError('Give the new number a name of 1 to 60 letters, for example "Sales" or "Branch 2".')
-                    return
-                  }
-                  setError(null)
-                  setAsking({ kind: 'add', label })
-                }}
-              >
-                <label className="min-w-0 flex-1">
-                  <span className="text-sm font-medium text-slate-700">Name of the new number</span>
-                  <input
-                    value={newLabel}
-                    onChange={(event) => setNewLabel(event.target.value)}
-                    placeholder="Sales, Branch 2..."
-                    className={fieldClass}
-                  />
-                </label>
-                <button type="submit" className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white hover:bg-[#de0a84]">
-                  Next
-                </button>
+                </form>
+              ) : (
+                // A school whose server adds numbers: only a name is asked. Otherwise the number is written in by hand.
                 <button
                   type="button"
-                  onClick={() => setNewLabel(null)}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  onClick={() => (selfService ? setNewLabel('') : setEditing('new'))}
+                  className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white hover:bg-[#de0a84]"
                 >
-                  Cancel
+                  Add a number
                 </button>
-              </form>
-            ) : (
-              // A school whose server adds numbers: only a name is asked. Otherwise the number is written in by hand.
-              <button
-                type="button"
-                onClick={() => (selfService ? setNewLabel('') : setEditing('new'))}
-                className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white hover:bg-[#de0a84]"
-              >
-                Add a number
-              </button>
-            )}
-          </>
-        )}
+              )}
+            </>
+          )}
 
-        {editing !== null && (
-          <div className="space-y-4">
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">Name</span>
-              <input
-                value={draft.label}
-                onChange={(event) => setDraft({ ...draft, label: event.target.value })}
-                placeholder="Main, Sales, Support..."
-                className={fieldClass}
-              />
-            </label>
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">Phone number (optional, for showing)</span>
-              <input
-                type="tel"
-                value={draft.phone}
-                onChange={(event) => setDraft({ ...draft, phone: event.target.value })}
-                placeholder="60123456789"
-                className={fieldClass}
-              />
-            </label>
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">Chatwoot inbox</span>
-              {inboxes.length > 0 ? (
-                <select
-                  value={draft.inboxId ?? ''}
-                  onChange={(event) =>
-                    setDraft({ ...draft, inboxId: event.target.value ? Number(event.target.value) : null })
-                  }
-                  className={fieldClass}
-                >
-                  <option value="">Pick the inbox of this number</option>
-                  {inboxes.map((inbox) => (
-                    <option key={inbox.id} value={inbox.id}>
-                      {inbox.name} (inbox {inbox.id})
-                    </option>
-                  ))}
-                </select>
-              ) : (
+          {editing !== null && (
+            <div className="space-y-4">
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Name</span>
                 <input
-                  type="number"
-                  value={draft.inboxId ?? ''}
-                  onChange={(event) =>
-                    setDraft({ ...draft, inboxId: event.target.value ? Number(event.target.value) : null })
-                  }
-                  placeholder="The inbox number in Chatwoot"
+                  value={draft.label}
+                  onChange={(event) => setDraft({ ...draft, label: event.target.value })}
+                  placeholder="Main, Sales, Support..."
                   className={fieldClass}
                 />
-              )}
-            </label>
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">Evolution name</span>
-              <input
-                value={draft.instance}
-                onChange={(event) => setDraft({ ...draft, instance: event.target.value })}
-                placeholder="The number's name on the WhatsApp server"
-                className={fieldClass}
-              />
-              <span className="mt-1 block text-xs text-slate-500">
-                The server team gives it. Needed for every number once the school has more than one (the first one
-                too): it sends reactions, edits, read ticks and the QR code to this number's phone.
-              </span>
-            </label>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={draft.isActive}
-                onChange={(event) => setDraft({ ...draft, isActive: event.target.checked })}
-              />
-              This number is in use
-            </label>
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Phone number (optional, for showing)</span>
+                <input
+                  type="tel"
+                  value={draft.phone}
+                  onChange={(event) => setDraft({ ...draft, phone: event.target.value })}
+                  placeholder="60123456789"
+                  className={fieldClass}
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Chatwoot inbox</span>
+                {inboxes.length > 0 ? (
+                  <select
+                    value={draft.inboxId ?? ''}
+                    onChange={(event) =>
+                      setDraft({ ...draft, inboxId: event.target.value ? Number(event.target.value) : null })
+                    }
+                    className={fieldClass}
+                  >
+                    <option value="">Pick the inbox of this number</option>
+                    {inboxes.map((inbox) => (
+                      <option key={inbox.id} value={inbox.id}>
+                        {inbox.name} (inbox {inbox.id})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="number"
+                    value={draft.inboxId ?? ''}
+                    onChange={(event) =>
+                      setDraft({ ...draft, inboxId: event.target.value ? Number(event.target.value) : null })
+                    }
+                    placeholder="The inbox number in Chatwoot"
+                    className={fieldClass}
+                  />
+                )}
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Evolution name</span>
+                <input
+                  value={draft.instance}
+                  onChange={(event) => setDraft({ ...draft, instance: event.target.value })}
+                  placeholder="The number's name on the WhatsApp server"
+                  className={fieldClass}
+                />
+                <span className="mt-1 block text-xs text-slate-500">
+                  The server team gives it. Needed for every number once the school has more than one (the first one
+                  too): it sends reactions, edits, read ticks and the QR code to this number's phone.
+                </span>
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={draft.isActive}
+                  onChange={(event) => setDraft({ ...draft, isActive: event.target.checked })}
+                />
+                This number is in use
+              </label>
 
-            <fieldset>
-              <legend className="text-sm font-medium text-slate-700">Staff who answer this number</legend>
-              <div className="mt-2 grid gap-1 sm:grid-cols-2">
-                {staff.length === 0 && <p className="text-xs text-slate-500">There are no staff accounts to give it to.</p>}
-                {staff.map((member) => (
-                  <label key={member.id} className="flex items-center gap-2 text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={teacherIds.includes(member.id)}
-                      onChange={(event) =>
-                        setTeacherIds(
-                          event.target.checked
-                            ? [...teacherIds, member.id]
-                            : teacherIds.filter((id) => id !== member.id),
-                        )
-                      }
-                    />
-                    {member.name}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
+              <fieldset>
+                <legend className="text-sm font-medium text-slate-700">Staff who answer this number</legend>
+                <div className="mt-2 grid gap-1 sm:grid-cols-2">
+                  {staff.length === 0 && <p className="text-xs text-slate-500">There are no staff accounts to give it to.</p>}
+                  {staff.map((member) => (
+                    <label key={member.id} className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={teacherIds.includes(member.id)}
+                        onChange={(event) =>
+                          setTeacherIds(
+                            event.target.checked
+                              ? [...teacherIds, member.id]
+                              : teacherIds.filter((id) => id !== member.id),
+                          )
+                        }
+                      />
+                      {member.name}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+          )}
+        </div>
 
+        {/* The buttons of a number being added or changed stay at the bottom, in view. */}
+        {editing !== null && (
+          <div className="shrink-0 space-y-3 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
             {error && (
               <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
                 {error}
