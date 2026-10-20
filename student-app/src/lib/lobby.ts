@@ -71,11 +71,25 @@ export function startButton(schedule: UpcomingClass[] | undefined, now: Date, wi
   return { kind: 'learn' }
 }
 
-// How the button opens the class: inside the app (the class page) when the
-// teacher has opened it with in-app Zoom, else the lesson's Zoom link, else
-// not yet (the teacher has not opened it).
-export function classEntry(item: UpcomingClass, isWeb: boolean): { to: 'page'; sessionId: number } | { to: 'zoom'; link: string } | { to: 'wait' } {
-  if (isWeb && item.session_id && item.in_app_zoom) return { to: 'page', sessionId: item.session_id }
+export type ClassEntry =
+  | { to: 'page'; sessionId: number }
+  | { to: 'lesson'; date: string; start: string }
+  | { to: 'zoom'; link: string }
+  | { to: 'wait' }
+
+// How the button opens the class. On the web always our own class page,
+// never the Zoom app: the lesson's page once the teacher opened it, else the
+// waiting page for its day and time (it goes in when the teacher starts).
+// Phones (the installed app) open the Zoom link as before, or wait.
+export function classEntry(item: UpcomingClass, isWeb: boolean): ClassEntry {
+  if (isWeb) return item.session_id ? { to: 'page', sessionId: item.session_id } : { to: 'lesson', date: item.date, start: item.start.slice(0, 5) }
   if (item.zoom_link) return { to: 'zoom', link: item.zoom_link }
   return { to: 'wait' }
+}
+
+// The page address for an in-app entry.
+export function classHref(entry: ClassEntry) {
+  if (entry.to === 'page') return `/class/${entry.sessionId}`
+  if (entry.to === 'lesson') return `/class/lesson?date=${entry.date}&start=${encodeURIComponent(entry.start)}`
+  return null
 }

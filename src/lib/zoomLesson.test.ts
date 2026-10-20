@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   meetingBody,
+  meetingFromLink,
   isDroppedLeave,
   readParticipantEvent,
   readRecordingEvent,
@@ -153,5 +154,24 @@ describe('joining in the student app page', () => {
     const key = await crypto.subtle.importKey('raw', new TextEncoder().encode('secret'), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
     const raw = Uint8Array.from(atob(signature.replace(/-/g, '+').replace(/_/g, '/')), (char) => char.charCodeAt(0))
     expect(await crypto.subtle.verify('HMAC', key, raw, new TextEncoder().encode(`${head}.${body}`))).toBe(true)
+  })
+})
+
+describe("a lesson's fixed Zoom link", () => {
+  it('reads the meeting number from the usual link shapes', () => {
+    expect(meetingFromLink('https://us02web.zoom.us/j/81234567890?pwd=abcDEF.1')).toBe('81234567890')
+    expect(meetingFromLink('https://zoom.us/j/912345678')).toBe('912345678')
+    expect(meetingFromLink('https://us06web.zoom.us/w/81234567890?tk=x')).toBe('81234567890')
+    expect(meetingFromLink('https://zoom.us/wc/join/81234567890')).toBe('81234567890')
+    expect(meetingFromLink('zoommtg://zoom.us/join?confno=81234567890&pwd=x')).toBe('81234567890')
+  })
+
+  it('gives up on links it cannot read', () => {
+    expect(meetingFromLink(null)).toBeNull()
+    expect(meetingFromLink('')).toBeNull()
+    expect(meetingFromLink('https://us02web.zoom.us/my/teacher.amy')).toBeNull()
+    expect(meetingFromLink('https://meet.google.com/abc-defg-hij')).toBeNull()
+    expect(meetingFromLink('https://evilzoom.us/j/81234567890')).toBeNull()
+    expect(meetingFromLink('not a link')).toBeNull()
   })
 })

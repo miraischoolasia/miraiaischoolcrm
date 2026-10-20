@@ -1,5 +1,5 @@
 import { type ComponentRef, useEffect, useRef, useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import type { JoinInfo } from '@/lib/classRoom'
 import { Button } from '@/ui/kit'
@@ -11,15 +11,26 @@ type PlayerSize = Size & { sharing?: boolean }
 // The lesson's Zoom inside the page. Zoom's Meeting SDK runs in an iframe
 // (public/zoom/embed.html) so its React 18 never meets the app's React 19;
 // the same way as EDUCINEVA's zoom-video.web.tsx. The player is given the
-// whole room and scaled to fill it (up to twice its size).
+// whole room and scaled to fill it (up to twice its size). When the class
+// cannot open in the page, it says why and offers the lesson's Zoom link as
+// a small fallback; it never opens Zoom by itself.
+const whyNot: Record<string, string> = {
+  no_sdk: 'Zoom inside the app is not ready for your school yet.',
+  link_unreadable: "This class's Zoom link cannot open inside the app.",
+  other_account: "This class's Zoom meeting belongs to another Zoom account, so it cannot open inside the app.",
+}
+
 export function ZoomRoom({
   getJoinInfo,
   color,
   onLeft,
+  fallbackLink = null,
 }: {
   getJoinInfo: () => Promise<JoinInfo>
   color: string
   onLeft?: () => void
+  // The lesson's Zoom link, for the small "open in Zoom" fallback.
+  fallbackLink?: string | null
 }) {
   const wrap = useRef<ComponentRef<typeof View> | null>(null)
   const frame = useRef<HTMLIFrameElement>(null)
@@ -27,8 +38,10 @@ export function ZoomRoom({
   const [player, setPlayer] = useState<PlayerSize | null>(null)
   const [state, setState] = useState<State>('loading')
   const [message, setMessage] = useState<string | null>(null)
-  // The Zoom link, when the school has no in-page Zoom yet.
-  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null)
+  // The Zoom link offered as a fallback (from the join answer, else the lesson's).
+  const [fallbackUrl, setFallbackUrl] = useState<string | null>(fallbackLink)
+  // The class cannot open in the page at all (the join answer said why).
+  const [blocked, setBlocked] = useState(false)
   const onLeftRef = useRef(onLeft)
   useEffect(() => {
     onLeftRef.current = onLeft
@@ -81,17 +94,24 @@ export function ZoomRoom({
     setMessage(null)
     try {
       const info = await getJoinInfo()
+      if (info.joinUrl) setFallbackUrl(info.joinUrl)
       if (!info.inPage) {
-        setFallbackUrl(info.joinUrl)
-        setState('ready')
-        setMessage('Zoom inside the app is not ready for your school yet. Open the class in Zoom instead.')
+        setBlocked(true)
+        setState('error')
+        setMessage(`${whyNot[info.reason ?? 'no_sdk'] ?? whyNot.no_sdk} Please tell your teacher.`)
         return
       }
       const { inPage: _inPage, joinUrl: _joinUrl, sdkKey: _sdkKey, ...payload } = info
       frame.current?.contentWindow?.postMessage({ type: 'join', payload }, window.location.origin)
     } catch (problem) {
       setState('error')
-      setMessage(problem instanceof Error ? problem.message : 'Could not join the class video.')
+      const text = problem instanceof Error ? problem.message : ''
+      // The school's server could not be reached (no internet, or blocked).
+      setMessage(
+        !text || /failed to (send|fetch)|network|fetch failed|load failed/i.test(text)
+          ? "Could not reach the school's server. Check your internet and try again."
+          : text,
+      )
     }
   }
 
@@ -125,11 +145,7 @@ export function ZoomRoom({
           <Text style={styles.coverText}>
             {message ?? 'You will wait in the waiting room until your teacher lets you in. Your microphone starts muted.'}
           </Text>
-          {fallbackUrl ? (
-            <View style={styles.coverButton}>
-              <Button label="Open the class in Zoom" color={color} onPress={() => window.open(fallbackUrl, '_blank', 'noopener')} />
-            </View>
-          ) : (
+          {!blocked && (
             <View style={styles.coverButton}>
               <Button
                 label={state === 'error' ? 'Try again' : 'Join the class'}
@@ -138,6 +154,14 @@ export function ZoomRoom({
                 onPress={() => void join()}
               />
             </View>
+          )}
+          {state === 'error' && !blocked && (
+            <Text style={styles.coverText}>If it still does not start, check your internet, or ask your teacher.</Text>
+          )}
+          {state === 'error' && fallbackUrl && (
+            <Pressable accessibilityRole="link" onPress={() => window.open(fallbackUrl, '_blank', 'noopener')} style={styles.fallback}>
+              <Text style={styles.fallbackText}>Open in the Zoom app instead</Text>
+            </Pressable>
           )}
         </View>
       )}
@@ -158,4 +182,6 @@ const styles = StyleSheet.create({
   coverTitle: { color: '#fff', fontSize: 22, fontWeight: '800', textAlign: 'center' },
   coverText: { color: 'rgba(255,255,255,0.82)', fontSize: 15, textAlign: 'center', maxWidth: 380 },
   coverButton: { width: '100%', maxWidth: 320, marginTop: 6 },
+  fallback: { minHeight: 36, justifyContent: 'center', paddingHorizontal: 10 },
+  fallbackText: { color: 'rgba(255,255,255,0.75)', fontSize: 13, textDecorationLine: 'underline' },
 })

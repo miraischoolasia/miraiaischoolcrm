@@ -2,6 +2,7 @@ import { type Href, useRouter } from 'expo-router'
 import { Linking, Platform, StyleSheet, View } from 'react-native'
 
 import { formatDay, formatTime, todayInMalaysia } from '@/lib/format'
+import { classEntry, classHref } from '@/lib/lobby'
 import type { UpcomingClass } from '@/lib/portal'
 import { useSession } from '@/lib/session'
 import { Body, Button, Card, colors, Empty, Heading, Loading, Muted, Pill, Screen, Title } from '@/ui/kit'
@@ -147,20 +148,17 @@ export function ClassicHome() {
 
 function NextClass({ item, isToday, color }: { item: UpcomingClass; isToday: boolean; color: string }) {
   const router = useRouter()
-  // On the web the class opens inside the app (Zoom in the page, the
-  // teacher's questions and moments beside it); on phones in the Zoom app.
-  const inApp = Platform.OS === 'web' && Boolean(item.session_id && item.in_app_zoom)
+  // On the web every class opens inside the app (Zoom in the page, the
+  // teacher's questions and moments beside it; before the teacher starts, a
+  // waiting page). Phones (the installed app) open the Zoom app as before.
+  const entry = classEntry(item, Platform.OS === 'web')
+  const href = classHref(entry)
   function join() {
-    if (inApp && item.session_id) {
-      router.push(`/class/${item.session_id}` as Href)
+    if (href) {
+      router.push(href as Href)
       return
     }
-    if (!item.zoom_link) return
-    if (Platform.OS === 'web') {
-      window.open(item.zoom_link, '_blank', 'noopener')
-    } else {
-      void Linking.openURL(item.zoom_link)
-    }
+    if (entry.to === 'zoom') void Linking.openURL(entry.link)
   }
 
   return (
@@ -173,9 +171,9 @@ function NextClass({ item, isToday, color }: { item: UpcomingClass; isToday: boo
         {item.class ?? item.title}
         {item.teacher ? ` · ${item.teacher}` : ''}
       </Muted>
-      {inApp ? (
+      {href ? (
         <Button label="Enter class" color={color} onPress={join} />
-      ) : item.zoom_link ? (
+      ) : entry.to === 'zoom' ? (
         <Button label="Join class on Zoom" color={color} onPress={join} />
       ) : (
         <Muted>The class link will appear here.</Muted>

@@ -47,7 +47,7 @@ export type LiveAnswerInput = { choices: number[] } | { text: string } | { file:
 
 export type Picture = { base64: string; mimeType: string }
 
-type LiveValue = {
+export type LiveValue = {
   state: LiveState | null
   // Seconds left on the open question (0 when it is closed).
   secondsLeft: number
@@ -207,4 +207,9 @@ export function useLive() {
   const value = useContext(LiveContext)
   if (!value) throw new Error('useLive must be used inside LiveProvider')
   return value
+}
+
+// Only for the development pages: a fixed question, with no database behind it.
+export function LiveTestProvider({ value, children }: PropsWithChildren<{ value: LiveValue }>) {
+  return <LiveContext.Provider value={value}>{children}</LiveContext.Provider>
 }

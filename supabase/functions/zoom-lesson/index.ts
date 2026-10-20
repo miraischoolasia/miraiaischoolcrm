@@ -11,7 +11,9 @@
 //   facebook_status / facebook_on / facebook_off
 //             stream the lesson to the school's Facebook Page (facebook.ts)
 // A student app login (child or parent) asks with join_sdk { sessionId,
-// studentId } to join inside the app's page (studentJoin.ts).
+// studentId } to join inside the app's page, and with lesson_room
+// { studentId, lessonDate, startTime } whether the teacher has opened the
+// lesson yet (studentJoin.ts).
 // The meeting follows the school's Zoom options (Class Settings > Zoom) and is
 // hosted by the teacher's own Zoom account, or when it is full at that time by
 // another of the school's (Class Settings > Zoom).
@@ -25,7 +27,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { meetingBody, registrantEmail, registrantNames, type MeetingOptions } from './logic.ts'
 import { zoomApi, zoomToken } from './zoomApi.ts'
 import { facebookConfigured, goLiveOnFacebook, stopFacebookLive } from './facebook.ts'
-import { joinInPage } from './studentJoin.ts'
+import { joinInPage, lessonRoom } from './studentJoin.ts'
 
 // Children signed up to Zoom at the same time, and how long one call may
 // spend on it before handing the rest to the next call.
@@ -65,7 +67,7 @@ Deno.serve(async (req) => {
   const authHeader = req.headers.get('Authorization')
   if (!authHeader) return jsonResponse({ ok: false, error: 'Missing authorization.' }, 401)
 
-  let body: { action?: unknown; scheduleId?: unknown; lessonDate?: unknown; sessionId?: unknown; studentId?: unknown }
+  let body: { action?: unknown; scheduleId?: unknown; lessonDate?: unknown; sessionId?: unknown; studentId?: unknown; startTime?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -82,6 +84,18 @@ Deno.serve(async (req) => {
       return jsonResponse(answer.body, answer.status)
     } catch (problem) {
       return jsonResponse({ ok: false, error: problem instanceof Error ? problem.message : 'Zoom did not answer.' }, 502)
+    }
+  }
+  // The class page's waiting room: has the teacher opened the lesson yet?
+  if (body.action === 'lesson_room') {
+    try {
+      const answer = await lessonRoom(
+        { supabaseUrl, anonKey, serviceRoleKey, authHeader, accountId, clientId, clientSecret, registrantDomain },
+        { studentId: body.studentId, lessonDate: body.lessonDate, startTime: body.startTime },
+      )
+      return jsonResponse(answer.body, answer.status)
+    } catch (problem) {
+      return jsonResponse({ ok: false, error: problem instanceof Error ? problem.message : 'Could not check the lesson.' }, 502)
     }
   }
   const action = (ACTIONS as readonly unknown[]).includes(body.action) ? (body.action as Action) : null

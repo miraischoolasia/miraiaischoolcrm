@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { canClaim, dailyToDo, type Daily, type DailyTask } from './dailyRules'
-import { classEntry, earnedPoints, levelFrom, lobbyMinWidth, malaysiaClock, showsLobby, startButton } from './lobby'
+import { classEntry, classHref, earnedPoints, levelFrom, lobbyMinWidth, malaysiaClock, showsLobby, startButton } from './lobby'
 import { backgroundSources, designHeight, heroBox, lobbyLayout, margin, minLayerWidth, readScene, signInLayout } from './lobbyLayout'
 import { lobbyThemeKeys, lobbyThemes } from './lobbyThemes'
 import type { UpcomingClass } from './portal'
@@ -57,11 +57,18 @@ describe('the big button', () => {
     expect(state.kind === 'class' && state.item.title).toBe('Later')
   })
 
-  it('opens the class page in the app, else Zoom, else waits for the teacher', () => {
+  it('on the web always opens our class page, never Zoom: the lesson once opened, else its waiting page', () => {
     expect(classEntry(lesson({ session_id: 7, in_app_zoom: true }), true)).toEqual({ to: 'page', sessionId: 7 })
+    expect(classEntry(lesson({ session_id: 7, in_app_zoom: false, zoom_link: 'https://zoom.us/j/1' }), true)).toEqual({ to: 'page', sessionId: 7 })
+    expect(classEntry(lesson({ zoom_link: 'https://zoom.us/j/1' }), true)).toEqual({ to: 'lesson', date: '2026-10-20', start: '15:25' })
+    expect(classEntry(lesson({ start: '15:25:00' }), true)).toEqual({ to: 'lesson', date: '2026-10-20', start: '15:25' })
+    expect(classHref({ to: 'page', sessionId: 7 })).toBe('/class/7')
+    expect(classHref({ to: 'lesson', date: '2026-10-20', start: '15:25' })).toBe('/class/lesson?date=2026-10-20&start=15%3A25')
+  })
+
+  it('in the installed phone app opens the Zoom link as before, or waits', () => {
     expect(classEntry(lesson({ session_id: 7, in_app_zoom: true, zoom_link: 'https://zoom.us/j/1' }), false)).toEqual({ to: 'zoom', link: 'https://zoom.us/j/1' })
-    expect(classEntry(lesson({ zoom_link: 'https://zoom.us/j/1' }), true)).toEqual({ to: 'zoom', link: 'https://zoom.us/j/1' })
-    expect(classEntry(lesson(), true)).toEqual({ to: 'wait' })
+    expect(classEntry(lesson(), false)).toEqual({ to: 'wait' })
   })
 
   it('uses Malaysia time', () => {

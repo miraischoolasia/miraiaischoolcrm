@@ -4,7 +4,7 @@ import { Linking, Platform } from 'react-native'
 
 import { useDaily } from '@/lib/daily'
 import { useHasVideos } from '@/lib/hasVideos'
-import { classEntry, earnedPoints, levelFrom, startButton } from '@/lib/lobby'
+import { classEntry, classHref, earnedPoints, levelFrom, startButton } from '@/lib/lobby'
 import type { LobbyTheme } from '@/lib/lobbyThemes'
 import { useSession } from '@/lib/session'
 import { LobbyView, type LobbyPlace } from '@/ui/LobbyView'
@@ -53,13 +53,14 @@ export function LobbyHome({ theme }: { theme: LobbyTheme }) {
       return true
     }
     const entry = classEntry(start.item, Platform.OS === 'web')
-    if (entry.to === 'page') {
-      router.push(`/class/${entry.sessionId}` as Href)
+    const href = classHref(entry)
+    if (href) {
+      router.push(href as Href)
       return true
     }
+    // Only the installed phone app gets here (it opens the Zoom app).
     if (entry.to === 'zoom') {
-      if (Platform.OS === 'web') window.open(entry.link, '_blank', 'noopener')
-      else void Linking.openURL(entry.link)
+      void Linking.openURL(entry.link)
       return true
     }
     return false

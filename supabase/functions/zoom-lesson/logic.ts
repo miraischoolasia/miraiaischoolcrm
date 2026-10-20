@@ -85,6 +85,24 @@ export function tkFromJoinUrl(joinUrl: string | null | undefined) {
   }
 }
 
+// The meeting number in a lesson's fixed Zoom link (https://xx.zoom.us/j/123…
+// or /w/123…, with or without ?pwd=). Personal links with a name
+// (/my/name) cannot be read, and the pwd in a link is Zoom's own coded form
+// that the web SDK does not take, so the passcode comes from Zoom's API.
+export function meetingFromLink(link: string | null | undefined) {
+  if (!link) return null
+  try {
+    const url = new URL(link)
+    if (!/(^|\.)zoom\.(us|com)$/i.test(url.hostname)) return null
+    const match = url.pathname.match(/^\/(?:j|w|wc\/join|s)\/(\d{9,12})(?:\/|$)/)
+    if (match) return match[1]
+    const confno = url.searchParams.get('confno')
+    return confno && /^\d{9,12}$/.test(confno) ? confno : null
+  } catch {
+    return null
+  }
+}
+
 // What the Meeting SDK signature says: the SDK app, the meeting, the role
 // (0 = attendee) and two hours of validity, started 30 s back for clock drift.
 export function sdkSignatureClaims(appKey: string, meetingNumber: string, role: 0 | 1, nowSeconds = Math.floor(Date.now() / 1000)) {

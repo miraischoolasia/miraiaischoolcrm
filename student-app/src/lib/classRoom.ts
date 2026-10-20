@@ -34,7 +34,42 @@ export type JoinInfo =
       userEmail: string
       customerKey: string
     }
-  | { inPage: false; joinUrl: string | null }
+  // Why the class cannot open in the page: no in-page Zoom for the school
+  // (no_sdk), a fixed link it cannot read (link_unreadable), or a meeting on
+  // another Zoom account (other_account). The link is then a small fallback.
+  | { inPage: false; joinUrl: string | null; reason?: 'no_sdk' | 'link_unreadable' | 'other_account' }
+
+async function callZoomLesson(body: Record<string, unknown>) {
+  const { data, error } = await supabase.functions.invoke('zoom-lesson', { body })
+  if (error) {
+    let reason = error.message
+    try {
+      const context = (error as { context?: Response }).context
+      const answer = context ? await context.json() : null
+      if (answer?.error) reason = answer.error
+    } catch {
+      // keep the general message
+    }
+    throw new Error(reason || 'Could not open the class.')
+  }
+  return data as { ok: boolean; error?: string } & Record<string, unknown>
+}
+
+// A lesson on the timetable, before or after the teacher opens it.
+export type LessonRoom = {
+  sessionId: number | null
+  lesson: { title: string; class: string | null; teacher: string | null; date: string; start: string; end: string }
+}
+
+// How often the waiting page asks whether the teacher has opened the lesson.
+export const lessonCheckSeconds = 20
+
+// The class page's waiting room asks whether the teacher has opened the lesson yet.
+export async function fetchLessonRoom(studentId: number, lessonDate: string, startTime: string): Promise<LessonRoom> {
+  const answer = await callZoomLesson({ action: 'lesson_room', studentId, lessonDate, startTime })
+  if (!answer?.ok) throw new Error(answer?.error ?? 'Could not check the lesson.')
+  return answer as unknown as LessonRoom
+}
 
 export async function fetchJoinInfo(sessionId: number, studentId: number): Promise<JoinInfo> {
   const { data, error } = await supabase.functions.invoke('zoom-lesson', {

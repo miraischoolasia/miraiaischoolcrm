@@ -38,6 +38,13 @@ export type LobbyTheme = {
     claim: string
     claimed: string
     taskCoins: string
+    // The class waiting page ({seconds} = how often it checks).
+    waitTitle: string
+    waitEnded: string
+    waitChecks: string
+    waitTeacher: string
+    waitChecked: string
+    waitBack: string
   }
   // The game sign-in page's words ({school} = the school's name).
   signIn: {
@@ -108,6 +115,12 @@ export const lobbyThemes: Record<string, LobbyTheme> = {
       claim: '领取',
       claimed: '已领取',
       taskCoins: '+{coins} 金币',
+      waitTitle: '老师还没开课',
+      waitEnded: '这堂课的时间已经过了',
+      waitChecks: '每 {seconds} 秒自动检查一次，老师一开课就会自动带你进去。',
+      waitTeacher: '老师',
+      waitChecked: '最后检查',
+      waitBack: '回大厅',
     },
     signIn: {
       welcome: 'Welcome to {school}',

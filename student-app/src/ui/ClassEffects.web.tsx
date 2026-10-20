@@ -17,7 +17,9 @@ const keyframes = `
 @keyframes ce-bounce { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-14px) } }
 `
 
-const fill: CSSProperties = { position: 'fixed', inset: 0, zIndex: 50 }
+// The app's own font for these page-wide moments (plain page elements do not get it).
+const font = "Nunito, 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif"
+const fill: CSSProperties = { position: 'fixed', inset: 0, zIndex: 50, fontFamily: font }
 
 function formatClock(totalSeconds: number) {
   const seconds = Math.max(0, Math.round(totalSeconds))
@@ -82,7 +84,7 @@ function RollShow({ roll, myId }: { roll: NonNullable<ClassLiveState['roll']>; m
   const isMe = chosen.id === myId
   return (
     <div
-      style={{ ...fill, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(30,27,75,0.95)', color: '#fff', textAlign: 'center', padding: 16 }}
+      style={{ ...fill, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(30,27,75,0.72)', color: '#fff', textAlign: 'center', padding: 16 }}
       aria-live="polite"
     >
       {phase === 'count' ? (
@@ -110,12 +112,18 @@ function RollShow({ roll, myId }: { roll: NonNullable<ClassLiveState['roll']>; m
   )
 }
 
-// Star of the day: a stage with curtains and a spotlight on the child.
+// Star of the day: a small stage with curtains and a spotlight on the child,
+// in the middle over a see-through shade.
 function StarStage({ star }: { star: NonNullable<ClassLiveState['star']> }) {
   return (
+    <div style={{ ...fill, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(20,10,40,0.6)' }} aria-live="polite">
     <div
       style={{
-        ...fill,
+        position: 'relative',
+        width: 'min(92vw, 760px)',
+        height: 'min(84vh, 640px)',
+        borderRadius: 24,
+        boxShadow: '0 30px 80px rgba(0,0,0,0.45)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -123,8 +131,8 @@ function StarStage({ star }: { star: NonNullable<ClassLiveState['star']> }) {
         overflow: 'hidden',
         color: '#fff',
         background: 'repeating-linear-gradient(90deg, #7f1d1d 0 38px, #991b1b 38px 76px)',
+        animation: 'ce-pop 0.5s ease-out',
       }}
-      aria-live="polite"
     >
       <div
         aria-hidden="true"
@@ -148,7 +156,42 @@ function StarStage({ star }: { star: NonNullable<ClassLiveState['star']> }) {
         </p>
       </div>
       <div aria-hidden="true" style={{ position: 'absolute', bottom: 0, height: 72, width: '100%', background: '#78350f' }} />
+    </div>
       <Confetti />
+    </div>
+  )
+}
+
+// New teams: which team the child is in, in the middle for a few seconds.
+function TeamsPop({ teams, myId }: { teams: NonNullable<ClassLiveState['teams']>; myId: number }) {
+  const mine = teams.find((team) => team.members.some((member) => member.id === myId)) ?? null
+  return (
+    <div style={{ ...fill, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(15,18,41,0.6)' }} aria-live="polite">
+      <div
+        style={{
+          width: 'min(92vw, 640px)',
+          borderRadius: 24,
+          background: '#fff',
+          padding: '24px 28px',
+          textAlign: 'center',
+          boxShadow: '0 30px 80px rgba(0,0,0,0.4)',
+          animation: 'ce-pop 0.5s ease-out',
+        }}
+      >
+        <p style={{ fontSize: 'min(8vmin, 2.5rem)', fontWeight: 900, margin: 0, color: '#1e1b4b' }}>👥 Teams are ready!</p>
+        {mine && (
+          <p style={{ display: 'inline-block', margin: '14px 0 6px', padding: '8px 24px', borderRadius: 999, fontSize: 'min(9vmin, 3rem)', fontWeight: 900, background: mine.color, color: mine.text }}>
+            You are in {mine.label}
+          </p>
+        )}
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 12 }}>
+          {teams.map((team) => (
+            <span key={team.key} style={{ borderRadius: 999, padding: '6px 14px', fontSize: 16, fontWeight: 800, background: team.color, color: team.text }}>
+              {team.label} · {team.members.length}
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -207,12 +250,41 @@ export function ClassMoments({ state, clockOffset, myId }: { state: ClassLiveSta
     timers.current.push(setTimeout(() => setCheer((current) => (current?.id === shown.id ? null : current)), 4000))
   }, [incoming, myId])
 
+  // A star shows for 10 s, once; new teams for 5 s.
+  const [star, setStar] = useState<ClassLiveState['star']>(null)
+  const seenStars = useRef(new Set<number>())
+  const incomingStar = state?.star ?? null
+  useEffect(() => {
+    if (!incomingStar || seenStars.current.has(incomingStar.seq)) return
+    seenStars.current.add(incomingStar.seq)
+    const shown = incomingStar
+    timers.current.push(setTimeout(() => setStar(shown), 0))
+    timers.current.push(setTimeout(() => setStar((current) => (current?.seq === shown.seq ? null : current)), 10_000))
+  }, [incomingStar])
+  const [teamsShown, setTeamsShown] = useState<{ sign: string; teams: NonNullable<ClassLiveState['teams']> } | null>(null)
+  const lastTeams = useRef('')
+  const teams = state?.teams ?? null
+  const teamsSign = teams && teams.length > 0 ? teams.map((team) => `${team.key}:${team.members.map((member) => member.id).join(',')}`).join('|') : ''
+  useEffect(() => {
+    if (!teams || !teamsSign || teamsSign === lastTeams.current) return
+    lastTeams.current = teamsSign
+    const shown = { sign: teamsSign, teams }
+    timers.current.push(setTimeout(() => setTeamsShown(shown), 0))
+    timers.current.push(setTimeout(() => setTeamsShown((current) => (current?.sign === shown.sign ? null : current)), 5_000))
+  }, [teams, teamsSign])
+
   // The teacher's pick time on this device's clock; a pick shows for 15 s.
   const rollFresh = state?.roll && now - (state.roll.seq + clockOffset) < 15_000
   return (
     <>
       <style>{keyframes}</style>
-      {state?.star ? <StarStage key={state.star.seq} star={state.star} /> : rollFresh && state?.roll ? <RollShow key={state.roll.seq} roll={state.roll} myId={myId} /> : null}
+      {star ? (
+        <StarStage key={star.seq} star={star} />
+      ) : rollFresh && state?.roll ? (
+        <RollShow key={state.roll.seq} roll={state.roll} myId={myId} />
+      ) : teamsShown ? (
+        <TeamsPop key={teamsShown.sign} teams={teamsShown.teams} myId={myId} />
+      ) : null}
       {cheer && <Cheer key={cheer.id} cheer={cheer} />}
     </>
   )
@@ -244,7 +316,7 @@ export function ClassBar({ state, clockOffset, myId, color }: { state: ClassLive
     whiteSpace: 'nowrap',
   }
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '8px 12px', background: '#1e1b4b', alignItems: 'center' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '8px 12px', background: '#1e1b4b', alignItems: 'center', fontFamily: font }}>
       {left !== null && (
         <span style={{ ...chip, color: left === 0 ? '#b91c1c' : '#0f172a', fontVariantNumeric: 'tabular-nums' }}>
           ⏱ {left === 0 ? "Time's up!" : formatClock(Math.ceil(left))}
