@@ -1,13 +1,16 @@
 import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { fetchJoinInfo, useClassLive, type ClassLiveState, type JoinInfo } from '@/lib/classRoom'
-import { LiveProvider, LiveTestProvider, type LiveValue } from '@/lib/live'
+import { LiveProvider, LiveTestProvider, useLive, type LiveValue } from '@/lib/live'
 import { usePointsBursts } from '@/lib/pointsFeed'
+import type { LessonNote } from '@/lib/portal'
 import { useSession } from '@/lib/session'
 import { ClassBar, ClassMoments } from '@/ui/ClassEffects'
+import { ClassSideMenu } from '@/ui/ClassSideMenu'
+import { ClassToolbar } from '@/ui/ClassToolbar'
 import { Button, Card, colors, Heading, Muted } from '@/ui/kit'
 import { findSessionSummary, LessonSummaryChips, useLessonSummaries } from '@/ui/LessonSummary'
 import { LessonNotesList, useLessonNotes } from '@/ui/LessonNotes'
@@ -30,6 +33,7 @@ export function ClassRoomView({
   joinInfo,
   classOverride,
   liveOverride,
+  devShow,
 }: {
   sessionId: number
   fallbackLink?: string | null
@@ -37,6 +41,8 @@ export function ClassRoomView({
   joinInfo?: () => Promise<JoinInfo>
   classOverride?: ClassLiveState | null
   liveOverride?: LiveValue
+  // Only for the development page: made-up notes, the notes or the ended page open, Join pressed.
+  devShow?: { notes?: LessonNote[]; notesOpen?: boolean; ended?: boolean; autoJoin?: boolean; sample?: boolean; sampleFolded?: boolean }
 }) {
   const valid = Number.isInteger(sessionId) && sessionId > 0
   const { child, branding, home } = useSession()
@@ -47,18 +53,35 @@ export function ClassRoomView({
   const studentId = child?.studentId ?? null
   const live = useClassLive(valid && !classOverride ? sessionId : null)
   const classState = classOverride ?? live.state
-  const [notesOpen, setNotesOpen] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(Boolean(devShow?.notesOpen))
+  // The class menu and our own toolbar: a sample on the development page only, for now.
+  const sample = Boolean(devShow?.sample)
+  const [questionSignal, setQuestionSignal] = useState(0)
+  // Full screen, like a video site (Esc leaves it): the browser's own full screen of the whole class page.
+  const canFullscreen = Platform.OS === 'web' && typeof document !== 'undefined' && Boolean(document.fullscreenEnabled)
+  const [fullscreen, setFullscreen] = useState(false)
+  useEffect(() => {
+    if (!canFullscreen) return
+    const changed = () => setFullscreen(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', changed)
+    return () => document.removeEventListener('fullscreenchange', changed)
+  }, [canFullscreen])
+  function toggleFullscreen() {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)
+    else void document.documentElement.requestFullscreen().catch(() => undefined)
+  }
   // Points the child gets pop up at once; nothing else reloads during class.
   const bursts = usePointsBursts(studentId, Boolean(home?.sees.points), () => undefined)
   // Out of the video: the summary and notes of this lesson, read again then.
   const [left, setLeft] = useState(0)
-  const [showOver, setShowOver] = useState(false)
+  const [showOver, setShowOver] = useState(Boolean(devShow?.ended))
   const [minute, setMinute] = useState(0)
   useEffect(() => {
     const tick = setInterval(() => setMinute((value) => value + 1), 60_000)
     return () => clearInterval(tick)
   }, [])
-  const notes = useLessonNotes(studentId, `${minute}-${left}`).filter((note) => note.session_id === sessionId)
+  const readNotes = useLessonNotes(studentId, `${minute}-${left}`).filter((note) => note.session_id === sessionId)
+  const notes = devShow?.notes ?? readNotes
   const summaries = useLessonSummaries(studentId, left)
   const summary = findSessionSummary(summaries, sessionId)
   const getJoinInfo = useCallback(() => {
@@ -87,6 +110,7 @@ export function ClassRoomView({
         <ZoomRoom
           getJoinInfo={getJoinInfo}
           fallbackLink={fallbackLink}
+          autoJoin={devShow?.autoJoin}
           color={branding.accentColor}
           onLeft={() => {
             setLeft((value) => value + 1)
@@ -101,18 +125,26 @@ export function ClassRoomView({
           <Text style={styles.pillText}>← Leave</Text>
         </Pressable>
         <View style={[styles.pill, styles.titlePill]}>
-          <View style={[styles.dot, { backgroundColor: live.connected || classOverride ? colors.good : colors.muted }]} accessibilityLabel={live.connected ? 'Live' : 'Connecting'} />
+          <View
+            style={[styles.dot, { backgroundColor: live.connected || classOverride ? colors.good : colors.muted }]}
+            accessibilityLabel={live.connected ? 'Live' : 'Connecting'}
+          />
           <Text style={styles.pillText} numberOfLines={1}>
             {classState?.title || child?.name || 'Class'}
           </Text>
         </View>
+        {canFullscreen && (
+          <Pressable accessibilityRole="button" onPress={toggleFullscreen} style={styles.pill}>
+            <Text style={styles.pillText}>{fullscreen ? '✕ Exit full screen (Esc)' : '⛶ Full screen'}</Text>
+          </Pressable>
+        )}
       </View>
       <View style={[styles.barWrap, { top: insets.top + (wide ? 10 : 58) }]} pointerEvents="box-none">
         <View style={styles.bar}>
           <ClassBar state={classState} clockOffset={live.clockOffset} myId={studentId ?? 0} color={branding.accentColor} />
         </View>
       </View>
-      {notes.length > 0 && !notesOpen && (
+      {notes.length > 0 && !notesOpen && !sample && (
         <View style={[styles.notesButtonWrap, { bottom: insets.bottom + (wide ? 16 : 84) }]} pointerEvents="box-none">
           <Pressable accessibilityRole="button" onPress={() => setNotesOpen(true)} style={styles.pill}>
             <Text style={styles.pillText}>📝 Lesson notes ({notes.length})</Text>
@@ -134,7 +166,16 @@ export function ClassRoomView({
       )}
 
       {/* Everything the teacher sends pops up in the middle. */}
-      <QuestionPopup color={branding.accentColor} />
+      <QuestionPopup color={branding.accentColor} reopenSignal={questionSignal} hideReopen={sample} />
+      {sample && (
+        <SampleControls
+          color={branding.accentColor}
+          notesCount={notes.length}
+          onNotes={() => setNotesOpen((open) => !open)}
+          onQuestion={() => setQuestionSignal((value) => value + 1)}
+          folded={devShow?.sampleFolded}
+        />
+      )}
       {showOver && (
         <View style={styles.over}>
           <Card style={{ gap: 10, width: '100%', maxWidth: 420 }}>
@@ -153,6 +194,58 @@ export function ClassRoomView({
   )
 
   return liveOverride ? <LiveTestProvider value={liveOverride}>{content}</LiveTestProvider> : <LiveProvider sessionId={sessionId}>{content}</LiveProvider>
+}
+
+// The sample of the class menu (right edge) and our own toolbar (mic, camera,
+// chat). The toolbar's buttons only change their own look here; they are wired
+// to Zoom after seeing the real player.
+function SampleControls({
+  color,
+  notesCount,
+  onNotes,
+  onQuestion,
+  folded,
+}: {
+  color: string
+  notesCount: number
+  onNotes: () => void
+  onQuestion: () => void
+  folded?: boolean
+}) {
+  const { state } = useLive()
+  const [mic, setMic] = useState(false)
+  const [camera, setCamera] = useState(true)
+  const [chat, setChat] = useState(false)
+  const question = state?.active ? state.question : null
+  return (
+    <>
+      <ClassSideMenu
+        color={color}
+        startOpen={!folded}
+        items={[
+          {
+            key: 'question',
+            icon: '📣',
+            label: question ? `Question ${question.number}` : 'Question',
+            badge: question ? '!' : null,
+            onPress: question ? onQuestion : undefined,
+            idle: 'None',
+          },
+          { key: 'history', icon: '📜', label: 'History' },
+          { key: 'notes', icon: '📝', label: 'Notes', badge: notesCount ? String(notesCount) : null, onPress: notesCount ? onNotes : undefined, idle: 'None' },
+        ]}
+      />
+      <ClassToolbar
+        color={color}
+        startFolded={folded}
+        buttons={[
+          { key: 'mic', icon: mic ? '🎤' : '🔇', label: mic ? 'Mic on' : 'Mic off', on: mic, onPress: () => setMic((value) => !value) },
+          { key: 'camera', icon: camera ? '📷' : '🚫', label: camera ? 'Camera' : 'Camera off', on: camera, onPress: () => setCamera((value) => !value) },
+          { key: 'chat', icon: '💬', label: chat ? 'Close chat' : 'Chat', onPress: () => setChat((value) => !value) },
+        ]}
+      />
+    </>
+  )
 }
 
 const styles = StyleSheet.create({

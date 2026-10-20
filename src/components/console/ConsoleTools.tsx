@@ -199,6 +199,18 @@ export function RandomPickTool({
         <span className="text-xs text-slate-500">
           {candidates.length === 0 ? 'Nobody to pick.' : `${Math.min(picked.length, candidates.length)} of ${candidates.length} picked this round`}
         </span>
+        {current !== null && rolling === null && (
+          <button
+            type="button"
+            onClick={() => {
+              setCurrent(null)
+              onPicked(null)
+            }}
+            className="ml-auto rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            Clear
+          </button>
+        )}
         <button
           type="button"
           disabled={candidates.length === 0 || rolling !== null}

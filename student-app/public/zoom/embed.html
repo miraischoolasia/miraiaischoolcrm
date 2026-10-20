@@ -69,24 +69,101 @@
       // box to match. The player starts 88px down, out of reach; the rule below puts it at the top left.
       const placement = document.createElement('style');
       document.head.appendChild(placement);
-      // The player is centred in the page. Its pop-ups (settings, people, chat) open beside it, so the page is
-      // kept bigger than the player. The nested draggable parts keep Zoom's own position.
+      // The player is centred in the page. Only the player itself is pinned there: Zoom's own panels (chat,
+      // people, settings) are also "react-draggable", and pinning them too put them off screen.
+      function playerElement() {
+        return Array.prototype.find.call(document.querySelectorAll('.react-draggable'), function (el) {
+          return !el.closest('.zoom-MuiPopper-root') && !el.classList.contains('zoom-MuiBox-root') && el.querySelector('video, canvas');
+        }) || document.querySelector('.react-draggable');
+      }
       function place(w, h) {
         const left = Math.max(0, Math.round((window.innerWidth - w) / 2));
         const top = Math.max(0, Math.round((window.innerHeight - h) / 2));
+        const player = playerElement();
+        if (player && !player.hasAttribute('data-mirai-player')) {
+          Array.prototype.forEach.call(document.querySelectorAll('[data-mirai-player]'), function (el) {
+            el.removeAttribute('data-mirai-player');
+          });
+          player.setAttribute('data-mirai-player', '');
+        }
         const css =
-          '.react-draggable:not(.zoom-MuiBox-root){transform:translate(' + left + 'px,' + top + 'px)!important}' +
+          '[data-mirai-player]{transform:translate(' + left + 'px,' + top + 'px)!important}' +
           '.react-draggable.zoom-MuiBox-root{transform:translate(0,0)!important}';
         if (placement.textContent !== css) placement.textContent = css;
       }
       let activeClient = null;
       let lastSize = '';
       // A screen is being shared when Zoom has drawn the shared-screen canvas.
+      // Zoom keeps hidden (zero-size) "Stop Share" buttons in the page all the time, so only a visible one counts.
       function isSharing() {
-        return /You are viewing .* screen/i.test(document.body.innerText || '') || !!document.querySelector('[aria-label="Pause screen sharing"],[aria-label="Stop Share"]');
+        if (/You are viewing .* screen/i.test(document.body.innerText || '')) return true;
+        return Array.prototype.some.call(document.querySelectorAll('[aria-label="Pause screen sharing"],[aria-label="Stop Share"]'), function (el) {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0;
+        });
+      }
+      // The room the app gives the player (its size on screen). Zoom is asked to draw the player as large as fits
+      // in it, instead of drawing it small and the app enlarging it (blurry). The player's height follows its width
+      // (header, video, toolbar), so the width is chosen from the shape the player has now.
+      let room = null;
+      let asked = '';
+      // The faces beside a shared screen: folded unless the child shows them (the app's "Show class" button).
+      let showPeople = false;
+      function fitPlayer() {
+        if (!activeClient || !room || switching) return;
+        const el = playerElement();
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        if (r.width < 50 || r.height < 50) return;
+        // While a screen is shared (strip view), Zoom's "ribbon" size is the column of faces beside the shared screen
+        // (its width) and the height of both (Zoom's own bar and toolbar, about 84px, come on top). The shared screen
+        // gets the rest of the player's width, so the faces are folded to almost nothing unless the child asks for them.
+        if (view === 'ribbon') {
+          const height = Math.max(200, room.height - 84);
+          const key = 'ribbon:' + (showPeople ? 'people' : 'screen') + ':' + height;
+          if (key === asked) return;
+          asked = key;
+          try {
+            Promise.resolve(activeClient.updateVideoOptions({ viewSizes: { ribbon: { width: showPeople ? 180 : 1, height: height } } })).catch(function () {});
+          } catch (err) {}
+          return;
+        }
+        const ratio = r.height / r.width;
+        const width = Math.max(240, Math.floor(Math.min(room.width, room.height / ratio)));
+        const key = view + ':' + width;
+        if (key === asked || Math.abs(width - r.width) < 12) return;
+        asked = key;
+        const size = { width: width, height: Math.round((width * 9) / 16) };
+        try {
+          Promise.resolve(activeClient.updateVideoOptions({ viewSizes: { default: size } })).catch(function () {});
+        } catch (err) {}
+      }
+      // A shared screen starts at "Original Size" (cut off when it is bigger than the player): each new share is set
+      // to "Fit to Window" once, from Zoom's own View Options menu.
+      let fittedShare = false;
+      function fitSharedScreen() {
+        const sharing = isSharing();
+        if (!sharing) {
+          fittedShare = false;
+          return;
+        }
+        if (fittedShare) return;
+        const button = Array.prototype.find.call(document.querySelectorAll('button,[role=button]'), function (b) {
+          return /^View Options/.test(((b.getAttribute('aria-label') || b.innerText || '') + '').trim());
+        });
+        if (!button) return;
+        fittedShare = true;
+        button.click();
+        setTimeout(function () {
+          const item = Array.prototype.find.call(document.querySelectorAll('[role^=menuitem]'), function (el) {
+            return /Fit to Window/i.test(el.innerText || '');
+          });
+          if (item) item.click();
+          else document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        }, 300);
       }
       function reportSize() {
-        const el = document.querySelector('.react-draggable');
+        const el = playerElement();
         if (!el) return;
         const r = el.getBoundingClientRect();
         place(r.width, r.height);
@@ -112,29 +189,48 @@
           function () {
             view = want;
             switching = false;
+            asked = '';
           },
           function () {
             switching = false;
           },
         );
       }
-      // Zoom opens its big pop-ups (settings, people, chat) beside the player, on whichever side has room. The player
-      // is centred and large, so neither side has room and the pop-up lands out of sight. Any big pop-up that is
-      // not fully on screen is moved to the middle of the page.
+      // Zoom opens its panels (chat, people, settings) beside the player, on whichever side has room. The player is
+      // centred and large, so neither side has room and the panel lands out of sight. A panel that is not fully on
+      // screen is docked at the right edge, below the app's buttons at the top, so it floats over the video without
+      // moving it; a notice (such as "this meeting is being recorded") goes to the middle. The move is measured from
+      // where it is now, so a panel inside a moved parent lands where it should.
+      function moveTo(el, x, y) {
+        const r = el.getBoundingClientRect();
+        const m = /translate(?:3d)?\(([-\d.]+)px,\s*([-\d.]+)px/.exec(el.style.transform || '');
+        const tx = (m ? parseFloat(m[1]) : 0) + x - r.left;
+        const ty = (m ? parseFloat(m[2]) : 0) + y - r.top;
+        el.style.setProperty('transform', 'translate3d(' + Math.round(tx) + 'px,' + Math.round(ty) + 'px,0)', 'important');
+      }
       function keepPopupsVisible() {
-        Array.prototype.forEach.call(document.querySelectorAll('.zoom-MuiPopper-root'), function (el) {
+        const topSafe = room && room.scale ? Math.round(120 / room.scale) : 120;
+        const panels = Array.prototype.slice.call(document.querySelectorAll('.zoom-MuiPopper-root, .react-draggable'));
+        panels.forEach(function (el) {
+          if (el.hasAttribute('data-mirai-player') || el.classList.contains('zoom-MuiBox-root')) return;
+          if (el.matches('.react-draggable') && el.closest('.zoom-MuiPopper-root')) return;
           const r = el.getBoundingClientRect();
           if (r.width < 300 || r.height < 200) return;
           if (r.left >= 0 && r.right <= window.innerWidth && r.top >= 0 && r.bottom <= window.innerHeight) return;
-          const x = Math.max(0, Math.round((window.innerWidth - r.width) / 2));
-          const y = Math.max(0, Math.round((window.innerHeight - r.height) / 2));
-          el.style.setProperty('transform', 'translate3d(' + x + 'px,' + y + 'px,0)', 'important');
+          const notice = /being recorded|Got it/i.test(el.innerText || '') && r.height < 400;
+          const x = notice ? (window.innerWidth - r.width) / 2 : window.innerWidth - r.width - 12;
+          const y = notice
+            ? (window.innerHeight - r.height) / 2
+            : Math.max(0, Math.min(topSafe, window.innerHeight - r.height - 12));
+          moveTo(el, Math.max(0, x), Math.max(0, y));
         });
       }
       new MutationObserver(function () {
         reportSize();
         keepPopupsVisible();
         keepViewRight();
+        fitPlayer();
+        fitSharedScreen();
       }).observe(document.body, { childList: true, subtree: true, attributes: true });
       window.addEventListener('resize', reportSize);
 
@@ -153,6 +249,18 @@
         const data = e.data || {};
         if (data.type === 'leave') {
           leave();
+          return;
+        }
+        if (data.type === 'people') {
+          showPeople = Boolean(data.show);
+          asked = '';
+          fitPlayer();
+          return;
+        }
+        if (data.type === 'room' && data.width > 50 && data.height > 50) {
+          room = { width: data.width, height: data.height, scale: data.scale || 1 };
+          asked = '';
+          fitPlayer();
           return;
         }
         if (data.type !== 'join' || joined) return;

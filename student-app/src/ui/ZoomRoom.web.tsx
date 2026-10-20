@@ -25,12 +25,15 @@ export function ZoomRoom({
   color,
   onLeft,
   fallbackLink = null,
+  autoJoin = false,
 }: {
   getJoinInfo: () => Promise<JoinInfo>
   color: string
   onLeft?: () => void
   // The lesson's Zoom link, for the small "open in Zoom" fallback.
   fallbackLink?: string | null
+  // Only for the development page: press Join at once.
+  autoJoin?: boolean
 }) {
   const wrap = useRef<ComponentRef<typeof View> | null>(null)
   const frame = useRef<HTMLIFrameElement>(null)
@@ -51,7 +54,8 @@ export function ZoomRoom({
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin || event.source !== frame.current?.contentWindow) return
       const data = event.data as { type?: string; message?: string; width?: number; height?: number; sharing?: boolean }
-      if (data.type === 'size' && data.width && data.height) setPlayer({ width: data.width, height: data.height, sharing: Boolean(data.sharing) })
+      if (data.type === 'size' && data.width && data.height)
+        setPlayer({ width: data.width, height: data.height, sharing: Boolean(data.sharing) })
       if (data.type === 'ready') setState((current) => (current === 'loading' ? 'ready' : current))
       if (data.type === 'joined') setState('joined')
       if (data.type === 'left') {
@@ -115,9 +119,28 @@ export function ZoomRoom({
     }
   }
 
-  // Its height does not depend on its width, so the scale settles; while a
-  // screen is shared only the height limits it.
-  const scale = room && player ? Math.min(2, room.height / player.height, player.sharing ? Infinity : room.width / player.width) : 1
+  const autoJoined = useRef(false)
+  useEffect(() => {
+    if (!autoJoin || autoJoined.current) return
+    autoJoined.current = true
+    void join()
+  })
+
+  // Its height does not depend on its width, so the scale settles. While a screen is shared it is not scaled at all
+  // (the player is asked for the room's height, and scaling as well made the two chase each other, smaller and smaller).
+  const scale = room && player && !player.sharing ? Math.min(2, room.height / player.height, room.width / player.width) : 1
+  // While a screen is shared, the class's faces beside it are folded (the shared screen gets their room) until shown.
+  const sharing = state === 'joined' && Boolean(player?.sharing)
+  const [showPeople, setShowPeople] = useState(false)
+  useEffect(() => {
+    frame.current?.contentWindow?.postMessage({ type: 'people', show: showPeople }, window.location.origin)
+  }, [showPeople])
+
+  // Tell the player how much room it has (it then draws itself as large as fits), once joined and on every resize.
+  useEffect(() => {
+    if (state !== 'joined' || !room) return
+    frame.current?.contentWindow?.postMessage({ type: 'room', width: room.width, height: room.height, scale }, window.location.origin)
+  }, [state, room, scale])
 
   return (
     <View ref={wrap} style={[StyleSheet.absoluteFill, { overflow: 'hidden', backgroundColor: '#141833' }]}>
@@ -138,6 +161,11 @@ export function ZoomRoom({
           transform: scale !== 1 ? `scale(${scale})` : undefined,
         }}
       />
+      {sharing && (
+        <Pressable accessibilityRole="button" onPress={() => setShowPeople((shown) => !shown)} style={styles.peopleButton}>
+          <Text style={styles.peopleText}>{showPeople ? '👥 Hide class' : '👥 Show class'}</Text>
+        </Pressable>
+      )}
       {state !== 'joined' && (
         <View style={styles.cover}>
           <Text style={styles.coverIcon}>🎥</Text>
@@ -178,6 +206,20 @@ const styles = StyleSheet.create({
     padding: 24,
     backgroundColor: 'rgba(20,24,51,0.94)',
   },
+  peopleButton: {
+    position: 'absolute',
+    left: 12,
+    top: 60,
+    zIndex: 5,
+    minHeight: 40,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,18,41,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  peopleText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   coverIcon: { fontSize: 40 },
   coverTitle: { color: '#fff', fontSize: 22, fontWeight: '800', textAlign: 'center' },
   coverText: { color: 'rgba(255,255,255,0.82)', fontSize: 15, textAlign: 'center', maxWidth: 380 },

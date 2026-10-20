@@ -26,6 +26,9 @@ function formatClock(totalSeconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
+// How long "<name>'s turn" stays in the top bar after a pick.
+export const pickedSeconds = 10
+
 const confetti = ['🎉', '⭐', '✨', '🎊', '🌟', '💫', '🎈', '⭐']
 
 function Confetti() {
@@ -297,11 +300,20 @@ export function ClassBar({ state, clockOffset, myId, color }: { state: ClassLive
     const tick = setInterval(() => setNow(Date.now()), 250)
     return () => clearInterval(tick)
   }, [])
+  // Who answers shows for 10 s from each pick (the console sends the same pick again every few seconds).
+  const pickKey = state?.picked ? `${state.picked}:${state.roll?.seq ?? ''}` : null
+  const [pickSeen, setPickSeen] = useState<{ key: string; at: number } | null>(null)
+  useEffect(() => {
+    if (!pickKey || pickKey === pickSeen?.key) return
+    const timer = setTimeout(() => setPickSeen({ key: pickKey, at: Date.now() }), 0)
+    return () => clearTimeout(timer)
+  }, [pickKey, pickSeen?.key])
   if (!state) return null
+  const pickedShown = state.picked && pickSeen?.key === pickKey && now - pickSeen.at < pickedSeconds * 1000 ? state.picked : null
   const left =
     state.timer.endsAt != null ? Math.max(0, (state.timer.endsAt + clockOffset - now) / 1000) : (state.timer.pausedLeft ?? null)
   const myTeam = state.teams?.find((team) => team.members.some((member) => member.id === myId)) ?? null
-  if (left === null && !state.picked && !state.teams?.length) return null
+  if (left === null && !pickedShown && !state.teams?.length) return null
 
   const chip: CSSProperties = {
     display: 'inline-flex',
@@ -322,7 +334,7 @@ export function ClassBar({ state, clockOffset, myId, color }: { state: ClassLive
           ⏱ {left === 0 ? "Time's up!" : formatClock(Math.ceil(left))}
         </span>
       )}
-      {state.picked && <span style={{ ...chip, background: color, color: '#fff' }}>🙋 {state.picked}&apos;s turn</span>}
+      {pickedShown && <span style={{ ...chip, background: color, color: '#fff' }}>🙋 {pickedShown}&apos;s turn</span>}
       {state.teams && state.teams.length > 0 && (
         <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 6 }}>
           {state.teams.map((team) => (

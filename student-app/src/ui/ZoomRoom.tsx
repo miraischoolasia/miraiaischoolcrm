@@ -6,7 +6,7 @@ import { Button } from '@/ui/kit'
 
 // On phones the class opens in the Zoom app (the Meeting SDK runs in the web
 // build only, ZoomRoom.web.tsx).
-export function ZoomRoom({ getJoinInfo, color }: { getJoinInfo: () => Promise<JoinInfo>; color: string; onLeft?: () => void; fallbackLink?: string | null }) {
+export function ZoomRoom({ getJoinInfo, color }: { getJoinInfo: () => Promise<JoinInfo>; color: string; onLeft?: () => void; fallbackLink?: string | null; autoJoin?: boolean }) {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 

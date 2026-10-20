@@ -14,7 +14,17 @@ type Phase = 'answer' | 'sent' | 'missed' | 'revealed'
 
 const stepAsideAfter: Record<Phase, number | null> = { answer: null, sent: 2500, missed: 3000, revealed: 10000 }
 
-export function QuestionPopup({ color }: { color: string }) {
+export function QuestionPopup({
+  color,
+  reopenSignal = 0,
+  hideReopen = false,
+}: {
+  color: string
+  // A new number opens the question again (from the class menu).
+  reopenSignal?: number
+  // The class menu offers the question instead of the small button.
+  hideReopen?: boolean
+}) {
   const { state, secondsLeft } = useLive()
   const active = state?.active ? state : null
   const phase: Phase | null = !active
@@ -28,6 +38,11 @@ export function QuestionPopup({ color }: { color: string }) {
           : 'missed'
   const key = active && phase ? `${active.question.id}:${phase}` : null
   const [aside, setAside] = useState<string | null>(null)
+  const [seenSignal, setSeenSignal] = useState(reopenSignal)
+  if (reopenSignal !== seenSignal) {
+    setSeenSignal(reopenSignal)
+    setAside(null)
+  }
 
   useEffect(() => {
     if (!key || !phase) return
@@ -39,6 +54,7 @@ export function QuestionPopup({ color }: { color: string }) {
 
   if (!active || !key) return null
   if (aside === key) {
+    if (hideReopen) return null
     return (
       <View style={styles.reopenWrap} pointerEvents="box-none">
         <Pressable accessibilityRole="button" onPress={() => setAside(null)} style={[styles.reopen, { backgroundColor: color }]}>
