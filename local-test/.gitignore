@@ -1,0 +1,5 @@
+# a link to ../supabase/migrations (made by run.mjs), and the CLI's own scratch files
+supabase/migrations
+supabase/.temp
+supabase/.branches
+slots

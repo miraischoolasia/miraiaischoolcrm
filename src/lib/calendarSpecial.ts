@@ -2,11 +2,12 @@ import type { EventInput } from '@fullcalendar/core'
 import { shortGrade } from './calendarDayList'
 import type { Classroom, MakeupPlan, Schedule, ScheduleException, TrialBooking } from '../types/domain'
 
-// The month calendar shows only the days that differ from the weekly timetable: a cancelled class day, a
+// The month calendar shows the days that differ from the weekly timetable: a cancelled class day, a
 // replacement class (made for a cancelled day), an extra class (a one-off class made for no cancelled day) and
-// a booked trial. Weekly classes are in the day list and the week view. Both schools work the same way.
+// a booked trial. A school that wants them (Class Settings > Calendar) also sees each weekly class there, faded;
+// otherwise the weekly classes are in the day list and the week view.
 
-export type SpecialKind = 'cancel' | 'replacement' | 'extra' | 'trial'
+export type SpecialKind = 'cancel' | 'replacement' | 'extra' | 'trial' | 'weekly'
 
 export type SpecialCard = {
   kind: SpecialKind
@@ -25,6 +26,7 @@ export const SPECIAL_LABEL: Record<SpecialKind, string> = {
   replacement: 'Replacement class',
   extra: 'Extra class',
   trial: 'Trial class',
+  weekly: 'Weekly class',
 }
 
 const clock = (time: string) => {
@@ -114,13 +116,16 @@ export type SpecialSources = {
   subjectName: (subjectId: number) => string | null
   links: ReplacementLinks
   makeupPlans: MakeupPlan[]
+  // Also each weekly class (and camp class), as a faded card. Empty trial slots stay out.
+  weekly?: boolean
 }
 
 const classroomOf = (schedule: Schedule | undefined, classroomMap: Map<number, Classroom>) =>
   schedule?.classroomId != null ? classroomMap.get(schedule.classroomId) ?? null : null
 
 // The month calendar's events, out of every calendar event: the special class days, each carrying its card
-// (extendedProps.special), plus the public holidays. Weekly classes, tasks, meetings and events are left out.
+// (extendedProps.special), plus the public holidays, and the weekly classes when the school shows them. Tasks,
+// meetings and events are left out. monthRank puts the special days first, so "+N more" hides weekly ones.
 export function monthSpecialEvents(events: EventInput[], sources: SpecialSources): EventInput[] {
   const byId = new Map(sources.schedules.map((schedule) => [schedule.id, schedule]))
   const subject = (classroom: Classroom | null) =>
@@ -132,12 +137,15 @@ export function monthSpecialEvents(events: EventInput[], sources: SpecialSources
     const isCancelled = props.isCancelledOccurrence === true
     const isMakeupOnly = props.isMakeupOnly === true
     const isReplacement = props.classKind === 'replacement'
-    if (!isCancelled && !isMakeupOnly && !isReplacement) return []
+    const isWeekly =
+      !isCancelled && !isMakeupOnly && !isReplacement && props.scheduleId !== undefined && props.classKind !== 'trial'
+    if (!isCancelled && !isMakeupOnly && !isReplacement && !(sources.weekly && isWeekly)) return []
 
     const schedule = byId.get(Number(props.scheduleId))
     const date = String(props.occurrenceDate ?? String(event.start ?? '').slice(0, 10))
     const start = String(props.startTime ?? schedule?.startTime ?? '')
-    const end = isMakeupOnly ? String(event.end ?? '').slice(11, 16) || String(props.endTime ?? '') : String(props.endTime ?? '')
+    // A make-up day's card is longer than the class: its own end.
+    const end = String(event.end ?? '').slice(11, 16) || String(props.endTime ?? '')
     const teacher = String(props.teacherName ?? '')
 
     let kind: SpecialKind
@@ -153,6 +161,8 @@ export function monthSpecialEvents(events: EventInput[], sources: SpecialSources
               (plan) => plan.classroomId === classroom!.id && plan.missedDate === date && plan.studentId === null,
             ) ?? null
       madeUp = madeUpText(replacement, classPlan)
+    } else if (isWeekly) {
+      kind = 'weekly'
     } else if (isMakeupOnly) {
       // Make-up minutes on the 29th-31st, when the class does not normally meet.
       kind = 'replacement'
@@ -170,7 +180,7 @@ export function monthSpecialEvents(events: EventInput[], sources: SpecialSources
       teacher,
       madeUp,
     }
-    return [{ ...event, extendedProps: { ...props, special } }]
+    return [{ ...event, extendedProps: { ...props, special, monthRank: kind === 'weekly' ? 1 : 0 } }]
   })
 }
 
@@ -222,9 +232,4 @@ export function bookedTrialEvents(
       },
     }
   })
-}
-
-// The days (YYYY-MM-DD) that have something on the month calendar; every other day says so.
-export function busyDays(events: EventInput[]) {
-  return new Set(events.map((event) => String(event.start ?? '').slice(0, 10)).filter(Boolean))
 }

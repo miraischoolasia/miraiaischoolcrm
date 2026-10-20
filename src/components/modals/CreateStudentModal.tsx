@@ -1,5 +1,6 @@
 import { formatDate, getTodayString } from '../../domain/studentStatus'
 import { monthPlanEndDate } from '../../lib/studentExtras'
+import { STUDENT_KIND_LABELS } from '../../lib/studentLink'
 import { brand } from '../../lib/brand'
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
@@ -22,6 +23,8 @@ type CreateStudentModalProps = {
   packageNotice?: string | null
   // The school uses student codes: a box for the child's code.
   showStudentCode?: boolean
+  // The school's extra student fields (Class Settings > Student fields), when it shows any.
+  extraFields?: React.ReactNode
 }
 
 export function CreateStudentModal({
@@ -37,6 +40,7 @@ export function CreateStudentModal({
   onPackageChange,
   packageNotice = null,
   showStudentCode = false,
+  extraFields,
 }: CreateStudentModalProps) {
   // A school that charges by the month (no package for every child): the class's first day and months paid.
   const byMonth = !brand.usesPackages && formState.studentType === 'regular' && !formState.packageId
@@ -134,6 +138,8 @@ export function CreateStudentModal({
             </label>
           )}
 
+          {extraFields}
+
           <label className="space-y-2 sm:col-span-2">
             <span className="text-sm font-semibold text-slate-700">
               Phone Number
@@ -163,7 +169,7 @@ export function CreateStudentModal({
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
             >
               <option value="regular">Regular Student</option>
-              <option value="trial">Trial Student</option>
+              <option value="trial">{STUDENT_KIND_LABELS.hoa} / Trial</option>
               <option value="preview">Preview Class</option>
             </select>
           </label>

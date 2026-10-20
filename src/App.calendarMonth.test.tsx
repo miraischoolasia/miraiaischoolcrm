@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   rpc: vi.fn(),
   // The view FullCalendar reports it shows.
   view: 'dayGridMonth',
+  // Class Settings > Calendar: the weekly classes on the month too.
+  monthWeekly: false,
 }))
 
 vi.mock('./lib/supabase', () => ({
@@ -101,6 +103,11 @@ const oneOff = (id: number, date: string, title: string) => ({
   startRecur: null,
 })
 
+vi.mock('./lib/calendarLayout', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  fetchMonthWeekly: async () => mocks.monthWeekly,
+}))
+
 vi.mock('./lib/subjects', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   fetchSubjects: async () => [{ id: 7, name: 'BIK', sortOrder: 1, isActive: true }],
@@ -176,6 +183,7 @@ describe('the month calendar', () => {
     vi.clearAllMocks()
     mocks.rpc.mockResolvedValue({ data: null, error: null })
     mocks.view = 'dayGridMonth'
+    mocks.monthWeekly = false
     window.localStorage.clear()
     vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 19, 10, 0) })
   })
@@ -201,9 +209,8 @@ describe('the month calendar', () => {
     expect(card('schedule-202')!.querySelector('[data-special-kind]')).toHaveAttribute('data-special-kind', 'extra')
     expect(card('schedule-202')).toHaveTextContent('Extra Maths Ms Rachel')
 
-    // A day without a special class says so.
+    // Every day of the month carries the "nothing on" note; the page's styles show it only on a day without a card.
     expect(screen.getByTestId('day-20')).toHaveTextContent('No class event scheduled.')
-    expect(screen.getByTestId('day-12')).not.toHaveTextContent('No class event scheduled.')
   })
 
   it('opens the cancelled day (restore or add a replacement) and an extra class (its class window)', async () => {
@@ -222,6 +229,20 @@ describe('the month calendar', () => {
     // Its details; attendance opens in the same window once the day comes.
     expect(lessonWindow).toHaveTextContent('Ms Rachel')
     expect(lessonWindow).toHaveTextContent('1 on the list')
+  })
+
+  it('also shows the weekly class, faded and after the special days, when the school turns that on', async () => {
+    mocks.monthWeekly = true
+    await signInAndOpenCalendar()
+    await vi.waitFor(() => expect(card('schedule-101')).not.toBeNull())
+
+    const weekly = card('schedule-101')!
+    expect(weekly.querySelector('[data-special-kind]')).toHaveAttribute('data-special-kind', 'weekly')
+    expect(weekly).toHaveTextContent('7.00–8.15PM')
+    expect(weekly).toHaveTextContent('F2 BIK Ms Rachel')
+    // The special days are still there.
+    expect(card('schedule-101-cancelled-2026-10-12')).not.toBeNull()
+    expect(card('schedule-202')).not.toBeNull()
   })
 
   it('leaves the week view with every class', async () => {

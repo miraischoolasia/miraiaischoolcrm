@@ -4,6 +4,21 @@
 
 begin;
 
+-- Its own test data, so it also works on an empty database (the dbtests run).
+insert into auth.users (id) values
+  ('00000000-0000-0000-0000-0000000000b1'),
+  ('00000000-0000-0000-0000-0000000000b2');
+insert into public.teachers (id, auth_user_id, username, full_name, role) overriding system value values
+  (9861, '00000000-0000-0000-0000-0000000000b1', 'sc_admin', 'Admin', 'admin'),
+  (9862, '00000000-0000-0000-0000-0000000000b2', 'sc_teacher', 'Teacher', 'teacher');
+insert into public.classrooms (id, name, age_group, program_level) overriding system value values
+  (9861, 'SC Class A', '12-14 Years Old', 'Coder Foundation'),
+  (9862, 'SC Class B', '12-14 Years Old', 'Coder Foundation');
+insert into public.students (id, full_name, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date)
+  overriding system value values
+  (9961, 'Kid A', 0, '2099-12-31', '2099-12-31', '2099-12-31'),
+  (9962, 'Kid B', 0, '2099-12-31', '2099-12-31', '2099-12-31');
+
 do $t$
 declare
   v_admin uuid := (select auth_user_id from public.teachers where role = 'admin' and is_active and auth_user_id is not null order by id limit 1);

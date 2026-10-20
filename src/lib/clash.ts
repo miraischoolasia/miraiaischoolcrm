@@ -202,3 +202,27 @@ export function describeClashes(teacherName: string, clashes: TeacherClash[]) {
     .map((clash) => `${clash.title} (${clash.when})`)
     .join('; ')}`
 }
+
+// The words shown when a save is stopped: one teacher cannot teach two classes at once
+// (the database refuses it too, with the same wording).
+export function clashMessage(teacherName: string, clashes: TeacherClash[]) {
+  return `Time clash: ${describeClashes(teacherName, clashes)}. One teacher cannot have two classes at the same time, so change the day, the time or the teacher.`
+}
+
+// Clashes a lesson already had before this change are left alone (so an old clash does not stop a
+// rename); only new ones stop the save.
+export function newClashes(clashes: TeacherClash[], before: TeacherClash[]) {
+  const known = new Set(before.map((clash) => clash.scheduleId))
+  return clashes.filter((clash) => !known.has(clash.scheduleId))
+}
+
+// A saved lesson as a candidate, to find the clashes it had before a change.
+export function scheduleAsCandidate(schedule: Schedule, today?: string): ClashCandidate | null {
+  const base = { teacherId: schedule.teacherId, startTime: schedule.startTime, endTime: schedule.endTime, excludeScheduleId: schedule.id, today }
+  if (schedule.eventType === 'regular') {
+    return schedule.dayOfWeek !== null && schedule.startRecur
+      ? { ...base, kind: 'weekly', dayOfWeek: schedule.dayOfWeek, startRecur: schedule.startRecur, endRecur: schedule.endRecur }
+      : null
+  }
+  return schedule.scheduledDate ? { ...base, kind: 'single', date: schedule.scheduledDate } : null
+}

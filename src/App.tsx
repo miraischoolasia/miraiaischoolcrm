@@ -148,7 +148,7 @@ import {
   weekdayLabels,
 } from './lib/schedule'
 import { lessonFixedZoomLink, normalizeLessonLink, regularLessonOwner, SCHEDULE_SELECT } from './lib/scheduleLinks'
-import { fetchCalendarLayout, readCalendarLayout, usesDayList, type CalendarLayout } from './lib/calendarLayout'
+import { fetchCalendarLayout, fetchMonthWeekly, MONTH_WEEKLY_DEFAULT, readCalendarLayout, usesDayList, type CalendarLayout } from './lib/calendarLayout'
 import { monthWeeks, type DayListItem, type DayListLesson } from './lib/calendarDayList'
 import {
   ALL_KINDS,
@@ -169,7 +169,7 @@ import { CalendarFilterBar } from './components/calendar/CalendarFilterBar'
 import { CalendarDayList, type CalendarView } from './components/calendar/CalendarDayList'
 import { LessonWindow } from './components/calendar/LessonWindow'
 import { SpecialMonthCard } from './components/calendar/SpecialMonthCard'
-import { bookedTrialEvents, busyDays, linkReplacements, monthSpecialEvents, type SpecialCard } from './lib/calendarSpecial'
+import { bookedTrialEvents, linkReplacements, monthSpecialEvents, type SpecialCard } from './lib/calendarSpecial'
 import {
   MAX_LEAD_FOLLOW_UPS,
   ageGroupOptions,
@@ -209,6 +209,8 @@ import {
   saveStudentCode,
   setStudentCodeEnabled,
 } from './lib/studentExtras'
+import { convertHoaStudent, findHoaStudentForChild, type ConvertHoaInput } from './lib/convertHoa'
+import { ConvertHoaModal } from './components/modals/ConvertHoaModal'
 import { buildTeacherClasses } from './lib/teacherDetails'
 import { TeacherDetailsSection } from './components/sections/TeacherDetailsSection'
 import { TeacherManagementSection } from './components/sections/TeacherManagementSection'
@@ -245,6 +247,10 @@ import { LeadsSection } from './components/sections/LeadsSection'
 import { AdminActivitySection } from './components/sections/AdminActivitySection'
 import { TeamRepliesSection } from './components/sections/TeamRepliesSection'
 import { StudentDetailModal } from './components/StudentDetailModal'
+import { StudentExtraInputs, StudentExtraSummary } from './components/StudentExtraFields'
+import { StudentFieldsSettings } from './components/StudentFieldsSettings'
+import { useStudentFields } from './hooks/useStudentFields'
+import { anyStudentField, consultantOptions, EMPTY_STUDENT_EXTRAS_FORM, extrasChanges, extrasToForm, type StudentExtrasForm } from './lib/studentFields'
 import { buildStudentParents } from './lib/studentParents'
 import { getAttendedStudentIds } from './lib/studentLessons'
 import { EditStudentModal } from './components/modals/EditStudentModal'
@@ -313,7 +319,7 @@ import {
   type MoveClassInput,
 } from './components/modals/MoveClassModal'
 import { getDragBlockReason, getTimeFromDate, getTrialSlotsOnDate } from './lib/move'
-import { describeClashes, findTeacherClashes, type ClashCandidate } from './lib/clash'
+import { clashMessage, findTeacherClashes, newClashes, scheduleAsCandidate, type ClashCandidate } from './lib/clash'
 import { closeCalendarMorePopover } from './lib/calendarPopover'
 import { hasPermission } from './lib/permissions'
 import { getClassroomRosterOn, getStudentClassIds } from './lib/roster'
@@ -589,6 +595,8 @@ function App() {
   const [editingClassroomId, setEditingClassroomId] = useState<number | null>(null)
   const [isCreatingClassroom, setIsCreatingClassroom] = useState(false)
   const [isCreateStudentOpen, setIsCreateStudentOpen] = useState(false)
+  // The HOA student being converted to a regular student.
+  const [convertingStudentId, setConvertingStudentId] = useState<number | null>(null)
   const [isBulkImportPreviewStudentsOpen, setIsBulkImportPreviewStudentsOpen] =
     useState(false)
   const [isImportingPreviewStudents, setIsImportingPreviewStudents] = useState(false)
@@ -730,6 +738,10 @@ function App() {
   // The school's own number for each child, when the school switched student codes on.
   const [studentCodeEnabled, setStudentCodeEnabledState] = useState(false)
   const [studentCodes, setStudentCodes] = useState<Map<number, string>>(new Map())
+  // The school's extra student fields (Class Settings > Student fields) and the form's values for them.
+  const studentFields = useStudentFields(authUserId !== null, loadAttempt)
+  const [studentExtrasForm, setStudentExtrasForm] = useState<StudentExtrasForm>(EMPTY_STUDENT_EXTRAS_FORM)
+  const studentConsultants = useMemo(() => consultantOptions(teachers), [teachers])
   const [isSavingStudentCodeSetting, setIsSavingStudentCodeSetting] = useState(false)
   const [isSavingLateFeedbackEdit, setIsSavingLateFeedbackEdit] = useState(false)
   // A class later than today opens read-only: who is coming, no attendance yet.
@@ -1310,11 +1322,14 @@ function App() {
       : []
 
   // The teacher this timetable form would book, and whether they are already
-  // teaching something else at that time. A regular timetable is always taught
-  // by its classroom's teacher; a replacement class picks its own.
+  // teaching something else at that time. A regular timetable is taught by its
+  // classroom's teacher (or the co-teacher it already belongs to); a
+  // replacement class picks its own.
   const scheduleClashTeacherId =
     scheduleFormState.eventType === 'regular'
-      ? (scheduleLinkedClassroom?.teacherId ?? null)
+      ? scheduleLinkedClassroom
+        ? regularLessonOwner(scheduleLinkedClassroom, isCreatingSchedule ? null : editingSchedule).teacherId
+        : null
       : scheduleFormState.teacherId
         ? Number(scheduleFormState.teacherId)
         : null
@@ -1346,11 +1361,16 @@ function App() {
       candidate = { ...base, kind: 'single', date: scheduleFormState.scheduledDate }
     }
 
-    return candidate
-      ? findTeacherClashes(candidate, schedules, scheduleExceptions, classroomMap)
-      : []
+    if (!candidate) {
+      return []
+    }
+    const clashes = findTeacherClashes(candidate, schedules, scheduleExceptions, classroomMap)
+    // A lesson that already clashed (from before the check existed) may still be edited.
+    const before = !isCreatingSchedule && editingSchedule ? scheduleAsCandidate(editingSchedule, todayString) : null
+    return before ? newClashes(clashes, findTeacherClashes(before, schedules, scheduleExceptions, classroomMap)) : clashes
   }, [
     classroomMap,
+    editingSchedule,
     editingScheduleId,
     isCreatingSchedule,
     scheduleClashTeacherId,
@@ -2053,6 +2073,8 @@ function App() {
   // The month calendar shows only the special class days: cancelled, replacement, extra class and booked trial
   // (lib/calendarSpecial). Week and agenda show everything. Null until the calendar says which view it shows.
   const [calendarViewType, setCalendarViewType] = useState<string | null>(null)
+  // Whether the month also shows each weekly class, faded (Class Settings > Calendar).
+  const [monthWeekly, setMonthWeekly] = useState(MONTH_WEEKLY_DEFAULT)
   const replacementLinks = useMemo(
     () => linkReplacements(scheduleExceptions, schedules, classroomMap),
     [scheduleExceptions, schedules, classroomMap],
@@ -2072,11 +2094,13 @@ function App() {
         subjectName: (id) => subjectName.get(id) ?? null,
         links: replacementLinks,
         makeupPlans,
+        weekly: monthWeekly,
       }),
       ...bookedTrialEvents(trialBookings, trialSlots, scheduleExceptions, classroomMap, (id) => teacherMap.get(id)?.fullName ?? ''),
     ]
   }, [
     calendarViewType,
+    monthWeekly,
     calendarEvents,
     subjects,
     visibleSchedules,
@@ -2090,10 +2114,6 @@ function App() {
     scheduleExceptions,
     teacherMap,
   ])
-  const monthBusyDays = useMemo(
-    () => (calendarViewType === 'dayGridMonth' ? busyDays(shownCalendarEvents) : null),
-    [calendarViewType, shownCalendarEvents],
-  )
 
   // The Calendar's day list (a school with many classes a day; Class Settings > Calendar). Month, week and
   // agenda stay one click away; null = the layout's own first view.
@@ -2120,6 +2140,7 @@ function App() {
     // Local development only: ?calendarLayout=day_list (or classic) previews a layout without saving it.
     const preview = import.meta.env.DEV ? new URLSearchParams(window.location.search).get('calendarLayout') : null
     void fetchCalendarLayout().then((saved) => setCalendarLayout(preview ? readCalendarLayout(preview) : saved))
+    void fetchMonthWeekly().then(setMonthWeekly)
   }, [currentSession])
   const dayListOn = usesDayList(calendarLayout, schedules)
   const showDayList = dayListOn && (calendarMode ?? 'day_list') === 'day_list'
@@ -2541,6 +2562,7 @@ function App() {
       dateOfBirth: student.dateOfBirth ?? '',
       studentCode: studentCodes.get(student.id) ?? '',
     })
+    setStudentExtrasForm(extrasToForm(studentFields.extras.get(student.id)))
   }
 
   // Admin: switches the school's student codes on or off.
@@ -2700,8 +2722,31 @@ function App() {
   }
 
   function openStudentRenewal(studentId: number) {
+    // An HOA student is not renewed: they become a regular student first, class and package in one step.
+    if (students.find((entry) => entry.id === studentId)?.studentType === 'trial') {
+      setConvertingStudentId(studentId)
+      return
+    }
     setStudentSaveError(null)
     setSelectedStudentId(studentId)
+  }
+
+  // The lead an HOA student came through, while it is not converted yet.
+  function getOpenHoaLeadId(studentId: number) {
+    const leadIds = trialBookings
+      .filter((booking) => booking.studentId === studentId && booking.leadId !== null)
+      .map((booking) => booking.leadId as number)
+    return leadIds.find((id) => leads.find((lead) => lead.id === id)?.convertedStudentId == null) ?? null
+  }
+
+  // HOA -> regular on the same student. Null when done, else the reason.
+  async function convertHoa(input: ConvertHoaInput) {
+    const failure = await convertHoaStudent(input)
+    if (failure) {
+      return failure
+    }
+    await Promise.all([refreshStudentsAndLogs(), refreshClassrooms(), refreshLeads(), refreshAdminActivities()])
+    return null
   }
 
   function closeStudentRenewal() {
@@ -2758,6 +2803,7 @@ function App() {
 
   function openCreateStudentModal() {
     setCreateStudentSaveError(null)
+    setStudentExtrasForm(EMPTY_STUDENT_EXTRAS_FORM)
     setIsCreateStudentOpen(true)
     setCreateStudentFormState({
       packageId: '',
@@ -3863,6 +3909,13 @@ function App() {
     }
 
     try {
+      extrasChanges(studentExtrasForm, studentFields.extras.get(editingStudent.id), studentFields.setting)
+    } catch (fieldsError) {
+      setStudentDetailsSaveError(getErrorMessage(fieldsError, 'Please check the extra fields.'))
+      return
+    }
+
+    try {
       setIsSavingStudentDetails(true)
       setStudentDetailsSaveError(null)
 
@@ -3891,6 +3944,7 @@ function App() {
         await saveBirthDate(editingStudent.id, studentDetailsFormState.dateOfBirth, editingStudent.dateOfBirth)
       }
       await saveStudentCodeFor(editingStudent.id, studentDetailsFormState.studentCode)
+      await studentFields.saveFor(editingStudent.id, studentExtrasForm)
 
       await Promise.all([
         refreshStudentsAndLogs(),
@@ -3943,6 +3997,14 @@ function App() {
 
     if (!isPreviewStudent && !createStudentFormState.miraiClubExpiryDate) {
       setCreateStudentSaveError(`Please select the ${brand.clubName} expiry date.`)
+      return
+    }
+
+    // A bad extra field is said before the student is made (it is saved right after).
+    try {
+      extrasChanges(studentExtrasForm, undefined, studentFields.setting)
+    } catch (fieldsError) {
+      setCreateStudentSaveError(getErrorMessage(fieldsError, 'Please check the extra fields.'))
       return
     }
 
@@ -4021,6 +4083,14 @@ function App() {
         } catch (codeError) {
           // The student exists now, so closing (not retrying) avoids a duplicate.
           showToast(`Saved the student, but not the code: ${getErrorMessage(codeError, 'unknown error')}`)
+        }
+      }
+      if (createdStudentId && anyStudentField(studentFields.setting)) {
+        try {
+          await studentFields.saveFor(createdStudentId, studentExtrasForm)
+        } catch (fieldsError) {
+          // The student exists now, so closing (not retrying) avoids a duplicate.
+          showToast(`Saved the student, but not ${getErrorMessage(fieldsError, 'the extra fields')}`)
         }
       }
       if (createdStudentId && byMonth && Number.isInteger(signUpMonths) && createStudentFormState.classroomId) {
@@ -4745,6 +4815,27 @@ function App() {
       return "Add the child's name on the lead first."
     }
     const plan = planEnrollment(pkg, input.startDate)
+    // The child already has an HOA student: that student joins, no second one is made.
+    const hoaStudent = findHoaStudentForChild({
+      leadId: input.leadId,
+      childName: name,
+      childCount: leads.find((lead) => lead.id === input.leadId)?.children.length ?? 1,
+      students,
+      trialBookings,
+    })
+    if (hoaStudent) {
+      return convertHoa({
+        studentId: hoaStudent.id,
+        classroomId: input.classroomId,
+        startDate: input.startDate,
+        packageId: pkg.id,
+        classCount: plan.classCount,
+        lessonExpiryDate: plan.endDate,
+        accountFeeExpiryDate: input.startDate,
+        miraiClubExpiryDate: input.startDate,
+        leadId: input.leadId,
+      })
+    }
     const { data: created, error } = await supabase.rpc('create_student_record', {
       p_full_name: name,
       p_phone: input.phone.trim() || null,
@@ -4814,6 +4905,27 @@ function App() {
     const plan = pkg ? planEnrollment(pkg, input.startDate) : { endDate: NO_PACKAGE_END, classCount: 0 }
     const fees = pkg ? planFeeChange(pkg, input.startDate, plan.endDate, null, []) : null
     const feeExpiry = pkg ? (fees?.to ?? input.startDate) : NO_PACKAGE_END
+    // The child already has an HOA student: that student joins, no second one is made.
+    const hoaStudent = findHoaStudentForChild({
+      leadId: input.leadId,
+      childName: name,
+      childCount: leads.find((lead) => lead.id === input.leadId)?.children.length ?? 1,
+      students,
+      trialBookings,
+    })
+    if (hoaStudent) {
+      return convertHoa({
+        studentId: hoaStudent.id,
+        classroomId: input.classroomId,
+        startDate: input.startDate,
+        packageId: pkg?.id ?? null,
+        classCount: plan.classCount,
+        lessonExpiryDate: pkg ? plan.endDate : null,
+        accountFeeExpiryDate: pkg ? feeExpiry : null,
+        miraiClubExpiryDate: pkg ? feeExpiry : null,
+        leadId: input.leadId,
+      })
+    }
     const { data: created, error } = await supabase.rpc('create_student_record', {
       p_full_name: name,
       p_phone: input.phone.trim() || null,
@@ -5267,13 +5379,9 @@ function App() {
               ),
             )
           if (takeoverClashes.length > 0) {
-            const proceed = await confirm(
-              `${describeClashes(teacherMap.get(teacherId)?.fullName ?? 'This teacher', takeoverClashes)}.\n\nTaking over ${editingClassroom.name} overlaps. Change the teacher anyway?`,
-              { confirmLabel: 'Change anyway', cancelLabel: 'Go back' },
+            throw new Error(
+              `${editingClassroom.name} cannot change teacher. ${clashMessage(teacherMap.get(teacherId)?.fullName ?? 'This teacher', takeoverClashes)}`,
             )
-            if (!proceed) {
-              return
-            }
           }
 
           const { error: reassignError } = await supabase.rpc('reassign_classroom_teacher', {
@@ -5610,13 +5718,8 @@ function App() {
     }
 
     if (scheduleClashes.length > 0) {
-      const proceed = await confirm(
-        `${describeClashes(teacherMap.get(teacherId)?.fullName ?? 'This teacher', scheduleClashes)}.\n\nThis time overlaps. Save it anyway?`,
-        { confirmLabel: 'Save anyway', cancelLabel: 'Go back' },
-      )
-      if (!proceed) {
-        return
-      }
+      setScheduleSaveError(clashMessage(teacherMap.get(teacherId)?.fullName ?? 'This teacher', scheduleClashes))
+      return
     }
 
     const fbGroupLink = normalizeLessonLink(scheduleFormState.fbGroupUrl)
@@ -5900,13 +6003,8 @@ function App() {
     const moveClashes = getMoveClashes(input.startTime, input.endTime)
     if (moveClashes.length > 0) {
       const moveTeacherId = schedules.find((entry) => entry.id === moveDraft.scheduleId)?.teacherId
-      const proceed = await confirm(
-        `${describeClashes(moveTeacherId ? (teacherMap.get(moveTeacherId)?.fullName ?? 'This teacher') : 'This teacher', moveClashes)}.\n\nThis time overlaps. Move it anyway?`,
-        { confirmLabel: 'Move anyway', cancelLabel: 'Go back' },
-      )
-      if (!proceed) {
-        return
-      }
+      setMoveError(clashMessage(moveTeacherId ? (teacherMap.get(moveTeacherId)?.fullName ?? 'This teacher') : 'This teacher', moveClashes))
+      return
     }
 
     try {
@@ -7175,16 +7273,15 @@ function App() {
                       height="auto"
                       timeZone="local"
                       events={shownCalendarEvents}
-                      // The month shows at most 4 special days a day; "+N more" opens the rest.
+                      // The month shows at most 4 cards a day, the special days before the weekly classes;
+                      // "+N more" opens the rest.
                       dayMaxEvents={4}
+                      eventOrder="monthRank,start,-duration,allDay,title"
                       datesSet={(arg) => setCalendarViewType(arg.view.type)}
-                      dayCellClassNames={(arg) =>
-                        monthBusyDays && arg.view.type === 'dayGridMonth' && !arg.isOther && !monthBusyDays.has(getDateKeyFromDate(arg.date))
-                          ? ['fc-day-no-special']
-                          : []
-                      }
+                      // Each day of the month carries the "nothing on" note; index.css shows it only on a day
+                      // without a card.
                       dayCellContent={(arg) =>
-                        monthBusyDays && arg.view.type === 'dayGridMonth' && !arg.isOther && !monthBusyDays.has(getDateKeyFromDate(arg.date)) ? (
+                        arg.view.type === 'dayGridMonth' && !arg.isOther ? (
                           <>
                             <span>{arg.dayNumberText}</span>
                             <span className="fc-day-empty-note">No class event scheduled.</span>
@@ -7391,6 +7488,11 @@ function App() {
             {visibleSection === 'students' && (
               <StudentDashboardSection
                 studentCodes={studentCodeEnabled ? studentCodes : undefined}
+                studentFields={
+                  anyStudentField(studentFields.setting)
+                    ? { setting: studentFields.setting, extras: studentFields.extras, kinds: studentFields.kinds, consultants: studentConsultants }
+                    : undefined
+                }
                 studentCodeSetting={
                   isAdmin
                     ? { enabled: studentCodeEnabled, isSaving: isSavingStudentCodeSetting, onToggle: () => void handleToggleStudentCode() }
@@ -7640,6 +7742,17 @@ function App() {
           onSubmit={handleStudentDetailsSubmit}
           onFieldChange={updateStudentDetailsForm}
           showStudentCode={studentCodeEnabled}
+          extraFields={
+            anyStudentField(studentFields.setting) ? (
+              <StudentExtraInputs
+                setting={studentFields.setting}
+                form={studentExtrasForm}
+                kinds={studentFields.kinds}
+                consultants={studentConsultants}
+                onChange={(field, value) => setStudentExtrasForm((current) => ({ ...current, [field]: value }))}
+              />
+            ) : undefined
+          }
         />
       )}
 
@@ -7657,6 +7770,17 @@ function App() {
           packageNotice={getCreatePackageNotice()}
           onFieldChange={updateCreateStudentForm}
           showStudentCode={studentCodeEnabled}
+          extraFields={
+            anyStudentField(studentFields.setting) ? (
+              <StudentExtraInputs
+                setting={studentFields.setting}
+                form={studentExtrasForm}
+                kinds={studentFields.kinds}
+                consultants={studentConsultants}
+                onChange={(field, value) => setStudentExtrasForm((current) => ({ ...current, [field]: value }))}
+              />
+            ) : undefined
+          }
         />
       )}
 
@@ -7778,7 +7902,10 @@ function App() {
           onSaveStatus={(status, changes) => saveAttendanceStatus(status, changes)}
           onSaveStatusPoints={saveAttendanceStatusPoints}
           onAttendanceTakersSaved={setAttendanceTakerRules}
-          onCalendarLayoutSaved={setCalendarLayout}
+          onCalendarLayoutSaved={(layout, weekly) => {
+            setCalendarLayout(layout)
+            setMonthWeekly(weekly)
+          }}
           rewardPresets={rewardPresets}
           rewardLevels={rewardLevels}
           onRewardsChanged={() => void reloadRewards()}
@@ -7813,6 +7940,13 @@ function App() {
             return failure
           }}
           onSaveZoomOptions={saveZoomOptions}
+          studentFields={
+            <StudentFieldsSettings
+              setting={studentFields.setting}
+              onSettingChange={studentFields.changeSetting}
+              onKindsChange={studentFields.setKinds}
+            />
+          }
           enrolFlows={
             <>
               <EnrolFlowsSettings
@@ -7897,6 +8031,13 @@ function App() {
           classrooms={classrooms}
           student={selectedStudentDetail}
           studentCode={studentCodeEnabled ? (studentCodes.get(selectedStudentDetail.id) ?? null) : null}
+          extraSummary={
+            <StudentExtraSummary
+              setting={studentFields.setting}
+              extras={studentFields.extras.get(selectedStudentDetail.id)}
+              consultantName={teacherMap.get(studentFields.extras.get(selectedStudentDetail.id)?.consultantId ?? 0)?.fullName ?? null}
+            />
+          }
           lessonLogs={lessonLogs}
           lessonReviews={lessonReviews}
           reviewCriteria={reviewCriteria}
@@ -7961,6 +8102,25 @@ function App() {
                 }
               : undefined
           }
+        />
+      )}
+
+      {convertingStudentId !== null && studentMap.get(convertingStudentId) && (
+        <ConvertHoaModal
+          student={studentMap.get(convertingStudentId)!}
+          classrooms={activeVisibleClassrooms.filter((classroom) => classroom.category !== 'trial')}
+          packages={offeredPackages}
+          todayString={todayString}
+          onClose={() => setConvertingStudentId(null)}
+          onConvert={async (input) => {
+            const studentId = convertingStudentId
+            const failure = await convertHoa({ ...input, studentId, leadId: getOpenHoaLeadId(studentId) })
+            if (!failure) {
+              setConvertingStudentId(null)
+              showToast(`${studentMap.get(studentId)?.name ?? 'The student'} is now a regular student.`)
+            }
+            return failure
+          }}
         />
       )}
 

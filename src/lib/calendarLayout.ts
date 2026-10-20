@@ -45,3 +45,28 @@ export async function saveCalendarLayout(layout: CalendarLayout) {
   const { error } = await supabase.rpc('set_calendar_layout', { p_layout: layout })
   return error ? error.message || 'Failed to save.' : null
 }
+
+// Whether the month calendar also shows each weekly class, faded, beside the special class days (Class Settings >
+// Calendar; migration 20261027300000). Not set yet: on for Mirai (a few classes a day), off for another school,
+// which keeps only the cancelled, replacement and extra classes there.
+export const MONTH_WEEKLY_DEFAULT = !String(import.meta.env.VITE_BRAND_NAME ?? '').trim()
+
+export function readMonthWeekly(value: unknown, fallback = MONTH_WEEKLY_DEFAULT) {
+  return typeof value === 'boolean' ? value : fallback
+}
+
+export async function fetchMonthWeekly(): Promise<boolean> {
+  if (!supabase) return MONTH_WEEKLY_DEFAULT
+  try {
+    const { data } = await supabase.from('app_settings').select('value').eq('key', 'calendar_month_weekly').maybeSingle()
+    return readMonthWeekly(data?.value)
+  } catch {
+    return MONTH_WEEKLY_DEFAULT
+  }
+}
+
+export async function saveMonthWeekly(show: boolean) {
+  if (!supabase) return 'Supabase is not configured.'
+  const { error } = await supabase.rpc('set_calendar_month_weekly', { p_show: show })
+  return error ? error.message || 'Failed to save.' : null
+}

@@ -14,6 +14,13 @@ vi.mock('../../lib/classVideos', async (importActual) => ({
   fetchCanManageVideos: vi.fn(async () => true),
   fetchVideoProgress: vi.fn(async () => []),
 }))
+const grantMocks = vi.hoisted(() => ({ canGrant: vi.fn(async () => false), topicGrants: vi.fn(async () => []), setGrants: vi.fn(async () => null) }))
+vi.mock('../../lib/videoGrants', async (importActual) => ({
+  ...(await importActual<typeof import('../../lib/videoGrants')>()),
+  fetchTopicGrants: grantMocks.topicGrants,
+  fetchCanGrantVideos: grantMocks.canGrant,
+  setVideoGrants: grantMocks.setGrants,
+}))
 vi.mock('../../domain/studentStatus', async (importActual) => ({
   ...(await importActual<typeof import('../../domain/studentStatus')>()),
   getTodayString: () => '2026-10-18',

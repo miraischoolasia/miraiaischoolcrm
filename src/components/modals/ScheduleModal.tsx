@@ -508,7 +508,7 @@ export function ScheduleModal({
           {clashes.length > 0 && (
             <div
               role="alert"
-              className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:col-span-2"
+              className="rounded-2xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900 sm:col-span-2"
             >
               <div className="font-semibold">
                 Time clash: {clashTeacherName} is already teaching at this time
@@ -520,8 +520,8 @@ export function ScheduleModal({
                   </li>
                 ))}
               </ul>
-              <div className="mt-1 text-amber-800">
-                You can still save, but you will be asked to confirm.
+              <div className="mt-1 text-red-800">
+                One teacher cannot have two classes at the same time. Change the day, the time or the teacher to save.
               </div>
             </div>
           )}

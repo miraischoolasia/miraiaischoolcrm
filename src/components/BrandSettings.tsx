@@ -168,14 +168,15 @@ export function BrandSettings({ api = databaseApi }: { api?: BrandSettingsApi })
   }
 
   return (
-    <div className="space-y-5">
+    // Laid out by the width of the box it sits in (Class Settings is narrower than the screen), not the screen.
+    <div className="@container space-y-5">
       <p className="text-sm text-slate-500">
         How the CRM looks for everyone: the sign-in page, the menu, the tab in the browser, public forms and reports. Anything
         left empty keeps today's look.
       </p>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
-        <div className="space-y-5">
+      <div className="grid gap-6 @3xl:grid-cols-[1fr_20rem]">
+        <div className="@container space-y-5">
           <label className="block space-y-1.5">
             <span className="text-sm font-semibold text-slate-900">School name</span>
             <input
@@ -188,10 +189,10 @@ export function BrandSettings({ api = databaseApi }: { api?: BrandSettingsApi })
             />
           </label>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 @lg:grid-cols-2">
             <PictureField
               label="Logo"
-              hint="Wide PNG with a see-through background works best."
+              hint="Shown on the dark menu and the white sign-in page, so pick one that reads on both. A wide PNG with a see-through background works best."
               url={draft.logo_url}
               fallback={deploymentBrand.logo}
               busy={uploading === 'logo'}
@@ -211,7 +212,7 @@ export function BrandSettings({ api = databaseApi }: { api?: BrandSettingsApi })
 
           <div className="space-y-2">
             <span className="text-sm font-semibold text-slate-900">Colours</span>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 @md:grid-cols-2">
               <ColorField
                 label="Main colour"
                 hint="Buttons and highlights"

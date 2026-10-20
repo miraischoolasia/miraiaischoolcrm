@@ -16,7 +16,13 @@
     "db:start": "set SUPABASE_TELEMETRY_DISABLED=1&& npx supabase start",
     "db:stop": "set SUPABASE_TELEMETRY_DISABLED=1&& npx supabase stop",
     "db:reset": "set SUPABASE_TELEMETRY_DISABLED=1&& npx supabase db reset",
-    "db:new": "set SUPABASE_TELEMETRY_DISABLED=1&& npx supabase migration new"
+    "db:new": "set SUPABASE_TELEMETRY_DISABLED=1&& npx supabase migration new",
+    "local:start": "node local-test/run.mjs start",
+    "local:stop": "node local-test/run.mjs stop",
+    "local:reset": "node local-test/run.mjs reset",
+    "local:school": "node local-test/run.mjs school",
+    "dev:local": "node local-test/run.mjs crm",
+    "dev:local:student": "node local-test/run.mjs student"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.21",

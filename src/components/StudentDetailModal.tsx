@@ -107,6 +107,8 @@ type StudentDetailModalProps = {
   onRemoveClass?: (classroomId: number) => Promise<string | null>
   // The school's own number for the child, when the school uses student codes.
   studentCode?: string | null
+  // The school's extra student fields (Chinese name, kind, consultant, second parent phone).
+  extraSummary?: React.ReactNode
 }
 
 const NO_IDS: number[] = []
@@ -165,6 +167,7 @@ export function StudentDetailModal({
   onAddClass,
   onRemoveClass,
   studentCode = null,
+  extraSummary,
 }: StudentDetailModalProps) {
   const [tab, setTab] = useState<TabKey>('overview')
   const [copied, setCopied] = useState(false)
@@ -253,7 +256,9 @@ export function StudentDetailModal({
   const feesApply = currentPackage ? currentPackage.includesFees : true
   const status = getStudentStatus({ ...student, feesApply }, todayString)
   // A school that does not give every student a package renews only those who have one.
-  const renew = brand.usesPackages || currentPackage ? onRenew : undefined
+  // An HOA student is converted to a regular student instead (the same button opens that).
+  const isHoa = student.studentType === 'trial'
+  const renew = brand.usesPackages || currentPackage || isHoa ? onRenew : undefined
   const issues = getStudentIssues(student, status)
   const worstFee = getWorstFee(status)
   const teacherName = student.teacherId
@@ -332,6 +337,7 @@ export function StudentDetailModal({
                 )}
               </div>
             )}
+            {extraSummary && <div className="mt-2">{extraSummary}</div>}
           </div>
           <div className="flex shrink-0 items-center justify-end gap-2 max-sm:w-full max-sm:justify-start">
             {renew && !isPreview && (
@@ -340,7 +346,7 @@ export function StudentDetailModal({
                 onClick={renew}
                 className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
               >
-                Renew
+                {isHoa ? 'Convert to Regular' : 'Renew'}
               </button>
             )}
             {onEdit && (

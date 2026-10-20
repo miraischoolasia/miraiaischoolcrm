@@ -16,6 +16,14 @@ import {
 } from '../../lib/studentRows'
 import type { StudentParent } from '../../lib/studentParents'
 import { RowActionsMenu, type RowAction } from '../RowActionsMenu'
+import { StudentExtrasFilters } from '../StudentExtraFields'
+import {
+  matchesExtrasFilter,
+  NO_EXTRAS_FILTER,
+  type StudentFieldsSetting,
+  type StudentKind,
+  type StudentProfileExtras,
+} from '../../lib/studentFields'
 import { BrandMascot } from '../BrandMascot'
 import type {
   Classroom,
@@ -75,6 +83,13 @@ type StudentDashboardSectionProps = {
   studentCodes?: Map<number, string>
   // Admin only: the school's student code switch.
   studentCodeSetting?: { enabled: boolean; isSaving: boolean; onToggle: () => void }
+  // The school's extra student fields: filters by kind and consultant, and the Chinese name in the search.
+  studentFields?: {
+    setting: StudentFieldsSetting
+    extras: Map<number, StudentProfileExtras>
+    kinds: StudentKind[]
+    consultants: Teacher[]
+  }
 }
 
 const NO_CLASSROOMS: Classroom[] = []
@@ -120,6 +135,7 @@ export function StudentDashboardSection({
   onSelectFilter,
   studentCodes,
   studentCodeSetting,
+  studentFields,
 }: StudentDashboardSectionProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [sort, setSort] = useState<StudentSort>('attention')
@@ -127,6 +143,7 @@ export function StudentDashboardSection({
   const [classFilter, setClassFilter] = useState<number | null>(null)
   const [gradeFilter, setGradeFilter] = useState<string | null>(null)
   const [subjectFilter, setSubjectFilter] = useState<number | null>(null)
+  const [extrasFilter, setExtrasFilter] = useState(NO_EXTRAS_FILTER)
 
   const rows = useMemo(
     () =>
@@ -150,22 +167,35 @@ export function StudentDashboardSection({
     count: (row: StudentRow) => option.key === 'all' || row.kind === option.key,
   }))
 
-  const visibleRows = sortStudentRows(
-    filterStudentRows(rows, {
-      type: activeFilter,
-      followUpOnly,
-      search: searchTerm,
-      classroomId: classFilter,
-      ageGroup: gradeFilter,
-      subjectId: subjectFilter,
-    }),
-    sort,
-  )
+  const rowFilter = {
+    type: activeFilter,
+    followUpOnly,
+    search: searchTerm,
+    classroomId: classFilter,
+    ageGroup: gradeFilter,
+    subjectId: subjectFilter,
+  }
+  let matchedRows = filterStudentRows(rows, rowFilter)
+  if (studentFields) {
+    const term = searchTerm.trim()
+    if (studentFields.setting.name_zh && term) {
+      // The Chinese name is searched too.
+      const found = new Set(matchedRows.map((row) => row.student.id))
+      matchedRows = [
+        ...matchedRows,
+        ...filterStudentRows(rows, { ...rowFilter, search: '' }).filter(
+          (row) => !found.has(row.student.id) && (studentFields.extras.get(row.student.id)?.nameZh ?? '').includes(term),
+        ),
+      ]
+    }
+    matchedRows = matchedRows.filter((row) => matchesExtrasFilter(studentFields.extras.get(row.student.id), extrasFilter))
+  }
+  const visibleRows = sortStudentRows(matchedRows, sort)
   // A big school's list is read PAGE_SIZE students at a time.
   const pageCount = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount - 1)
   const pageRows = visibleRows.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)
-  const filterKey = `${activeFilter}|${followUpOnly}|${searchTerm}|${sort}|${classFilter}|${gradeFilter}|${subjectFilter}`
+  const filterKey = `${activeFilter}|${followUpOnly}|${searchTerm}|${sort}|${classFilter}|${gradeFilter}|${subjectFilter}|${extrasFilter.kind}|${extrasFilter.consultantId}`
   const [lastFilterKey, setLastFilterKey] = useState(filterKey)
   if (filterKey !== lastFilterKey) {
     // A new search, tab or sort starts again on the first page.
@@ -183,7 +213,9 @@ export function StudentDashboardSection({
     searchTerm.trim() !== '' ||
     classFilter !== null ||
     gradeFilter !== null ||
-    subjectFilter !== null
+    subjectFilter !== null ||
+    extrasFilter.kind !== '' ||
+    extrasFilter.consultantId !== ''
   // The grades (age groups) and subjects the school's classes use, in the school's order.
   const schoolAgeGroups = useAgeGroups()
   const gradeOptions = useMemo(() => {
@@ -216,8 +248,11 @@ export function StudentDashboardSection({
     const actions: RowAction[] = [
       { label: 'View details', onSelect: () => onOpenStudentDetail(student.id) },
     ]
+    // An HOA student is converted to a regular student (the same window flow opens that).
+    if (canEdit && student.studentType === 'trial') {
+      actions.push({ label: 'Convert to Regular', onSelect: () => onOpenRenewal(student.id) })
     // A school that does not give every student a package renews only those who have one.
-    if (canEdit && student.studentType !== 'preview' && (brand.usesPackages || row.pkg)) {
+    } else if (canEdit && student.studentType !== 'preview' && (brand.usesPackages || row.pkg)) {
       actions.push({ label: 'Renew', onSelect: () => onOpenRenewal(student.id) })
     }
     if (canDelete || !student.isActive) {
@@ -434,6 +469,15 @@ export function StudentDashboardSection({
                 </option>
               ))}
             </select>
+          )}
+          {studentFields && (
+            <StudentExtrasFilters
+              setting={studentFields.setting}
+              filter={extrasFilter}
+              kinds={studentFields.kinds}
+              consultants={studentFields.consultants}
+              onChange={setExtrasFilter}
+            />
           )}
           <select
             value={sort}

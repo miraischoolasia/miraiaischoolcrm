@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { buildScheduleEvents } from './schedule'
 import {
   bookedTrialEvents,
-  busyDays,
   classLine,
   linkReplacements,
   madeUpText,
@@ -174,8 +173,20 @@ describe('monthSpecialEvents', () => {
     expect(cards.find((card) => card.id === 'schedule-23')).toMatchObject({ kind: 'extra', line: 'Extra Maths' })
   })
 
-  it('knows which days have something', () => {
-    expect([...busyDays(month)].sort()).toEqual(['2026-10-12', '2026-10-14', '2026-10-19', '2026-10-29'])
+  it('adds each weekly class as a faded card when the school shows them, after the special days', () => {
+    const withWeekly = monthSpecialEvents(events, {
+      schedules,
+      classroomMap: classes,
+      subjectName: (id) => (id === 7 ? 'BIK' : null),
+      links: linkReplacements(exceptions, schedules, classes),
+      makeupPlans: [],
+      weekly: true,
+    })
+    const weekly = withWeekly.find((event) => event.id === 'schedule-10')
+    expect(weekly?.extendedProps?.special).toMatchObject({ kind: 'weekly', time: '7.00–8.15PM', line: 'F2 BIK', teacher: 'Ms Rachel' })
+    expect(weekly?.extendedProps?.monthRank).toBe(1)
+    expect(withWeekly.find((event) => event.id === 'schedule-23')?.extendedProps?.monthRank).toBe(0)
+    expect(withWeekly).toHaveLength(month.length + 1)
   })
 })
 

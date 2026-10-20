@@ -13,7 +13,6 @@ import {
   fetchAllClassVideos,
   fetchCanManageVideos,
   fetchMonthAccessOn,
-  fetchVideoAccess,
   fetchVideoProgress,
   fetchVideosPerMonth,
   groupByMonth,
@@ -30,6 +29,8 @@ import {
 import type { Classroom, Student } from '../../types/domain'
 import { VideoEditorModal } from '../videos/VideoEditorModal'
 import { MonthAccessModal } from '../videos/MonthAccessModal'
+import { fetchCanGrantVideos, fetchTopicGrants, topicOfClassroom } from '../../lib/videoGrants'
+import { BulkVideoGrantsModal } from '../videos/BulkVideoGrantsModal'
 
 const statusStyles: Record<ClassVideo['status'], string> = {
   uploading: 'bg-amber-50 text-amber-700',
@@ -100,6 +101,14 @@ export function ClassVideosSection({
   // Open rows, by key; several can be open at once.
   const [open, setOpen] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
+  // Staff who may open recordings (never a teacher login), and the many-students window.
+  const [canGrant, setCanGrant] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    void fetchCanGrantVideos().then(setCanGrant)
+  }, [])
 
   const loadVideos = useCallback(async () => {
     try {
@@ -161,10 +170,31 @@ export function ClassVideosSection({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2 text-sm text-slate-500">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-500">
         <span>Open a grade, then a subject and a teacher, to see the months.</span>
-        <span className="text-xs">{perMonth} videos a month</span>
+        <span className="flex items-center gap-3 text-xs">
+          {monthAccessOn && canGrant && (
+            <button
+              type="button"
+              onClick={() => setBulkOpen(true)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Open months for many students
+            </button>
+          )}
+          {perMonth} videos a month
+        </span>
       </div>
+      {bulkOpen && (
+        <BulkVideoGrantsModal
+          classrooms={classrooms}
+          students={students}
+          subjects={subjects}
+          ageGroups={schoolGrades}
+          onClose={() => setBulkOpen(false)}
+          onDone={() => setRefreshKey((count) => count + 1)}
+        />
+      )}
       {error && (
         <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
@@ -249,6 +279,7 @@ export function ClassVideosSection({
                                       {teacherOpen && (
                                         <div className="border-t border-slate-100 bg-white p-3">
                                           <TeacherMonths
+                                            key={refreshKey}
                                             classroom={classroom}
                                             teacherId={teacherId}
                                             videos={videos}
@@ -320,15 +351,18 @@ function TeacherMonths({
   const [busyId, setBusyId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const { id: classroomId, ageGroup, subjectId } = classroom
   const loadAccess = useCallback(async () => {
     try {
-      const [nextAccess, nextCanManage] = await Promise.all([fetchVideoAccess(classroom.id), fetchCanManageVideos(classroom.id)])
+      // Months open for the class's age group and subject (any class or teacher of it).
+      const topic = topicOfClassroom({ id: classroomId, ageGroup, subjectId })
+      const [nextAccess, nextCanManage] = await Promise.all([fetchTopicGrants(topic), fetchCanManageVideos(classroomId)])
       setAccess(nextAccess)
       setCanManage(nextCanManage)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load the class.')
     }
-  }, [classroom.id])
+  }, [classroomId, ageGroup, subjectId])
 
   useEffect(() => {
     void loadAccess()
@@ -627,7 +661,7 @@ function TeacherMonths({
       )}
       {accessOpen && (
         <MonthAccessModal
-          classroomId={classroom.id}
+          topic={topicOfClassroom(classroom)}
           className={classroom.name}
           year={year}
           month={month}

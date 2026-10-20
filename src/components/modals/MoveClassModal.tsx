@@ -202,7 +202,7 @@ export function MoveClassModal({
         )}
 
         {clashes.length > 0 && (
-          <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div role="alert" className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900">
             <div className="font-semibold">
               Time clash: {clashTeacherName} is already teaching at this time
             </div>
@@ -213,6 +213,7 @@ export function MoveClassModal({
                 </li>
               ))}
             </ul>
+            <div className="mt-1 text-red-800">One teacher cannot have two classes at the same time. Pick another day or time.</div>
           </div>
         )}
 

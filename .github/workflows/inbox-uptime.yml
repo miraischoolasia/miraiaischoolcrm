@@ -55,3 +55,51 @@ jobs:
             gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "Answering again at $(date -u '+%Y-%m-%d %H:%M UTC')."
             gh issue close "$open" --repo "$GITHUB_REPOSITORY"
           fi
+
+      # The nightly backup (03:30 MYT, encrypted to Google Drive) says how it went at /backup-status: times, sizes
+      # and the parts that failed, no secrets. One "backup" issue when the last good one is over 26 hours old, the
+      # last run failed, or the Drive is over 80 % full; it closes itself when a backup is fine again. The server
+      # also opens it at once when a run fails (whatsapp-sender/offsite-backup/backup.sh).
+      - name: Check the nightly backup
+        id: backup
+        run: |
+          status=$(curl -s -m 15 https://wa.miraischool.asia/backup-status || true)
+          problem=$(STATUS="$status" python3 - <<'PY'
+          import datetime, json, os
+          try:
+              s = json.loads(os.environ["STATUS"])
+          except ValueError:
+              print("SKIP")  # not answering (the outage check above covers that) or not set up yet
+              raise SystemExit
+          problems = []
+          last_ok = s.get("last_ok")
+          if not last_ok or datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(last_ok) > datetime.timedelta(hours=26):
+              problems.append("no good backup since %s" % (last_ok or "ever"))
+          if not s.get("ok"):
+              problems.append("the last run (%s) failed: %s" % (s.get("last_run"), " ".join(s.get("failed") or [])))
+          if (s.get("drive_used_percent") or 0) >= 80:
+              problems.append("Google Drive is %s%% full" % s["drive_used_percent"])
+          print("; ".join(problems))
+          PY
+          )
+          echo "problem=$problem" >> "$GITHUB_OUTPUT"
+
+      - name: Open or close the backup issue
+        env:
+          PROBLEM: ${{ steps.backup.outputs.problem }}
+        run: |
+          [ "$PROBLEM" = "SKIP" ] && exit 0
+          gh label create backup --color D93F0B --description "The nightly backup of the inbox server" --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --label backup --state open --json number --jq '.[0].number // empty')
+          if [ -n "$PROBLEM" ]; then
+            if [ -z "$open" ]; then
+              gh issue create --repo "$GITHUB_REPOSITORY" --label backup \
+                --title "Backup problem: $PROBLEM" \
+                --body "Seen at $(date -u '+%Y-%m-%d %H:%M UTC'): $PROBLEM.
+
+          The log is /var/log/mirai-backup.log on the server; the status is https://wa.miraischool.asia/backup-status. This issue closes itself when a backup is fine again."
+            fi
+          elif [ -n "$open" ]; then
+            gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "Backup fine again at $(date -u '+%Y-%m-%d %H:%M UTC')."
+            gh issue close "$open" --repo "$GITHUB_REPOSITORY"
+          fi

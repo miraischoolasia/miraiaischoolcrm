@@ -206,6 +206,39 @@ async function start() {
     return
   }
 
+  // Dev server only: /?demo=videoaccess shows the recordings access grid and the many-students window on made-up data.
+  if (import.meta.env.DEV && params.get('demo') === 'videoaccess') {
+    const { VideoAccessDemo } = await import('./dev/VideoAccessDemo.tsx')
+    root.render(
+      <StrictMode>
+        <VideoAccessDemo />
+      </StrictMode>,
+    )
+    return
+  }
+
+  // Dev server only: /?demo=clash shows the lesson form and the move window stopping a teacher time clash.
+  if (import.meta.env.DEV && params.get('demo') === 'clash') {
+    const { ClashDemo } = await import('./dev/ClashDemo.tsx')
+    root.render(
+      <StrictMode>
+        <ClashDemo />
+      </StrictMode>,
+    )
+    return
+  }
+
+  // Dev server only: /?demo=studentfields shows Class Settings > Student fields, the fields on a student and the list filters.
+  if (import.meta.env.DEV && params.get('demo') === 'studentfields') {
+    const { StudentFieldsDemo } = await import('./dev/StudentFieldsDemo.tsx')
+    root.render(
+      <StrictMode>
+        <StudentFieldsDemo />
+      </StrictMode>,
+    )
+    return
+  }
+
   const { default: App } = await import('./App.tsx')
   root.render(
     <StrictMode>

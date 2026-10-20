@@ -340,9 +340,10 @@ h3 {
   row-gap: 0.125rem;
 }
 
-/* Month view: it shows only the special class days, so a day without one says so under the date. The date
-   keeps its place on the right; the note sits on its own line below, on the left. */
-.fc .fc-day-no-special .fc-daygrid-day-number {
+/* Month view: a day with no class card says so under the date ("No class event scheduled."). Every day of
+   the month carries the note; it shows only when FullCalendar put no card in that day, which also covers the
+   weekly classes it repeats by itself. The date keeps its place on the right; the note sits below, on the left. */
+.fc .fc-daygrid-day-top:has(.fc-day-empty-note) .fc-daygrid-day-number {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -350,12 +351,17 @@ h3 {
 }
 
 .fc .fc-day-empty-note {
+  display: none;
   align-self: stretch;
   margin-top: 0.25rem;
   text-align: left;
   font-size: 0.6875rem;
   line-height: 1rem;
   color: #94a3b8;
+}
+
+.fc .fc-daygrid-day-frame:not(:has(.fc-daygrid-event-harness)) .fc-day-empty-note {
+  display: block;
 }
 
 .fc .fc-daygrid-event:has([data-special-kind]) {

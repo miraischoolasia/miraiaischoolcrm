@@ -51,7 +51,7 @@ type ClassSettingsModalProps = {
   // Points a status gives when attendance is submitted.
   onSaveStatusPoints: (status: AttendanceStatusOption, points: number) => Promise<string | null>
   // How the Calendar page shows a day was changed (Class options > Calendar).
-  onCalendarLayoutSaved?: (layout: CalendarLayout) => void
+  onCalendarLayoutSaved?: (layout: CalendarLayout, monthWeekly: boolean) => void
   // Who besides admin and the class teacher takes attendance was changed.
   onAttendanceTakersSaved?: (rules: AttendanceTakerRules) => void
   rewardPresets: RewardPreset[]
@@ -69,6 +69,8 @@ type ClassSettingsModalProps = {
   onSaveZoomOptions: (options: ZoomMeetingOptions) => Promise<string | null>
   // The enrolment flows: which flow each kind of class uses, and the flows themselves.
   enrolFlows?: ReactNode
+  // Which extra student fields the school shows, and its kinds of student.
+  studentFields?: ReactNode
 }
 
 const inputClass =
@@ -108,6 +110,7 @@ export function ClassSettingsModal({
   onSaveProgramLevel,
   onSaveZoomOptions,
   enrolFlows,
+  studentFields,
 }: ClassSettingsModalProps) {
   const [tab, setTab] = useState<Tab>('criteria')
   const [error, setError] = useState<string | null>(null)
@@ -267,6 +270,7 @@ export function ClassSettingsModal({
               noun="level"
             />
             <ClassCategoriesSettings />
+            {studentFields}
             <CalendarLayoutSetting onSaved={onCalendarLayoutSaved} />
           </>
         )}

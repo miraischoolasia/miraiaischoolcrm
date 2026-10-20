@@ -1,6 +1,7 @@
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { getTodayString } from '../../domain/studentStatus'
+import { STUDENT_KIND_LABELS } from '../../lib/studentLink'
 import type { Classroom, StudentDetailsFormState, Teacher } from '../../types/domain'
 
 type EditStudentModalProps = {
@@ -15,6 +16,8 @@ type EditStudentModalProps = {
   onFieldChange: (field: keyof StudentDetailsFormState, value: string) => void
   // The school uses student codes: a box for the child's code.
   showStudentCode?: boolean
+  // The school's extra student fields (Class Settings > Student fields), when it shows any.
+  extraFields?: React.ReactNode
 }
 
 export function EditStudentModal({
@@ -28,6 +31,7 @@ export function EditStudentModal({
   onSubmit,
   onFieldChange,
   showStudentCode = false,
+  extraFields,
 }: EditStudentModalProps) {
   const selectedClassroom = formState.classroomId
     ? classrooms.find((classroom) => classroom.id === Number(formState.classroomId))
@@ -102,7 +106,7 @@ export function EditStudentModal({
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-[#fc0c97]"
             >
               <option value="regular">Regular Student</option>
-              <option value="trial">Trial Student</option>
+              <option value="trial">{STUDENT_KIND_LABELS.hoa} / Trial</option>
               <option value="preview">Preview Class</option>
             </select>
           </label>
@@ -151,6 +155,8 @@ export function EditStudentModal({
               />
             </label>
           )}
+
+          {extraFields}
 
           {!isPreviewStudent && (
           <label className="space-y-2 sm:col-span-2">

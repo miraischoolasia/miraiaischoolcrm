@@ -2,13 +2,15 @@ import { useState } from 'react'
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { formatDate, getTodayString } from '../../domain/studentStatus'
-import { isMonthOpen, monthLabel, setStudentVideoAccess, type VideoAccess } from '../../lib/classVideos'
+import { isMonthOpen, monthLabel, type VideoAccess } from '../../lib/classVideos'
+import { setVideoGrants, type GrantTopic } from '../../lib/videoGrants'
 import type { Student } from '../../types/domain'
 
 // Which students may watch one month of a class's videos (when the school
-// uses month access).
+// uses month access). A month opens for the class's age group and subject, so
+// the same month of the other teachers' classes of that subject opens too.
 export function MonthAccessModal({
-  classroomId,
+  topic,
   className,
   year,
   month,
@@ -17,7 +19,7 @@ export function MonthAccessModal({
   onClose,
   onChanged,
 }: {
-  classroomId: number
+  topic: GrantTopic
   className: string
   year: number
   month: number
@@ -34,12 +36,9 @@ export function MonthAccessModal({
   async function change(targets: Student[], granted: boolean, key: number | 'all') {
     setBusy(key)
     setError(null)
-    for (const student of targets) {
-      const message = await setStudentVideoAccess(student.id, classroomId, year, month, granted)
-      if (message) {
-        setError(`${student.name}: ${message}`)
-        break
-      }
+    if (targets.length > 0) {
+      const message = await setVideoGrants({ studentIds: targets.map((student) => student.id), topic, months: [{ year, month }], granted })
+      if (message) setError(message)
     }
     await onChanged()
     setBusy(null)

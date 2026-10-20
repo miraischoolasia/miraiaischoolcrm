@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react'
-import { DAY_LIST_FROM_CLASSES, fetchCalendarLayout, saveCalendarLayout, type CalendarLayout } from '../lib/calendarLayout'
+import {
+  DAY_LIST_FROM_CLASSES,
+  fetchCalendarLayout,
+  fetchMonthWeekly,
+  saveCalendarLayout,
+  saveMonthWeekly,
+  type CalendarLayout,
+} from '../lib/calendarLayout'
 
 const CHOICES: { value: CalendarLayout; label: string; detail: string }[] = [
   {
@@ -7,7 +14,7 @@ const CHOICES: { value: CalendarLayout; label: string; detail: string }[] = [
     label: 'Automatic',
     detail: `The day list when the busiest weekday has ${DAY_LIST_FROM_CLASSES} or more classes, the month calendar otherwise.`,
   },
-  { value: 'classic', label: 'Month calendar', detail: 'Month, week and agenda, with a card for every class.' },
+  { value: 'classic', label: 'Month calendar', detail: 'Month, week and agenda. The month shows the special class days, and the weekly classes too when ticked below.' },
   {
     value: 'day_list',
     label: 'Day list',
@@ -15,30 +22,40 @@ const CHOICES: { value: CalendarLayout; label: string; detail: string }[] = [
   },
 ]
 
+type Choice = { layout: CalendarLayout; monthWeekly: boolean }
+
 // Class Settings > Class options: how the Calendar page shows a day. A school with a few classes a day
-// keeps the month calendar; one with dozens a day gets the day list ("Automatic" picks for it).
-export function CalendarLayoutSetting({ onSaved }: { onSaved?: (layout: CalendarLayout) => void }) {
-  const [saved, setSaved] = useState<CalendarLayout | null>(null)
-  const [draft, setDraft] = useState<CalendarLayout>('auto')
+// keeps the month calendar; one with dozens a day gets the day list ("Automatic" picks for it). And whether the
+// month calendar shows each weekly class beside the cancelled, replacement and extra classes.
+export function CalendarLayoutSetting({ onSaved }: { onSaved?: (layout: CalendarLayout, monthWeekly: boolean) => void }) {
+  const [saved, setSaved] = useState<Choice | null>(null)
+  const [draft, setDraft] = useState<Choice>({ layout: 'auto', monthWeekly: false })
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
   useEffect(() => {
-    void fetchCalendarLayout().then((value) => {
-      setSaved(value)
-      setDraft(value)
+    void Promise.all([fetchCalendarLayout(), fetchMonthWeekly()]).then(([layout, monthWeekly]) => {
+      setSaved({ layout, monthWeekly })
+      setDraft({ layout, monthWeekly })
     })
   }, [])
 
   if (saved === null) return null
+  const changed = draft.layout !== saved.layout || draft.monthWeekly !== saved.monthWeekly
+  const change = (next: Partial<Choice>) => {
+    setDone(false)
+    setDraft({ ...draft, ...next })
+  }
 
   async function save() {
-    const problem = await saveCalendarLayout(draft)
+    const problem =
+      (draft.layout !== saved!.layout ? await saveCalendarLayout(draft.layout) : null) ??
+      (draft.monthWeekly !== saved!.monthWeekly ? await saveMonthWeekly(draft.monthWeekly) : null)
     setError(problem)
     if (!problem) {
       setSaved(draft)
       setDone(true)
-      onSaved?.(draft)
+      onSaved?.(draft.layout, draft.monthWeekly)
     }
   }
 
@@ -53,11 +70,8 @@ export function CalendarLayoutSetting({ onSaved }: { onSaved?: (layout: Calendar
               type="radio"
               name="calendar-layout"
               value={choice.value}
-              checked={draft === choice.value}
-              onChange={() => {
-                setDone(false)
-                setDraft(choice.value)
-              }}
+              checked={draft.layout === choice.value}
+              onChange={() => change({ layout: choice.value })}
               className="mt-1 accent-[#fc0c97]"
             />
             <span>
@@ -67,16 +81,31 @@ export function CalendarLayoutSetting({ onSaved }: { onSaved?: (layout: Calendar
           </label>
         ))}
       </div>
+      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 px-3 py-2.5 text-sm hover:bg-slate-50">
+        <input
+          type="checkbox"
+          checked={draft.monthWeekly}
+          onChange={(event) => change({ monthWeekly: event.target.checked })}
+          className="mt-1 h-4 w-4 accent-[#fc0c97]"
+        />
+        <span>
+          <span className="block font-semibold text-slate-800">Show weekly classes on the month calendar</span>
+          <span className="block text-slate-500">
+            The month always shows cancelled days, replacement and extra classes and booked trials. With this on, each
+            weekly class shows there too, in a lighter colour. Week and the day list are the same either way.
+          </span>
+        </span>
+      </label>
       {error && (
         <p role="alert" className="text-sm text-red-700">
           {error}
         </p>
       )}
       <div className="flex items-center justify-end gap-3">
-        {done && draft === saved && <span className="text-sm font-semibold text-emerald-700">Saved</span>}
+        {done && !changed && <span className="text-sm font-semibold text-emerald-700">Saved</span>}
         <button
           type="button"
-          disabled={draft === saved}
+          disabled={!changed}
           onClick={() => void save()}
           className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84] disabled:opacity-50"
         >

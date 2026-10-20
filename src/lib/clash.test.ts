@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findTeacherClashes } from './clash'
+import { clashMessage, findTeacherClashes, newClashes, scheduleAsCandidate } from './clash'
 import type { Classroom, Schedule, ScheduleException } from '../types/domain'
 
 const regularRoom = { id: 1, category: 'regular' } as Classroom
@@ -155,5 +155,38 @@ describe('findTeacherClashes', () => {
   it('returns nothing for an incomplete or backwards time range', () => {
     expect(find(weekly({ startTime: '', endTime: '' }), [wednesday])).toEqual([])
     expect(find(weekly({ startTime: '21:00', endTime: '20:00' }), [wednesday])).toEqual([])
+  })
+})
+
+describe('blocking a clash', () => {
+  it('says who, which class, which day and time, and what to do', () => {
+    expect(clashMessage('Ms Joey', [{ scheduleId: 10, title: 'Coding A', when: 'Wednesday 7:30pm-9:30pm' }])).toBe(
+      'Time clash: Ms Joey already has: Coding A (Wednesday 7:30pm-9:30pm). One teacher cannot have two classes at the same time, so change the day, the time or the teacher.',
+    )
+  })
+
+  it('leaves a clash the lesson already had alone, so an old clash does not stop a rename', () => {
+    // An old lesson on top of the Wednesday class, from before the check existed.
+    const old: Schedule = { ...wednesday, id: 11, title: 'Old clash', startTime: '19:00', endTime: '20:00' }
+    const schedules = [wednesday, old]
+    const before = findTeacherClashes(scheduleAsCandidate(old, '2026-10-20')!, schedules, [], classrooms)
+    expect(before.map((clash) => clash.scheduleId)).toEqual([10])
+
+    const renamed = findTeacherClashes(scheduleAsCandidate({ ...old, title: 'Renamed' }, '2026-10-20')!, schedules, [], classrooms)
+    expect(newClashes(renamed, before)).toEqual([])
+
+    // Moving it onto another lesson of the same teacher is new and is stopped.
+    const friday: Schedule = { ...wednesday, id: 12, title: 'Coding F', dayOfWeek: 5 }
+    const moved = findTeacherClashes(
+      { ...scheduleAsCandidate(old, '2026-10-20')!, kind: 'weekly', dayOfWeek: 5, startRecur: '2026-09-01', endRecur: null },
+      [...schedules, friday],
+      [],
+      classrooms,
+    )
+    expect(newClashes(moved, before).map((clash) => clash.title)).toEqual(['Coding F'])
+  })
+
+  it('reads a one-off lesson as a one-day candidate', () => {
+    expect(scheduleAsCandidate(replacement)).toMatchObject({ kind: 'single', date: '2026-10-14', teacherId: 1, excludeScheduleId: 20 })
   })
 })

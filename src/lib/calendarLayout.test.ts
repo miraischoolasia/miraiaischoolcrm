@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { busiestWeekdayClasses, DAY_LIST_FROM_CLASSES, readCalendarLayout, usesDayList } from './calendarLayout'
+import { busiestWeekdayClasses, DAY_LIST_FROM_CLASSES, MONTH_WEEKLY_DEFAULT, readCalendarLayout, readMonthWeekly, usesDayList } from './calendarLayout'
 
 const lesson = (dayOfWeek: number | null, change: Partial<{ status: 'active' | 'cancelled'; eventType: 'regular' | 'replacement' }> = {}) => ({
   dayOfWeek,
@@ -33,5 +33,16 @@ describe('calendar layout', () => {
     const many = Array.from({ length: 45 }, () => lesson(2))
     expect(usesDayList('classic', many)).toBe(false)
     expect(usesDayList('day_list', [lesson(6)])).toBe(true)
+  })
+})
+
+describe('weekly classes on the month calendar', () => {
+  it('is the saved choice, or the school default when nothing is saved (on for Mirai)', () => {
+    expect(readMonthWeekly(true, false)).toBe(true)
+    expect(readMonthWeekly(false, true)).toBe(false)
+    expect(readMonthWeekly(null, true)).toBe(true)
+    expect(readMonthWeekly('yes', false)).toBe(false)
+    // The tests run as the Mirai deployment (no brand name set).
+    expect(MONTH_WEEKLY_DEFAULT).toBe(true)
   })
 })

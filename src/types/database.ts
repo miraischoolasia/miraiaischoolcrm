@@ -170,6 +170,10 @@ export type Database = {
           age: number | null
           date_of_birth: string | null
           student_code: string | null
+          name_zh: string | null
+          student_kind: string | null
+          consultant_id: number | null
+          second_parent_phone: string | null
           remaining_hours: number
           lesson_expiry_date: string
           account_fee_expiry_date: string
@@ -190,6 +194,10 @@ export type Database = {
           age?: number | null
           date_of_birth?: string | null
           student_code?: string | null
+          name_zh?: string | null
+          student_kind?: string | null
+          consultant_id?: number | null
+          second_parent_phone?: string | null
           remaining_hours?: number
           lesson_expiry_date: string
           account_fee_expiry_date: string
@@ -210,6 +218,10 @@ export type Database = {
           age?: number | null
           date_of_birth?: string | null
           student_code?: string | null
+          name_zh?: string | null
+          student_kind?: string | null
+          consultant_id?: number | null
+          second_parent_phone?: string | null
           remaining_hours?: number
           lesson_expiry_date?: string
           account_fee_expiry_date?: string
@@ -2958,6 +2970,42 @@ export type Database = {
         Update: { id?: never }
         Relationships: []
       }
+      student_kinds: {
+        Row: { name: string; sort_order: number; is_active: boolean; created_at: string; updated_at: string }
+        Insert: { name: string; sort_order?: number; is_active?: boolean }
+        Update: { name?: string; sort_order?: number; is_active?: boolean }
+        Relationships: []
+      }
+      student_video_grants: {
+        Row: {
+          id: number
+          student_id: number
+          age_group: string | null
+          subject_id: number | null
+          classroom_id: number | null
+          year: number
+          month: number
+          starts_on: string | null
+          ends_on: string | null
+          created_by: number | null
+          created_at: string
+        }
+        Insert: {
+          student_id: number
+          age_group?: string | null
+          subject_id?: number | null
+          classroom_id?: number | null
+          year: number
+          month: number
+          starts_on?: string | null
+          ends_on?: string | null
+        }
+        Update: {
+          starts_on?: string | null
+          ends_on?: string | null
+        }
+        Relationships: []
+      }
       student_video_access: {
         Row: {
           id: number
@@ -3678,6 +3726,12 @@ export type Database = {
         }
         Returns: undefined
       }
+      set_calendar_month_weekly: {
+        Args: {
+          p_show: boolean
+        }
+        Returns: undefined
+      }
       link_replacement_to_cancelled_day: {
         Args: {
           p_schedule_id: number
@@ -3809,9 +3863,32 @@ export type Database = {
         Args: { p_classroom_id: number; p_teacher_ids: number[] }
         Returns: undefined
       }
+      convert_hoa_student: {
+        Args: {
+          p_student_id: number
+          p_classroom_id: number
+          p_start_date: string
+          p_package_id?: number | null
+          p_class_count?: number
+          p_lesson_expiry_date?: string | null
+          p_account_fee_expiry_date?: string | null
+          p_mirai_club_expiry_date?: string | null
+          p_months?: number | null
+          p_lead_id?: number | null
+        }
+        Returns: number
+      }
       set_student_code_enabled: {
         Args: { p_enabled: boolean }
         Returns: undefined
+      }
+      set_student_fields: {
+        Args: { p_value: Json }
+        Returns: undefined
+      }
+      save_student_kind: {
+        Args: { p_name: string | null; p_new_name: string | null; p_sort_order: number | null; p_is_active: boolean | null }
+        Returns: Database['public']['Tables']['student_kinds']['Row']
       }
       add_student_month_plan: {
         Args: { p_student_id: number; p_classroom_id: number; p_start_date: string; p_months: number; p_remark?: string | null }
@@ -3916,6 +3993,23 @@ export type Database = {
       set_class_video_archived: {
         Args: { p_id: number; p_archived: boolean }
         Returns: undefined
+      }
+      set_student_video_grants: {
+        Args: {
+          p_student_ids: number[]
+          p_age_group: string | null
+          p_subject_id: number | null
+          p_classroom_id: number | null
+          p_months: { year: number; month: number }[]
+          p_granted: boolean
+          p_starts_on?: string | null
+          p_ends_on?: string | null
+        }
+        Returns: number
+      }
+      can_grant_videos: {
+        Args: Record<string, never>
+        Returns: boolean
       }
       set_student_video_access: {
         Args: {

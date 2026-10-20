@@ -1,31 +1,29 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { cn } from '../lib/cn'
-import { formatDate, getTodayString } from '../domain/studentStatus'
-import { fetchMonthAccessOn, fetchStudentVideoData, isMonthOpen, monthLabel, setStudentVideoAccess, type StudentVideoData } from '../lib/classVideos'
+import { formatDate } from '../domain/studentStatus'
+import { fetchMonthAccessOn, fetchStudentVideoData, monthLabel, type StudentVideoData } from '../lib/classVideos'
+import { VideoGrantsGrid } from './videos/VideoGrantsGrid'
 import type { Classroom } from '../types/domain'
 
 type Month = { year: number; month: number }
 
-// Student page > Videos: for each class the student is in, every month of
-// videos, whether it is open for them (and until when), and how far they got
-// with each video. Staff who may edit students open and close months here.
+// Student page > Videos: with month access on, which age group x subject x month
+// of recordings the student may watch (VideoGrantsGrid, where staff open them);
+// then for each class the student is in, every month of videos and how far they
+// got with each video.
 export function StudentVideosTab({
   studentId,
   classrooms,
-  canEdit,
 }: {
   studentId: number
   // The student's classes, main class first.
   classrooms: Classroom[]
-  canEdit: boolean
+  // Kept for the student page; who may open recordings is checked by the database.
+  canEdit?: boolean
 }) {
   const [data, setData] = useState<StudentVideoData | null>(null)
   const [monthAccessOn, setMonthAccessOn] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [openKey, setOpenKey] = useState<string | null>(null)
-  const [editing, setEditing] = useState<{ key: string; startsOn: string; endsOn: string } | null>(null)
-  const [busyKey, setBusyKey] = useState<string | null>(null)
-  const today = getTodayString()
   const classroomIds = useMemo(() => classrooms.map((classroom) => classroom.id), [classrooms])
 
   const load = useCallback(async () => {
@@ -45,25 +43,19 @@ export function StudentVideosTab({
 
   if (error) return <div className="text-sm text-red-700">{error}</div>
   if (!data) return <div className="text-sm text-slate-500">Loading videos…</div>
-  if (data.videos.length === 0) return <div className="text-sm text-slate-500">No class videos for this student's classes yet.</div>
+  if (data.videos.length === 0) {
+    return (
+      <div className="space-y-4">
+        {monthAccessOn && <VideoGrantsGrid studentId={studentId} classrooms={classrooms} />}
+        <div className="text-sm text-slate-500">No class videos for this student's classes yet.</div>
+      </div>
+    )
+  }
 
   const progressByVideo = new Map(data.progress.map((row) => [row.videoId, row]))
   const recent = [...data.progress].sort((a, b) => b.lastWatchedAt.localeCompare(a.lastWatchedAt)).slice(0, 5)
   const videoById = new Map(data.videos.map((video) => [video.id, video]))
   const classById = new Map(classrooms.map((classroom) => [classroom.id, classroom]))
-
-  async function setAccess(classroomId: number, month: Month, granted: boolean, startsOn: string | null = null, endsOn: string | null = null) {
-    const key = `${classroomId}-${month.year}-${month.month}`
-    setBusyKey(key)
-    const message = await setStudentVideoAccess(studentId, classroomId, month.year, month.month, granted, startsOn, endsOn)
-    setBusyKey(null)
-    if (message) {
-      setError(message)
-      return
-    }
-    setEditing(null)
-    await load()
-  }
 
   return (
     <div className="space-y-4">
@@ -72,6 +64,8 @@ export function StudentVideosTab({
         <Stat label="Finished" value={data.progress.filter((row) => row.completed).length} />
         <Stat label="Classes" value={classrooms.length} />
       </div>
+
+      {monthAccessOn && <VideoGrantsGrid studentId={studentId} classrooms={classrooms} />}
 
       {recent.length > 0 && (
         <section className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -116,8 +110,6 @@ export function StudentVideosTab({
               {months.map((month) => {
                 const key = `${classroom.id}-${month.year}-${month.month}`
                 const monthVideos = videos.filter((video) => video.year === month.year && video.month === month.month)
-                const row = data.access.find((entry) => entry.classroomId === classroom.id && entry.year === month.year && entry.month === month.month)
-                const open = !monthAccessOn || isMonthOpen(data.access.filter((entry) => entry.classroomId === classroom.id), studentId, month.year, month.month, today)
                 const seen = monthVideos.filter((video) => progressByVideo.has(video.id)).length
                 return (
                   <li key={key} className="px-4 py-2.5">
@@ -129,61 +121,7 @@ export function StudentVideosTab({
                           · {monthVideos.length} videos · watched {seen}
                         </span>
                       </button>
-                      {monthAccessOn && (
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <span className={cn('rounded-full px-2 py-0.5 font-semibold', open ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500')}>
-                            {open ? 'Open' : row ? 'Ended' : 'Closed'}
-                          </span>
-                          {row && (row.startsOn || row.endsOn) && (
-                            <span className="text-slate-500">
-                              {row.startsOn ? formatDate(row.startsOn) : 'any time'} – {row.endsOn ? formatDate(row.endsOn) : 'no end'}
-                            </span>
-                          )}
-                          {canEdit && (
-                            <>
-                              <button
-                                type="button"
-                                disabled={busyKey !== null}
-                                onClick={() => void setAccess(classroom.id, month, !row)}
-                                className="rounded-lg border border-slate-200 px-2 py-0.5 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                              >
-                                {busyKey === key ? 'Saving…' : row ? 'Close' : 'Open'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setEditing({ key, startsOn: row?.startsOn ?? '', endsOn: row?.endsOn ?? '' })}
-                                className="font-semibold text-[#be185d] underline underline-offset-2"
-                              >
-                                Dates
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      )}
                     </div>
-                    {editing?.key === key && (
-                      <div className="mt-2 flex flex-wrap items-end gap-2 text-xs">
-                        <label>
-                          <span className="block text-slate-500">From</span>
-                          <input type="date" value={editing.startsOn} onChange={(event) => setEditing({ ...editing, startsOn: event.target.value })} className="rounded-lg border border-slate-200 px-2 py-1" />
-                        </label>
-                        <label>
-                          <span className="block text-slate-500">Until</span>
-                          <input type="date" value={editing.endsOn} onChange={(event) => setEditing({ ...editing, endsOn: event.target.value })} className="rounded-lg border border-slate-200 px-2 py-1" />
-                        </label>
-                        <button
-                          type="button"
-                          disabled={busyKey !== null}
-                          onClick={() => void setAccess(classroom.id, month, true, editing.startsOn || null, editing.endsOn || null)}
-                          className="rounded-lg bg-[#fc0c97] px-3 py-1 font-semibold text-white disabled:opacity-50"
-                        >
-                          Save
-                        </button>
-                        <button type="button" onClick={() => setEditing(null)} className="rounded-lg border border-slate-200 px-3 py-1 font-semibold text-slate-700">
-                          Cancel
-                        </button>
-                      </div>
-                    )}
                     {openKey === key && (
                       <ul className="mt-2 space-y-1 rounded-xl bg-slate-50 p-2 text-sm">
                         {monthVideos.map((video) => {

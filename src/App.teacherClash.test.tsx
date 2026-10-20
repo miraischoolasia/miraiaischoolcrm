@@ -168,24 +168,23 @@ describe('teacher time clashes', () => {
     expect(dialog.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('asks before saving a clashing time, and only saves if the admin insists', async () => {
+  it('does not save a clashing time, and says which class, day and time are in the way', async () => {
     const dialog = await openNewReplacementClass()
     fillReplacement(dialog, { date: '2026-09-15', start: '20:00', end: '21:00' })
     await userEvent.type(dialog.getByLabelText('Class Title'), 'Extra practice')
     await userEvent.click(dialog.getByLabelText(/Ada Lovelace/))
 
     await userEvent.click(dialog.getByRole('button', { name: 'Create Replacement Class' }))
-    expect(await screen.findByText(/Save it anyway\?/)).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Go back' }))
+    expect(
+      await dialog.findByText(
+        'Time clash: Jia Hui already has: Jia Hui Coding (Tuesday 7:30pm-9:30pm). One teacher cannot have two classes at the same time, so change the day, the time or the teacher.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /anyway/ })).not.toBeInTheDocument()
     expect(scheduleSaves()).toHaveLength(0)
-
-    await userEvent.click(dialog.getByRole('button', { name: 'Create Replacement Class' }))
-    await userEvent.click(await screen.findByRole('button', { name: 'Save anyway' }))
-    expect(scheduleSaves()).toHaveLength(1)
   })
 
-  it('does not ask when the time is free', async () => {
+  it('saves when the time is free', async () => {
     const dialog = await openNewReplacementClass()
     fillReplacement(dialog, { date: '2026-09-16', start: '20:00', end: '21:00' })
     await userEvent.type(dialog.getByLabelText('Class Title'), 'Extra practice')
