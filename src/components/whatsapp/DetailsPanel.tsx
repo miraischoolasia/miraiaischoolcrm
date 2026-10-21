@@ -34,6 +34,8 @@ import { activeProgrammes, type Programme } from '../../lib/programmes'
 import { StudentCard } from './StudentCard'
 import { StudentLinker } from './StudentLinker'
 import { ChatRolePicker } from './ChatRolePicker'
+import { NumberCheckPrompt } from './NumberCheckPrompt'
+import { fetchStudentNumbers, numberIsStrange, saveSecondParentPhone } from '../../lib/studentNumberCheck'
 import type { Lead, Student } from '../../types/domain'
 import { PanelSection } from './PanelSection'
 import type { WaLabel } from '../../lib/waActions'
@@ -202,7 +204,70 @@ export function DetailsPanel({
   // A parent whose child is already in a class is not at the start of the HOA steps.
   const isEnrolled = lead?.status === 'converted' || students.some((student) => getStudentKind(student, crm.packages) !== 'hoa')
 
+  // A chat said to be the student, or tied to one, whose number is not a number the school has for that student:
+  // the team is asked first (it is often another parent).
+  const [ask, setAsk] = useState<{ kind: 'role' | 'link'; student: Student } | null>(null)
+  const [askBusy, setAskBusy] = useState(false)
+  const [askProblem, setAskProblem] = useState<string | null>(null)
+  async function numberIsStrangeFor(student: Student) {
+    if (!phone || student.studentType === 'preview') {
+      return false
+    }
+    return numberIsStrange(phone, await fetchStudentNumbers(student.id, student.phone))
+  }
+  async function pickRole(next: ChatRole | null) {
+    if (next === 'student' && students.length === 1 && (await numberIsStrangeFor(students[0]))) {
+      setAskProblem(null)
+      setAsk({ kind: 'role', student: students[0] })
+      return
+    }
+    void onSetRole?.(next)
+  }
+  async function answerAsk(anotherParent: boolean) {
+    if (!ask) {
+      return
+    }
+    setAskBusy(true)
+    setAskProblem(null)
+    if (anotherParent && phone) {
+      const saved = await saveSecondParentPhone(ask.student.id, phone)
+      if (saved.status === 'error') {
+        setAskBusy(false)
+        setAskProblem(saved.message)
+        return
+      }
+      setNumberSaved(
+        saved.status === 'saved'
+          ? `Saved as ${ask.student.name}'s second parent phone.`
+          : saved.status === 'same'
+            ? `${ask.student.name} already has this as the second parent phone.`
+            : `${ask.student.name} already has a second parent phone (${saved.kept}); it was left as it was.`,
+      )
+    }
+    if (ask.kind === 'role') {
+      await onSetRole?.(anotherParent ? 'parent' : 'student')
+    } else {
+      const problem = await doLinkStudent(ask.student)
+      if (problem) {
+        setAskBusy(false)
+        setAskProblem(problem)
+        return
+      }
+    }
+    setAskBusy(false)
+    setAsk(null)
+  }
+
   async function linkStudent(student: Student) {
+    if (await numberIsStrangeFor(student)) {
+      setAskProblem(null)
+      setAsk({ kind: 'link', student })
+      return null
+    }
+    return doLinkStudent(student)
+  }
+
+  async function doLinkStudent(student: Student) {
     if (!(await onLinkStudents([...linkedStudentIds.filter((id) => id !== student.id), student.id]))) {
       return "Couldn't link this chat to the student. Try again."
     }
@@ -344,7 +409,7 @@ export function DetailsPanel({
       role={role}
       studentName={childNames.length > 0 ? childNames.join(' & ') : null}
       canBeStudent={childNames.length <= 1}
-      onPick={(next) => void onSetRole(next)}
+      onPick={(next) => void pickRole(next)}
     />
   ) : null
   const studentLinker = (
@@ -410,6 +475,17 @@ export function DetailsPanel({
             <div className="space-y-5">
         {/* The slots below keep their place whether or not the chat is a lead yet, so the
             form is the same one before and after saving and only says "Saved". */}
+        {ask && phone ? (
+          <NumberCheckPrompt
+            studentName={ask.student.name}
+            phone={phone}
+            busy={askBusy}
+            problem={askProblem}
+            onAnotherParent={() => void answerAsk(true)}
+            onChildPhone={() => void answerAsk(false)}
+            onCancel={() => setAsk(null)}
+          />
+        ) : null}
         {childChat ? (
           <section aria-label="Whose chat this is" className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
             <p className="font-semibold">This chat is the child</p>

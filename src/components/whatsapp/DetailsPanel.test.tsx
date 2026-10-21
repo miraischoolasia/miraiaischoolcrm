@@ -8,7 +8,14 @@ import type { SourceRule } from '../../lib/sourceRules'
 import type { Programme } from '../../lib/programmes'
 import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
+import { saveSecondParentPhone } from '../../lib/studentNumberCheck'
 
+// Saving the second parent phone talks to the database; here only that it is asked for matters.
+vi.mock('../../lib/studentNumberCheck', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/studentNumberCheck')>()),
+  fetchStudentNumbers: vi.fn(async (_id: number, phone: string | null) => ({ phone, secondParentPhone: null })),
+  saveSecondParentPhone: vi.fn().mockResolvedValue({ status: 'saved' }),
+}))
 // The enrolment steps have their own tests; here only where they are placed matters.
 vi.mock('./EnrolPanel', () => ({ EnrolPanel: () => <div>Enrol steps</div> }))
 vi.mock('./ProgrammePanel', () => ({
@@ -515,16 +522,104 @@ describe('DetailsPanel', () => {
       expect(crm.onSetStudentPhone).toHaveBeenCalledWith(1, '60123456789')
     })
 
-    it('does not write a number over one the student already has', async () => {
-      const crm = makeCrm({ students: [{ ...ethan, phone: '019 888 7777' }], packages })
-      const onLinkStudents = vi.fn().mockResolvedValue(true)
-      renderPanel(crm, {}, vi.fn().mockResolvedValue(true), [], onLinkStudents)
+    it('does not ask about a student whose number is this chat number (the chat already finds them)', () => {
+      renderPanel(makeCrm({ students: [{ ...ethan, phone: '012 345 6789' }], packages }))
 
-      await userEvent.type(screen.getByLabelText('Is this the parent of a student? Find the child'), 'ethan')
-      await userEvent.click(screen.getByRole('button', { name: /Ethan Lim/ }))
+      expect(screen.getByText('Ethan Lim')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Check the number')).not.toBeInTheDocument()
+    })
 
-      await waitFor(() => expect(onLinkStudents).toHaveBeenCalledWith([1]))
-      expect(crm.onSetStudentPhone).not.toHaveBeenCalled()
+    describe('a number the school does not have for the student', () => {
+      const other = { ...ethan, phone: '019 888 7777' } as Student
+
+      it('asks before tying the chat, and saves it as another parent when the team says so', async () => {
+        const onLinkStudents = vi.fn().mockResolvedValue(true)
+        renderPanel(makeCrm({ students: [other], packages }), {}, vi.fn().mockResolvedValue(true), [], onLinkStudents)
+
+        await userEvent.type(screen.getByLabelText('Is this the parent of a student? Find the child'), 'ethan')
+        await userEvent.click(screen.getByRole('button', { name: /Ethan Lim/ }))
+
+        const prompt = await screen.findByLabelText('Check the number')
+        expect(prompt).toHaveTextContent("This number is not Ethan Lim's registered number")
+        expect(onLinkStudents).not.toHaveBeenCalled()
+
+        await userEvent.click(within(prompt).getByRole('button', { name: 'Save as another parent' }))
+
+        await waitFor(() => expect(onLinkStudents).toHaveBeenCalledWith([1]))
+        expect(saveSecondParentPhone).toHaveBeenCalledWith(1, '60123456789')
+        expect(screen.queryByLabelText('Check the number')).not.toBeInTheDocument()
+        expect(screen.getByText("Saved as Ethan Lim's second parent phone.")).toBeInTheDocument()
+      })
+
+      it('ties the chat without saving the number when the team is sure it is the child', async () => {
+        vi.mocked(saveSecondParentPhone).mockClear()
+        const onLinkStudents = vi.fn().mockResolvedValue(true)
+        const crm = makeCrm({ students: [other], packages })
+        renderPanel(crm, {}, vi.fn().mockResolvedValue(true), [], onLinkStudents)
+
+        await userEvent.type(screen.getByLabelText('Is this the parent of a student? Find the child'), 'ethan')
+        await userEvent.click(screen.getByRole('button', { name: /Ethan Lim/ }))
+        await userEvent.click(await screen.findByRole('button', { name: "Sure, the child's phone" }))
+
+        await waitFor(() => expect(onLinkStudents).toHaveBeenCalledWith([1]))
+        expect(saveSecondParentPhone).not.toHaveBeenCalled()
+        expect(crm.onSetStudentPhone).not.toHaveBeenCalled()
+      })
+
+      it('asks before the chat is set as the student themself, and sets parent when it is another parent', async () => {
+        const onSetRole = vi.fn().mockResolvedValue(true)
+        const view = (
+          <DetailsPanel
+            conversation={conversation({ crm_student_ids: [1] })}
+            messages={[firstMessage]}
+            hasOlder={false}
+            crm={makeCrm({ students: [other], packages })}
+            sourceRules={[]}
+            onLoadOlder={vi.fn()}
+            onLinkLead={vi.fn()}
+            onLinkStudents={vi.fn()}
+            role={null}
+            onSetRole={onSetRole}
+          />
+        )
+        render(view)
+
+        await userEvent.click(screen.getByRole('button', { name: 'Ethan Lim themself' }))
+        expect(onSetRole).not.toHaveBeenCalled()
+        await userEvent.click(await screen.findByRole('button', { name: 'Save as another parent' }))
+
+        await waitFor(() => expect(onSetRole).toHaveBeenCalledWith('parent'))
+        expect(onSetRole).not.toHaveBeenCalledWith('student')
+      })
+
+      it('sets the student themself when the team says it is the child, and does not ask when the number matches', async () => {
+        const onSetRole = vi.fn().mockResolvedValue(true)
+        const make = (student: Student) => (
+          <DetailsPanel
+            conversation={conversation({ crm_student_ids: [1] })}
+            messages={[firstMessage]}
+            hasOlder={false}
+            crm={makeCrm({ students: [student], packages })}
+            sourceRules={[]}
+            onLoadOlder={vi.fn()}
+            onLinkLead={vi.fn()}
+            onLinkStudents={vi.fn()}
+            role={null}
+            onSetRole={onSetRole}
+          />
+        )
+        const first = render(make(other))
+        await userEvent.click(screen.getByRole('button', { name: 'Ethan Lim themself' }))
+        await userEvent.click(await screen.findByRole('button', { name: "Sure, the child's phone" }))
+        await waitFor(() => expect(onSetRole).toHaveBeenCalledWith('student'))
+        first.unmount()
+
+        onSetRole.mockClear()
+        render(make({ ...ethan, phone: '+60 12-345 6789' } as Student))
+        await userEvent.click(screen.getByRole('button', { name: 'Ethan Lim themself' }))
+        await waitFor(() => expect(onSetRole).toHaveBeenCalledWith('student'))
+        expect(screen.queryByLabelText('Check the number')).not.toBeInTheDocument()
+      })
     })
 
     it('shows a student tied by hand first, and can take the tie away again', async () => {
