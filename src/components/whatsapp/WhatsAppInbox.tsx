@@ -2,7 +2,7 @@ import type { WhatsAppTarget } from '../WhatsAppLink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { InstagramLogo, MessengerLogo, WhatsappLogo } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
-import { familyChildNames } from '../../lib/family'
+import { familyChildNames, familyOf } from '../../lib/family'
 import { chatNameLabel } from '../../lib/parentLabel'
 import { CHANNEL_LABEL, channelsByLead, contactSiblings, leadOfContacts, placeOf, type LeadChannel } from '../../lib/leadChannels'
 import { chatSwitchOptions, type ChatSwitchOption } from '../../lib/chatSwitch'
@@ -61,6 +61,9 @@ import { makeLeadResolver, quickReplyValues, resolveChatLead } from '../../lib/c
 import { findChatForNumber } from '../../lib/chatForNumber'
 import { useAutoChatRole } from '../../hooks/useAutoChatRole'
 import { usePeople } from '../../hooks/usePeople'
+import { useHandlerSources } from '../../hooks/useHandlerSources'
+import { familyHandler } from '../../lib/familyHandler'
+import { codesLabel, withCodes } from '../../lib/studentCodeLabel'
 import { linkContactToLead, linkContactToStudents, setContactRole } from '../../lib/peopleApi'
 import { draftPreview, draftsFirst, type Draft } from '../../lib/draft'
 import { createWaActionsByInstance, waIdOf } from '../../lib/waActions'
@@ -167,6 +170,8 @@ export function WhatsAppInbox({
     canEdit: crm.canEditLeads || crm.canEditStudents,
     conversations: inbox.conversations,
   })
+  // For a chat with no lead: the person in charge of the family (the students' consultant, else a tag that names a PIC).
+  const handlerSources = useHandlerSources(active)
   const [tab, setTab] = useState<InboxTab>('chats')
   const [tagId, setTagId] = useState<number | null>(null)
   const [sourceId, setSourceId] = useState<number | null>(null)
@@ -270,19 +275,58 @@ export function WhatsAppInbox({
     },
     [leadNameOf, studentsOf, resolveLead, people],
   )
+  // The student codes of a chat: a student's own chat shows their code, a parent's chat the codes of their children.
+  const codesOfChat = useCallback(
+    (conversation: ChatwootConversation) => {
+      const codes = crm.studentCodes
+      if (!codes) {
+        return []
+      }
+      const contactId = conversation.meta.sender.id
+      const person = people.find((entry) => entry.contactId === contactId)
+      const ids = new Set<number>()
+      if (person?.kind === 'student' && person.studentId !== null) {
+        ids.add(person.studentId)
+      } else {
+        for (const child of familyOf(contactId, people)?.children ?? []) {
+          if (child.studentId !== null) {
+            ids.add(child.studentId)
+          }
+        }
+        for (const student of studentsOf(conversation)) {
+          ids.add(student.id)
+        }
+      }
+      return [...ids].flatMap((id) => codes.get(id) ?? [])
+    },
+    [crm.studentCodes, people, studentsOf],
+  )
+  // What a chat is called on screen: the name (or number) with the student codes in front.
+  const chatTitleLabelOf = useCallback(
+    (conversation: ChatwootConversation) => {
+      const codes = codesOfChat(conversation)
+      const label = chatLabelOf(conversation)
+      if (codes.length === 0) {
+        return label
+      }
+      return withCodes(label ?? getChatIdentity(conversation.meta.sender, null, conversation.meta.channel).title, codes)
+    },
+    [codesOfChat, chatLabelOf],
+  )
   // Every name a chat can be found by in the search box.
   const searchNamesOf = useCallback(
     (conversation: ChatwootConversation) => {
       const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
       return [
         chatLabelOf(conversation) ?? '',
+        codesLabel(codesOfChat(conversation)),
         lead?.fullName ?? '',
         ...(lead?.children ?? []).map((child) => child.name ?? ''),
         ...studentsOf(conversation).map((student) => student.name ?? ''),
         ...familyChildNames(conversation.meta.sender.id, people),
       ].filter((name) => name.trim() !== '')
     },
-    [chatLabelOf, resolveLead, studentsOf, people],
+    [chatLabelOf, codesOfChat, resolveLead, studentsOf, people],
   )
   const studentLabelsOf = useCallback(
     (conversation: ChatwootConversation) => [
@@ -307,19 +351,35 @@ export function WhatsAppInbox({
     },
     [resolveLead, optionsById],
   )
+  // "Handled by" and the lead's person in charge are one thing for the team. They are two lists (the PIC
+  // names end in 小老师, the staff names in 老师), so a person is matched to a PIC by the name without 小.
+  const sameName = (a: string, b: string) => a.replace(/[小\s]/g, '').toLowerCase() === b.replace(/[小\s]/g, '').toLowerCase()
+  // The person in charge of the family of a chat that has no lead of its own (read from what the database holds).
+  const familyStaffOf = useCallback(
+    (conversation: ChatwootConversation) => {
+      const found = familyHandler(conversation.meta.sender.id, people, handlerSources)
+      if (!found) {
+        return null
+      }
+      if ('teacherId' in found) {
+        return staff.find((person) => person.id === found.teacherId) ?? null
+      }
+      const pic = optionsById.get(found.picOptionId)
+      return (pic ? staff.find((person) => sameName(person.name, pic.label)) : undefined) ?? null
+    },
+    [people, handlerSources, staff, optionsById],
+  )
   const picOf = useCallback(
     (conversation: ChatwootConversation) => {
       const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
       const leadPic = lead?.picId != null ? optionsById.get(lead.picId)?.label : undefined
       const owner = getOwner(conversation)
-      const name = (owner ? (staff.find((person) => person.id === owner.id)?.name ?? owner.name) : undefined) ?? leadPic
+      const name =
+        (owner ? (staff.find((person) => person.id === owner.id)?.name ?? owner.name) : undefined) ?? leadPic ?? familyStaffOf(conversation)?.name
       return name ? { name, initials: getInitials(name) } : null
     },
-    [resolveLead, optionsById, staff],
+    [resolveLead, optionsById, staff, familyStaffOf],
   )
-  // "Handled by" and the lead's person in charge are one thing for the team. They are two lists (the PIC
-  // names end in 小老师, the staff names in 老师), so a person is matched to a PIC by the name without 小.
-  const sameName = (a: string, b: string) => a.replace(/[小\s]/g, '').toLowerCase() === b.replace(/[小\s]/g, '').toLowerCase()
   const picOptions = useMemo(() => crm.leadOptions.filter((option) => option.kind === 'pic'), [crm.leadOptions])
   const handlerOf = useCallback(
     (conversation: ChatwootConversation) => {
@@ -329,9 +389,9 @@ export function WhatsAppInbox({
       }
       const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
       const pic = lead?.picId != null ? picOptions.find((option) => option.id === lead.picId) : undefined
-      return (pic ? staff.find((person) => sameName(person.name, pic.label)) : undefined) ?? null
+      return (pic ? staff.find((person) => sameName(person.name, pic.label)) : undefined) ?? familyStaffOf(conversation)
     },
-    [picOptions, resolveLead, staff],
+    [picOptions, resolveLead, staff, familyStaffOf],
   )
   // Choosing who handles a chat also sets the lead's person in charge, when that person is one.
   const setHandler = useCallback(
@@ -1391,7 +1451,7 @@ export function WhatsAppInbox({
         snippets={messageHits}
         peopleIds={peopleIds}
         matchOf={searching ? (conversation) => chatIdentityMatch(conversation, search, leadOfChat, searchNamesOf) : undefined}
-        leadNameOf={chatLabelOf}
+        leadNameOf={chatTitleLabelOf}
         draftOf={draftOf}
         reactionPreviews={reactionPreviews}
         studentLabelsOf={studentLabelsOf}
@@ -1448,7 +1508,7 @@ export function WhatsAppInbox({
             conversation={inbox.selected}
             focusMessageId={inbox.focusMessageId}
             onFocused={inbox.clearFocus}
-            leadName={chatLabelOf(inbox.selected)}
+            leadName={chatTitleLabelOf(inbox.selected)}
             onOpenLead={
               leadIdOf(inbox.selected) !== null ? () => crm.onOpenLead(leadIdOf(inbox.selected!)!) : undefined
             }
@@ -1591,7 +1651,7 @@ export function WhatsAppInbox({
             }
             otherChats={familyChatsOf(inbox.selected).map((other) => ({
               id: other.id,
-              title: getChatIdentity(other.meta.sender, chatLabelOf(other), other.meta.channel).title,
+              title: getChatIdentity(other.meta.sender, chatTitleLabelOf(other), other.meta.channel).title,
               role: getChatRole(other),
               lastActivity: other.last_activity_at,
               isDone: other.status === 'resolved',

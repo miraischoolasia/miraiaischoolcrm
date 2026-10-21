@@ -437,7 +437,7 @@ export function LeadForm({
               />
             </label>
             <label className="block">
-              <span className="text-slate-600">Parent name (when you have it)</span>
+              <span className="text-slate-600">Contact name (when you have it)</span>
               <input
                 value={form.fullName}
                 disabled={!canEdit}
@@ -460,7 +460,7 @@ export function LeadForm({
         ) : (
           <>
         <label className="block">
-          <span className="text-slate-600">Parent name</span>
+          <span className="text-slate-600">Contact name</span>
           <input
             value={form.fullName}
             disabled={!canEdit}

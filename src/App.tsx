@@ -33,6 +33,8 @@ import {
   DeviceMobile,
   FilmStrip,
   Brain,
+  Megaphone,
+  Images,
   Lightning,
   WarningCircle,
   WhatsappLogo,
@@ -44,8 +46,8 @@ import { useLiveSync } from './hooks/useLiveSync'
 import { fetchTableVersions, type CoreGroup, type CoreSyncTarget, type TableVersions } from './lib/coreSync'
 import { useWhatsAppNumbers } from './hooks/useWhatsAppNumbers'
 import { useChannelAlerts } from './hooks/useChannelAlerts'
-import { CHANNEL_ACCESS_HASH } from './lib/channelAlerts'
 import { ChannelAlertBar } from './components/ChannelAlertBar'
+import { CHANNEL_ACCESS_HASH } from './lib/channelAlerts'
 import { formatDate, getTodayString, parseLocalDate } from './domain/studentStatus'
 import type { Database } from './types/database'
 import type {
@@ -225,6 +227,8 @@ import { fetchHoursInUse } from './lib/staffHours'
 import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
 import { AiKnowledgeSection } from './components/sections/AiKnowledgeSection'
+import { ContentStudioSection } from './components/contentStudio/ContentStudioSection'
+import { ContentLibrarySection } from './components/contentStudio/ContentLibrarySection'
 import { fetchThread } from './lib/aiLearning'
 import { ProgrammesSection } from './components/sections/ProgrammesSection'
 import { AppLoginsSection } from './components/sections/AppLoginsSection'
@@ -306,6 +310,7 @@ import { useFollowUpReminders } from './hooks/useFollowUpReminders'
 import { useLeadChannels } from './hooks/useLeadChannels'
 import { contactSiblings, mergeLeads } from './lib/leadChannels'
 import { leadParentName } from './lib/parentLabel'
+import { makeLeadCodes } from './lib/studentCodeLabel'
 import { upcomingZoomSlots } from './lib/zoomSlots'
 import { MOCK_SOCIAL_CHANNELS, MOCK_SOCIAL_LEADS } from './lib/mockSocialLeads'
 
@@ -348,7 +353,7 @@ import {
 } from './lib/makeup'
 
 // The menu's order (AppNav groups them).
-const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'ai-knowledge', 'calendar', 'classrooms', 'videos', 'questions', 'students', 'app-logins', 'programmes', 'packages', 'teachers', 'team-replies', 'class-settings', 'activity']
+const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'ai-knowledge', 'content-studio', 'content-library', 'calendar', 'classrooms', 'videos', 'questions', 'students', 'app-logins', 'programmes', 'packages', 'teachers', 'team-replies', 'class-settings', 'activity']
 
 // The shared WhatsApp inbox only shows up once its address is set.
 const chatwootUrl = getChatwootUrl(import.meta.env.VITE_CHATWOOT_URL)
@@ -743,6 +748,8 @@ function App() {
   // The school's own number for each child, when the school switched student codes on.
   const [studentCodeEnabled, setStudentCodeEnabledState] = useState(false)
   const [studentCodes, setStudentCodes] = useState<Map<number, string>>(new Map())
+  // The student codes of a lead's students, shown in front of the contact's name (a school with no codes shows none).
+  const leadCodeOf = useMemo(() => (studentCodeEnabled ? makeLeadCodes(students, studentCodes) : undefined), [studentCodeEnabled, students, studentCodes])
   // The school's extra student fields (Class Settings > Student fields) and the form's values for them.
   const studentFields = useStudentFields(authUserId !== null, loadAttempt)
   // The students' tags: the same tags the leads use (Tags on the student details and in the list's filter).
@@ -892,6 +899,9 @@ function App() {
     if (can('automations')) sections.push('automations')
     // What the AI reply drafts know about the school; same rule: everybody who sees Leads reads it, an admin edits.
     if (can('ai_knowledge')) sections.push('ai-knowledge')
+    // Briefs → AI plan → review; approved posts are claimed in the Content Library.
+    if (can('content_studio')) sections.push('content-studio')
+    if (can('content_library')) sections.push('content-library')
     if (can('forms')) sections.push('forms')
     if (isTeacherAccount || can('calendar')) sections.push('calendar')
     if (isTeacherAccount || can('classrooms')) sections.push('classrooms')
@@ -2368,6 +2378,8 @@ function App() {
         { key: 'automations', label: 'Automations', icon: Lightning, group: 'marketing' },
         { key: 'forms', label: 'Forms', icon: ClipboardText, group: 'marketing' },
         { key: 'ai-knowledge', label: 'AI Knowledge', icon: Brain, group: 'marketing' },
+        { key: 'content-studio', label: 'Content Studio', icon: Megaphone, group: 'marketing' },
+        { key: 'content-library', label: 'Content Library', icon: Images, group: 'marketing' },
         { key: 'calendar', label: 'Calendar', icon: CalendarBlank, group: 'teaching' },
         { key: 'classrooms', label: 'My Classroom', icon: Chalkboard, group: 'teaching' },
         { key: 'videos', label: 'Class Videos', icon: FilmStrip, group: 'teaching' },
@@ -5090,6 +5102,8 @@ function App() {
       return problem
     },
     onSetStudentPhone: setStudentPhoneFromChat,
+    studentCodes: studentCodeEnabled ? studentCodes : undefined,
+    leadCodeOf,
     onOpenLead: openEditLeadModal,
     zoomSlots: upcomingZoomSlots(calendarItems.items, new Date()),
     leadChannels: leadChannels.rows,
@@ -6970,7 +6984,9 @@ function App() {
                           ? 'Sales Pipeline'
                           : activeSection === 'whatsapp' ||
                           activeSection === 'automations' ||
-                          activeSection === 'ai-knowledge'
+                          activeSection === 'ai-knowledge' ||
+                          activeSection === 'content-studio' ||
+                          activeSection === 'content-library'
                             ? 'Marketing'
                             : activeSection === 'forms'
                             ? 'Marketing'
@@ -7005,6 +7021,10 @@ function App() {
                               ? 'Automations'
                               : activeSection === 'ai-knowledge'
                               ? 'AI Knowledge'
+                              : activeSection === 'content-studio'
+                              ? 'Content Studio'
+                              : activeSection === 'content-library'
+                              ? 'Content Library'
                               : activeSection === 'forms'
                             ? 'Forms'
                             : activeSection === 'activity'
@@ -7649,6 +7669,7 @@ function App() {
                 isLoading={isLoading}
                 leads={isMockMode ? [...MOCK_SOCIAL_LEADS, ...leads] : leads}
                 studentNameOf={(studentId) => students.find((student) => student.id === studentId)?.name ?? null}
+                codeOf={leadCodeOf}
                 canEdit={can('leads', 'edit')}
                 canDelete={can('leads', 'delete')}
                 canConvert={can('leads', 'edit') && can('students', 'edit')}
@@ -7707,6 +7728,11 @@ function App() {
             {visibleSection === 'automations' && (
               <AutomationsSection classrooms={classrooms} canEdit={can('automations', 'edit')} leadOptions={leadOptions} />
             )}
+
+            {visibleSection === 'content-studio' && (
+              <ContentStudioSection canEdit={can('content_studio', 'edit')} isAdmin={isAdmin} teacherNames={teacherNames} />
+            )}
+            {visibleSection === 'content-library' && <ContentLibrarySection />}
 
             {visibleSection === 'ai-knowledge' && (
               <AiKnowledgeSection
@@ -7914,6 +7940,7 @@ function App() {
           formSubmissions={editingLeadFormSubmissions}
           isLoadingFormSubmissions={isLoadingEditingLeadForms}
           focusFormAnswers={focusFormAnswers}
+          studentCodes={editingLead ? (leadCodeOf?.(editingLead) ?? []) : undefined}
           readOnly={Boolean(editingLead) && !can('leads', 'edit')}
         />
       )}

@@ -504,6 +504,10 @@ export function DetailsPanel({
             byPhone={byPhone}
             isStudent={role === 'student'}
             parentName={childChat ? (family?.parent?.name ?? null) : undefined}
+            codes={[
+              ...(crm.leadCodeOf?.(lead) ?? []),
+              ...(family?.children ?? []).flatMap((child) => (child.studentId !== null ? (crm.studentCodes?.get(child.studentId) ?? []) : [])),
+            ]}
             onUnlink={() => void onLinkLead(null)}
           />
         ) : null}
@@ -515,6 +519,7 @@ export function DetailsPanel({
             chatOf={chatOfContact}
             onOpenChat={onOpenChat}
             onOpenStudent={crm.onOpenStudent}
+            codeOf={(person) => (person.studentId !== null ? (crm.studentCodes?.get(person.studentId) ?? null) : null)}
             tags={
               crm.onSetPersonTags
                 ? {

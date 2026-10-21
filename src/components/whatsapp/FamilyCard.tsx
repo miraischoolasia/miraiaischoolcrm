@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { UsersThree } from '@phosphor-icons/react'
 import type { Family } from '../../lib/family'
 import { parentDisplayName } from '../../lib/parentLabel'
+import { withCodes } from '../../lib/studentCodeLabel'
 import type { Person } from '../../lib/peopleApi'
 import type { LeadOption } from '../../types/domain'
 import { PersonTags } from '../PersonTags'
@@ -20,6 +21,8 @@ type FamilyCardProps = {
   chatOf: (contactId: number) => number | null
   onOpenChat: (conversationId: number) => void
   onOpenStudent?: (studentId: number) => void
+  // The school's student code of an enrolled child, shown in front of the name (the parent shows their children's).
+  codeOf?: (person: Person) => string | null
   // The tags of the parent and of each child (the same tags the leads use). Left out where tags are not offered.
   tags?: {
     options: LeadOption[]
@@ -71,7 +74,7 @@ const linkClass = 'font-medium text-[#be185d] hover:underline'
 
 // The family around the open chat: the parent, their children, and the way to the other chats of the
 // family. It is what the family table says, so the team sees one place instead of several boxes.
-export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStudent, tags }: FamilyCardProps) {
+export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStudent, codeOf, tags }: FamilyCardProps) {
   // The tags just chosen show at once, until they are saved and the family is read again.
   const [chosen, setChosen] = useState<Map<number, number[]>>(new Map())
 
@@ -123,6 +126,7 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
   }
 
   const { me, parent } = family
+  const codesOf = (people: Person[]) => people.map((person) => codeOf?.(person) ?? null)
 
   return (
     <section aria-label="Family" className="space-y-2 text-xs">
@@ -140,8 +144,11 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
               {initialsOf(parent, parentNameOf(parent, family.children))}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium text-slate-900" title={parentNameOf(parent, family.children)}>
-                {parentNameOf(parent, family.children)}
+              <span
+                className="block truncate text-sm font-medium text-slate-900"
+                title={withCodes(parentNameOf(parent, family.children), codesOf(family.children))}
+              >
+                {withCodes(parentNameOf(parent, family.children), codesOf(family.children))}
               </span>
               <span className="block truncate text-slate-500">
                 Parent{parent.phone ? ` · +${parent.phone}` : parent.contactId !== null ? ' · number hidden by WhatsApp' : ''}
@@ -195,7 +202,9 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
                     {initialsOf(first)}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-slate-900">{nameOf(first)}</span>
+                    <span className="block truncate text-sm font-medium text-slate-900" title={withCodes(nameOf(first), codesOf(group.people))}>
+                      {withCodes(nameOf(first), codesOf(group.people))}
+                    </span>
                     <span className="block truncate text-slate-500">
                       {[age !== null ? `${age} years` : null, current.label, didHoa ? 'did the HOA first' : null]
                         .filter(Boolean)

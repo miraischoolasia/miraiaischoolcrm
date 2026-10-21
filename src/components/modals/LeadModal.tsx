@@ -10,6 +10,7 @@ import {
 import { LeadOptionPicker } from '../LeadOptionPicker'
 import { LeadTagPicker } from '../LeadTagPicker'
 import { WhatsAppLink } from '../WhatsAppLink'
+import { withCodes } from '../../lib/studentCodeLabel'
 import { HiddenNumberNote, LeadChannelLines } from '../LeadChannelLines'
 import { isHiddenNumberName, type LeadChannel } from '../../lib/leadChannels'
 import { formatDateTime } from '../../lib/forms'
@@ -41,6 +42,8 @@ type LeadModalProps = {
   chats?: LeadChannel[]
   // The parent as the lists call them ("KEW KAYDEN's Parent") when the lead has no name of its own.
   parentName?: string | null
+  // The student codes of this family, shown in front of the name in the title.
+  studentCodes?: string[]
   // What this lead answered in forms (read-only), newest first.
   formSubmissions?: LeadFormSubmission[]
   isLoadingFormSubmissions?: boolean
@@ -62,6 +65,7 @@ export function LeadModal({
   onAddLeadOption,
   chats = [],
   parentName = null,
+  studentCodes = [],
   formSubmissions = [],
   isLoadingFormSubmissions = false,
   focusFormAnswers = false,
@@ -109,7 +113,7 @@ export function LeadModal({
             </div>
             <h2 className="mt-1 text-2xl font-semibold text-slate-900">
               {editingLead
-                ? `${readOnly ? 'View' : 'Edit'} ${parentName || editingLead.fullName || 'Lead'}`
+                ? `${readOnly ? 'View' : 'Edit'} ${withCodes(parentName || editingLead.fullName || 'Lead', studentCodes)}`
                 : 'Add Lead'}
             </h2>
             <p className="mt-2 text-sm text-slate-500">
@@ -146,7 +150,7 @@ export function LeadModal({
         <div className="grid gap-5 sm:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-semibold text-slate-700">
-              Parent / Contact Name{' '}
+              Contact Name{' '}
               <span className="font-normal text-slate-400">(optional)</span>
             </span>
             <input

@@ -26,6 +26,7 @@ import {
   type StudentProfileExtras,
 } from '../../lib/studentFields'
 import { BrandMascot } from '../BrandMascot'
+import { withCodes } from '../../lib/studentCodeLabel'
 import type {
   Classroom,
   FilterKey,
@@ -182,6 +183,17 @@ export function StudentDashboardSection({
     subjectId: subjectFilter,
   }
   let matchedRows = filterStudentRows(rows, rowFilter)
+  const codeTerm = searchTerm.trim().toLowerCase()
+  if (studentCodes && codeTerm) {
+    // The student code is searched too ("S1100784").
+    const found = new Set(matchedRows.map((row) => row.student.id))
+    matchedRows = [
+      ...matchedRows,
+      ...filterStudentRows(rows, { ...rowFilter, search: '' }).filter(
+        (row) => !found.has(row.student.id) && (studentCodes.get(row.student.id) ?? '').toLowerCase().includes(codeTerm),
+      ),
+    ]
+  }
   if (studentFields) {
     const term = searchTerm.trim()
     if (studentFields.setting.name_zh && term) {
@@ -732,7 +744,7 @@ function StudentIdentity({
             onClick={() => onOpen(student.id)}
             className="table-cell-link text-left text-[13.5px] font-semibold text-slate-900 transition hover:text-[#be185d]"
           >
-            {student.name}
+            {withCodes(student.name, [code])}
           </button>
           {student.studentType === 'preview' && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
@@ -741,7 +753,7 @@ function StudentIdentity({
           )}
         </div>
         <div className={secondary}>
-          {code ? `${code} · ` : ''}#{student.id.toString().padStart(3, '0')}
+          #{student.id.toString().padStart(3, '0')}
           {age ? ` · ${age}` : ''}
           {parent?.name ? ` · ${parent.name}` : ''}
         </div>

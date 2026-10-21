@@ -370,3 +370,18 @@ describe('StudentDashboardSection', () => {
     expect(screen.getByText('No students match. Try clearing the search or the filters.')).toBeInTheDocument()
   })
 })
+
+describe('StudentDashboardSection student codes', () => {
+  const codes = new Map([[1, 'S1100784']])
+
+  it('puts the code in front of the name and finds the student by it', async () => {
+    renderSection([student, { ...student, id: 2, name: 'Grace Hopper' }], { studentCodes: codes })
+
+    expect(screen.getAllByRole('button', { name: 'S1100784 · Ada Lovelace' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Grace Hopper' }).length).toBeGreaterThan(0)
+
+    await userEvent.type(screen.getByRole('searchbox'), 's1100784')
+    expect(screen.getAllByRole('button', { name: 'S1100784 · Ada Lovelace' }).length).toBeGreaterThan(0)
+    expect(screen.queryAllByRole('button', { name: 'Grace Hopper' })).toHaveLength(0)
+  })
+})

@@ -177,3 +177,15 @@ describe('LeadModal parent name', () => {
     expect(screen.getByRole('heading', { name: "Edit KEW KAYDEN's Parent" })).toBeInTheDocument()
   })
 })
+
+describe('LeadModal student codes', () => {
+  it('puts the codes in the title but not in the name field', () => {
+    renderModal({
+      editingLead: { id: 5, fullName: 'Mrs Kew', phone: '60129219368', children: [], convertedStudentId: 7 } as unknown as Lead,
+      studentCodes: ['S1000001', 'S1000002'],
+    })
+
+    expect(screen.getByRole('heading', { name: 'Edit S1000001 / S1000002 · Mrs Kew' })).toBeInTheDocument()
+    expect(screen.getByLabelText(/Contact Name/)).toBeInTheDocument()
+  })
+})

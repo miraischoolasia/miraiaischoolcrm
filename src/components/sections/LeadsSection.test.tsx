@@ -831,3 +831,33 @@ describe('LeadsSection parent name', () => {
     expect(within(screen.getByRole('table')).getByText("KEW KAYDEN's Parent")).toBeInTheDocument()
   })
 })
+
+describe('LeadsSection student codes', () => {
+  const converted = { ...makeLead(1, null), fullName: 'Mrs Kew', status: 'converted' as const, convertedStudentId: 77 }
+  const other = { ...makeLead(2, null), fullName: 'Mrs Lim' }
+  const codeOf = (lead: Lead) => (lead.id === 1 ? ['S1000001', 'S1000002'] : [])
+
+  it('puts the codes of the family in front of the contact name, and the name alone when there is none', () => {
+    renderSection([converted, other], { codeOf })
+
+    const table = within(screen.getByRole('table'))
+    expect(table.getByText('S1000001 / S1000002 · Mrs Kew')).toBeInTheDocument()
+    expect(table.getByText('Mrs Lim')).toBeInTheDocument()
+  })
+
+  it('finds a lead by a student code', async () => {
+    renderSection([converted, other], { codeOf })
+
+    await userEvent.type(screen.getByPlaceholderText(/Search leads/), 's1000002')
+
+    const table = within(screen.getByRole('table'))
+    expect(table.getByText('S1000001 / S1000002 · Mrs Kew')).toBeInTheDocument()
+    expect(table.queryByText('Mrs Lim')).not.toBeInTheDocument()
+  })
+
+  it('shows no code for a school that does not use them', () => {
+    renderSection([converted])
+
+    expect(within(screen.getByRole('table')).getByText('Mrs Kew')).toBeInTheDocument()
+  })
+})

@@ -17,6 +17,7 @@ import {
 import { PermissionMatrix } from '../PermissionMatrix'
 import { ChannelAccessSection, type InboxOption } from './ChannelAccessSection'
 import { PicLinksSection } from './PicLinksSection'
+import { TagPicLinksSection } from './TagPicLinksSection'
 
 export type TeamPerson = { id: number; name: string; role: 'admin' | 'teacher' | 'staff' }
 
@@ -295,6 +296,7 @@ export function TeamsPanel({ teams, members, missing, loadError, people, onChang
 
       <ChannelAccessSection teams={teams} people={pickable} nameOf={nameOf} listInboxes={listInboxes} />
       <PicLinksSection people={pickable} />
+      <TagPicLinksSection />
     </div>
   )
 }

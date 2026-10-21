@@ -13,6 +13,7 @@ vi.mock('../../lib/staffTeams', async (importOriginal) => {
 // The channel and PIC parts read the database themselves; not part of this test.
 vi.mock('./ChannelAccessSection', () => ({ ChannelAccessSection: () => null }))
 vi.mock('./PicLinksSection', () => ({ PicLinksSection: () => null }))
+vi.mock('./TagPicLinksSection', () => ({ TagPicLinksSection: () => null }))
 
 import { TeamsPanel } from './TeamsPanel'
 

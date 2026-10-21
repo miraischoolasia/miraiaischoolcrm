@@ -163,7 +163,7 @@ describe('DetailsPanel', () => {
     })
     renderPanel(crm)
 
-    await userEvent.type(screen.getByLabelText('Parent name'), 'Mei')
+    await userEvent.type(screen.getByLabelText('Contact name'), 'Mei')
     await userEvent.click(screen.getByRole('button', { name: 'Save lead' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('already belongs to the lead "@yvonne.ywbl"')
@@ -237,8 +237,8 @@ describe('DetailsPanel', () => {
     const onLinkLead = renderPanel(crm)
 
     // The name WhatsApp gives is not copied in; the team writes the parent name.
-    expect(screen.getByLabelText('Parent name')).toHaveValue('')
-    await userEvent.type(screen.getByLabelText('Parent name'), 'Mei Ling')
+    expect(screen.getByLabelText('Contact name')).toHaveValue('')
+    await userEvent.type(screen.getByLabelText('Contact name'), 'Mei Ling')
     await userEvent.click(screen.getByRole('button', { name: 'Save lead' }))
 
     await waitFor(() => expect(onLinkLead).toHaveBeenCalledWith(55))
@@ -296,7 +296,7 @@ describe('DetailsPanel', () => {
 
     expect(screen.queryByText('Add as a new lead')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Lead details' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Parent name')).toHaveValue('Mei Ling')
+    expect(screen.getByLabelText('Contact name')).toHaveValue('Mei Ling')
     expect(screen.getByLabelText('State')).toHaveValue('Selangor')
     expect(screen.getByLabelText('Child 1 name')).toHaveValue('Ethan')
     expect(screen.getByLabelText('Child 1 age')).toHaveValue('9')
@@ -429,7 +429,7 @@ describe('DetailsPanel', () => {
   it('shows the lead but cannot change it without edit permission', () => {
     renderPanel(makeCrm({ leads: [lead], canEditLeads: false }), { crm_lead_id: 11 })
 
-    expect(screen.getByLabelText('Parent name')).toBeDisabled()
+    expect(screen.getByLabelText('Contact name')).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
   })
 
@@ -1054,7 +1054,7 @@ describe('DetailsPanel', () => {
       expect(screen.getByLabelText('Student name')).toBeInTheDocument()
       expect(screen.getByLabelText('Student age')).toBeInTheDocument()
       expect(screen.getByLabelText("Student's phone number")).toHaveValue('+60123456789')
-      expect(screen.getByLabelText(/Parent name/)).toBeInTheDocument()
+      expect(screen.getByLabelText(/Contact name/)).toBeInTheDocument()
       expect(screen.getByLabelText(/Parent's phone number/)).toHaveValue('')
       expect(screen.queryByRole('button', { name: 'Add a child' })).not.toBeInTheDocument()
       expect(screen.getByText('Is this a student we already have? Find them')).toBeInTheDocument()
@@ -1109,7 +1109,7 @@ describe('DetailsPanel', () => {
 
       expect(screen.getByLabelText('Student name')).toHaveValue('Ethan')
       expect(screen.getByLabelText("Student's phone number")).toHaveValue('0123456789')
-      expect(screen.getByLabelText(/Parent name/)).toHaveValue('Mei Ling')
+      expect(screen.getByLabelText(/Contact name/)).toHaveValue('Mei Ling')
       expect(screen.getByLabelText(/Parent's phone number/)).toHaveValue('0198887777')
     })
   })
@@ -1138,24 +1138,24 @@ describe('a chat whose number WhatsApp hides', () => {
 
   it('writes the name the chat shows as the parent name of a new lead', () => {
     renderHidden(makeCrm(), hidden('jasmineooi'))
-    expect(screen.getByLabelText('Parent name')).toHaveValue('jasmineooi')
+    expect(screen.getByLabelText('Contact name')).toHaveValue('jasmineooi')
   })
 
   it('leaves the parent name empty when the chat has a real number, or only digits for a name', () => {
     renderHidden(makeCrm(), conversation())
-    expect(screen.getByLabelText('Parent name')).toHaveValue('')
+    expect(screen.getByLabelText('Contact name')).toHaveValue('')
   })
 
   it('does not copy a name that is only digits', () => {
     renderHidden(makeCrm(), hidden('+60 12 345 6789'))
-    expect(screen.getByLabelText('Parent name')).toHaveValue('')
+    expect(screen.getByLabelText('Contact name')).toHaveValue('')
   })
 
   it('fills and saves the name of a lead that has none', async () => {
     const crm = makeCrm({ leads: [{ ...lead, fullName: null, phone: null } as unknown as Lead] })
     renderHidden(crm, hidden('jasmineooi', { crm_lead_id: 11 }))
 
-    expect(screen.getByLabelText('Parent name')).toHaveValue('jasmineooi')
+    expect(screen.getByLabelText('Contact name')).toHaveValue('jasmineooi')
     await waitFor(() =>
       expect(crm.onUpdateLead).toHaveBeenCalledWith(11, expect.objectContaining({ fullName: 'jasmineooi' })),
     )
@@ -1165,7 +1165,7 @@ describe('a chat whose number WhatsApp hides', () => {
     const crm = makeCrm({ leads: [{ ...lead, fullName: 'Mrs Ooi', phone: null } as Lead] })
     renderHidden(crm, hidden('jasmineooi', { crm_lead_id: 11 }))
 
-    expect(screen.getByLabelText('Parent name')).toHaveValue('Mrs Ooi')
+    expect(screen.getByLabelText('Contact name')).toHaveValue('Mrs Ooi')
     expect(crm.onUpdateLead).not.toHaveBeenCalled()
   })
 

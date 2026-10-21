@@ -201,3 +201,33 @@ describe('FamilyCard parent name', () => {
     expect(screen.getByText('Parent · +60129219368')).toBeInTheDocument()
   })
 })
+
+describe('FamilyCard student codes', () => {
+  const family = [
+    person(1, { kind: 'parent', name: '60129219368', phone: '60129219368', contactId: 482 }),
+    person(2, { kind: 'student', name: 'KEW KAYDEN', parentId: 1, studentId: 56 }),
+    person(3, { kind: 'student', name: 'KEW KAYVEN', parentId: 1, studentId: 57 }),
+    person(4, { kind: 'student', name: 'NO CODE', parentId: 1 }),
+  ]
+  const codes = new Map([
+    [56, 'S1000056'],
+    [57, 'S1000057'],
+  ])
+
+  it('puts the codes of the children in front of the parent and the own code in front of each child', () => {
+    render(
+      <FamilyCard
+        family={familyOf(482, family)!}
+        childDetail={() => ({ age: null, label: null })}
+        chatOf={() => null}
+        onOpenChat={vi.fn()}
+        codeOf={(p) => (p.studentId !== null ? (codes.get(p.studentId) ?? null) : null)}
+      />,
+    )
+
+    expect(screen.getByText("S1000056 / S1000057 · KEW KAYDEN & KEW KAYVEN & NO CODE's Parent")).toBeInTheDocument()
+    expect(screen.getByText('S1000056 · KEW KAYDEN')).toBeInTheDocument()
+    expect(screen.getByText('S1000057 · KEW KAYVEN')).toBeInTheDocument()
+    expect(screen.getByText('NO CODE')).toBeInTheDocument()
+  })
+})

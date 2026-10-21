@@ -116,6 +116,9 @@ export type WhatsAppCrm = {
   onSetPersonTags?: (personId: number, tagIds: number[]) => Promise<string | null>
   // Writes the parent's number on a student who has none, so the chat finds them by phone too.
   onSetStudentPhone: (studentId: number, phone: string) => Promise<string | null>
+  // The school's student codes (student id -> code) and the codes of a lead's students; left out where the school uses no codes.
+  studentCodes?: Map<number, string>
+  leadCodeOf?: (lead: Lead) => string[]
   onOpenLead: (leadId: number) => void
   // The Zoom meetings on the calendar a parent can be put into (time and link already set), soonest first.
   zoomSlots?: ZoomSlot[]

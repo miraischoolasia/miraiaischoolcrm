@@ -24,6 +24,10 @@ export const permissionModules: {
   { key: 'automations', label: 'Automations', canEdit: true, deleteHint: 'Delete flows and contacts', scopes: [], group: 'Marketing' },
   { key: 'forms', label: 'Forms', canEdit: true, deleteHint: 'Delete forms and responses', scopes: [], group: 'Marketing' },
   { key: 'ai_knowledge', label: 'AI Knowledge', canEdit: true, deleteHint: 'Delete notes', scopes: [], group: 'Marketing' },
+  // Briefs, the AI plan and review (edit); look only (view).
+  { key: 'content_studio', label: 'Content Studio', canEdit: true, scopes: [], group: 'Marketing' },
+  // See approved posts and claim them to share.
+  { key: 'content_library', label: 'Content Library', canEdit: false, scopes: [], group: 'Marketing' },
   {
     key: 'calendar',
     label: 'Calendar',
