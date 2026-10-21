@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { alertLevel, alertWords, howLong, whatsAppNumberAlerts, type WhatsAppNumberStatus } from './channelAlerts'
+import {
+  alertLevel,
+  alertWords,
+  channelViewerChecks,
+  howLong,
+  lockedChannelAlerts,
+  nobodyGiven,
+  whatsAppNumberAlerts,
+  type WhatsAppNumberStatus,
+} from './channelAlerts'
 
 const NOW = Date.parse('2026-10-20T10:00:00Z')
 const ago = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString()
@@ -102,5 +111,81 @@ describe('alertWords', () => {
     expect(howLong(ago(90), NOW)).toBe('for 2 hours')
     expect(howLong(ago(3 * 24 * 60), NOW)).toMatch(/^since /)
     expect(howLong(null, NOW)).toBe('')
+  })
+})
+
+describe('locked channels nobody is given', () => {
+  const channel = {
+    inboxId: 6,
+    label: 'Dora',
+    kind: 'whatsapp' as const,
+    access: 'limited' as const,
+    isActive: true,
+    grants: 0,
+    numberStaff: 0,
+  }
+
+  it('warns about a locked channel with no team, person or number staff', () => {
+    const [alert] = lockedChannelAlerts([channel])
+    expect(alert.problem).toBe('nobody_given')
+    expect(alertLevel('nobody_given')).toBe('warning')
+    const words = alertWords(alert, NOW)
+    expect(words.title).toBe('WhatsApp Dora is locked, and no staff can see it')
+    expect(words.what).toContain('Only admins')
+    expect(words.next).toContain('Inbox channels')
+    expect(words.scanFixes).toBe(false)
+  })
+
+  it('stops once someone is given it, it is open, or it is turned off', () => {
+    expect(lockedChannelAlerts([{ ...channel, grants: 1 }])).toEqual([])
+    expect(lockedChannelAlerts([{ ...channel, numberStaff: 2 }])).toEqual([])
+    expect(lockedChannelAlerts([{ ...channel, access: 'open' }])).toEqual([])
+    expect(lockedChannelAlerts([{ ...channel, isActive: false }])).toEqual([])
+    expect(nobodyGiven({ access: 'limited', isActive: true, grants: 0, numberStaff: 0 })).toBe(true)
+  })
+})
+
+describe('channelViewerChecks', () => {
+  const base = {
+    channels: [{ inboxId: 6, label: 'Dora', kind: 'whatsapp' as const, access: 'limited' as const, isActive: true }],
+    grants: [] as { inboxId: number; teamId: number | null; teacherId: number | null }[],
+    teams: [
+      { id: 1, isActive: true },
+      { id: 2, isActive: false },
+      { id: 3, isActive: true },
+    ],
+    members: [
+      { teamId: 1, teacherId: 10 },
+      { teamId: 2, teacherId: 10 },
+      { teamId: 3, teacherId: 99 },
+    ],
+    people: [
+      { id: 10, isActive: true, isAdmin: false },
+      { id: 11, isActive: false, isAdmin: false },
+      { id: 12, isActive: true, isAdmin: true },
+      { id: 99, isActive: true, isAdmin: true },
+    ],
+    numberStaff: [] as { inboxId: number; teacherId: number }[],
+  }
+
+  it('counts a team only when it is on and has staff in it', () => {
+    const check = (grants: typeof base.grants) => channelViewerChecks({ ...base, grants })[0]
+    expect(nobodyGiven(check([{ inboxId: 6, teamId: 1, teacherId: null }]))).toBe(false)
+    // A switched-off team, and a team with only an admin in it, give nobody anything.
+    expect(nobodyGiven(check([{ inboxId: 6, teamId: 2, teacherId: null }]))).toBe(true)
+    expect(nobodyGiven(check([{ inboxId: 6, teamId: 3, teacherId: null }]))).toBe(true)
+  })
+
+  it('counts a person only when they are active staff', () => {
+    const check = (teacherId: number) => channelViewerChecks({ ...base, grants: [{ inboxId: 6, teamId: null, teacherId }] })[0]
+    expect(nobodyGiven(check(10))).toBe(false)
+    expect(nobodyGiven(check(11))).toBe(true)
+    expect(nobodyGiven(check(12))).toBe(true)
+  })
+
+  it("lists the number's staff, who see it too", () => {
+    const [check] = channelViewerChecks({ ...base, numberStaff: [{ inboxId: 6, teacherId: 10 }, { inboxId: 6, teacherId: 11 }] })
+    expect(check.numberStaffIds).toEqual([10])
+    expect(nobodyGiven(check)).toBe(false)
   })
 })

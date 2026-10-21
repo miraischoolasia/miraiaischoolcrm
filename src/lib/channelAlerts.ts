@@ -3,13 +3,14 @@
 // WhatsApp numbers: the WhatsApp server's checker (wa-watch) writes each number's status into whatsapp_numbers
 // every 30 seconds; the CRM only reads it. Messenger's GHL link and Chatwoot can use the same bar later.
 
-export type ChannelKind = 'whatsapp' | 'messenger' | 'instagram' | 'chatwoot'
+export type ChannelKind = 'whatsapp' | 'messenger' | 'instagram' | 'chatwoot' | 'other'
 
 // What wa-watch writes (whatsapp_numbers.status). null: not checked yet, nothing shows.
 export type WhatsAppStatus = 'connected' | 'reconnecting' | 'logged_out' | 'replaced' | 'restricted' | 'needs_qr' | 'quiet'
 
 // 'unchecked': the checker itself has not reported for a while (an admin is told, since then nothing else would be).
-export type ChannelProblem = Exclude<WhatsAppStatus, 'connected'> | 'unchecked'
+// 'nobody_given': a locked (limited) channel no team or person is given, so only admins see its chats.
+export type ChannelProblem = Exclude<WhatsAppStatus, 'connected'> | 'unchecked' | 'nobody_given'
 
 export type ChannelAlert = {
   // Stays the same while the same problem goes on (it carries when it started), so hiding it lasts until it changes.
@@ -67,7 +68,9 @@ export function numberName(label: string, phone: string | null) {
 
 // Red: the number cannot work until someone acts. Amber: it may be fine, but someone should look.
 export function alertLevel(problem: ChannelProblem): 'danger' | 'warning' {
-  return problem === 'reconnecting' || problem === 'quiet' || problem === 'unchecked' ? 'warning' : 'danger'
+  return problem === 'reconnecting' || problem === 'quiet' || problem === 'unchecked' || problem === 'nobody_given'
+    ? 'warning'
+    : 'danger'
 }
 
 const RANK: Record<ChannelProblem, number> = {
@@ -78,6 +81,7 @@ const RANK: Record<ChannelProblem, number> = {
   reconnecting: 4,
   quiet: 5,
   unchecked: 6,
+  nobody_given: 7,
 }
 
 // The alerts for the school's WhatsApp numbers. allowedInboxIds: the numbers this person works on (null = all,
@@ -132,6 +136,7 @@ const CHANNEL_WORD: Record<ChannelKind, string> = {
   messenger: 'Messenger',
   instagram: 'Instagram',
   chatwoot: 'The chat server',
+  other: 'Channel',
 }
 
 // "for 5 minutes", "for 3 hours", "since Mon 20 Oct"; '' when not known.
@@ -172,6 +177,14 @@ export function alertWords(alert: ChannelAlert, now = Date.now()): AlertWords {
   const channel = CHANNEL_WORD[alert.channel]
   const time = howLong(alert.since, now)
   const ago = agoWords(alert.since, now)
+  if (alert.problem === 'nobody_given') {
+    return {
+      title: `${channel} ${alert.name} is locked, and no staff can see it`,
+      what: 'Only admins can see its chats now: no team with people in it, and no person, is given it. Staff see nothing from this channel in the Inbox.',
+      next: 'Go to My Team, Teams, Inbox channels and give it a person or a team that has people in it (or set it to Open).',
+      scanFixes: false,
+    }
+  }
   if (alert.channel !== 'whatsapp') {
     return {
       title: `${channel} ${alert.name} is not connected${time ? ` ${time}` : ''}`,
@@ -244,5 +257,84 @@ export function problemLabel(problem: ChannelProblem) {
     reconnecting: 'Reconnecting',
     quiet: 'No messages lately',
     unchecked: 'Not checked',
+    nobody_given: 'No team given',
   }[problem]
+}
+
+// ---------------------------------------------------------------------------
+// Locked channels nobody is given (admins only)
+
+export type LockedChannelCheck = {
+  inboxId: number
+  label: string
+  kind: 'whatsapp' | 'messenger' | 'instagram' | 'other'
+  access: 'open' | 'limited'
+  isActive: boolean
+  // Active, non-admin staff given it in inbox_channel_access (directly, or in an active team).
+  grants: number
+  // Active, non-admin staff ticked for it in the older WhatsApp numbers list (whatsapp_number_staff), which still
+  // counts: they see and answer it.
+  numberStaff: number
+  numberStaffIds?: number[]
+}
+
+// Who can really see each channel: active, non-admin people given it directly or through an active team, and the
+// number's staff. A team switched off, or with nobody in it, gives nobody anything; admins see every channel anyway.
+export function channelViewerChecks(input: {
+  channels: Pick<LockedChannelCheck, 'inboxId' | 'label' | 'kind' | 'access' | 'isActive'>[]
+  grants: { inboxId: number; teamId: number | null; teacherId: number | null }[]
+  teams: { id: number; isActive: boolean }[]
+  members: { teamId: number; teacherId: number }[]
+  people: { id: number; isActive: boolean; isAdmin: boolean }[]
+  numberStaff: { inboxId: number; teacherId: number }[]
+}): LockedChannelCheck[] {
+  const staff = new Set(input.people.filter((person) => person.isActive && !person.isAdmin).map((person) => person.id))
+  const activeTeams = new Set(input.teams.filter((team) => team.isActive).map((team) => team.id))
+  const viewers = new Map<number, Set<number>>()
+  const numberViewers = new Map<number, Set<number>>()
+  const add = (map: Map<number, Set<number>>, inboxId: number, ids: number[]) => {
+    const set = map.get(inboxId) ?? new Set<number>()
+    ids.filter((id) => staff.has(id)).forEach((id) => set.add(id))
+    map.set(inboxId, set)
+  }
+  for (const grant of input.grants) {
+    if (grant.teacherId !== null) {
+      add(viewers, grant.inboxId, [grant.teacherId])
+    } else if (grant.teamId !== null && activeTeams.has(grant.teamId)) {
+      add(viewers, grant.inboxId, input.members.filter((member) => member.teamId === grant.teamId).map((member) => member.teacherId))
+    }
+  }
+  for (const row of input.numberStaff) {
+    add(numberViewers, row.inboxId, [row.teacherId])
+  }
+  return input.channels.map((channel) => {
+    const numberStaffIds = [...(numberViewers.get(channel.inboxId) ?? [])]
+    return { ...channel, grants: viewers.get(channel.inboxId)?.size ?? 0, numberStaff: numberStaffIds.length, numberStaffIds }
+  })
+}
+
+// A limited channel that is on, and no staff can see it (no person, no team with someone in it, no number staff):
+// only admins see its chats.
+export function nobodyGiven(channel: Pick<LockedChannelCheck, 'access' | 'isActive' | 'grants' | 'numberStaff'>) {
+  return channel.isActive && channel.access === 'limited' && channel.grants === 0 && channel.numberStaff === 0
+}
+
+export function lockedChannelAlerts(channels: LockedChannelCheck[]): ChannelAlert[] {
+  return channels.filter(nobodyGiven).map((channel) => ({
+    key: `access:${channel.inboxId}:nobody_given`,
+    channel: channel.kind,
+    name: channel.label,
+    problem: 'nobody_given' as const,
+    since: null,
+  }))
+}
+
+// Told when someone changes who is given a channel (My Team, Teams, Inbox channels), so the bar looks again at once.
+export const CHANNEL_ACCESS_CHANGED = 'crm:channel-access-changed'
+
+// The address mark the "Open Inbox channels" button leaves: My Team opens on Teams and scrolls to Inbox channels.
+export const CHANNEL_ACCESS_HASH = 'inbox-channels'
+
+export function wantsChannelAccess() {
+  return typeof window !== 'undefined' && window.location.hash === `#${CHANNEL_ACCESS_HASH}`
 }

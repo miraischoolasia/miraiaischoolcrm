@@ -59,4 +59,14 @@ describe('ChannelAlertBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Hide for 1 hour' }))
     expect(screen.queryByRole('alert')).toBeNull()
   })
+
+  it('sends an admin to Inbox channels for a locked channel nobody is given', () => {
+    let opened = 0
+    const locked: ChannelAlert = { key: 'access:6:nobody_given', channel: 'whatsapp', name: 'Dora', problem: 'nobody_given', since: null }
+    render(<ChannelAlertBar alerts={[locked]} isAdmin onOpenChannelAccess={() => (opened += 1)} now={NOW} />)
+    expect(screen.getByRole('alert')).toHaveTextContent('WhatsApp Dora is locked, and no staff can see it')
+    expect(screen.queryByText(/Only an admin can scan/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Open Inbox channels/ }))
+    expect(opened).toBe(1)
+  })
 })

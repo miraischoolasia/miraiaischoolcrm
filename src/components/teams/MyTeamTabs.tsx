@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { cn } from '../../lib/cn'
+import { wantsChannelAccess } from '../../lib/channelAlerts'
 
 type Tab = 'accounts' | 'teams' | 'hours'
 
@@ -17,7 +18,17 @@ export function MyTeamTabs({ accounts, teams, hours }: MyTeamTabsProps) {
     teams ? { key: 'teams' as const, label: 'Teams' } : null,
     { key: 'hours' as const, label: 'Working hours' },
   ].filter((tab): tab is { key: Tab; label: string } => tab !== null)
-  const [active, setActive] = useState<Tab>(tabs[0].key)
+  // Opened from the "Open Inbox channels" button of the alert bar: start on Teams.
+  const [active, setActive] = useState<Tab>(() => (teams && wantsChannelAccess() ? 'teams' : tabs[0].key))
+  useEffect(() => {
+    const onHash = () => {
+      if (wantsChannelAccess()) {
+        setActive('teams')
+      }
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
   const shown = tabs.some((tab) => tab.key === active) ? active : tabs[0].key
 
   return (

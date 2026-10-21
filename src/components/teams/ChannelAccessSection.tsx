@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Plus, Trash } from '@phosphor-icons/react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Plus, Trash, Warning } from '@phosphor-icons/react'
 import {
   channelDraftError,
   channelKindLabels,
@@ -11,6 +11,9 @@ import {
   type InboxChannel,
 } from '../../lib/inboxChannels'
 import type { Team } from '../../lib/staffTeams'
+import { cn } from '../../lib/cn'
+import { CHANNEL_ACCESS_CHANGED, nobodyGiven, wantsChannelAccess } from '../../lib/channelAlerts'
+import { fetchLockedChannelChecks } from '../../hooks/useChannelAlerts'
 
 export type InboxOption = { id: number; name: string; kind: ChannelKind }
 
@@ -34,12 +37,19 @@ export function ChannelAccessSection({ teams, people, nameOf, listInboxes }: Cha
   const [editing, setEditing] = useState<Editing | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // Locked channels no team, person or number staff is given: only admins see their chats (marked yellow).
+  const [nobody, setNobody] = useState<Set<number>>(new Set())
+  // The staff ticked for a WhatsApp number in the Numbers window (whatsapp_number_staff): they see and answer it too.
+  const [numberStaffOf, setNumberStaffOf] = useState<Map<number, number[]>>(new Map())
+  const sectionRef = useRef<HTMLElement>(null)
 
   const load = useCallback(async () => {
     try {
-      const [nextChannels, nextGrants] = await Promise.all([fetchInboxChannels(), fetchChannelGrants()])
+      const [nextChannels, nextGrants, checks] = await Promise.all([fetchInboxChannels(), fetchChannelGrants(), fetchLockedChannelChecks()])
       setChannels(nextChannels)
       setGrants(nextGrants)
+      setNobody(new Set(checks.filter(nobodyGiven).map((check) => check.inboxId)))
+      setNumberStaffOf(new Map(checks.map((check) => [check.inboxId, check.numberStaffIds ?? []])))
       setError(null)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Couldn't load the channels.")
@@ -49,6 +59,20 @@ export function ChannelAccessSection({ teams, people, nameOf, listInboxes }: Cha
   useEffect(() => {
     void load()
   }, [load])
+
+  // Opened from the "Open Inbox channels" button of the alert bar: bring this part into view once it has loaded.
+  useEffect(() => {
+    const focus = () => {
+      if (!wantsChannelAccess() || channels.length === 0) {
+        return
+      }
+      sectionRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+      window.history.replaceState(null, '', window.location.pathname + window.location.search)
+    }
+    focus()
+    window.addEventListener('hashchange', focus)
+    return () => window.removeEventListener('hashchange', focus)
+  }, [channels.length])
 
   useEffect(() => {
     if (!listInboxes) return
@@ -84,6 +108,8 @@ export function ChannelAccessSection({ teams, people, nameOf, listInboxes }: Cha
       await saveInboxChannel(editing.channel, editing.channel.access === 'open' ? [] : editing.grants)
       setEditing(null)
       await load()
+      // The alert bar on Today and the Inbox looks again at once.
+      window.dispatchEvent(new Event(CHANNEL_ACCESS_CHANGED))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Couldn't save the channel.")
     } finally {
@@ -95,7 +121,7 @@ export function ChannelAccessSection({ teams, people, nameOf, listInboxes }: Cha
     editing && setEditing({ ...editing, grants: editing.grants.map((grant, i) => (i === index ? next : grant)) })
 
   return (
-    <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+    <section ref={sectionRef} id="inbox-channels" className="scroll-mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Inbox channels</h2>
@@ -119,7 +145,13 @@ export function ChannelAccessSection({ teams, people, nameOf, listInboxes }: Cha
         )}
         <ul className="divide-y divide-slate-200">
           {channels.map((channel) => (
-            <li key={channel.inboxId} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <li
+              key={channel.inboxId}
+              className={cn(
+                'flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between',
+                nobody.has(channel.inboxId) && '-mx-3 rounded-xl border border-amber-300 bg-amber-50 px-3',
+              )}
+            >
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-slate-800">
                   {channel.label} <span className="font-normal text-slate-400">· {channelKindLabels[channel.kind]} · inbox {channel.inboxId}</span>
@@ -128,8 +160,20 @@ export function ChannelAccessSection({ teams, people, nameOf, listInboxes }: Cha
                 <div className="mt-0.5 text-xs text-slate-500">
                   {channel.access === 'open'
                     ? 'Open to everyone with the Inbox tick'
-                    : (grants.get(channel.inboxId) ?? []).map(grantText).join(' · ') || 'Limited: only admins'}
+                    : [
+                        ...(grants.get(channel.inboxId) ?? []).map(grantText),
+                        ...((numberStaffOf.get(channel.inboxId) ?? []).length > 0
+                          ? [`Number staff: ${(numberStaffOf.get(channel.inboxId) ?? []).map((id) => nameOf.get(id) ?? `#${id}`).join(', ')} (reply)`]
+                          : []),
+                      ].join(' · ') || 'Limited: only admins'}
                 </div>
+                {nobody.has(channel.inboxId) && (
+                  <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-amber-800">
+                    <Warning size={14} weight="fill" aria-hidden="true" />
+                    Nobody can see it: no person, and no team with people in it, is given it. Press Edit and add one, or set it to
+                    Open.
+                  </div>
+                )}
               </div>
               <button
                 type="button"

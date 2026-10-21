@@ -44,6 +44,7 @@ import { useLiveSync } from './hooks/useLiveSync'
 import { fetchTableVersions, type CoreGroup, type CoreSyncTarget, type TableVersions } from './lib/coreSync'
 import { useWhatsAppNumbers } from './hooks/useWhatsAppNumbers'
 import { useChannelAlerts } from './hooks/useChannelAlerts'
+import { CHANNEL_ACCESS_HASH } from './lib/channelAlerts'
 import { ChannelAlertBar } from './components/ChannelAlertBar'
 import { formatDate, getTodayString, parseLocalDate } from './domain/studentStatus'
 import type { Database } from './types/database'
@@ -7114,7 +7115,17 @@ function App() {
 
           <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-4 lg:px-5">
             {(showAdminHome || visibleSection === 'whatsapp') && (
-              <ChannelAlertBar alerts={channelAlerts.alerts} isAdmin={isAdmin} apiUrl={whatsAppApiUrl ?? undefined} />
+              <ChannelAlertBar
+                alerts={channelAlerts.alerts}
+                isAdmin={isAdmin}
+                apiUrl={whatsAppApiUrl ?? undefined}
+                onOpenChannelAccess={() => {
+                  // My Team opens on Teams and scrolls to Inbox channels (MyTeamTabs, ChannelAccessSection).
+                  setTeacherDetailsId(null)
+                  setActiveSection('teachers')
+                  window.location.hash = CHANNEL_ACCESS_HASH
+                }}
+              />
             )}
             {loadError && (
               <section className="flex items-center gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">

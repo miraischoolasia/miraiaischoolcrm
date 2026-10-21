@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { QrCode, WarningOctagon, X } from '@phosphor-icons/react'
+import { QrCode, UsersThree, WarningOctagon, X } from '@phosphor-icons/react'
 import { ModalShell } from './ModalShell'
 import { LinkWhatsAppPanel } from './whatsapp/LinkWhatsAppPanel'
 import { alertLevel, alertWords, type ChannelAlert } from '../lib/channelAlerts'
@@ -42,6 +42,7 @@ export function ChannelAlertBar({
   isAdmin,
   apiUrl,
   connect,
+  onOpenChannelAccess,
   now = Date.now(),
 }: {
   alerts: ChannelAlert[]
@@ -50,6 +51,8 @@ export function ChannelAlertBar({
   apiUrl?: string
   // The gateway answered by the demo and the tests.
   connect?: WaConnect
+  // Opens My Team, Teams, Inbox channels (for a locked channel nobody is given).
+  onOpenChannelAccess?: () => void
   now?: number
 }) {
   const [hidden, setHidden] = useState(readHidden)
@@ -93,6 +96,16 @@ export function ChannelAlertBar({
                   {isAdmin && alert.detail && <p className={cn('text-xs', look.faint)}>Server says: {alert.detail}</p>}
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  {isAdmin && alert.problem === 'nobody_given' && onOpenChannelAccess && (
+                    <button
+                      type="button"
+                      onClick={onOpenChannelAccess}
+                      className={cn('inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2 text-sm font-bold shadow-sm transition', look.button)}
+                    >
+                      <UsersThree size={18} weight="bold" aria-hidden="true" />
+                      Open Inbox channels
+                    </button>
+                  )}
                   {canScan && (
                     <button
                       type="button"
