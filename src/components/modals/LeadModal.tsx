@@ -39,6 +39,8 @@ type LeadModalProps = {
   ) => Promise<LeadOption | null>
   // The chats this lead has (WhatsApp, Messenger, Instagram), to open them from here.
   chats?: LeadChannel[]
+  // The parent as the lists call them ("KEW KAYDEN's Parent") when the lead has no name of its own.
+  parentName?: string | null
   // What this lead answered in forms (read-only), newest first.
   formSubmissions?: LeadFormSubmission[]
   isLoadingFormSubmissions?: boolean
@@ -59,6 +61,7 @@ export function LeadModal({
   leadOptions,
   onAddLeadOption,
   chats = [],
+  parentName = null,
   formSubmissions = [],
   isLoadingFormSubmissions = false,
   focusFormAnswers = false,
@@ -106,7 +109,7 @@ export function LeadModal({
             </div>
             <h2 className="mt-1 text-2xl font-semibold text-slate-900">
               {editingLead
-                ? `${readOnly ? 'View' : 'Edit'} ${editingLead.fullName || 'Lead'}`
+                ? `${readOnly ? 'View' : 'Edit'} ${parentName || editingLead.fullName || 'Lead'}`
                 : 'Add Lead'}
             </h2>
             <p className="mt-2 text-sm text-slate-500">

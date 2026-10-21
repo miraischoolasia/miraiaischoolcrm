@@ -47,3 +47,23 @@ export function familyOf(contactId: number, people: Person[]): Family | null {
     leadId,
   }
 }
+
+// The names of the children of the parent this chat is (oldest first, nobody twice). Empty for a chat that is
+// not a parent's, or a parent with no child saved.
+export function familyChildNames(contactId: number, people: Person[]): string[] {
+  const family = familyOf(contactId, people)
+  if (!family || family.me.kind !== 'parent') {
+    return []
+  }
+  const seen = new Set<string>()
+  const names: string[] = []
+  for (const child of family.children) {
+    const name = (child.name ?? '').trim()
+    const key = name.toLowerCase().replace(/[\s\p{P}]/gu, '')
+    if (name !== '' && !seen.has(key)) {
+      seen.add(key)
+      names.push(name)
+    }
+  }
+  return names
+}

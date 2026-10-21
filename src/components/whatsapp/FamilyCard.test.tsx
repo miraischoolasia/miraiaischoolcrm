@@ -161,3 +161,25 @@ describe('FamilyCard', () => {
     expect(screen.getByTitle('Violet')).toBeInTheDocument()
   })
 })
+
+describe('FamilyCard parent name', () => {
+  it('calls a parent with no name, or only a number, by the children', () => {
+    const nameless = [
+      person(1, { kind: 'parent', name: '60129219368', phone: '60129219368', contactId: 482 }),
+      person(2, { kind: 'student', name: 'KEW KAYDEN', parentId: 1 }),
+      person(3, { kind: 'student', name: 'KEW KAYVEN', parentId: 1 }),
+    ]
+    render(
+      <FamilyCard
+        family={familyOf(482, nameless)!}
+        childDetail={() => ({ age: null, label: null })}
+        chatOf={() => null}
+        onOpenChat={vi.fn()}
+        onOpenStudent={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText("KEW KAYDEN & KEW KAYVEN's Parent")).toBeInTheDocument()
+    expect(screen.getByText('Parent · +60129219368')).toBeInTheDocument()
+  })
+})

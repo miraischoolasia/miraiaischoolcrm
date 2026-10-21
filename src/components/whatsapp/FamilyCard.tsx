@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { UsersThree } from '@phosphor-icons/react'
 import type { Family } from '../../lib/family'
+import { parentDisplayName } from '../../lib/parentLabel'
 import type { Person } from '../../lib/peopleApi'
 import type { LeadOption } from '../../types/domain'
 import { PersonTags } from '../PersonTags'
@@ -39,8 +40,13 @@ function nameOf(person: Person) {
   return person.kind === 'student' ? 'Student (no name yet)' : 'Parent (no name yet)'
 }
 
-function initialsOf(person: Person) {
-  const letters = nameOf(person).replace(/[^\p{L}\p{N} ]/gu, '').trim().split(/\s+/)
+// A parent with no real name is called by the children: "KEW KAYDEN's Parent".
+function parentNameOf(parent: Person, children: Person[]) {
+  return parentDisplayName(parent.name, children.map((child) => child.name)) ?? nameOf(parent)
+}
+
+function initialsOf(person: Person, shown?: string) {
+  const letters = (shown ?? nameOf(person)).replace(/[^\p{L}\p{N} ]/gu, '').trim().split(/\s+/)
   return (letters.length > 1 ? letters[0][0] + letters[letters.length - 1][0] : (letters[0] ?? '?').slice(0, 2)).toUpperCase()
 }
 
@@ -128,10 +134,12 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
         <div>
           <div className={`${rowClass} ${parent.id === me.id ? thisChatClass : ''}`}>
             <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-600">
-              {initialsOf(parent)}
+              {initialsOf(parent, parentNameOf(parent, family.children))}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium text-slate-900">{nameOf(parent)}</span>
+              <span className="block truncate text-sm font-medium text-slate-900" title={parentNameOf(parent, family.children)}>
+                {parentNameOf(parent, family.children)}
+              </span>
               <span className="block truncate text-slate-500">
                 Parent{parent.phone ? ` · +${parent.phone}` : parent.contactId !== null ? ' · number hidden by WhatsApp' : ''}
               </span>

@@ -166,3 +166,14 @@ describe('LeadModal optional fields', () => {
     expect(onFieldChange).toHaveBeenCalledWith('secondParentPhone', '7')
   })
 })
+
+describe('LeadModal parent name', () => {
+  it('names the window by the parent as the lists call them when the lead has no name', () => {
+    renderModal({
+      editingLead: { id: 5, fullName: null, phone: '60129219368', children: [], convertedStudentId: null } as unknown as Lead,
+      parentName: "KEW KAYDEN's Parent",
+    })
+
+    expect(screen.getByRole('heading', { name: "Edit KEW KAYDEN's Parent" })).toBeInTheDocument()
+  })
+})

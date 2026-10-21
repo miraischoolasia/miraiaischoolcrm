@@ -655,7 +655,7 @@ export function ConversationList({
               <span className="min-w-0">
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate text-sm font-semibold text-slate-900"><Highlighted text={identity.title} query={isPerson ? search : undefined} /></span>
+                    <span className="truncate text-sm font-semibold text-slate-900" title={identity.title}><Highlighted text={identity.title} query={isPerson ? search : undefined} /></span>
                     {!channel && socialKindOf(conversation.meta.channel, conversation.meta.sender) === 'messenger' && (
                       <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
                         Messenger

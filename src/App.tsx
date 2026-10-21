@@ -304,6 +304,7 @@ import { useCalendarItems } from './hooks/useCalendarItems'
 import { useFollowUpReminders } from './hooks/useFollowUpReminders'
 import { useLeadChannels } from './hooks/useLeadChannels'
 import { contactSiblings, mergeLeads } from './lib/leadChannels'
+import { leadParentName } from './lib/parentLabel'
 import { upcomingZoomSlots } from './lib/zoomSlots'
 import { MOCK_SOCIAL_CHANNELS, MOCK_SOCIAL_LEADS } from './lib/mockSocialLeads'
 
@@ -7636,6 +7637,7 @@ function App() {
               <LeadsSection
                 isLoading={isLoading}
                 leads={isMockMode ? [...MOCK_SOCIAL_LEADS, ...leads] : leads}
+                studentNameOf={(studentId) => students.find((student) => student.id === studentId)?.name ?? null}
                 canEdit={can('leads', 'edit')}
                 canDelete={can('leads', 'delete')}
                 canConvert={can('leads', 'edit') && can('students', 'edit')}
@@ -7888,6 +7890,16 @@ function App() {
           leadOptions={leadOptions}
           onAddLeadOption={handleAddLeadOption}
           chats={editingLead ? leadChannels.rows.filter((row) => row.leadId === editingLead.id) : undefined}
+          parentName={
+            editingLead
+              ? leadParentName(
+                  editingLead,
+                  editingLead.convertedStudentId !== null
+                    ? (students.find((student) => student.id === editingLead.convertedStudentId)?.name ?? null)
+                    : null,
+                )
+              : null
+          }
           formSubmissions={editingLeadFormSubmissions}
           isLoadingFormSubmissions={isLoadingEditingLeadForms}
           focusFormAnswers={focusFormAnswers}

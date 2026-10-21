@@ -12,6 +12,7 @@ import {
   type LeadChannelKind,
 } from '../../lib/leadChannels'
 import { cn } from '../../lib/cn'
+import { leadParentName } from '../../lib/parentLabel'
 import { formatDate, getTodayString, parseLocalDate } from '../../domain/studentStatus'
 import { leadStatusOptions } from '../../lib/constants'
 import { stageLabel, stageStyle } from '../../lib/leadStages'
@@ -115,6 +116,9 @@ type LeadsSectionProps = {
   // The chats each lead has (WhatsApp numbers, Messenger Pages, Instagram): shown under the phone number and
   // filterable.
   leadChannels?: LeadChannel[]
+  // The name of an enrolled student, so a parent with no name of their own is called by the student they have
+  // ("KEW KAYDEN's Parent") when no child is written on the lead.
+  studentNameOf?: (studentId: number) => string | null
 }
 
 export function LeadsSection({
@@ -140,7 +144,11 @@ export function LeadsSection({
   teacherNames,
   onBulkAction,
   leadChannels = [],
+  studentNameOf,
 }: LeadsSectionProps) {
+  // The parent as the lists call them: the real name, else "<children>'s Parent"; null leaves the number as it was.
+  const parentNameOf = (lead: Lead) =>
+    leadParentName(lead, lead.convertedStudentId !== null ? (studentNameOf?.(lead.convertedStudentId) ?? null) : null)
   const [view, setView] = useState<'pipeline' | 'board' | 'children' | 'dashboard'>('pipeline')
   // The Children view: one row per child. '' = every age.
   const [childAge, setChildAge] = useState('')
@@ -858,9 +866,9 @@ export function LeadsSection({
                 <li key={lead.id} className="space-y-3 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="font-semibold text-slate-900">
-                        {lead.fullName || 'Unnamed Lead'}
-                        {isHiddenNumberName(lead.fullName, lead.phone) && <HiddenNumberNote />}
+                      <div className="font-semibold text-slate-900" title={parentNameOf(lead) ?? undefined}>
+                        {parentNameOf(lead) ?? (lead.fullName || 'Unnamed Lead')}
+                        {parentNameOf(lead) === null && isHiddenNumberName(lead.fullName, lead.phone) && <HiddenNumberNote />}
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-slate-500">
                         <SourceLink
@@ -1072,10 +1080,10 @@ export function LeadsSection({
                         </div>
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-600">
-                        {lead.fullName && (
-                          <div className="font-semibold text-slate-900">
-                            {lead.fullName}
-                            {isHiddenNumberName(lead.fullName, lead.phone) && <HiddenNumberNote />}
+                        {(parentNameOf(lead) ?? lead.fullName) && (
+                          <div className="max-w-[260px] truncate font-semibold text-slate-900" title={parentNameOf(lead) ?? lead.fullName ?? undefined}>
+                            {parentNameOf(lead) ?? lead.fullName}
+                            {parentNameOf(lead) === null && isHiddenNumberName(lead.fullName, lead.phone) && <HiddenNumberNote />}
                           </div>
                         )}
                         {lead.phone || channelsOfLead.has(lead.id) ? (

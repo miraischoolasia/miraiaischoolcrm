@@ -562,7 +562,7 @@ export function ChatPanel({
         >
           <Avatar initials={identity.initials} tone={parentTone} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold text-slate-900">{identity.title}</span>
+            <span className="block truncate text-sm font-semibold text-slate-900" title={identity.title}>{identity.title}</span>
             <span className={cn('block truncate text-xs', identity.hasRealPhone ? 'text-slate-500' : 'text-amber-700')}>
               {identity.subtitle}
             </span>

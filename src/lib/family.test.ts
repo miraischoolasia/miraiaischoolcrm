@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { familyOf } from './family'
+import { familyChildNames, familyOf } from './family'
 import type { Person } from './peopleApi'
 
 const person = (id: number, patch: Partial<Person>): Person => ({
@@ -57,5 +57,17 @@ describe('familyOf', () => {
   it('has no family for a contact nobody has placed, or for a chat with no person', () => {
     expect(familyOf(900, people)).toBeNull()
     expect(familyOf(12345, people)).toBeNull()
+  })
+})
+
+describe('familyChildNames', () => {
+  it('lists the children of a parent chat, nobody twice', () => {
+    expect(familyChildNames(482, [...people, person(7, { kind: 'student', name: ' ethan ', parentId: 1 })])).toEqual(['Teoh Tze Yu', 'Ethan'])
+  })
+
+  it('is empty for a student, a contact or an unknown chat', () => {
+    expect(familyChildNames(700, people)).toEqual([])
+    expect(familyChildNames(900, people)).toEqual([])
+    expect(familyChildNames(1, people)).toEqual([])
   })
 })

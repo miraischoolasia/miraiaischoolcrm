@@ -1,4 +1,5 @@
 import { LinkBreak } from '@phosphor-icons/react'
+import { parentDisplayName, realNameOf, leadParentName } from '../../lib/parentLabel'
 import type { Lead } from '../../types/domain'
 
 // Who the chat belongs to, and a way to say it is the wrong lead.
@@ -20,8 +21,13 @@ export function LeadHeader({
 }) {
   const forChild = parentName !== undefined
   const name = forChild
-    ? lead.fullName || parentName || "Parent's name not saved"
-    : lead.fullName || lead.children[0]?.name || lead.phone || 'Unnamed lead'
+    ? (realNameOf(lead.fullName) ??
+      realNameOf(parentName) ??
+      parentDisplayName(null, lead.children.map((child) => child.name)) ??
+      "Parent's name not saved")
+    : isStudent
+      ? lead.fullName || lead.children[0]?.name || lead.phone || 'Unnamed lead'
+      : (leadParentName(lead) ?? (lead.fullName || lead.children[0]?.name || lead.phone || 'Unnamed lead'))
   return (
     <div className="flex items-start justify-between gap-2 text-xs">
       <div className="min-w-0">
@@ -29,7 +35,9 @@ export function LeadHeader({
           {forChild ? "Family lead · the parent" : isStudent ? 'Lead · the student themself' : 'Lead'}
           {byPhone ? ' (found by phone number)' : ''}
         </p>
-        <h4 className="truncate text-sm font-semibold text-slate-900">{name}</h4>
+        <h4 className="truncate text-sm font-semibold text-slate-900" title={name}>
+          {name}
+        </h4>
       </div>
       {!byPhone && (
         <button

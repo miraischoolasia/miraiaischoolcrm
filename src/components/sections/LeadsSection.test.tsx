@@ -806,3 +806,28 @@ describe('LeadsSection hidden WhatsApp number', () => {
   })
 })
 
+describe('LeadsSection parent name', () => {
+  it('calls a lead with no name, or only a number, by its children', () => {
+    renderSection([
+      { ...makeLead(1, null), fullName: null, phone: '60129219368', children: [{ name: 'KEW KAYDEN', age: 9, phone: null }, { name: 'KEW KAYVEN', age: 7, phone: null }] },
+    ])
+
+    expect(within(screen.getByRole('table')).getByText("KEW KAYDEN & KEW KAYVEN's Parent")).toBeInTheDocument()
+    expect(within(screen.getByRole('table')).getByText('60129219368')).toBeInTheDocument()
+  })
+
+  it('keeps the real name of the parent', () => {
+    renderSection([{ ...makeLead(1, null), fullName: 'Mrs Kew', children: [{ name: 'KEW KAYDEN', age: 9, phone: null }] }])
+
+    expect(within(screen.getByRole('table')).getByText('Mrs Kew')).toBeInTheDocument()
+    expect(screen.queryByText("KEW KAYDEN's Parent")).not.toBeInTheDocument()
+  })
+
+  it('uses the student a lead became when no child is written on it', () => {
+    renderSection([{ ...makeLead(1, null), fullName: null, convertedStudentId: 77, status: 'converted' }], {
+      studentNameOf: (id) => (id === 77 ? 'KEW KAYDEN' : null),
+    })
+
+    expect(within(screen.getByRole('table')).getByText("KEW KAYDEN's Parent")).toBeInTheDocument()
+  })
+})

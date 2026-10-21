@@ -2,6 +2,8 @@ import type { WhatsAppTarget } from '../WhatsAppLink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { InstagramLogo, MessengerLogo, WhatsappLogo } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
+import { familyChildNames } from '../../lib/family'
+import { chatNameLabel } from '../../lib/parentLabel'
 import { CHANNEL_LABEL, channelsByLead, contactSiblings, leadOfContacts, placeOf, type LeadChannel } from '../../lib/leadChannels'
 import { chatSwitchOptions, type ChatSwitchOption } from '../../lib/chatSwitch'
 import { createChatwootClient, type Sender } from '../../lib/chatwootClient'
@@ -158,6 +160,13 @@ export function WhatsAppInbox({
   )
   const inbox = useWhatsAppInbox(client, currentUser, active, allowedInboxIds, siblings, leadOfContact, copyLink, instanceOf)
   const waActions = waActionsFor(instanceOf(inbox.selected?.inbox_id))
+  // The family table: who is whose parent. The database keeps it in step with leads and students; the
+  // page adds each WhatsApp contact and what the team ties together by hand.
+  const { people, refresh: refreshPeople } = usePeople({
+    enabled: active,
+    canEdit: crm.canEditLeads || crm.canEditStudents,
+    conversations: inbox.conversations,
+  })
   const [tab, setTab] = useState<InboxTab>('chats')
   const [tagId, setTagId] = useState<number | null>(null)
   const [sourceId, setSourceId] = useState<number | null>(null)
@@ -246,25 +255,20 @@ export function WhatsAppInbox({
   // or, once the team said who is on it, "Albee's parent" / "Albee (student)".
   const chatLabelOf = useCallback(
     (conversation: ChatwootConversation) => {
-      const leadName = leadNameOf(conversation)
-      const role = getChatRole(conversation)
-      const studentNames = studentsOf(conversation).map((student) => student.name)
+      const person = people.find((entry) => entry.contactId === conversation.meta.sender.id)
       // A lead that is not a student yet is named by the children written on it.
       const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
-      const names =
-        studentNames.length > 0
-          ? studentNames
-          : (lead?.children ?? []).map((child) => child.name?.trim()).filter((name): name is string => Boolean(name))
-      if (!role || names.length === 0) {
-        return leadName
-      }
-      if (role === 'student') {
-        return `${names[0]} (${studentNames.length > 0 ? 'student' : 'child'})`
-      }
-      const parentOf = `${names.join(' & ')}'s parent`
-      return leadName ? `${leadName} · ${parentOf}` : parentOf
+      return chatNameLabel({
+        leadName: leadNameOf(conversation),
+        role: getChatRole(conversation),
+        personKind: person?.kind ?? null,
+        personName: person?.name ?? null,
+        studentNames: studentsOf(conversation).map((student) => student.name),
+        familyNames: person?.kind === 'parent' ? familyChildNames(conversation.meta.sender.id, people) : [],
+        leadChildNames: (lead?.children ?? []).map((child) => child.name?.trim()),
+      })
     },
-    [leadNameOf, studentsOf, resolveLead],
+    [leadNameOf, studentsOf, resolveLead, people],
   )
   // Every name a chat can be found by in the search box.
   const searchNamesOf = useCallback(
@@ -275,9 +279,10 @@ export function WhatsAppInbox({
         lead?.fullName ?? '',
         ...(lead?.children ?? []).map((child) => child.name ?? ''),
         ...studentsOf(conversation).map((student) => student.name ?? ''),
+        ...familyChildNames(conversation.meta.sender.id, people),
       ].filter((name) => name.trim() !== '')
     },
-    [chatLabelOf, resolveLead, studentsOf],
+    [chatLabelOf, resolveLead, studentsOf, people],
   )
   const studentLabelsOf = useCallback(
     (conversation: ChatwootConversation) => [
@@ -542,13 +547,6 @@ export function WhatsAppInbox({
     () => automation.items.filter((entry) => needsApproval(entry, automation.autoRuleKeys, Date.now())).length,
     [automation.items, automation.autoRuleKeys],
   )
-  // The family table: who is whose parent. The database keeps it in step with leads and students; the
-  // page adds each WhatsApp contact and what the team ties together by hand.
-  const { people, refresh: refreshPeople } = usePeople({
-    enabled: active,
-    canEdit: crm.canEditLeads || crm.canEditStudents,
-    conversations: inbox.conversations,
-  })
   const contactOf = useCallback(
     (conversationId: number) =>
       inbox.conversations.find((conversation) => conversation.id === conversationId)?.meta.sender.id ?? null,
