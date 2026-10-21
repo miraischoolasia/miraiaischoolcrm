@@ -75,18 +75,19 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
   // The tags just chosen show at once, until they are saved and the family is read again.
   const [chosen, setChosen] = useState<Map<number, number[]>>(new Map())
 
-  // A person with tags, or one the team may tag, gets the tag line under their row.
-  function tagLine(person: Person) {
+  // Tags belong to the family: the parent has the one bar the team edits (at the top of the card). A child keeps
+  // the tags already on them, shown as small chips that cannot be changed here (the student page still edits them).
+  function tagLine(person: Person, editable: boolean) {
     if (!tags) {
       return null
     }
-    const canEdit = tags.canEdit(person)
+    const canEdit = editable && tags.canEdit(person)
     const selected = chosen.get(person.id) ?? person.tagIds ?? []
     if (!canEdit && selected.length === 0) {
       return null
     }
     return (
-      <div className="mt-1 pl-1">
+      <div className={editable ? 'pl-1' : 'mt-1 pl-1'}>
         <PersonTags
           tags={tags.options}
           selectedIds={selected}
@@ -130,6 +131,8 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
         Family
       </p>
 
+      {parent ? tagLine(parent, true) : null}
+
       {parent ? (
         <div>
           <div className={`${rowClass} ${parent.id === me.id ? thisChatClass : ''}`}>
@@ -150,7 +153,6 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
               openChatLink(parent)
             )}
           </div>
-          {tagLine(parent)}
         </div>
       ) : (
         <div className={`${rowClass} border-dashed`}>
@@ -204,7 +206,7 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
                     <span className="rounded-full bg-[#ffe4f2] px-2 py-0.5 text-[11px] font-medium text-[#be185d]">This chat</span>
                   ) : null}
                 </div>
-                {tagLine(tagPerson)}
+                {tagLine(tagPerson, false)}
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 pl-1">
                   {current.child.studentId !== null && onOpenStudent ? (
                     <button type="button" onClick={() => onOpenStudent(current.child.studentId as number)} className={linkClass}>

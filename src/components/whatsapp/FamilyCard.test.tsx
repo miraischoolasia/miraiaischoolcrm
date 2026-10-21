@@ -129,36 +129,54 @@ describe('FamilyCard', () => {
     expect(screen.queryByRole('button', { name: /Add a child/ })).not.toBeInTheDocument()
   })
 
-  it('shows the tags of the parent and a child, and saves a tag put on a child', async () => {
+  describe('tags of the family', () => {
     const tag = (id: number, label: string) => ({ id, kind: 'tag' as const, label, isActive: true, legacyKey: null, color: '#dc2626' })
     const withTags = [
       person(1, { kind: 'parent', name: 'Yvonne', phone: '60164655564', contactId: 482, tagIds: [1] }),
-      person(2, { kind: 'student', name: 'Teoh Tze Yu', parentId: 1, studentId: 56 }),
+      person(2, { kind: 'student', name: 'Teoh Tze Yu', parentId: 1, studentId: 56, tagIds: [2] }),
+      person(3, { kind: 'student', name: 'Teoh Tze Yi', parentId: 1, studentId: 57 }),
     ]
-    const family = familyOf(482, withTags)!
-    // Still saving: the chosen tag already shows.
-    const onChange = vi.fn(() => new Promise<void>(() => undefined))
-    render(
-      <FamilyCard
-        family={family}
-        childDetail={() => ({ age: null, label: null })}
-        chatOf={() => null}
-        onOpenChat={vi.fn()}
-        tags={{
-          options: [tag(1, 'Crystal'), tag(2, 'Violet')],
-          canEdit: (p) => p.studentId !== null,
-          onChange,
-          onCreate: vi.fn(),
-        }}
-      />,
-    )
+    const renderCard = (onChange: (person: Person, tagIds: number[]) => Promise<void>, canEdit: boolean) =>
+      render(
+        <FamilyCard
+          family={familyOf(482, withTags)!}
+          childDetail={() => ({ age: null, label: null })}
+          chatOf={() => null}
+          onOpenChat={vi.fn()}
+          tags={{ options: [tag(1, 'Crystal'), tag(2, 'Violet'), tag(3, 'Gold')], canEdit: () => canEdit, onChange, onCreate: vi.fn() }}
+        />,
+      )
 
-    // The parent's tag is only shown (the account may not change a parent); the child's tags can be changed.
-    expect(screen.getByTitle('Crystal')).toBeInTheDocument()
-    expect(screen.getAllByLabelText('Add a tag')).toHaveLength(1)
-    await userEvent.selectOptions(screen.getByLabelText('Add a tag'), 'Violet')
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ id: 2 }), [2])
-    expect(screen.getByTitle('Violet')).toBeInTheDocument()
+    it('has one tag bar for the whole family, at the top, saved on the parent', async () => {
+      // Still saving: the chosen tag already shows.
+      const onChange = vi.fn((_person: Person, _ids: number[]) => new Promise<void>(() => undefined))
+      renderCard(onChange, true)
+
+      expect(screen.getAllByLabelText('Add a tag')).toHaveLength(1)
+      const family = screen.getByRole('region', { name: 'Family' })
+      const bar = screen.getByLabelText('Add a tag')
+      const parentRow = screen.getByText('Yvonne')
+      // The bar comes before the parent row, which comes before the children.
+      expect(family.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_CONTAINED_BY).toBeTruthy()
+      expect(bar.compareDocumentPosition(parentRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      await userEvent.selectOptions(bar, 'Gold')
+      expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), [1, 3])
+    })
+
+    it('still shows the tags already on a child, as chips that cannot be changed here', () => {
+      renderCard(async () => undefined, true)
+
+      expect(screen.getByTitle('Crystal')).toBeInTheDocument()
+      expect(screen.getByTitle('Violet')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Remove tag Violet')).not.toBeInTheDocument()
+    })
+
+    it('shows the family tags but no editor to an account that may not edit', () => {
+      renderCard(async () => undefined, false)
+
+      expect(screen.getByTitle('Crystal')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Add a tag')).not.toBeInTheDocument()
+    })
   })
 })
 
