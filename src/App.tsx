@@ -226,6 +226,7 @@ import { teamsOf } from './lib/staffTeams'
 import { fetchHoursInUse } from './lib/staffHours'
 import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
+import { AppChatPanel } from './components/appChat/AppChatPanel'
 import { AiKnowledgeSection } from './components/sections/AiKnowledgeSection'
 import { ContentStudioSection } from './components/contentStudio/ContentStudioSection'
 import { ContentLibrarySection } from './components/contentStudio/ContentLibrarySection'
@@ -245,6 +246,7 @@ import { getChatwootUrl } from './lib/chatwoot'
 import { createChatwootClient } from './lib/chatwootClient'
 import { useWhatsAppUnread } from './hooks/useWhatsAppUnread'
 import { useInboxCopyLive } from './hooks/useInboxCopyLive'
+import { useAppChat } from './hooks/useAppChat'
 import { chatTargetForLead } from './lib/leadChat'
 import { useLeadFormAnswers } from './hooks/useLeadFormAnswers'
 import { useUnreadFormSubmissions } from './hooks/useUnreadFormSubmissions'
@@ -886,6 +888,9 @@ function App() {
   const seesAllClasses = can('calendar') || can('classrooms') || can('students')
   // Same rule as can_edit_classes(): may set a class day's substitute teacher.
   const canEditClasses = can('calendar', 'edit') || can('classrooms', 'edit') || can('students', 'edit')
+  // Messages students send from the student app (when the school turned it on): every staff login reads the
+  // chats written to it in the Inbox, with or without the Inbox tick; an admin reads them all.
+  const appChat = useAppChat(Boolean(currentSession?.teacherId))
   const allowedSections = useMemo(() => {
     const sections: AppSection[] = []
     // A teacher's own day, or the admin's / staff's overview of the school.
@@ -894,7 +899,7 @@ function App() {
     }
     if (can('leads')) sections.push('leads')
     // Same ticks as Leads: whoever follows up leads answers their WhatsApp.
-    if (can('inbox') && chatwootUrl) sections.push('whatsapp')
+    if ((can('inbox') && chatwootUrl) || appChat.on) sections.push('whatsapp')
     // Anyone who can see Leads can look at the automations; only an admin changes them.
     if (can('automations')) sections.push('automations')
     // What the AI reply drafts know about the school; same rule: everybody who sees Leads reads it, an admin edits.
@@ -919,7 +924,7 @@ function App() {
     if (can('team_replies')) sections.push('team-replies')
     if (can('activity')) sections.push('activity')
     return sections
-  }, [can, isAdmin, isTeacherAccount])
+  }, [can, isAdmin, isTeacherAccount, appChat.on])
   const visibleSection = allowedSections.includes(activeSection) ? activeSection : null
   useEffect(() => {
     if (!currentSession) return
@@ -2402,7 +2407,7 @@ function App() {
           item.key === 'forms'
             ? { count: unreadFormSubmissions, noun: 'new submissions' }
             : item.key === 'whatsapp'
-              ? { count: unreadWhatsApp, noun: 'chats waiting' }
+              ? { count: unreadWhatsApp + appChat.unread, noun: 'chats waiting' }
               : undefined,
       })),
     // Windows that used to sit behind a button on a page.
@@ -7696,7 +7701,7 @@ function App() {
 
             {/* Once opened, the WhatsApp page stays mounted behind other pages, so coming back to it
                 finds the same chat, search, filters and scroll position. */}
-            {(visibleSection === 'whatsapp' || hasOpenedWhatsApp) && chatwootUrl && (
+            {(visibleSection === 'whatsapp' || hasOpenedWhatsApp) && chatwootUrl && canUseWhatsApp && (
               <div className={visibleSection === 'whatsapp' ? undefined : 'hidden'}>
                 <WhatsAppSection
                   chatwootUrl={chatwootUrl}
@@ -7722,7 +7727,14 @@ function App() {
                     onReload: whatsAppNumbers.reload,
                     problems: channelAlerts.problemOf,
                   }}
+                  appChat={{ state: appChat, isAdmin }}
                 />
+              </div>
+            )}
+            {/* Without the Inbox tick: only the student app chats written to this login. */}
+            {visibleSection === 'whatsapp' && !(chatwootUrl && canUseWhatsApp) && (
+              <div className="h-[calc(100dvh-234px)] min-h-[520px]">
+                <AppChatPanel chat={appChat} isAdmin={isAdmin} />
               </div>
             )}
 

@@ -24,9 +24,13 @@ export const SIZE_LABELS: Record<ContentSize, string> = {
 
 export const KIND_LABELS: Record<ContentKind, string> = {
   single: 'Single poster',
-  carousel: 'Carousel',
+  carousel: 'Carousel (swipe pages)',
   caption: 'Caption only',
 }
+
+export type SourceMode = 'manual' | 'upload'
+export type KindCounts = Record<ContentKind, number>
+export const MAX_PER_KIND = 30
 
 export type ContentProvider = 'gemini' | 'openai'
 
@@ -36,6 +40,8 @@ export type StudioSettings = {
   mustInclude: string[]
   claimLimit: number
   dailyLimit: number
+  // Pictures the AI may draw per day (phase 2).
+  dailyImageLimit: number
   textProvider: ContentProvider
   imageProvider: ContentProvider
 }
@@ -46,6 +52,7 @@ export const DEFAULT_SETTINGS: StudioSettings = {
   mustInclude: [],
   claimLimit: 3,
   dailyLimit: 60,
+  dailyImageLimit: 40,
   textProvider: 'gemini',
   imageProvider: 'gemini',
 }
@@ -70,6 +77,10 @@ export type BriefFile = { path: string; name: string; type: string }
 
 export type Brief = {
   id: number
+  // manual = typed by the team; upload = the AI read the uploaded material.
+  sourceMode: SourceMode
+  sourceText: string
+  counts: KindCounts
   title: string
   topic: string
   keyPoints: string
@@ -79,9 +90,7 @@ export type Brief = {
   files: BriefFile[]
   styleIds: number[]
   angleIds: number[]
-  itemCount: number
   sizes: ContentSize[]
-  kind: ContentKind
   carouselPages: number
   archived: boolean
   createdAt: string
@@ -90,6 +99,9 @@ export type Brief = {
 export type BriefDraft = Omit<Brief, 'id' | 'archived' | 'createdAt'>
 
 export const EMPTY_BRIEF: BriefDraft = {
+  sourceMode: 'manual',
+  sourceText: '',
+  counts: { single: 6, carousel: 0, caption: 0 },
   title: '',
   topic: '',
   keyPoints: '',
@@ -99,9 +111,7 @@ export const EMPTY_BRIEF: BriefDraft = {
   files: [],
   styleIds: [],
   angleIds: [],
-  itemCount: 6,
   sizes: ['1:1'],
-  kind: 'single',
   carouselPages: 5,
 }
 
@@ -198,9 +208,9 @@ export function isFullyClaimed(item: Pick<LibraryItem, 'claimedCount' | 'claimLi
   return item.myClaimedAt === null && item.claimedCount >= item.claimLimit
 }
 
-// "2/3 claimed".
+// "2/3 taken".
 export function claimLabel(item: Pick<LibraryItem, 'claimedCount' | 'claimLimit'>): string {
-  return `${Math.min(item.claimedCount, item.claimLimit)}/${item.claimLimit} claimed`
+  return `${Math.min(item.claimedCount, item.claimLimit)}/${item.claimLimit} taken`
 }
 
 // What a staff member copies when claiming: the caption. Phase 2 adds the pictures to download.
@@ -262,6 +272,7 @@ type SettingsRow = {
   must_include: string[]
   claim_limit: number
   daily_limit: number
+  daily_image_limit?: number
   text_provider: ContentProvider
   image_provider: ContentProvider
 }
@@ -277,6 +288,7 @@ export async function fetchStudioSettings(): Promise<StudioSettings> {
     mustInclude: row.must_include ?? [],
     claimLimit: row.claim_limit ?? 3,
     dailyLimit: row.daily_limit ?? 60,
+    dailyImageLimit: row.daily_image_limit ?? 40,
     textProvider: row.text_provider === 'openai' ? 'openai' : 'gemini',
     imageProvider: row.image_provider === 'openai' ? 'openai' : 'gemini',
   }
@@ -290,6 +302,7 @@ export async function saveStudioSettings(change: Partial<StudioSettings>): Promi
   if (change.mustInclude !== undefined) payload.must_include = change.mustInclude
   if (change.claimLimit !== undefined) payload.claim_limit = change.claimLimit
   if (change.dailyLimit !== undefined) payload.daily_limit = change.dailyLimit
+  if (change.dailyImageLimit !== undefined) payload.daily_image_limit = change.dailyImageLimit
   if (change.textProvider !== undefined) payload.text_provider = change.textProvider
   if (change.imageProvider !== undefined) payload.image_provider = change.imageProvider
   const { error } = await requireSupabase().rpc('save_content_studio_settings', { p: payload })
@@ -366,6 +379,11 @@ export async function saveAngle(id: number | null, draft: AngleDraft): Promise<v
 
 type BriefRow = {
   id: number
+  source_mode: SourceMode | null
+  source_text: string | null
+  single_count: number | null
+  carousel_count: number | null
+  caption_count: number | null
   title: string
   topic: string
   key_points: string
@@ -383,9 +401,23 @@ type BriefRow = {
   created_at: string
 }
 
+// A phase-1 campaign has no counts yet: its item_count of its one kind.
+export function countsOf(row: Pick<BriefRow, 'single_count' | 'carousel_count' | 'caption_count' | 'item_count' | 'kind'>): KindCounts {
+  const counts = { single: row.single_count ?? 0, carousel: row.carousel_count ?? 0, caption: row.caption_count ?? 0 }
+  if (counts.single + counts.carousel + counts.caption > 0) return counts
+  return { single: 0, carousel: 0, caption: 0, [row.kind ?? 'single']: row.item_count ?? 0 }
+}
+
+export function totalCount(counts: KindCounts): number {
+  return counts.single + counts.carousel + counts.caption
+}
+
 function briefOf(row: BriefRow): Brief {
   return {
     id: row.id,
+    sourceMode: row.source_mode === 'upload' ? 'upload' : 'manual',
+    sourceText: row.source_text ?? '',
+    counts: countsOf(row),
     title: row.title,
     topic: row.topic,
     keyPoints: row.key_points,
@@ -395,9 +427,7 @@ function briefOf(row: BriefRow): Brief {
     files: Array.isArray(row.files) ? row.files : [],
     styleIds: row.style_ids ?? [],
     angleIds: row.angle_ids ?? [],
-    itemCount: row.item_count,
     sizes: row.sizes ?? ['1:1'],
-    kind: row.kind,
     carouselPages: row.carousel_pages,
     archived: row.archived,
     createdAt: row.created_at,
@@ -405,7 +435,13 @@ function briefOf(row: BriefRow): Brief {
 }
 
 function briefRowOf(draft: BriefDraft) {
+  const clamp = (value: number) => Math.min(MAX_PER_KIND, Math.max(0, Math.floor(value) || 0))
   return {
+    source_mode: draft.sourceMode,
+    source_text: draft.sourceText,
+    single_count: clamp(draft.counts.single),
+    carousel_count: clamp(draft.counts.carousel),
+    caption_count: clamp(draft.counts.caption),
     title: draft.title.trim(),
     topic: draft.topic,
     key_points: draft.keyPoints,
@@ -415,9 +451,7 @@ function briefRowOf(draft: BriefDraft) {
     files: draft.files,
     style_ids: draft.styleIds,
     angle_ids: draft.angleIds,
-    item_count: draft.itemCount,
     sizes: draft.sizes,
-    kind: draft.kind,
     carousel_pages: draft.carouselPages,
   }
 }
@@ -586,11 +620,13 @@ export async function fetchClaims(itemIds: number[]): Promise<ItemClaim[]> {
   }))
 }
 
-export async function fetchUsageToday(): Promise<{ used: number; limit: number }> {
+export type UsageToday = { used: number; limit: number; imagesUsed: number; imagesLimit: number }
+
+export async function fetchUsageToday(): Promise<UsageToday> {
   const { data, error } = await requireSupabase().rpc('content_ai_today')
   if (error) throw error
-  const row = data as { used?: number; limit?: number } | null
-  return { used: row?.used ?? 0, limit: row?.limit ?? 60 }
+  const row = data as { used?: number; limit?: number; images_used?: number; images_limit?: number } | null
+  return { used: row?.used ?? 0, limit: row?.limit ?? 60, imagesUsed: row?.images_used ?? 0, imagesLimit: row?.images_limit ?? 40 }
 }
 
 export async function fetchUsage(limit = 50): Promise<UsageRow[]> {
@@ -716,8 +752,8 @@ export function generatePlan(briefId: number) {
   }))
 }
 
-export function generateMore(briefId: number, count: number) {
-  return callAi({ mode: 'more', briefId, count }, (data) => ({
+export function generateMore(briefId: number, count: number, kind: ContentKind) {
+  return callAi({ mode: 'more', briefId, count, kind }, (data) => ({
     added: typeof data.added === 'number' ? data.added : 0,
     warning: typeof data.warning === 'string' ? data.warning : '',
   }))
@@ -725,4 +761,44 @@ export function generateMore(briefId: number, count: number) {
 
 export function readPdf(briefId: number, path: string) {
   return callAi({ mode: 'read_pdf', briefId, path }, (data) => (typeof data.text === 'string' ? data.text : ''))
+}
+
+export type MaterialAnalysis = {
+  title: string
+  topic: string
+  keyPoints: string
+  audience: string
+  callToAction: string
+  allText: string
+}
+
+// The AI reads every file of the campaign and its pasted text, and fills in (and saves) its details.
+export function analyzeMaterial(briefId: number) {
+  return callAi({ mode: 'analyze', briefId }, (data) => {
+    const raw = (data.analysis ?? {}) as Record<string, unknown>
+    const pick = (key: string) => (typeof raw[key] === 'string' ? (raw[key] as string) : '')
+    return {
+      title: pick('title'),
+      topic: pick('topic'),
+      keyPoints: pick('keyPoints'),
+      audience: pick('audience'),
+      callToAction: pick('callToAction'),
+      allText: pick('allText'),
+    } satisfies MaterialAnalysis
+  })
+}
+
+export type CampaignCounts = { draft: number; approved: number; rejected: number }
+
+// How many posts each campaign has in each state, for the campaign list.
+export async function fetchCampaignCounts(): Promise<Map<number, CampaignCounts>> {
+  const { data, error } = await requireSupabase().from('content_items').select('brief_id, status').limit(5000)
+  if (error) throw error
+  const result = new Map<number, CampaignCounts>()
+  for (const row of (data ?? []) as { brief_id: number; status: ItemStatus }[]) {
+    const counts = result.get(row.brief_id) ?? { draft: 0, approved: 0, rejected: 0 }
+    counts[row.status] += 1
+    result.set(row.brief_id, counts)
+  }
+  return result
 }

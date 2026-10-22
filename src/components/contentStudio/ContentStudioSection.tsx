@@ -9,7 +9,7 @@ import {
   type StudioSettings,
   type StudioStyle,
 } from '../../lib/contentStudio'
-import { BriefsPanel } from './BriefsPanel'
+import { CampaignsPanel } from './CampaignsPanel'
 import { ReviewPanel } from './ReviewPanel'
 import { SettingsPanel } from './SettingsPanel'
 import { StylesAnglesPanel } from './StylesAnglesPanel'
@@ -23,18 +23,19 @@ type ContentStudioSectionProps = {
   teacherNames: Map<number, string>
 }
 
-type Tab = 'briefs' | 'review' | 'library' | 'settings'
+type Tab = 'campaigns' | 'review' | 'library' | 'settings'
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'briefs', label: 'Campaigns' },
-  { key: 'review', label: 'Review' },
+  { key: 'campaigns', label: 'Campaigns' },
+  { key: 'review', label: 'Approve posts' },
   { key: 'library', label: 'Styles & angles' },
   { key: 'settings', label: 'Settings' },
 ]
 
-// Marketing > Content Studio: briefs → AI plan → review. Approved posts go to the Content Library.
+// Marketing > Content Studio: campaigns (material → what to make → post ideas → approve), approving across
+// campaigns, styles and angles, settings. Approved posts go to the Content Library.
 export function ContentStudioSection({ canEdit, isAdmin, teacherNames }: ContentStudioSectionProps) {
-  const [tab, setTab] = useState<Tab>('briefs')
+  const [tab, setTab] = useState<Tab>('campaigns')
   const [settings, setSettings] = useState<StudioSettings | null>(null)
   const [styles, setStyles] = useState<StudioStyle[]>([])
   const [angles, setAngles] = useState<StudioAngle[]>([])
@@ -63,8 +64,8 @@ export function ContentStudioSection({ canEdit, isAdmin, teacherNames }: Content
       {problem && <Notice notice={{ text: problem, isError: true }} />}
       {settings === null ? (
         <p className="py-10 text-center text-sm text-slate-500">Loading…</p>
-      ) : tab === 'briefs' ? (
-        <BriefsPanel canEdit={canEdit} settings={settings} styles={styles} angles={angles} />
+      ) : tab === 'campaigns' ? (
+        <CampaignsPanel canEdit={canEdit} settings={settings} styles={styles} angles={angles} />
       ) : tab === 'review' ? (
         <ReviewPanel canEdit={canEdit} settings={settings} styles={styles} angles={angles} />
       ) : tab === 'library' ? (

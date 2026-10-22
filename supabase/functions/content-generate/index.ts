@@ -1,8 +1,10 @@
 // Content Studio's AI (Marketing > Content Studio).
 //
 // POST { mode: 'plan', briefId }               the brief's first plan: item_count rows
-// POST { mode: 'more', briefId, count }        "a few more" rows, different from the ones already there
+// POST { mode: 'more', briefId, count, kind }  more rows of one type, different from the ones already there
 // POST { mode: 'read_pdf', briefId, path }     the words in one of the brief's PDFs (returned, not saved)
+// POST { mode: 'analyze', briefId }            the AI reads all the campaign's files and pasted text and
+//                                              fills in its details (saved on the campaign and returned)
 //
 // The caller must be allowed to edit Content Studio (has_permission('content_studio', 'edit')), checked as
 // themselves. Plan rows are saved as drafts in content_items; every call is written to content_ai_usage, and
@@ -17,14 +19,18 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { encodeBase64 } from 'jsr:@std/encoding@1/base64'
 import {
+  ANALYZE_SYSTEM_PROMPT,
   CONTENT_SIZES,
   MAX_PDF_BYTES,
   PDF_SYSTEM_PROMPT,
   addMustInclude,
+  buildAnalyzePrompt,
   buildSlots,
   buildSystemPrompt,
   buildUserPrompt,
+  kindsFor,
   malaysiaDayStart,
+  parseAnalysis,
   parsePdfText,
   parsePlan,
   validateRequest,
@@ -32,6 +38,7 @@ import {
   type ContentBrief,
   type ContentKind,
   type ContentSize,
+  type KindCounts,
   type ContentStyle,
   type PlanRow,
 } from './logic.ts'
@@ -51,8 +58,11 @@ function jsonResponse(body: unknown, status: number) {
 
 const DEFAULT_MODEL = 'gemini-3.5-flash-lite'
 const DEFAULT_SCHOOL_NAME = 'Mirai AI School'
-// Rows asked for in one question; a bigger plan is asked in parts at the same time.
+// Rows asked for in one question; a bigger plan is asked in parts, a few at the same time.
 const ROWS_PER_QUESTION = 6
+const QUESTIONS_AT_ONCE = 4
+// All the files of one campaign the AI reads at once.
+const MAX_MATERIAL_BYTES = 18 * 1024 * 1024
 
 type Part = { text: string } | { inline_data: { mime_type: string; data: string } }
 
@@ -204,14 +214,36 @@ Deno.serve(async (req) => {
   const existingRows = (existing ?? []) as { headline: string; sort_order: number }[]
 
   if (request.mode === 'plan' && existingRows.length > 0) {
-    return jsonResponse({ ok: false, error: 'This brief already has a plan. Use "A few more" to add rows.' }, 409)
+    return jsonResponse({ ok: false, error: 'This campaign already has post ideas. Use "More ideas" to add some.' }, 409)
   }
 
-  const units = request.mode === 'read_pdf' ? 1 : request.mode === 'plan' ? Number(brief.item_count) || 1 : request.count
+  // How many of each type: the campaign's counts, or (a phase-1 campaign) item_count of its one kind.
+  const legacyKind: ContentKind = brief.kind === 'carousel' || brief.kind === 'caption' ? brief.kind : 'single'
+  const savedCounts: KindCounts = {
+    single: Number(brief.single_count) || 0,
+    carousel: Number(brief.carousel_count) || 0,
+    caption: Number(brief.caption_count) || 0,
+  }
+  const counts: KindCounts =
+    savedCounts.single + savedCounts.carousel + savedCounts.caption > 0
+      ? savedCounts
+      : { single: 0, carousel: 0, caption: 0, [legacyKind]: Number(brief.item_count) || 1 }
+  const kinds: ContentKind[] =
+    request.mode === 'plan'
+      ? kindsFor(counts)
+      : request.mode === 'more'
+        ? Array.from({ length: request.count }, () => request.kind)
+        : []
+  if (request.mode === 'plan' && kinds.length === 0) {
+    return jsonResponse({ ok: false, error: 'Say how many posts of each type to make first.' }, 400)
+  }
+
+  const units = request.mode === 'plan' || request.mode === 'more' ? kinds.length : 1
   const { data: usedRows } = await admin
     .from('content_ai_usage')
     .select('units')
     .eq('ok', true)
+    .neq('action', 'image')
     .gte('created_at', malaysiaDayStart(new Date()))
   const used = ((usedRows ?? []) as { units: number }[]).reduce((sum, row) => sum + (row.units || 0), 0)
   if (used + units > settings.dailyLimit) {
@@ -265,6 +297,63 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, text }, 200)
   }
 
+  // ---- Reading all the campaign's material -------------------------------------------------------------
+  if (request.mode === 'analyze') {
+    const files = (Array.isArray(brief.files) ? brief.files : []) as { path?: unknown; name?: unknown; type?: unknown }[]
+    const readable = files.filter(
+      (file): file is { path: string; name: string; type: string } =>
+        typeof file.path === 'string' &&
+        file.path.startsWith(`briefs/${request.briefId}/`) &&
+        typeof file.type === 'string' &&
+        ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(file.type),
+    )
+    const sourceText = String(brief.source_text ?? '')
+    if (readable.length === 0 && !sourceText.trim()) {
+      return jsonResponse({ ok: false, error: 'Add a file or some text first.' }, 400)
+    }
+    const parts: Part[] = []
+    let total = 0
+    for (const file of readable) {
+      const { data: blob } = await admin.storage.from('content-files').download(file.path)
+      if (!blob) continue
+      total += blob.size
+      if (total > MAX_MATERIAL_BYTES) {
+        return jsonResponse(
+          { ok: false, error: 'The files are too big to read together (18 MB at most). Remove one and try again.' },
+          413,
+        )
+      }
+      parts.push({ inline_data: { mime_type: file.type, data: encodeBase64(new Uint8Array(await blob.arrayBuffer())) } })
+    }
+    parts.push({ text: buildAnalyzePrompt(sourceText, readable.map((file) => String(file.name ?? ''))) })
+    const asked = await askGemini(geminiKey, model, ANALYZE_SYSTEM_PROMPT, parts, { temperature: 0.1, maxOutputTokens: 8192 })
+    if (!asked.ok) {
+      await logUsage({ ok: false, units: 0, error: asked.error })
+      return jsonResponse({ ok: false, error: asked.error }, 502)
+    }
+    const found = parseAnalysis(asked.answer)
+    if (!found) {
+      await logUsage({ ok: false, units: 0, error: 'Nothing could be read' })
+      return jsonResponse(
+        { ok: false, error: 'The AI could not read the material. Try clearer files, or type the details yourself.' },
+        502,
+      )
+    }
+    const { error: saveError } = await admin
+      .from('content_briefs')
+      .update({
+        topic: found.topic,
+        key_points: found.keyPoints,
+        audience: found.audience,
+        call_to_action: found.callToAction,
+        pdf_text: found.allText,
+      })
+      .eq('id', request.briefId)
+    if (saveError) console.error('Could not save what was read', saveError.message)
+    await logUsage({ ok: true, units: 1 })
+    return jsonResponse({ ok: true, analysis: found }, 200)
+  }
+
   // ---- Plan rows ----------------------------------------------------------------------------------------
   const styleIds = Array.isArray(brief.style_ids) ? (brief.style_ids as number[]) : []
   const angleIds = Array.isArray(brief.angle_ids) ? (brief.angle_ids as number[]) : []
@@ -286,7 +375,6 @@ Deno.serve(async (req) => {
     .filter((angle): angle is ContentAngle => Boolean(angle))
     .map((angle) => ({ ...angle, examples: Array.isArray(angle.examples) ? angle.examples : [] }))
 
-  const kind: ContentKind = brief.kind === 'carousel' || brief.kind === 'caption' ? brief.kind : 'single'
   const sizes = asSizes(brief.sizes)
   const contentBrief: ContentBrief = {
     title: String(brief.title ?? ''),
@@ -296,28 +384,33 @@ Deno.serve(async (req) => {
     callToAction: String(brief.call_to_action ?? ''),
     pdfText: String(brief.pdf_text ?? ''),
     sizes,
-    kind,
     carouselPages: Number(brief.carousel_pages) || 5,
   }
   const brandName = typeof branding?.value?.name === 'string' ? branding.value.name.trim() : ''
   const schoolName = brandName || Deno.env.get('SCHOOL_NAME')?.trim() || DEFAULT_SCHOOL_NAME
   const system = buildSystemPrompt(settings, schoolName)
 
-  const slots = buildSlots(styles, angles, sizes, units, existingRows.length)
+  const slots = buildSlots(styles, angles, sizes, kinds, existingRows.length)
   const avoid = existingRows.map((row) => row.headline).filter(Boolean)
   const groups: (typeof slots)[] = []
   for (let at = 0; at < slots.length; at += ROWS_PER_QUESTION) {
     // Each question numbers its rows from 1.
     groups.push(slots.slice(at, at + ROWS_PER_QUESTION).map((slot, index) => ({ ...slot, slot: index + 1 })))
   }
-  const answers = await Promise.all(
-    groups.map((group) =>
-      askGemini(geminiKey, model, system, [{ text: buildUserPrompt(contentBrief, group, avoid) }], {
-        temperature: 0.9,
-        maxOutputTokens: 8192,
-      }),
-    ),
-  )
+  // A few questions at a time, so a big plan does not hit Google's per-minute limit all at once.
+  const answers: Awaited<ReturnType<typeof askGemini>>[] = []
+  for (let at = 0; at < groups.length; at += QUESTIONS_AT_ONCE) {
+    answers.push(
+      ...(await Promise.all(
+        groups.slice(at, at + QUESTIONS_AT_ONCE).map((group) =>
+          askGemini(geminiKey, model, system, [{ text: buildUserPrompt(contentBrief, group, avoid) }], {
+            temperature: 0.9,
+            maxOutputTokens: 8192,
+          }),
+        ),
+      )),
+    )
+  }
   const rows: PlanRow[] = []
   let failure = ''
   answers.forEach((asked, index) => {
@@ -325,7 +418,7 @@ Deno.serve(async (req) => {
       failure = asked.error
       return
     }
-    const parsed = parsePlan(asked.answer, groups[index], kind)
+    const parsed = parsePlan(asked.answer, groups[index])
     if (!parsed) {
       failure = 'The AI gave an answer that could not be used. Try again.'
       return
@@ -346,8 +439,8 @@ Deno.serve(async (req) => {
         style_id: row.styleId,
         angle_id: row.angleId,
         size: row.size,
-        kind,
-        pages: kind === 'carousel' ? contentBrief.carouselPages : 1,
+        kind: row.kind,
+        pages: row.kind === 'carousel' ? contentBrief.carouselPages : 1,
         headline: row.headline,
         subheadline: row.subheadline,
         poster_text: row.posterText,

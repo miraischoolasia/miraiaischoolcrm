@@ -331,7 +331,7 @@ describe('cancelling a single class day', () => {
     await userEvent.click(dialogCancel)
 
     // Nothing written (the page's own reads, such as each table's change number, do not count).
-    const reads = ['crm_table_versions', 'automation_snapshot']
+    const reads = ['crm_table_versions', 'automation_snapshot', 'app_chat_enabled', 'app_chat_staff_threads']
     expect(mocks.rpc.mock.calls.filter(([name]) => !reads.includes(name))).toEqual([])
   })
 

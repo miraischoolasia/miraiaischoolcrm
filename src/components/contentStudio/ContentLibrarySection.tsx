@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Copy, HandGrabbing } from '@phosphor-icons/react'
+import { Copy, DownloadSimple, HandGrabbing } from '@phosphor-icons/react'
 import {
   CONTENT_SIZES,
   EMPTY_FILTER,
@@ -14,7 +14,10 @@ import {
   isFullyClaimed,
   type LibraryFilter,
   type LibraryItem,
+  signedUrls,
 } from '../../lib/contentStudio'
+import { downloadName, fetchLibraryImages, type LibraryImage } from '../../lib/contentImages'
+import { cn } from '../../lib/cn'
 import { Chip, Notice, PrimaryButton, SecondaryButton, inputClass, type NoticeValue } from './ui'
 import { formatTime, copyText } from './format'
 
@@ -27,10 +30,17 @@ export function ContentLibrarySection() {
   const [busy, setBusy] = useState<number | null>(null)
   // A caption the browser would not copy, shown to copy by hand.
   const [manual, setManual] = useState<{ id: number; text: string } | null>(null)
+  // Each approved post's pictures (a page each) and short-lived links to show and download them.
+  const [pictures, setPictures] = useState<LibraryImage[]>([])
+  const [urls, setUrls] = useState<Map<string, string>>(new Map())
 
   const load = useCallback(async () => {
     try {
-      setItems(await fetchLibrary())
+      const list = await fetchLibrary()
+      setItems(list)
+      const found = await fetchLibraryImages(list.filter((item) => item.kind !== 'caption').map((item) => item.id)).catch(() => [])
+      setPictures(found)
+      if (found.length > 0) setUrls(await signedUrls(found.map((picture) => picture.path)).catch(() => new Map()))
     } catch (failure) {
       setItems([])
       setNotice({ text: contentErrorMessage(failure, 'The library could not be loaded.'), isError: true })
@@ -54,15 +64,36 @@ export function ContentLibrarySection() {
   }, [items])
 
   const shown = filterLibrary(items ?? [], filter)
+  const pagesOf = (item: LibraryItem) => pictures.filter((picture) => picture.itemId === item.id && urls.has(picture.path)).sort((a, b) => a.page - b.page)
 
   async function copyCaption(item: LibraryItem, claimedNow: boolean) {
     const text = claimText(item)
     if (await copyText(text)) {
       setManual(null)
-      setNotice({ text: claimedNow ? 'Claimed and copied. Paste it into your post.' : 'Copied again.', isError: false })
+      setNotice({ text: claimedNow ? 'It is yours. The caption is copied: paste it into your post.' : 'Copied again.', isError: false })
     } else {
       setManual({ id: item.id, text })
-      setNotice({ text: `${claimedNow ? 'Claimed.' : ''} Copy the caption below by hand.`.trim(), isError: false })
+      setNotice({ text: `${claimedNow ? 'It is yours.' : ''} Copy the caption below by hand.`.trim(), isError: false })
+    }
+  }
+
+  async function download(item: LibraryItem) {
+    const pages = pictures.filter((picture) => picture.itemId === item.id).sort((a, b) => a.page - b.page)
+    try {
+      for (const picture of pages) {
+        const url = urls.get(picture.path)
+        if (!url) continue
+        const blob = await fetch(url).then((response) => response.blob())
+        const link = document.createElement('a')
+        link.href = URL.createObjectURL(blob)
+        link.download = downloadName(item.headline, picture.page, item.kind === 'carousel' ? item.pages : 1, picture.path)
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.setTimeout(() => URL.revokeObjectURL(link.href), 5000)
+      }
+    } catch {
+      setNotice({ text: 'The pictures could not be downloaded. Try again.', isError: true })
     }
   }
 
@@ -80,7 +111,7 @@ export function ContentLibrarySection() {
       )
       await copyCaption(item, !result.already)
     } catch (failure) {
-      setNotice({ text: contentErrorMessage(failure, 'The post could not be claimed.'), isError: true })
+      setNotice({ text: contentErrorMessage(failure, 'The post could not be taken.'), isError: true })
       await load()
     }
     setBusy(null)
@@ -103,8 +134,8 @@ export function ContentLibrarySection() {
   return (
     <section className="space-y-4">
       <p className="max-w-2xl text-sm text-slate-600">
-        Approved posts to share on your own Facebook, Instagram, Xiaohongshu or WhatsApp status. Press <b>Claim</b> to take
-        one and copy its caption. Pictures come in the next update.
+        Approved posts to share on your own Facebook, Instagram, Xiaohongshu or WhatsApp status. Press <b>Use this post</b> to take
+        one: its caption is copied and you can download its pictures. Each post can be used by a few staff only.
       </p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {select('Campaign', filter.briefId === null ? '' : String(filter.briefId), options.briefs, (value) => setFilter({ ...filter, briefId: value ? Number(value) : null }))}
@@ -120,8 +151,8 @@ export function ContentLibrarySection() {
           <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Show</span>
           <select className={inputClass} value={filter.show} onChange={(e) => setFilter({ ...filter, show: e.target.value as LibraryFilter['show'] })}>
             <option value="all">Everything</option>
-            <option value="open">Still open to claim</option>
-            <option value="mine">Claimed by me</option>
+            <option value="open">Still free to use</option>
+            <option value="mine">Used by me</option>
           </select>
         </label>
       </div>
@@ -140,21 +171,32 @@ export function ContentLibrarySection() {
             <article key={item.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4" data-testid={`library-item-${item.id}`}>
               <div className="flex flex-wrap items-center gap-2">
                 <Chip tone="brand">{item.briefTitle}</Chip>
-                <Chip>{SIZE_LABELS[item.size]}</Chip>
+                {item.kind !== 'caption' && <Chip>{SIZE_LABELS[item.size]}</Chip>}
                 <Chip>
                   {KIND_LABELS[item.kind]}
                   {item.kind === 'carousel' ? ` · ${item.pages} pages` : ''}
                 </Chip>
                 <span className="ml-auto">
-                  <Chip tone={full ? 'bad' : mine ? 'good' : 'plain'}>{full ? `Fully claimed · ${claimLabel(item)}` : claimLabel(item)}</Chip>
+                  <Chip tone={full ? 'bad' : mine ? 'good' : 'plain'}>{full ? `All taken · ${claimLabel(item)}` : claimLabel(item)}</Chip>
                 </span>
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-slate-900">{item.headline}</h3>
                 {item.subheadline && <p className="text-sm text-slate-600">{item.subheadline}</p>}
               </div>
-              {item.posterText && (
-                <p className="whitespace-pre-line rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">{item.posterText}</p>
+              {pagesOf(item).length > 0 ? (
+                <div className={cn('grid gap-2', pagesOf(item).length > 1 ? 'grid-cols-3 sm:grid-cols-5' : 'grid-cols-1')}>
+                  {pagesOf(item).map((picture) => (
+                    <img
+                      key={picture.path}
+                      src={urls.get(picture.path)}
+                      alt={`${item.headline}${pagesOf(item).length > 1 ? `, page ${picture.page}` : ''}`}
+                      className={cn('w-full rounded-xl ring-1 ring-slate-200', pagesOf(item).length > 1 ? 'aspect-square object-cover' : 'max-h-80 bg-slate-50 object-contain')}
+                    />
+                  ))}
+                </div>
+              ) : (
+                item.posterText && <p className="whitespace-pre-line rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">{item.posterText}</p>
               )}
               <details className="text-sm text-slate-700">
                 <summary className="cursor-pointer font-semibold text-slate-800">Caption</summary>
@@ -169,13 +211,18 @@ export function ContentLibrarySection() {
                     <SecondaryButton disabled={busy === item.id} onClick={() => void claim(item)}>
                       <Copy size={16} /> Copy caption again
                     </SecondaryButton>
-                    <span className="text-xs text-slate-500">You claimed it {formatTime(item.myClaimedAt)}</span>
+                    {pagesOf(item).length > 0 && (
+                      <PrimaryButton onClick={() => void download(item)}>
+                        <DownloadSimple size={16} weight="bold" /> Download {pagesOf(item).length > 1 ? `${pagesOf(item).length} pictures` : 'picture'}
+                      </PrimaryButton>
+                    )}
+                    <span className="text-xs text-slate-500">You took it {formatTime(item.myClaimedAt)}</span>
                   </>
                 ) : full ? (
-                  <SecondaryButton disabled>All claimed</SecondaryButton>
+                  <SecondaryButton disabled>All taken</SecondaryButton>
                 ) : (
                   <PrimaryButton disabled={busy === item.id} onClick={() => void claim(item)}>
-                    <HandGrabbing size={16} weight="bold" /> {busy === item.id ? 'Claiming…' : 'Claim & copy caption'}
+                    <HandGrabbing size={16} weight="bold" /> {busy === item.id ? 'Taking…' : 'Use this post'}
                   </PrimaryButton>
                 )}
               </div>

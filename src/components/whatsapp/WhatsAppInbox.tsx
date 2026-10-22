@@ -1,6 +1,6 @@
 import type { WhatsAppTarget } from '../WhatsAppLink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { InstagramLogo, MessengerLogo, WhatsappLogo } from '@phosphor-icons/react'
+import { DeviceMobile, InstagramLogo, MessengerLogo, WhatsappLogo } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { familyChildNames, familyOf } from '../../lib/family'
 import { chatNameLabel } from '../../lib/parentLabel'
@@ -92,6 +92,8 @@ import { QuickReplyManager, type QuickReplyStart } from './QuickReplyManager'
 import { quickReplyStartFrom } from '../../lib/quickReplyFromMessages'
 import { ownMediaUrl } from '../../lib/chatwoot'
 import { SourceRuleManager } from './SourceRuleManager'
+import { AppChatPanel } from '../appChat/AppChatPanel'
+import type { AppChatState } from '../../hooks/useAppChat'
 
 type WhatsAppInboxProps = {
   apiUrl: string
@@ -110,6 +112,8 @@ type WhatsAppInboxProps = {
   // The CRM's copy of the inbox: chats and messages read from it, new ones heard of by themselves, search across
   // every message. Without it (or while it is not live) the page asks Chatwoot as before.
   inboxCopy?: InboxCopyLive | null
+  // Messages students send from the student app (its own tab, beside the channels; not Chatwoot).
+  appChat?: { state: AppChatState; isAdmin: boolean } | null
 }
 
 // What the inbox needs to know about the school's WhatsApp numbers.
@@ -144,6 +148,7 @@ export function WhatsAppInbox({
   numbersView,
   everyOpenChat,
   inboxCopy = null,
+  appChat = null,
 }: WhatsAppInboxProps) {
   const client = useMemo(() => createChatwootClient(apiUrl), [apiUrl])
   // Reactions, edits, deletes and read ticks go to the phone of the number the chat is on (its Evolution name in the
@@ -182,6 +187,9 @@ export function WhatsAppInbox({
   const [inboxFilter, setInboxFilter] = useState<number | null>(null)
   // WhatsApp, Messenger and Instagram chats are kept apart; WhatsApp is the one that opens first.
   const [category, setCategory] = useState<InboxCategory>('whatsapp')
+  // The App tab shows the student app chat instead of the chats. It closes by itself when a chat opens
+  // (from a link, a search or a click), and when a channel is picked.
+  const [appTabFor, setAppTabFor] = useState<number | null | undefined>(undefined)
   // The part that opens first is decided once, when the chats arrive: a school with no WhatsApp chat (Messenger only)
   // opens on Messenger. After that, or after anybody picked a part, it is left alone.
   const categoryDecided = useRef(false)
@@ -1411,18 +1419,23 @@ export function WhatsAppInbox({
   // The two lines between the columns can be dragged; the widths are kept on this browser.
   const columns = useInboxColumns(inboxBox, Boolean(inbox.selected))
 
+  const showsApp = Boolean(appChat?.state.on) && appTabFor !== undefined && (inbox.selectedId ?? null) === appTabFor
+
   return (
     <StickerSourceContext.Provider value={stickerSource}>
     <div>
     <div role="group" aria-label="Channel" className={cn('mb-3 flex flex-wrap gap-2', hasChat && 'max-lg:hidden')}>
       {CATEGORY_BUTTONS.map(({ key, label, icon: ChannelIcon, color }) => {
-        const selected = category === key
+        const selected = !showsApp && category === key
         const unread = categoryUnread[key]
         return (
           <button
             key={key}
             type="button"
-            onClick={() => changeCategory(key)}
+            onClick={() => {
+              setAppTabFor(undefined)
+              changeCategory(key)
+            }}
             aria-pressed={selected}
             className={cn(
               'inline-flex h-10 items-center gap-1.5 rounded-xl border px-2.5 text-[13px] font-semibold transition sm:gap-2 sm:px-3.5 sm:text-sm',
@@ -1444,7 +1457,37 @@ export function WhatsAppInbox({
           </button>
         )
       })}
+      {appChat?.state.on && (
+        <button
+          type="button"
+          onClick={() => {
+            inbox.setSelectedId(null)
+            setAppTabFor(null)
+          }}
+          aria-pressed={showsApp}
+          className={cn(
+            'inline-flex h-10 items-center gap-1.5 rounded-xl border px-2.5 text-[13px] font-semibold transition sm:gap-2 sm:px-3.5 sm:text-sm',
+            showsApp ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+          )}
+        >
+          <DeviceMobile size={20} weight="fill" color={showsApp ? '#ffffff' : '#6366f1'} aria-hidden="true" />
+          App
+          {appChat.state.unread > 0 && (
+            <span
+              title="Unread messages from the student app"
+              className="min-w-5 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white"
+            >
+              {appChat.state.unread > 99 ? '99+' : appChat.state.unread}
+            </span>
+          )}
+        </button>
+      )}
     </div>
+    {showsApp && appChat && (
+      <div className="h-[calc(100dvh-314px)] min-h-[520px] lg:h-[calc(100dvh-234px)]">
+        <AppChatPanel chat={appChat.state} isAdmin={appChat.isAdmin} active={active} />
+      </div>
+    )}
     <div
       ref={inboxBox}
       style={inboxHeight ? { ...columns.style, height: inboxHeight } : columns.style}
@@ -1454,6 +1497,7 @@ export function WhatsAppInbox({
         // On a phone an open chat takes the whole screen, above the page title and
         // tools, and stops just above the bottom menu.
         hasChat && 'max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-[5.7rem] max-lg:z-30 max-lg:h-auto max-lg:min-h-0 max-lg:rounded-none max-lg:border-0',
+        showsApp && 'hidden',
       )}
     >
       <ColumnHandle handle={columns.list} className="left-[var(--inbox-list)] lg:block" />

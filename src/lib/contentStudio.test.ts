@@ -4,7 +4,10 @@ import {
   buildSlots,
   buildSystemPrompt,
   buildUserPrompt,
+  buildAnalyzePrompt,
   findBannedWords,
+  kindsFor,
+  parseAnalysis,
   malaysiaDayStart,
   parsePdfText,
   parsePlan,
@@ -40,13 +43,14 @@ const brief: ContentBrief = {
   callToAction: 'WhatsApp 报名',
   pdfText: '',
   sizes: ['1:1', '9:16'],
-  kind: 'single',
   carouselPages: 5,
 }
 
+const singles = (n: number) => kindsFor({ single: n, carousel: 0, caption: 0 })
+
 describe('buildSlots', () => {
   it('uses every style and angle pair before repeating one, and takes turns with sizes', () => {
-    const slots = buildSlots([styleA, styleB], [angle(1), angle(2), angle(3)], ['1:1', '9:16'], 6)
+    const slots = buildSlots([styleA, styleB], [angle(1), angle(2), angle(3)], ['1:1', '9:16'], singles(6))
     const pairs = slots.map((slot) => `${slot.style?.id}-${slot.angle?.id}`)
     expect(new Set(pairs).size).toBe(6)
     expect(slots.map((slot) => slot.size)).toEqual(['1:1', '9:16', '1:1', '9:16', '1:1', '9:16'])
@@ -54,13 +58,20 @@ describe('buildSlots', () => {
   })
 
   it('carries on after the rows already planned', () => {
-    const all = buildSlots([styleA, styleB], [angle(1), angle(2)], ['1:1'], 4)
-    const more = buildSlots([styleA, styleB], [angle(1), angle(2)], ['1:1'], 2, 2)
+    const all = buildSlots([styleA, styleB], [angle(1), angle(2)], ['1:1'], singles(4))
+    const more = buildSlots([styleA, styleB], [angle(1), angle(2)], ['1:1'], singles(2), 2)
     expect(more.map((slot) => [slot.style?.id, slot.angle?.id])).toEqual(all.slice(2).map((slot) => [slot.style?.id, slot.angle?.id]))
   })
 
+  it('gives each post its own type, in the numbers asked for', () => {
+    expect(kindsFor({ single: 2, carousel: 1, caption: 2 })).toEqual(['single', 'single', 'carousel', 'caption', 'caption'])
+    expect(kindsFor({ single: 99, carousel: -1, caption: 0 })).toHaveLength(30)
+    const slots = buildSlots([styleA], [angle(1)], ['1:1'], kindsFor({ single: 1, carousel: 1, caption: 1 }))
+    expect(slots.map((slot) => slot.kind)).toEqual(['single', 'carousel', 'caption'])
+  })
+
   it('works with no angle picked', () => {
-    const slots = buildSlots([styleA], [], [], 3)
+    const slots = buildSlots([styleA], [], [], singles(3))
     expect(slots.every((slot) => slot.angle === null && slot.style?.id === 1 && slot.size === '1:1')).toBe(true)
   })
 })
@@ -76,7 +87,7 @@ describe('prompts', () => {
   })
 
   it('lists each row with its style, angle and size, and the headlines to avoid', () => {
-    const slots = buildSlots([styleA], [{ ...angle(1), examples: ['孩子跟不上？'] }], ['3:4'], 1)
+    const slots = buildSlots([styleA], [{ ...angle(1), examples: ['孩子跟不上？'] }], ['3:4'], singles(1))
     const user = buildUserPrompt(brief, slots, ['旧标题'])
     expect(user).toContain('12月假期营')
     expect(user).toContain('RM380')
@@ -84,11 +95,20 @@ describe('prompts', () => {
     expect(user).toContain('孩子跟不上？')
     expect(user).toContain('小红书')
     expect(user).toContain('旧标题')
+    expect(user).toContain('单张海报')
+  })
+
+  it('says the type of each row, with the pages of a carousel and no size for a caption', () => {
+    const slots = buildSlots([styleA], [], ['1:1'], kindsFor({ single: 0, carousel: 1, caption: 1 }))
+    const user = buildUserPrompt(brief, slots)
+    expect(user).toContain('第 1 行：Carousel 5 页')
+    expect(user).toMatch(/第 2 行：只要文案[^\n]*$/m)
+    expect(user.split('\n').find((line) => line.includes('第 2 行'))).not.toContain('尺寸')
   })
 })
 
 describe('parsePlan', () => {
-  const slots = buildSlots([styleA, styleB], [angle(1)], ['1:1', '4:5'], 2)
+  const slots = buildSlots([styleA, styleB], [angle(1)], ['1:1', '4:5'], singles(2))
 
   it('matches rows to slots by number', () => {
     const answer = JSON.stringify({
@@ -97,7 +117,7 @@ describe('parsePlan', () => {
         { slot: 1, headline: '一', caption: 'c1' },
       ],
     })
-    const rows = parsePlan(answer, slots, 'single')!
+    const rows = parsePlan(answer, slots)!
     expect(rows).toHaveLength(2)
     expect(rows.find((row) => row.headline === '二')).toMatchObject({ styleId: 2, size: '4:5', posterText: 'p', visual: 'v' })
     expect(rows.find((row) => row.headline === '一')).toMatchObject({ styleId: 1, size: '1:1' })
@@ -105,14 +125,30 @@ describe('parsePlan', () => {
 
   it('reads a fenced answer, drops rows without a caption, and empties poster words for caption-only', () => {
     const answer = '```json\n[{"headline":"一","caption":"c","poster_text":"x","visual":"y"},{"headline":"二"}]\n```'
-    const rows = parsePlan(answer, slots, 'caption')!
+    const captionSlots = buildSlots([styleA], [angle(1)], ['1:1'], kindsFor({ single: 0, carousel: 0, caption: 2 }))
+    const rows = parsePlan(answer, captionSlots)!
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ headline: '一', posterText: '', visual: '' })
+    expect(rows[0]).toMatchObject({ headline: '一', posterText: '', visual: '', kind: 'caption' })
   })
 
   it('gives null for an answer that is not usable', () => {
-    expect(parsePlan('not json', slots, 'single')).toBeNull()
-    expect(parsePlan('{"items":[]}', slots, 'single')).toBeNull()
+    expect(parsePlan('not json', slots)).toBeNull()
+    expect(parsePlan('{"items":[]}', slots)).toBeNull()
+  })
+})
+
+describe('reading uploaded material', () => {
+  it('reads the details the AI found', () => {
+    const answer = JSON.stringify({ title: '假期营', topic: '12月假期营', key_points: 'RM380\n7–12岁', audience: '家长', call_to_action: 'WhatsApp', all_text: '全部字' })
+    expect(parseAnalysis(answer)).toEqual({ title: '假期营', topic: '12月假期营', keyPoints: 'RM380\n7–12岁', audience: '家长', callToAction: 'WhatsApp', allText: '全部字' })
+    expect(parseAnalysis('{"title":"x"}')).toBeNull()
+    expect(parseAnalysis('not json')).toBeNull()
+  })
+
+  it('passes the file names and the pasted text', () => {
+    const prompt = buildAnalyzePrompt('早鸟 RM350', ['flyer.pdf', 'poster.jpg'])
+    expect(prompt).toContain('flyer.pdf、poster.jpg')
+    expect(prompt).toContain('早鸟 RM350')
   })
 })
 
@@ -132,7 +168,9 @@ describe('must-have lines and banned words', () => {
 describe('validateRequest', () => {
   it('accepts the three modes and clamps the count', () => {
     expect(validateRequest({ mode: 'plan', briefId: 3 })).toEqual({ ok: true, value: { mode: 'plan', briefId: 3 } })
-    expect(validateRequest({ mode: 'more', briefId: 3, count: 99 })).toEqual({ ok: true, value: { mode: 'more', briefId: 3, count: 12 } })
+    expect(validateRequest({ mode: 'more', briefId: 3, count: 99, kind: 'carousel' })).toEqual({ ok: true, value: { mode: 'more', briefId: 3, count: 12, kind: 'carousel' } })
+    expect(validateRequest({ mode: 'more', briefId: 3, kind: 'poster' })).toMatchObject({ value: { kind: 'single', count: 3 } })
+    expect(validateRequest({ mode: 'analyze', briefId: 3 })).toEqual({ ok: true, value: { mode: 'analyze', briefId: 3 } })
     expect(validateRequest({ mode: 'read_pdf', briefId: 3, path: 'briefs/3/abc.pdf' }).ok).toBe(true)
   })
 
@@ -202,11 +240,11 @@ describe('library', () => {
   })
 
   it('shows x/y claimed and fully claimed only for people who do not have it', () => {
-    expect(claimLabel(item({ claimedCount: 2 }))).toBe('2/3 claimed')
+    expect(claimLabel(item({ claimedCount: 2 }))).toBe('2/3 taken')
     expect(isFullyClaimed(item({ claimedCount: 3 }))).toBe(true)
     expect(isFullyClaimed(item({ claimedCount: 3, myClaimedAt: '2026-10-21T00:00:00Z' }))).toBe(false)
     // The limit was lowered after people claimed: never more than y.
-    expect(claimLabel(item({ claimedCount: 5 }))).toBe('3/3 claimed')
+    expect(claimLabel(item({ claimedCount: 5 }))).toBe('3/3 taken')
   })
 
   it('filters by campaign, size and what is still open or mine', () => {

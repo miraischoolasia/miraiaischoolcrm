@@ -8,6 +8,7 @@ import {
   type PortalVisibility,
 } from '../lib/portal'
 import { DEFAULT_LOGIN_MESSAGE, fillLoginMessage } from '../lib/portalLogins'
+import { AppChatSetting } from './appChat/AppChatSetting'
 import { PortalConsentSettings } from './PortalConsentSettings'
 import { StudentDailySettings } from './StudentDailySettings'
 import { PortalTermsSettings } from './PortalTermsSettings'
@@ -261,6 +262,8 @@ export function StudentAppSettings() {
       <PortalConsentSettings />
 
       <StudentDailySettings />
+
+      <AppChatSetting />
     </div>
   )
 }

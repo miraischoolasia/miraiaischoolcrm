@@ -48,14 +48,14 @@ describe('ContentLibrarySection', () => {
 
     render(<ContentLibrarySection />)
     expect(await screen.findByText('Open post')).toBeInTheDocument()
-    expect(screen.getByText('2/3 claimed')).toBeInTheDocument()
-    expect(screen.getByText('Fully claimed · 3/3 claimed')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'All claimed' })).toBeDisabled()
+    expect(screen.getByText('2/3 taken')).toBeInTheDocument()
+    expect(screen.getByText('All taken · 3/3 taken')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'All taken' })).toBeDisabled()
 
-    await userEvent.click(screen.getByRole('button', { name: /Claim & copy caption/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Use this post/ }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('家长们好！'))
     expect(api.claimItem).toHaveBeenCalledWith(1)
-    expect(await screen.findByText('Claimed and copied. Paste it into your post.')).toBeInTheDocument()
+    expect(await screen.findByText('It is yours. The caption is copied: paste it into your post.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Copy caption again/ })).toBeInTheDocument()
   })
 
@@ -63,7 +63,7 @@ describe('ContentLibrarySection', () => {
     api.fetchLibrary.mockResolvedValue([item({})])
     api.claimItem.mockRejectedValue({ code: 'P0001', message: 'All places for this post have been claimed.' })
     render(<ContentLibrarySection />)
-    await userEvent.click(await screen.findByRole('button', { name: /Claim & copy caption/ }))
+    await userEvent.click(await screen.findByRole('button', { name: /Use this post/ }))
     expect(await screen.findByText('All places for this post have been claimed.')).toBeInTheDocument()
   })
 })

@@ -47,7 +47,7 @@ export function StylesAnglesPanel({ canEdit, styles, angles, onChanged }: Styles
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Styles</h2>
-            <p className="text-sm text-slate-500">How the posts look. Reference pictures help the picture AI (phase 2) copy the look.</p>
+            <p className="text-sm text-slate-500">How the posts look. Sample pictures help the AI copy the look when it draws.</p>
           </div>
           {canEdit && (
             <SecondaryButton onClick={() => setEditing({ kind: 'style', id: null })}>
@@ -62,10 +62,10 @@ export function StylesAnglesPanel({ canEdit, styles, angles, onChanged }: Styles
             onSave={(draft) => run(() => saveStyle(null, draft), 'Style added.').then((ok) => ok && setEditing(null))}
           />
         )}
-        <ul className="space-y-2">
+        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {styles.map((style) =>
             editing?.kind === 'style' && editing.id === style.id ? (
-              <li key={style.id}>
+              <li key={style.id} className="sm:col-span-2 xl:col-span-3">
                 <StyleEditor
                   style={style}
                   onCancel={() => setEditing(null)}
@@ -73,16 +73,16 @@ export function StylesAnglesPanel({ canEdit, styles, angles, onChanged }: Styles
                 />
               </li>
             ) : (
-              <li key={style.id} className={cn('flex flex-wrap items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3', style.hidden && 'opacity-60')}>
+              <li key={style.id} className={cn('flex h-full flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4', style.hidden && 'opacity-60')}>
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-slate-900">
                     {style.name} {style.hidden && <Chip>Hidden</Chip>}
                   </p>
                   <p className="text-sm text-slate-600">{style.description}</p>
-                  <p className="mt-1 text-xs text-slate-500">{style.referencePaths.length} reference picture(s)</p>
+                  <p className="mt-2 text-xs text-slate-500">{style.referencePaths.length === 0 ? 'No sample pictures yet' : `${style.referencePaths.length} sample picture${style.referencePaths.length === 1 ? '' : 's'}`}</p>
                 </div>
                 {canEdit && (
-                  <div className="flex gap-2">
+                  <div className="mt-auto flex gap-2">
                     <SecondaryButton onClick={() => setEditing({ kind: 'style', id: style.id })}>Edit</SecondaryButton>
                     <SecondaryButton
                       aria-label={style.hidden ? `Show ${style.name}` : `Hide ${style.name}`}
@@ -102,7 +102,7 @@ export function StylesAnglesPanel({ canEdit, styles, angles, onChanged }: Styles
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Angles</h2>
-            <p className="text-sm text-slate-500">What a post argues, with one or two example headlines.</p>
+            <p className="text-sm text-slate-500">What a post talks about, with one or two example titles.</p>
           </div>
           {canEdit && (
             <SecondaryButton onClick={() => setEditing({ kind: 'angle', id: null })}>
@@ -117,10 +117,10 @@ export function StylesAnglesPanel({ canEdit, styles, angles, onChanged }: Styles
             onSave={(draft) => run(() => saveAngle(null, draft), 'Angle added.').then((ok) => ok && setEditing(null))}
           />
         )}
-        <ul className="space-y-2">
+        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {angles.map((angle) =>
             editing?.kind === 'angle' && editing.id === angle.id ? (
-              <li key={angle.id}>
+              <li key={angle.id} className="sm:col-span-2 xl:col-span-3">
                 <AngleEditor
                   angle={angle}
                   onCancel={() => setEditing(null)}
@@ -128,7 +128,7 @@ export function StylesAnglesPanel({ canEdit, styles, angles, onChanged }: Styles
                 />
               </li>
             ) : (
-              <li key={angle.id} className={cn('flex flex-wrap items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3', angle.hidden && 'opacity-60')}>
+              <li key={angle.id} className={cn('flex h-full flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4', angle.hidden && 'opacity-60')}>
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-slate-900">
                     {angle.name} {angle.hidden && <Chip>Hidden</Chip>}
@@ -137,7 +137,7 @@ export function StylesAnglesPanel({ canEdit, styles, angles, onChanged }: Styles
                   {angle.examples.length > 0 && <p className="mt-1 text-xs text-slate-500">e.g. {angle.examples.join(' / ')}</p>}
                 </div>
                 {canEdit && (
-                  <div className="flex gap-2">
+                  <div className="mt-auto flex gap-2">
                     <SecondaryButton onClick={() => setEditing({ kind: 'angle', id: angle.id })}>Edit</SecondaryButton>
                     <SecondaryButton
                       aria-label={angle.hidden ? `Show ${angle.name}` : `Hide ${angle.name}`}
@@ -215,7 +215,7 @@ function StyleEditor({ style, onSave, onCancel }: { style: StudioStyle | null; o
         <textarea className={inputClass} rows={3} value={draft.description} maxLength={2000} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
       </Field>
       <div className="space-y-2">
-        <p className="text-sm font-semibold text-slate-800">Reference pictures</p>
+        <p className="text-sm font-semibold text-slate-800">Sample pictures</p>
         <div className="flex flex-wrap gap-2">
           {draft.referencePaths.map((path) => (
             <div key={path} className="relative h-24 w-24 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
@@ -259,7 +259,7 @@ function AngleEditor({ angle, onSave, onCancel }: { angle: StudioAngle | null; o
         <textarea className={inputClass} rows={2} value={draft.description} maxLength={1000} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
       </Field>
       {[0, 1].map((index) => (
-        <Field key={index} label={`Example headline ${index + 1}`}>
+        <Field key={index} label={`Example title ${index + 1}`}>
           <input
             className={inputClass}
             value={draft.examples[index] ?? ''}

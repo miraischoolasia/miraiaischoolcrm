@@ -8,6 +8,7 @@ import {
   type ContentProvider,
   type StudioSettings,
   type UsageRow,
+  type UsageToday,
 } from '../../lib/contentStudio'
 import { cn } from '../../lib/cn'
 import { Chip, Field, Notice, PrimaryButton, inputClass, type NoticeValue } from './ui'
@@ -22,8 +23,9 @@ type SettingsPanelProps = {
 }
 
 const ACTION_LABELS: Record<string, string> = {
-  plan: 'Plan',
-  more: 'A few more',
+  plan: 'Post ideas',
+  more: 'More ideas',
+  analyze: 'Read material',
   read_pdf: 'Read a PDF',
   image: 'Picture',
 }
@@ -36,12 +38,13 @@ export function SettingsPanel({ canEdit, isAdmin, settings, teacherNames, onSave
   const [mustInclude, setMustInclude] = useState(settings.mustInclude.join('\n'))
   const [claimLimit, setClaimLimit] = useState(settings.claimLimit)
   const [dailyLimit, setDailyLimit] = useState(settings.dailyLimit)
+  const [dailyImageLimit, setDailyImageLimit] = useState(settings.dailyImageLimit)
   const [textProvider, setTextProvider] = useState<ContentProvider>(settings.textProvider)
   const [imageProvider, setImageProvider] = useState<ContentProvider>(settings.imageProvider)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<NoticeValue>(null)
   const [usage, setUsage] = useState<UsageRow[] | null>(null)
-  const [today, setToday] = useState<{ used: number; limit: number } | null>(null)
+  const [today, setToday] = useState<UsageToday | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -67,7 +70,7 @@ export function SettingsPanel({ canEdit, isAdmin, settings, teacherNames, onSave
         voice: voice.trim(),
         bannedWords: splitLines(banned, true),
         mustInclude: splitLines(mustInclude),
-        ...(isAdmin ? { claimLimit, dailyLimit, textProvider, imageProvider } : {}),
+        ...(isAdmin ? { claimLimit, dailyLimit, dailyImageLimit, textProvider, imageProvider } : {}),
       })
       await onSaved()
       setNotice({ text: 'Settings saved. The AI uses them from the next plan.', isError: false })
@@ -82,13 +85,13 @@ export function SettingsPanel({ canEdit, isAdmin, settings, teacherNames, onSave
     <section className="space-y-6">
       <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">The school’s voice</h2>
+          <h2 className="text-lg font-semibold text-slate-900">How the AI writes for the school</h2>
           <p className="text-sm text-slate-500">The logo, colours and mascot come from Class Settings › Brand.</p>
         </div>
         <Field label="How we talk" hint="The AI writes every caption in this voice, in Malaysian Chinese.">
           <textarea className={inputClass} rows={3} value={voice} maxLength={2000} disabled={disabled} onChange={(e) => setVoice(e.target.value)} />
         </Field>
-        <Field label="Banned words" hint="One per line (or separated by commas). A post that still has one is marked.">
+        <Field label="Words never to use" hint="One per line (or separated by commas). A post that still has one gets a yellow warning.">
           <textarea className={inputClass} rows={3} value={banned} disabled={disabled} onChange={(e) => setBanned(e.target.value)} />
         </Field>
         <Field label="Every caption must have" hint="One per line, e.g. “WhatsApp: 012-345 6789”. Added at the end when the AI leaves one out.">
@@ -102,19 +105,23 @@ export function SettingsPanel({ canEdit, isAdmin, settings, teacherNames, onSave
           {!isAdmin && <p className="text-sm text-slate-500">Only an admin can change these.</p>}
         </div>
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="People who may claim one post">
+          <Field label="How many staff may use the same post">
             <input type="number" min={1} max={100} className={inputClass} value={claimLimit} disabled={disabled || !isAdmin} onChange={(e) => setClaimLimit(Math.min(100, Math.max(1, Number(e.target.value) || 1)))} />
           </Field>
-          <Field label="AI rows per day (whole school)" hint="Stops a wrong click from running up the bill. Resets at midnight, Malaysia time.">
+          <Field label="Post ideas the AI may write per day (whole school)" hint="Stops a wrong click from running up the bill. Resets at midnight, Malaysia time.">
             <input type="number" min={1} max={2000} className={inputClass} value={dailyLimit} disabled={disabled || !isAdmin} onChange={(e) => setDailyLimit(Math.min(2000, Math.max(1, Number(e.target.value) || 1)))} />
           </Field>
-          <Field label="AI for words">
+          <Field label="Pictures the AI may draw per day (whole school)" hint="Each page of a carousel is one picture. Resets at midnight, Malaysia time.">
+            <input type="number" min={1} max={1000} className={inputClass} value={dailyImageLimit} disabled={disabled || !isAdmin} onChange={(e) => setDailyImageLimit(Math.min(1000, Math.max(1, Number(e.target.value) || 1)))} />
+          </Field>
+          <div className="hidden md:block" />
+          <Field label="AI that writes the words">
             <select className={inputClass} value={textProvider} disabled={disabled || !isAdmin} onChange={(e) => setTextProvider(e.target.value as ContentProvider)}>
               <option value="gemini">Gemini (Google)</option>
               <option value="openai">ChatGPT (OpenAI) – not connected yet</option>
             </select>
           </Field>
-          <Field label="AI for pictures (phase 2)">
+          <Field label="AI that draws the pictures">
             <select className={inputClass} value={imageProvider} disabled={disabled || !isAdmin} onChange={(e) => setImageProvider(e.target.value as ContentProvider)}>
               <option value="gemini">Gemini (Google)</option>
               <option value="openai">ChatGPT (OpenAI) – not connected yet</option>
@@ -132,10 +139,10 @@ export function SettingsPanel({ canEdit, isAdmin, settings, teacherNames, onSave
 
       <div className="space-y-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">AI use</h2>
+          <h2 className="text-lg font-semibold text-slate-900">AI use (last 50)</h2>
           {today && (
             <p className="text-sm text-slate-600">
-              Today: <span className="font-semibold">{today.used}</span> of {today.limit} rows
+              Today: <span className="font-semibold">{today.used}</span> of {today.limit} post ideas · <span className="font-semibold">{today.imagesUsed}</span> of {today.imagesLimit} pictures
             </p>
           )}
         </div>
@@ -149,7 +156,7 @@ export function SettingsPanel({ canEdit, isAdmin, settings, teacherNames, onSave
                   <th className="px-3 py-2">When</th>
                   <th className="px-3 py-2">Who</th>
                   <th className="px-3 py-2">What</th>
-                  <th className="px-3 py-2">Rows</th>
+                  <th className="px-3 py-2">Ideas</th>
                   <th className="px-3 py-2">Result</th>
                 </tr>
               </thead>

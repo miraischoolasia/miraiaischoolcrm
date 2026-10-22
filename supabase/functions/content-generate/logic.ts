@@ -25,8 +25,19 @@ export type ContentBrief = {
   callToAction: string
   pdfText: string
   sizes: ContentSize[]
-  kind: ContentKind
   carouselPages: number
+}
+
+// How many posts of each type one campaign asks for.
+export type KindCounts = Record<ContentKind, number>
+
+export const MAX_PER_KIND = 30
+
+// One entry per post, singles first, then carousels, then captions only.
+export function kindsFor(counts: KindCounts): ContentKind[] {
+  return CONTENT_KINDS.flatMap((kind) =>
+    Array.from({ length: Math.min(MAX_PER_KIND, Math.max(0, Math.floor(counts[kind] || 0))) }, () => kind),
+  )
 }
 
 // One post the AI is asked to fill in.
@@ -35,12 +46,14 @@ export type PlanSlot = {
   style: ContentStyle | null
   angle: ContentAngle | null
   size: ContentSize
+  kind: ContentKind
 }
 
 export type PlanRow = {
   styleId: number | null
   angleId: number | null
   size: ContentSize
+  kind: ContentKind
   headline: string
   subheadline: string
   posterText: string
@@ -53,14 +66,15 @@ export const MAX_PDF_BYTES = 15 * 1024 * 1024
 
 export type ContentRequest =
   | { mode: 'plan'; briefId: number }
-  | { mode: 'more'; briefId: number; count: number }
+  | { mode: 'more'; briefId: number; count: number; kind: ContentKind }
   | { mode: 'read_pdf'; briefId: number; path: string }
+  | { mode: 'analyze'; briefId: number }
 
 export function validateRequest(body: unknown): { ok: true; value: ContentRequest } | { ok: false; error: string } {
   if (!body || typeof body !== 'object') {
     return { ok: false, error: 'Invalid request.' }
   }
-  const raw = body as { mode?: unknown; briefId?: unknown; count?: unknown; path?: unknown }
+  const raw = body as { mode?: unknown; briefId?: unknown; count?: unknown; path?: unknown; kind?: unknown }
   const briefId = typeof raw.briefId === 'number' && Number.isInteger(raw.briefId) && raw.briefId > 0 ? raw.briefId : null
   if (briefId === null) {
     return { ok: false, error: 'Which brief is missing.' }
@@ -70,7 +84,11 @@ export function validateRequest(body: unknown): { ok: true; value: ContentReques
   }
   if (raw.mode === 'more') {
     const count = typeof raw.count === 'number' && Number.isInteger(raw.count) ? raw.count : 3
-    return { ok: true, value: { mode: 'more', briefId, count: Math.min(Math.max(count, 1), MAX_ROWS_PER_CALL) } }
+    const kind = (CONTENT_KINDS as readonly unknown[]).includes(raw.kind) ? (raw.kind as ContentKind) : 'single'
+    return { ok: true, value: { mode: 'more', briefId, count: Math.min(Math.max(count, 1), MAX_ROWS_PER_CALL), kind } }
+  }
+  if (raw.mode === 'analyze') {
+    return { ok: true, value: { mode: 'analyze', briefId } }
   }
   if (raw.mode === 'read_pdf') {
     const path = typeof raw.path === 'string' ? raw.path : ''
@@ -85,12 +103,12 @@ export function validateRequest(body: unknown): { ok: true; value: ContentReques
 
 // Every style is paired with every angle before any pair is used twice, and the pairs move along both
 // lists at once, so six posts from two styles and three angles are six different pairs. Sizes take turns.
-// `start` continues from posts already planned ("a few more").
+// One slot per entry of `kinds`; `start` continues from posts already planned ("more ideas").
 export function buildSlots(
   styles: ContentStyle[],
   angles: ContentAngle[],
   sizes: ContentSize[],
-  count: number,
+  kinds: ContentKind[],
   start = 0,
 ): PlanSlot[] {
   const styleList: (ContentStyle | null)[] = styles.length > 0 ? styles : [null]
@@ -103,11 +121,11 @@ export function buildSlots(
     }
   }
   const slots: PlanSlot[] = []
-  for (let n = 0; n < count; n += 1) {
+  kinds.forEach((kind, n) => {
     const k = start + n
     const [style, angle] = pairs[k % pairs.length]
-    slots.push({ slot: n + 1, style, angle, size: sizeList[k % sizeList.length] })
-  }
+    slots.push({ slot: n + 1, style, angle, size: sizeList[k % sizeList.length], kind })
+  })
   return slots
 }
 
@@ -161,12 +179,11 @@ function section(label: string, text: string): string[] {
 }
 
 export function buildUserPrompt(brief: ContentBrief, slots: PlanSlot[], avoidHeadlines: string[] = []): string {
-  const kindLine =
-    brief.kind === 'carousel'
-      ? `类型：Carousel，每组 ${brief.carouselPages} 页（poster_text 写每一页的字）。`
-      : brief.kind === 'caption'
-        ? '类型：只要文案（poster_text 和 visual 留空）。'
-        : '类型：单张海报。'
+  const kindNote: Record<ContentKind, string> = {
+    single: '单张海报',
+    carousel: `Carousel ${brief.carouselPages} 页（poster_text 写每一页的字，一页一行）`,
+    caption: '只要文案（poster_text 和 visual 留空）',
+  }
   const lines = [
     `【活动名称】`,
     brief.title.trim(),
@@ -175,13 +192,12 @@ export function buildUserPrompt(brief: ContentBrief, slots: PlanSlot[], avoidHea
     ...section('重点（价钱、日期、年龄等，只能用这里给的事实）', brief.keyPoints),
     ...section('对象', brief.audience),
     ...section('行动呼吁', brief.callToAction),
-    ...section('资料（从上传的 PDF 读出来的字）', brief.pdfText.slice(0, 12000)),
-    kindLine,
-    '',
+    ...section('资料（从上传的文件读出来的字）', brief.pdfText.slice(0, 12000)),
     `请写 ${slots.length} 行：`,
   ]
   for (const slot of slots) {
-    const parts = [`第 ${slot.slot} 行：尺寸 ${SIZE_NOTE[slot.size]}`]
+    const parts = [`第 ${slot.slot} 行：${kindNote[slot.kind]}`]
+    if (slot.kind !== 'caption') parts.push(`尺寸 ${SIZE_NOTE[slot.size]}`)
     if (slot.style) {
       parts.push(`风格「${slot.style.name}」${slot.style.description.trim() ? `：${slot.style.description.trim()}` : ''}`)
     }
@@ -212,7 +228,7 @@ function stripFence(answer: string): string {
 
 // The AI's rows, matched to the slots by their number (else in order). Rows without a headline or caption
 // are dropped; null when nothing usable came back.
-export function parsePlan(answer: string, slots: PlanSlot[], kind: ContentKind): PlanRow[] | null {
+export function parsePlan(answer: string, slots: PlanSlot[]): PlanRow[] | null {
   let parsed: unknown
   try {
     parsed = JSON.parse(stripFence(answer))
@@ -243,11 +259,12 @@ export function parsePlan(answer: string, slots: PlanSlot[], kind: ContentKind):
       styleId: slot.style?.id ?? null,
       angleId: slot.angle?.id ?? null,
       size: slot.size,
+      kind: slot.kind,
       headline,
       subheadline: text(raw.subheadline, 300),
-      posterText: kind === 'caption' ? '' : text(raw.poster_text, 3000),
+      posterText: slot.kind === 'caption' ? '' : text(raw.poster_text, 3000),
       caption,
-      visual: kind === 'caption' ? '' : text(raw.visual, 2000),
+      visual: slot.kind === 'caption' ? '' : text(raw.visual, 2000),
     })
   })
   return rows.length > 0 ? rows : null
@@ -294,4 +311,55 @@ export function malaysiaDayStart(now: Date): string {
   const shifted = new Date(now.getTime() + 8 * 60 * 60 * 1000)
   shifted.setUTCHours(0, 0, 0, 0)
   return new Date(shifted.getTime() - 8 * 60 * 60 * 1000).toISOString()
+}
+
+// ---- Reading a campaign's uploaded material ("upload and let the AI read it") ----------------------------
+
+export type MaterialAnalysis = {
+  title: string
+  topic: string
+  keyPoints: string
+  audience: string
+  callToAction: string
+  // Every word found in the files, for the plan to use as facts.
+  allText: string
+}
+
+export const ANALYZE_SYSTEM_PROMPT = [
+  '你是补习中心 / 儿童教育的行销助理。老师上传了一个活动的资料（PDF、海报、图片、文字）。',
+  '读懂全部资料，用简体华文整理出：',
+  '- title：活动名称（简短，例如「12月假期营」）',
+  '- topic：推什么（一两句话）',
+  '- key_points：重点事实，一行一个：价钱、优惠、日期、时间、地点、年龄、名额、截止日期（资料里没有的不要写，绝对不要编）',
+  '- audience：对象（例如「7–12岁孩子的家长」）',
+  '- call_to_action：要家长做什么（例如「WhatsApp 报名」）；资料没写就留空',
+  '- all_text：资料里所有的字原样抄出来（表格一行一行写）',
+  '只回答 JSON：{"title":"","topic":"","key_points":"","audience":"","call_to_action":"","all_text":""}',
+].join('\n')
+
+export function buildAnalyzePrompt(sourceText: string, fileNames: string[]): string {
+  const lines: string[] = []
+  if (fileNames.length > 0) lines.push(`附上的文件：${fileNames.join('、')}`)
+  if (sourceText.trim()) lines.push('', '【老师贴上的文字】', sourceText.trim().slice(0, 8000))
+  if (lines.length === 0) lines.push('（没有资料）')
+  return lines.join('\n')
+}
+
+export function parseAnalysis(answer: string): MaterialAnalysis | null {
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(stripFence(answer)) as Record<string, unknown>
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object') return null
+  const result: MaterialAnalysis = {
+    title: text(parsed.title, 120),
+    topic: text(parsed.topic, 4000),
+    keyPoints: text(parsed.key_points, 4000),
+    audience: text(parsed.audience, 1000),
+    callToAction: text(parsed.call_to_action, 500),
+    allText: text(parsed.all_text, 30000),
+  }
+  return result.topic || result.keyPoints || result.allText ? result : null
 }
