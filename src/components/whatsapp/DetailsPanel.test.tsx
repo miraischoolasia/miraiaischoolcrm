@@ -1270,31 +1270,63 @@ describe('DetailsPanel programmes', () => {
     )
   }
 
-  it("signs a parent up by picking the class (grade, subject, class); the steps come from the class's flow", async () => {
+  it('shows each flow under its own name, and lists the classes of the flow that was picked', async () => {
     renderEnrol(
       [programme(5, 'Regular sign-up'), programme(6, 'Exam class sign-up')],
-      [room(31, 'MM Form 1', 'Form 1', 1, 5), room(32, 'SCI Form 1', 'Form 1', 2, 5), room(33, 'MM Form 2 备战班', 'Form 2', 1, 6)],
+      [room(31, 'MM Form 1', 'Form 1', 1, 5), room(32, 'SCI Form 1', 'Form 1', 2, 5), room(33, 'MM Form 2 exam', 'Form 2', 1, 6)],
     )
     await userEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
 
-    expect(screen.getByText('Which class?')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'A class' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'HOA class' })).not.toBeInTheDocument()
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Grade' }), 'Form 2')
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Subject' }), '1')
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Class' }), '33')
-    expect(screen.getByText('Steps of Exam class sign-up')).toBeInTheDocument()
-
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Grade' }), 'Form 1')
-    expect(screen.queryByText(/Steps of/)).not.toBeInTheDocument()
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Class' }), '32')
+    // The first flow is open: only its classes.
+    expect(screen.getByRole('button', { name: 'MM Form 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'SCI Form 1' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'MM Form 2 exam' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'SCI Form 1' }))
     expect(screen.getByText('Steps of Regular sign-up')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Exam class sign-up' }))
+    expect(screen.queryByText(/Steps of/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'MM Form 2 exam' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'SCI Form 1' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'MM Form 2 exam' }))
+    expect(screen.getByText('Steps of Exam class sign-up')).toBeInTheDocument()
   })
 
-  it('offers only classes whose flow is on', async () => {
-    renderEnrol([programme(5, 'Regular sign-up'), programme(7, 'Old course', { isActive: false })], [room(31, 'MM Form 1', 'Form 1', 1, 5), room(34, 'Old class', 'Form 1', 1, 7)])
+  it('offers only flows that are on and have a class', async () => {
+    renderEnrol(
+      [programme(5, 'Regular sign-up'), programme(7, 'Old course', { isActive: false }), programme(8, 'Empty flow')],
+      [room(31, 'MM Form 1', 'Form 1', 1, 5), room(34, 'Old class', 'Form 1', 1, 7)],
+    )
     await userEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
-    const classes = Array.from((screen.getByRole('combobox', { name: 'Class' }) as HTMLSelectElement).options).map((option) => option.textContent)
-    expect(classes).toEqual(['Pick a class (1)', 'MM Form 1'])
+    // One flow is left, so there is nothing to switch between and its class is listed.
+    expect(screen.queryByRole('group', { name: 'What are they signing up for' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'MM Form 1' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Old class' })).not.toBeInTheDocument()
+  })
+
+  it('groups flows that have a Category: pick the category, then the flow', async () => {
+    renderEnrol(
+      [
+        programme(1, 'HOA class', { legacyKey: 'hoa' }),
+        programme(5, 'Regular Class'),
+        programme(6, 'Form 4 exam', { category: 'Exam' }),
+        programme(7, 'Form 5 exam', { category: 'Exam' }),
+      ],
+      [room(31, 'MM Form 1', 'Form 1', 1, 5), room(33, 'MM Form 4', 'Form 4', 1, 6), room(35, 'MM Form 5', 'Form 5', 1, 7)],
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
+
+    // HOA, Regular Class and the Exam category sit side by side.
+    expect(screen.getByRole('button', { name: 'HOA class' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Regular Class' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Form 5 exam' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /^Exam/ }))
+    expect(screen.getByRole('button', { name: 'Form 4 exam' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Form 5 exam' }))
+    await userEvent.click(screen.getByRole('button', { name: 'MM Form 5' }))
+    expect(screen.getByText('Steps of Form 5 exam')).toBeInTheDocument()
   })
 
   it("keeps Mirai's HOA class on its own screen", async () => {
@@ -1305,11 +1337,11 @@ describe('DetailsPanel programmes', () => {
     expect(screen.queryByText(/Steps of/)).not.toBeInTheDocument()
   })
 
-  it('offers the HOA class next to signing up for a class', async () => {
+  it('offers the HOA class next to the flows of the school', async () => {
     renderEnrol([programme(1, 'HOA class', { legacyKey: 'hoa' }), programme(5, 'Regular sign-up')], [room(31, 'MM Form 1', 'Form 1', 1, 5)])
     await userEvent.click(screen.getByRole('button', { name: 'Sign-up' }))
-    await userEvent.click(screen.getByRole('button', { name: 'A class' }))
-    expect(screen.getByText('Which class?')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Regular sign-up' }))
+    expect(screen.getByRole('button', { name: 'MM Form 1' })).toBeInTheDocument()
   })
 
   it('says there is nothing to sign up for when no class has a flow', async () => {

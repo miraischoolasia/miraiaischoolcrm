@@ -26,9 +26,8 @@ import { LeadForm } from './LeadForm'
 import { LeadHeader } from './LeadCard'
 import { EnrolPanel } from './EnrolPanel'
 import { CampEnrolPanel } from './CampEnrolPanel'
-import { ProgrammePanel } from './ProgrammePanel'
 import { ClassSignUp } from './ClassSignUp'
-import { ProgrammePicker } from './ProgrammePicker'
+import { ProgrammeSwitch, type Offer } from './ProgrammeSwitch'
 import { useFollowedProgrammes } from '../../hooks/useFollowedProgrammes'
 import { activeProgrammes, type Programme } from '../../lib/programmes'
 import { StudentCard } from './StudentCard'
@@ -92,62 +91,9 @@ const TAB_ICONS: Record<PanelTab, { label: string; Icon: typeof UserCircle }> = 
   chat: { label: 'Chat notes', Icon: Star },
 }
 
-// An offer is one of Mirai's own courses (HOA class, Holiday Camp), or 'class': any class with an
-// enrolment flow, picked by grade, subject and class (the flow comes from the class).
-type Offer = { key: string; label: string; legacy: 'hoa' | 'camp' | null; programme: Programme | null }
-
-function ProgrammeSwitch({
-  offers,
-  current,
-  followed,
-  onChange,
-}: {
-  offers: Offer[]
-  current: string
-  followed: ReadonlySet<string>
-  onChange: (key: string) => void
-}) {
-  if (offers.length < 2) {
-    return null
-  }
-  // Many programmes: the ones the lead is on are tabs, and the rest are found by searching, grouped by category.
-  if (offers.length > 3) {
-    return (
-      <ProgrammePicker
-        offers={offers.map((offer) => ({ key: offer.key, name: offer.label, category: offer.programme?.category ?? null }))}
-        current={current}
-        followed={followed}
-        onChange={onChange}
-      />
-    )
-  }
-  return (
-    <div
-      role="group"
-      aria-label="What are they signing up for"
-      className="grid gap-1 rounded-lg bg-slate-100 p-1"
-      style={{ gridTemplateColumns: `repeat(${offers.length}, minmax(0, 1fr))` }}
-    >
-      {offers.map((offer) => (
-        <button
-          key={offer.key}
-          type="button"
-          aria-pressed={current === offer.key}
-          onClick={() => onChange(offer.key)}
-          className={`rounded-md px-2 py-1.5 text-xs font-semibold ${
-            current === offer.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          {offer.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 // What the "sign up for another" line says: the one programme there is, or all of them.
 function enrolAnotherLabel(offers: Offer[], forStudent: boolean) {
-  const names = offers.map((entry) => (entry.legacy === 'hoa' ? 'HOA' : entry.key === 'class' ? 'a class' : entry.label))
+  const names = offers.map((entry) => (entry.legacy === 'hoa' ? 'HOA' : entry.label))
   if (names.length === 1) {
     return forStudent ? `Sign up for another ${offers[0].legacy === 'hoa' ? 'HOA class' : names[0]}` : `Enrol another child in ${names[0]}`
   }
@@ -321,15 +267,13 @@ export function DetailsPanel({
   const offers: Offer[] = useMemo(() => {
     if (crm.programmes) {
       const active = activeProgrammes(crm.programmes)
-      const flowIds = new Set(active.filter((programme) => programme.legacyKey === null).map((programme) => programme.id))
-      const signUpClasses = crm.classrooms.some(
-        (classroom) => classroom.status === 'active' && classroom.programmeId !== null && classroom.programmeId !== undefined && flowIds.has(classroom.programmeId),
-      )
+      // A flow the school made is offered under its own name once a class uses it (the classes are listed inside).
+      const hasClasses = (programme: Programme) =>
+        crm.classrooms.some((classroom) => classroom.status === 'active' && classroom.programmeId === programme.id)
+      const entry = (programme: Programme): Offer => ({ key: String(programme.id), label: programme.name, legacy: programme.legacyKey, programme })
       return [
-        ...active
-          .filter((programme) => programme.legacyKey !== null)
-          .map((programme) => ({ key: String(programme.id), label: programme.name, legacy: programme.legacyKey, programme })),
-        ...(signUpClasses ? [{ key: 'class', label: 'A class', legacy: null, programme: null }] : []),
+        ...active.filter((programme) => programme.legacyKey !== null).map(entry),
+        ...active.filter((programme) => programme.legacyKey === null && hasClasses(programme)).map(entry),
       ]
     }
     const hasCamp = crm.packages.some((pkg) => pkg.kind === 'camp' && pkg.isActive)
@@ -362,10 +306,8 @@ export function DetailsPanel({
           <CampEnrolPanel key={offer.key} {...shared} />
         ) : offer.legacy === 'hoa' ? (
           <EnrolPanel key={offer.key} {...shared} />
-        ) : offer.key === 'class' ? (
-          <ClassSignUp key={offer.key} {...shared} />
         ) : offer.programme ? (
-          <ProgrammePanel key={offer.key} programme={offer.programme} {...shared} />
+          <ClassSignUp key={offer.key} only={offer.programme} {...shared} />
         ) : null}
       </>
     )

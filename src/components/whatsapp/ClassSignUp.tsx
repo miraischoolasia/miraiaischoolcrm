@@ -4,22 +4,30 @@ import type { WhatsAppCrm } from './crm'
 import { ProgrammePanel } from './ProgrammePanel'
 import { fieldClass } from './enrolSteps'
 import { useAgeGroups } from '../../lib/ageGroups'
+import type { Programme } from '../../lib/programmes'
+
+// Up to this many classes in one flow are listed as buttons; more than that are found by grade and subject.
+const LIST_UP_TO = 8
 
 // Signing a parent up for a class: the team finds the class by grade, then
 // subject, then picks it; the steps that follow come from the class's
 // enrolment flow (its own, else its class level's).
+// With `only` (one flow picked on the Sign-up tabs) only that flow's classes are offered, and a flow with few classes
+// lists them all at once.
 export function ClassSignUp({
   lead,
   crm,
   userName,
   onWriteMessage,
   forStudent = false,
+  only,
 }: {
   lead: Lead
   crm: WhatsAppCrm
   userName: string | null
   onWriteMessage: (text: string) => void
   forStudent?: boolean
+  only?: Programme
 }) {
   const flows = useMemo(() => new Map((crm.programmes ?? []).map((programme) => [programme.id, programme])), [crm.programmes])
   // Classes a parent can sign up for: active, with a flow the school made.
@@ -27,9 +35,9 @@ export function ClassSignUp({
     () =>
       crm.classrooms.filter((classroom) => {
         const flow = classroom.programmeId ? flows.get(classroom.programmeId) : undefined
-        return classroom.status === 'active' && flow !== undefined && flow.isActive && flow.legacyKey === null
+        return classroom.status === 'active' && flow !== undefined && flow.isActive && flow.legacyKey === null && (!only || flow.id === only.id)
       }),
-    [crm.classrooms, flows],
+    [crm.classrooms, flows, only],
   )
   const subjectName = useMemo(() => new Map((crm.subjects ?? []).map((subject) => [subject.id, subject])), [crm.subjects])
   // Grades in the school's own order (Year 3 ... Form 5), then any not on the list.
@@ -62,10 +70,36 @@ export function ClassSignUp({
     )
   }
 
+  // A flow with few classes: all of them at once, no grade and subject to pick first.
+  const listed = only !== undefined && classes.length <= LIST_UP_TO
+
   return (
     <div className="space-y-3">
       <div className="space-y-1.5 rounded-lg border border-slate-200 p-2 text-xs">
         <span className="block font-semibold text-slate-700">Which class?</span>
+        {listed && (
+          <div role="group" aria-label="Classes" className="flex flex-wrap gap-1.5">
+            {[...classes]
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((classroom) => (
+                <button
+                  key={classroom.id}
+                  type="button"
+                  aria-pressed={classroomId === classroom.id}
+                  onClick={() => setClassroomId(classroomId === classroom.id ? null : classroom.id)}
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-semibold ${
+                    classroomId === classroom.id
+                      ? 'border-[#fc0c97] bg-[#fff0f9] text-[#be185d]'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  {classroom.name}
+                </button>
+              ))}
+          </div>
+        )}
+        {!listed && (
+        <>
         <div className="grid grid-cols-2 gap-1.5">
           <select
             aria-label="Grade"
@@ -114,6 +148,8 @@ export function ClassSignUp({
             </option>
           ))}
         </select>
+        </>
+        )}
         {chosen && flow && <span className="block text-slate-500">Steps: {flow.name}</span>}
       </div>
       {chosen && flow && (
