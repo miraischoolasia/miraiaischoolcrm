@@ -10,14 +10,15 @@
 // function itself (service key).
 //
 // Secrets (set in Supabase, never in the browser):
-//   GEMINI_API_KEY          required (the same key as ai-draft)
+//   CONTENT_IMAGE_API_KEY   the Gemini key for pictures (a paid key: free keys cannot use the picture models);
+//                           when it is not set, GEMINI_API_KEY is used. Post ideas and AI drafts keep GEMINI_API_KEY.
 //   CONTENT_IMAGE_MODEL     optional, drafts, default gemini-2.5-flash-image
 //   CONTENT_IMAGE_HD_MODEL  optional, high quality, default gemini-3-pro-image-preview
 //   SCHOOL_NAME             optional, when the Brand page has no name
 //   GEMINI_API_BASE         optional, only for the local test (a stand-in for Google)
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import { encodeBase64, decodeBase64 } from 'jsr:@std/encoding@1/base64'
-import { aspectRatioOf, buildDrawPrompt, imagePath, noPictureReason, pictureOf, type DrawItem } from './logic.ts'
+import { aspectRatioOf, buildDrawPrompt, imageKeyFrom, imagePath, noPictureReason, pictureOf, type DrawItem } from './logic.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -269,7 +270,7 @@ Deno.serve(async (req) => {
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!supabaseUrl || !anonKey || !serviceRoleKey) return jsonResponse({ ok: false, error: 'Function is not configured.' }, 500)
-  const geminiKey = Deno.env.get('GEMINI_API_KEY')
+  const geminiKey = imageKeyFrom((name) => Deno.env.get(name))
   if (!geminiKey) return jsonResponse({ ok: false, error: 'The AI key has not been set up yet.' }, 503)
 
   const authHeader = req.headers.get('Authorization') ?? ''

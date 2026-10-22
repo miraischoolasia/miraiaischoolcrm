@@ -143,3 +143,9 @@ export const EXTENSIONS: Record<string, string> = { 'image/png': 'png', 'image/j
 export function imagePath(itemId: number, jobId: number, mime: string): string {
   return `images/${itemId}/${jobId}.${EXTENSIONS[mime] ?? 'png'}`
 }
+
+// The key pictures are drawn with: CONTENT_IMAGE_API_KEY (a paid key) when it is set, else the school's
+// shared GEMINI_API_KEY. Blank values count as not set.
+export function imageKeyFrom(read: (name: string) => string | undefined): string | null {
+  return read('CONTENT_IMAGE_API_KEY')?.trim() || read('GEMINI_API_KEY')?.trim() || null
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { aspectRatioOf, buildDrawPrompt, imagePath, noPictureReason, pictureOf, wordsForPage, type DrawContext, type DrawItem } from '../../supabase/functions/content-images/logic'
+import { aspectRatioOf, buildDrawPrompt, imageKeyFrom, imagePath, noPictureReason, pictureOf, wordsForPage, type DrawContext, type DrawItem } from '../../supabase/functions/content-images/logic'
 import { currentImage, downloadName, drawingProgress, failedImage, pendingImage, versionsOf, type ContentImage } from './contentImages'
 
 vi.mock('./supabase', () => ({ supabase: null }))
@@ -66,6 +66,14 @@ describe('drawing prompts', () => {
     expect(pictureOf({ candidates: [] })).toBeNull()
     expect(noPictureReason({ promptFeedback: { blockReason: 'SAFETY' } })).toContain('SAFETY')
     expect(noPictureReason({ candidates: [{ content: { parts: [{ text: 'I cannot' }] } }] })).toContain('I cannot')
+  })
+
+  it('draws with the picture key when it is set, else the shared key', () => {
+    const env = (values: Record<string, string>) => (name: string) => values[name]
+    expect(imageKeyFrom(env({ CONTENT_IMAGE_API_KEY: 'paid', GEMINI_API_KEY: 'free' }))).toBe('paid')
+    expect(imageKeyFrom(env({ CONTENT_IMAGE_API_KEY: '  ', GEMINI_API_KEY: 'free' }))).toBe('free')
+    expect(imageKeyFrom(env({ GEMINI_API_KEY: 'free' }))).toBe('free')
+    expect(imageKeyFrom(env({}))).toBeNull()
   })
 
   it('names files and sizes the way the database accepts them', () => {
