@@ -1,6 +1,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { defaultClassCategories, resetClassCategoriesForTests } from '../../lib/classCategories'
 import { StudentDashboardSection } from './StudentDashboardSection'
 import type { Classroom, Package, Schedule, Student, Teacher } from '../../types/domain'
 import type { StudentParent } from '../../lib/studentParents'
@@ -43,6 +44,9 @@ function renderSection(students: Student[], extra: Extra = {}) {
     />,
   )
 }
+
+// The class categories are the defaults; nothing is read from the database.
+beforeAll(() => resetClassCategoriesForTests(defaultClassCategories))
 
 describe('StudentDashboardSection', () => {
   it('lists a student in every class they take, and finds them by any of their classes', async () => {

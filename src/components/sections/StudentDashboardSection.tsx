@@ -4,11 +4,13 @@ import { cn } from '../../lib/cn'
 import { formatStudentAge, getStudentAge } from '../../lib/age'
 import { formatDate, getWorstFee, type StudentIssue } from '../../domain/studentStatus'
 import { studentFilterOptions } from '../../lib/constants'
+import { sortClassCategories, useClassCategories } from '../../lib/classCategories'
 import type { Programme } from '../../lib/programmes'
 import type { Subject } from '../../lib/subjects'
 import { useAgeGroups } from '../../lib/ageGroups'
 import {
   buildStudentRows,
+  categoryFilterKey,
   filterStudentRows,
   sortStudentRows,
   type StudentRow,
@@ -46,7 +48,8 @@ import {
 } from '@phosphor-icons/react'
 
 type StudentDashboardSectionProps = {
-  // The type tab: All, HOA, Trial, Regular or Camp.
+  // The type tab: All, HOA, Trial, Regular or Camp (or, when the school's tabs follow its class categories, All, a
+  // category or No class).
   activeFilter: FilterKey
   // Independent of the tab: only students who need action.
   followUpOnly?: boolean
@@ -95,6 +98,8 @@ type StudentDashboardSectionProps = {
   }
   // The students' tags (the same tags the leads use): a filter on the list. The map holds only students that have tags.
   studentTags?: { options: LeadOption[]; map: Map<number, number[]> }
+  // Tabs by the school's class categories (My Classroom) instead of the kinds of student. Default: the brand's choice.
+  tabsByClassCategory?: boolean
 }
 
 const NO_CLASSROOMS: Classroom[] = []
@@ -142,7 +147,9 @@ export function StudentDashboardSection({
   studentCodeSetting,
   studentFields,
   studentTags,
+  tabsByClassCategory = brand.studentTabsByClassCategory,
 }: StudentDashboardSectionProps) {
+  const { categories: classCategories } = useClassCategories()
   const [searchTerm, setSearchTerm] = useState('')
   const [sort, setSort] = useState<StudentSort>('attention')
   const [page, setPage] = useState(0)
@@ -163,16 +170,33 @@ export function StudentDashboardSection({
         trialBookings,
         parents,
         attendedStudentIds,
+        categories: classCategories,
         todayString,
       }),
-    [students, packages, classrooms, schedules, teacherMap, trialBookings, parents, attendedStudentIds, todayString],
+    [students, packages, classrooms, schedules, teacherMap, trialBookings, parents, attendedStudentIds, classCategories, todayString],
   )
 
   // The tabs: the kinds of student. Courses are found with the grade, subject and class filters.
-  const tabs = studentFilterOptions.map((option) => ({
+  const kindTabs = studentFilterOptions.map((option) => ({
     ...option,
     count: (row: StudentRow) => option.key === 'all' || row.kind === option.key,
   }))
+  // By class category: All first, then each category in the school's order, then the students in no class. A tab
+  // with nobody in it is hidden (unless it is the open one). A student in classes of two categories is in both.
+  const categoryTabs: typeof kindTabs = [
+    kindTabs[0],
+    ...[
+      ...sortClassCategories(classCategories).map((category) => ({ key: categoryFilterKey(category.name), label: category.name })),
+      { key: 'category-none' as FilterKey, label: 'No class' },
+    ]
+      .map((option) => ({
+        ...option,
+        count: (row: StudentRow) =>
+          option.key === 'category-none' ? row.categoryNames.length === 0 : row.categoryNames.includes(option.label),
+      }))
+      .filter((option) => option.key === activeFilter || rows.some(option.count)),
+  ]
+  const tabs = tabsByClassCategory ? categoryTabs : kindTabs
 
   const rowFilter = {
     type: activeFilter,

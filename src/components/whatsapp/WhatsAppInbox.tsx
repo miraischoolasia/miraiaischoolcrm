@@ -1815,9 +1815,6 @@ export function WhatsAppInbox({
           leadOptions={crm.leadOptions}
           initialPhrase={managingRules.phrase}
           onClose={() => setManagingRules(null)}
-          onSave={sourceRules.save}
-          onRemove={sourceRules.remove}
-          onAddOption={crm.onAddOption}
         />
       )}
       {scheduling && scheduleTarget && (

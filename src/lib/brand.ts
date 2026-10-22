@@ -19,6 +19,7 @@ type Brand = {
   clubName: string
   usesFees: boolean
   usesPackages: boolean
+  studentTabsByClassCategory: boolean
   loginHint: string
   favicon: string | null
   primary: string
@@ -44,6 +45,10 @@ export const brand: Brand = {
   // brand starts without (a student with no package is not chased for classes left or an end date, while one
   // with a package still is) until it sets VITE_BRAND_PACKAGES=true.
   usesPackages: !customName || text(import.meta.env.VITE_BRAND_PACKAGES) === 'true',
+  // Whether the tabs above the Students list are the school's class categories (My Classroom) instead of the kinds
+  // of student (HOA / Trial / Regular / Camp). Another brand starts with the class categories; Mirai keeps the kinds
+  // until VITE_BRAND_STUDENT_TABS=category.
+  studentTabsByClassCategory: !!customName || text(import.meta.env.VITE_BRAND_STUDENT_TABS) === 'category',
   // One line under the sign-in form telling staff what to type (VITE_BRAND_LOGIN_HINT), e.g. EduHero's
   // "Sign in with your e-mail, like msangie@eduhero.com".
   loginHint: text(import.meta.env.VITE_BRAND_LOGIN_HINT) || 'Use the username the school gave you.',

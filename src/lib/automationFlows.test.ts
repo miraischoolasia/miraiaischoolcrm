@@ -554,6 +554,13 @@ describe('the tester inputs', () => {
       replyText: '',
       message: '',
       channel: null,
+      isStudent: null,
+      studentKind: null,
+      weekday: null,
+      hour: null,
+      absentStreak: null,
+      addedTagId: null,
+      attStatus: null,
     })
   })
 

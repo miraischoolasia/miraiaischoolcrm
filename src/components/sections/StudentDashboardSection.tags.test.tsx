@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { defaultClassCategories, resetClassCategoriesForTests } from '../../lib/classCategories'
 import { StudentDashboardSection } from './StudentDashboardSection'
 import type { LeadOption, Student } from '../../types/domain'
 
@@ -54,6 +55,9 @@ function renderList(studentTags?: { options: LeadOption[]; map: Map<number, numb
 }
 
 const names = () => [...document.querySelectorAll('tbody tr')].map((row) => row.querySelector('button')?.textContent).sort()
+
+// The class categories are the defaults; nothing is read from the database.
+beforeAll(() => resetClassCategoriesForTests(defaultClassCategories))
 
 describe('student list with tags', () => {
   it('filters by a tag, and by no tag', async () => {

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { fetchStudentKinds } from '../lib/studentFields'
+import type { FilterChoice } from '../lib/automationFlows'
 import { everyWhileVisible } from '../lib/visibleTimer'
 import { fetchFlowStats, type FlowStats } from '../lib/automationStats'
 import { deleteOptout, fetchOptouts, optoutsErrorMessage, type AutomationOptout } from '../lib/automationOptouts'
@@ -93,6 +95,44 @@ export function useAutomationOptouts({ enabled }: { enabled: boolean }) {
   }, [])
 
   return { optouts, error, reload, allowAgain }
+}
+
+export type AutomationChoices = { studentKinds: FilterChoice[]; absenceKinds: FilterChoice[]; staff: FilterChoice[] }
+
+// What the student kind, absence kind and team blocks can pick: active kinds, attendance kinds that are not
+// "attended", and active staff. A list that cannot be read is empty; the page still works.
+export function useAutomationChoices({ enabled }: { enabled: boolean }) {
+  const [choices, setChoices] = useState<AutomationChoices>({ studentKinds: [], absenceKinds: [], staff: [] })
+
+  useEffect(() => {
+    if (!enabled || !supabase) {
+      return
+    }
+    const client = supabase
+    let live = true
+    void (async () => {
+      const [kinds, statuses, people] = await Promise.all([
+        fetchStudentKinds(),
+        client.from('attendance_statuses').select('key, label, attended, is_active').order('sort_order'),
+        client.from('teachers').select('id, full_name, is_active').eq('is_active', true).order('full_name'),
+      ])
+      if (!live) {
+        return
+      }
+      setChoices({
+        studentKinds: kinds.filter((kind) => kind.isActive).map((kind) => ({ id: kind.name, label: kind.name })),
+        absenceKinds: (statuses.data ?? [])
+          .filter((row) => !row.attended && row.is_active)
+          .map((row) => ({ id: row.key, label: row.label })),
+        staff: (people.data ?? []).map((row) => ({ id: String(row.id), label: row.full_name })),
+      })
+    })()
+    return () => {
+      live = false
+    }
+  }, [enabled])
+
+  return choices
 }
 
 // The rules for messages sent by themselves, and whether the sender program is running.

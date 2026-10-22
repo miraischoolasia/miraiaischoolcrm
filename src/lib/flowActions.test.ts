@@ -173,7 +173,7 @@ describe('what the logs say', () => {
     }
     const timeline = buildTimeline(activity)
     expect(timeline.find((entry) => entry.eventKey === 'lead:3')).toMatchObject({
-      title: 'Changed the lead',
+      title: 'Step done',
       tone: 'ok',
       group: 'sent',
     })

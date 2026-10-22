@@ -248,7 +248,7 @@ describe('DetailsPanel', () => {
     )
 
     await userEvent.click(screen.getByRole('button', { name: /Source Keyword/ }))
-    await userEvent.click(screen.getByRole('button', { name: 'Make a rule from this message' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Make a source keyword from this message' }))
     expect(onManageRules).toHaveBeenCalledWith('Hi, I saw your Facebook ad')
   })
 

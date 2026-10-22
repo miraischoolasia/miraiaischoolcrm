@@ -86,7 +86,11 @@ const extras = vi.hoisted(() => ({
   optoutError: null as string | null,
   allowAgain: vi.fn(),
 }))
+// One object, so the page's lists do not change on every render.
+const automationChoices = vi.hoisted(() => ({ studentKinds: [], absenceKinds: [], staff: [] }))
+
 vi.mock('../../hooks/useAutomationExtras', () => ({
+  useAutomationChoices: () => automationChoices,
   useAutomationStats: () => ({ stats: extras.stats, reload: vi.fn() }),
   useAutomationForms: () => extras.forms,
   useAutoSend: () => ({ settings: extras.autoSend, error: null, save: extras.saveAutoSend, reload: vi.fn() }),

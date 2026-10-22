@@ -4,6 +4,7 @@ import { FlowEditor } from '../automations/FlowEditor'
 import { ChatActivityCard } from '../automations/ChatActivityCard'
 import { ContactsCard } from '../automations/ContactsCard'
 import { AutoSendCard } from '../automations/AutoSendCard'
+import { FamilyCapCard } from '../automations/FamilyCapCard'
 import { OptoutsCard } from '../automations/OptoutsCard'
 import { StageRulesCard } from '../automations/StageRulesCard'
 import { RecipePicker } from '../automations/RecipePicker'
@@ -13,6 +14,7 @@ import { useSourceRules } from '../../hooks/useSourceRules'
 import { useAutomationFlows } from '../../hooks/useAutomationFlows'
 import {
   useAutoSend,
+  useAutomationChoices,
   useAutomationForms,
   useAutomationOptouts,
   useAutomationStats,
@@ -52,6 +54,7 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
   const autoSend = useAutoSend({ enabled: true })
   const stageRules = useStageRules({ enabled: true })
   const sourceRules = useSourceRules(true)
+  const extraChoices = useAutomationChoices({ enabled: true })
 
   // What the source, tag, PIC and form blocks can tick (hidden options are not offered).
   const filterOptions = useMemo<FilterOptions>(() => {
@@ -59,17 +62,23 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
       leadOptions
         .filter((option) => option.kind === kind && option.isActive)
         .map((option) => ({ id: String(option.id), label: option.label }))
+    const tags = choices('tag')
     return {
       ...EMPTY_FILTER_OPTIONS,
       source: choices('source'),
-      tag: choices('tag'),
+      tag: tags,
+      tag_not: tags,
+      tag_added: tags,
+      student_kind: extraChoices.studentKinds,
+      att_status: extraChoices.absenceKinds,
+      staff: extraChoices.staff,
       pic: choices('pic'),
       form: forms.map((form) => ({ id: form.id, label: form.name })),
       keyword: sourceRules.rules
         .filter((rule) => rule.isActive)
         .map((rule) => ({ id: String(rule.id), label: rule.phrase })),
     }
-  }, [leadOptions, forms, sourceRules.rules])
+  }, [leadOptions, forms, sourceRules.rules, extraChoices])
   const { confirm, dialog } = useConfirm()
   // null shows the list.
   const [open, setOpen] = useState<number | 'new' | null>(null)
@@ -263,6 +272,9 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
             loadError={autoSend.error}
             onSave={autoSend.save}
           />
+          {autoSend.settings.familyWeeklyCap !== undefined && (
+            <FamilyCapCard cap={autoSend.settings.familyWeeklyCap} canEdit={canEdit} onSave={autoSend.save} />
+          )}
           <StageRulesCard
             rules={stageRules.rules}
             missing={stageRules.missing}

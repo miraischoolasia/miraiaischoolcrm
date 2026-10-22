@@ -27,6 +27,14 @@ export type FlowTrigger =
   | 'lead_idle'
   | 'task_due'
   | 'message_keyword'
+  | 'first_message_keyword'
+  | 'class_absent'
+  | 'lessons_left'
+  | 'birthday'
+  | 'student_created'
+  | 'app_account'
+  | 'lead_stage'
+  | 'lead_tag'
 
 export type TriggerInfo = {
   key: FlowTrigger
@@ -153,6 +161,56 @@ const ALL_TRIGGERS: TriggerInfo[] = [
     classroomCategory: null,
     afterOnly: true,
   },
+  {
+    key: 'first_message_keyword',
+    label: 'A first message has a source keyword',
+    phrase: "a parent's first message holds one of your source keywords (the lead is made at once)",
+    classroomCategory: null,
+    afterOnly: true,
+  },
+  {
+    key: 'class_absent',
+    label: 'A child is marked absent',
+    phrase: 'a child is marked absent (or on leave) in a regular class',
+    classroomCategory: 'regular',
+    afterOnly: true,
+  },
+  {
+    key: 'lessons_left',
+    label: 'Lessons left go down',
+    phrase: "a lesson is used and the child's lessons left go down",
+    classroomCategory: null,
+    afterOnly: true,
+  },
+  { key: 'birthday', label: "A child's birthday", phrase: "it is a child's birthday (from midnight)", classroomCategory: null },
+  {
+    key: 'student_created',
+    label: 'A new student is added',
+    phrase: 'a new student is added',
+    classroomCategory: null,
+    afterOnly: true,
+  },
+  {
+    key: 'app_account',
+    label: 'A student app login is made',
+    phrase: 'a student app login is made for a child or a parent',
+    classroomCategory: null,
+    afterOnly: true,
+  },
+  {
+    key: 'lead_stage',
+    label: 'A lead moves into a stage',
+    phrase: 'a lead moves into a stage',
+    classroomCategory: null,
+    afterOnly: true,
+  },
+  {
+    key: 'lead_tag',
+    label: 'A lead gets a tag',
+    phrase: 'a lead gets a tag',
+    classroomCategory: null,
+    afterOnly: true,
+  },
 ]
 
 export const TRIGGERS: TriggerInfo[] = ALL_TRIGGERS.filter((entry) => brand.usesFees || !FEE_TRIGGERS.includes(entry.key))
@@ -189,14 +247,41 @@ export type StageCondition = Placed & { type: 'condition'; kind: 'stage'; stages
 // Yes when the lead's source, tag (any of them), PIC, form (one it has filled in) or source keyword (the
 // WhatsApp first-message rule it came in with) is one of the ticked.
 // The ids are kept as text: numbers for source, tag, PIC and keyword, the form's id for a form.
-export type ChoiceKind = 'source' | 'tag' | 'pic' | 'form' | 'keyword'
-export const CHOICE_KINDS: ChoiceKind[] = ['source', 'tag', 'pic', 'form', 'keyword']
+// tag_not: has none of these tags; tag_added: the tag just added (a "lead gets a tag" flow); student_kind: the
+// school's own student kinds; att_status: how the child was marked (a "marked absent" flow).
+export type ChoiceKind = 'source' | 'tag' | 'pic' | 'form' | 'keyword' | 'tag_not' | 'tag_added' | 'student_kind' | 'att_status'
+export const CHOICE_KINDS: ChoiceKind[] = ['source', 'tag', 'pic', 'form', 'keyword', 'tag_not', 'tag_added', 'student_kind', 'att_status']
+export const CHOICE_LABELS: Record<ChoiceKind, string> = {
+  source: 'Source',
+  tag: 'Tag',
+  pic: 'PIC',
+  form: 'Form',
+  keyword: 'Source keyword',
+  tag_not: 'Does not have tag',
+  tag_added: 'Tag added',
+  student_kind: 'Student kind',
+  att_status: 'Marked as',
+}
 export type ChoiceCondition = Placed & { type: 'condition'; kind: ChoiceKind; ids: string[] }
 // Waits for the parent to write back. Yes = a reply came within this many minutes; No = the time ran out.
 // It starts when the message before it was sent.
 export type WaitCondition = Placed & { type: 'condition'; kind: 'wait'; mins: number }
 // Yes when the reply that ended the wait has one of these words in it (any capital letters).
 export type ReplyCondition = Placed & { type: 'condition'; kind: 'reply'; words: string[] }
+// Yes for a student (or, with is 'lead', for a lead that is not a student yet).
+export type SubjectCondition = Placed & { type: 'condition'; kind: 'subject'; is: 'student' | 'lead' }
+// Yes when the event happens on one of these days (0 = Sunday) and, if set, from..to o'clock (Malaysia time).
+export type WeekdayCondition = Placed & {
+  type: 'condition'
+  kind: 'weekday'
+  days: number[]
+  from: number | null
+  to: number | null
+}
+// Yes when the child was absent this many times in a row or more (a "marked absent" flow).
+export type AbsentStreakCondition = Placed & { type: 'condition'; kind: 'absent_streak'; min: number }
+// Yes when the child has exactly this many lessons left.
+export type HoursIsCondition = Placed & { type: 'condition'; kind: 'hours_is'; value: number }
 // A step that changes the lead of the event instead of sending a message (nothing waits for approval):
 //   add_tag     value = the id of a tag, added to the lead
 //   assign_pic  value = the id of a person (PIC), who now handles the lead
@@ -206,8 +291,53 @@ export type ReplyCondition = Placed & { type: 'condition'; kind: 'reply'; words:
 //               from a message with a keyword)
 // mins / after: when it happens, like a message ("0 minutes after" is right away). After a wait or a reply
 // block, mins counts from the reply (or from the moment the waiting ran out).
-export type ActionKind = 'add_tag' | 'assign_pic' | 'set_stage' | 'set_source' | 'make_lead'
-export const ACTION_KINDS: ActionKind[] = ['make_lead', 'add_tag', 'set_source', 'assign_pic', 'set_stage']
+//   remove_tag  value = the id of a tag, taken off the lead
+//   notify_staff value = JSON {"to": "pic"|"teachers"|"<account id>", "text": "..."}: a note in the CRM
+//   create_task value = JSON {"to": ..., "title": "...", "days": 0..60}: a follow-up task in the Calendar
+export type ActionKind =
+  | 'add_tag'
+  | 'remove_tag'
+  | 'assign_pic'
+  | 'set_stage'
+  | 'set_source'
+  | 'make_lead'
+  | 'notify_staff'
+  | 'create_task'
+export const ACTION_KINDS: ActionKind[] = [
+  'make_lead',
+  'add_tag',
+  'remove_tag',
+  'set_source',
+  'assign_pic',
+  'set_stage',
+  'notify_staff',
+  'create_task',
+]
+
+// Who a team step is for.
+export type StaffTarget = 'pic' | 'teachers' | `${number}`
+export type StaffStep = { to: StaffTarget; text: string; title: string; days: number }
+
+export function parseStaffStep(value: string): StaffStep {
+  try {
+    const raw = JSON.parse(value) as Record<string, unknown>
+    const to = typeof raw.to === 'string' && /^(pic|teachers|[0-9]{1,12})$/.test(raw.to) ? (raw.to as StaffTarget) : 'pic'
+    const days = typeof raw.days === 'number' && Number.isInteger(raw.days) ? Math.min(60, Math.max(0, raw.days)) : 1
+    return { to, text: typeof raw.text === 'string' ? raw.text : '', title: typeof raw.title === 'string' ? raw.title : '', days }
+  } catch {
+    return { to: 'pic', text: '', title: '', days: 1 }
+  }
+}
+
+export function staffStepValue(action: 'notify_staff' | 'create_task', step: StaffStep): string {
+  return action === 'notify_staff'
+    ? JSON.stringify({ to: step.to, text: step.text })
+    : JSON.stringify({ to: step.to, title: step.title, days: step.days })
+}
+
+export function describeStaffTarget(to: StaffTarget, staffName: (id: string) => string = (id) => `#${id}`) {
+  return to === 'pic' ? 'the PIC / consultant' : to === 'teachers' ? 'the class teachers' : staffName(to)
+}
 export type ActionNode = Placed & {
   type: 'action'
   action: ActionKind
@@ -227,17 +357,46 @@ export type ConditionNode =
   | ChoiceCondition
   | WaitCondition
   | ReplyCondition
+  | SubjectCondition
+  | WeekdayCondition
+  | AbsentStreakCondition
+  | HoursIsCondition
 
 export const MIN_WAIT_MINUTES = 1
 export const MAX_WAIT_MINUTES = 14 * 24 * 60
 export const MAX_REPLY_WORDS = 20
 export const MAX_KEYWORDS = 20
 export const MAX_KEYWORD_LENGTH = 100
+// A source keyword is often the whole opening line an advert fills in.
+export const MAX_SOURCE_KEYWORD_LENGTH = 300
+// The steps a source keyword flow may have: it runs the moment the first message comes in.
+export const SOURCE_KEYWORD_ACTIONS: ActionKind[] = ['make_lead', 'set_source', 'add_tag']
+
+export function keywordLengthFor(trigger: FlowTrigger) {
+  return trigger === 'first_message_keyword' ? MAX_SOURCE_KEYWORD_LENGTH : MAX_KEYWORD_LENGTH
+}
+
+// Flows whose trigger is a message with a keyword: they have keywords and may make the lead.
+export function startsFromKeyword(trigger: FlowTrigger) {
+  return trigger === 'message_keyword' || trigger === 'first_message_keyword'
+}
 
 // What a person can tick in a choice block, by kind.
 export type FilterChoice = { id: string; label: string }
-export type FilterOptions = Record<ChoiceKind, FilterChoice[]>
-export const EMPTY_FILTER_OPTIONS: FilterOptions = { source: [], tag: [], pic: [], form: [], keyword: [] }
+// staff: the accounts a team step can be for.
+export type FilterOptions = Record<ChoiceKind, FilterChoice[]> & { staff?: FilterChoice[] }
+export const EMPTY_FILTER_OPTIONS: FilterOptions = {
+  source: [],
+  tag: [],
+  pic: [],
+  form: [],
+  keyword: [],
+  tag_not: [],
+  tag_added: [],
+  student_kind: [],
+  att_status: [],
+  staff: [],
+}
 
 export function isChoiceCondition(node: FlowNode): node is ChoiceCondition {
   return node.type === 'condition' && (CHOICE_KINDS as string[]).includes(node.kind)
@@ -379,6 +538,9 @@ export function isCondition(node: FlowNode): node is ConditionNode {
 
 const ACTION_LABELS: Record<ActionKind, string> = {
   add_tag: 'Add a tag',
+  remove_tag: 'Remove a tag',
+  notify_staff: 'Notify staff',
+  create_task: 'Create a follow-up task',
   assign_pic: 'Assign a PIC',
   set_stage: 'Change the lead stage',
   set_source: 'Set the source',
@@ -396,6 +558,14 @@ export function describeAction(
 ) {
   if (node.action === 'add_tag') {
     return node.value === '' ? 'Add a tag' : `Add the tag “${choiceName('tag', node.value)}”`
+  }
+  if (node.action === 'remove_tag') {
+    return node.value === '' ? 'Remove a tag' : `Remove the tag “${choiceName('tag', node.value)}”`
+  }
+  if (node.action === 'notify_staff' || node.action === 'create_task') {
+    const step = parseStaffStep(node.value)
+    const who = describeStaffTarget(step.to, (id) => choiceName('staff' as ChoiceKind, id))
+    return node.action === 'notify_staff' ? `Notify ${who}` : `Task for ${who}${step.title ? `: “${step.title}”` : ''}`
   }
   if (node.action === 'assign_pic') {
     return node.value === '' ? 'Assign a PIC' : `Assign ${choiceName('pic', node.value)} as the PIC`
@@ -438,13 +608,29 @@ export function describeNode(
   if (node.kind === 'hours') {
     return node.max === 1 ? '1 hour left or fewer?' : `${node.max} hours left or fewer?`
   }
+  if (node.kind === 'hours_is') {
+    return node.value === 1 ? 'Exactly 1 lesson left?' : `Exactly ${node.value} lessons left?`
+  }
+  if (node.kind === 'subject') {
+    return node.is === 'student' ? 'Is a student?' : 'Is a lead (not a student yet)?'
+  }
+  if (node.kind === 'absent_streak') {
+    return `Absent ${node.min} times in a row or more?`
+  }
+  if (node.kind === 'weekday') {
+    const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    const days = [...node.days].sort((a, b) => a - b).map((day) => names[day] ?? '?').join(', ')
+    const hours = node.from !== null || node.to !== null ? `, ${node.from ?? 0}:00–${node.to ?? 24}:00` : ''
+    return `On ${days || 'no day'}${hours}?`
+  }
   if (node.kind === 'stage') {
     const labels = node.stages.map((stage) => leadStatusOptions.find((option) => option.key === stage)?.label ?? stage)
     return labels.length === 0 ? 'Any stage?' : `Stage is ${labels.join(' or ')}?`
   }
   if (isChoiceCondition(node)) {
-    const label = { source: 'Source', tag: 'Tag', pic: 'PIC', form: 'Form', keyword: 'Source keyword' }[node.kind]
-    const names = node.ids.map((id) => choiceName(node.kind, id))
+    const label = CHOICE_LABELS[node.kind]
+    const nameKind: ChoiceKind = node.kind === 'tag_not' || node.kind === 'tag_added' ? 'tag' : node.kind
+    const names = node.ids.map((id) => choiceName(nameKind, id))
     if (names.length === 0) {
       return `Any ${label.toLowerCase()}?`
     }
@@ -525,6 +711,10 @@ export type NewBlockKind =
   | 'stage'
   | 'wait'
   | 'reply'
+  | 'subject'
+  | 'weekday'
+  | 'absent_streak'
+  | 'hours_is'
   | ActionKind
   | ChoiceKind
 
@@ -556,7 +746,14 @@ export function addNode(
       x,
       y,
       action: kind as ActionKind,
-      value: kind === 'set_stage' ? 'contacted' : '',
+      value:
+        kind === 'set_stage'
+          ? 'contacted'
+          : kind === 'notify_staff'
+            ? staffStepValue('notify_staff', { to: 'pic', text: 'Please follow up {child}.', title: '', days: 1 })
+            : kind === 'create_task'
+              ? staffStepValue('create_task', { to: 'pic', text: '', title: 'Follow up {child}', days: 1 })
+              : '',
       mins: 0,
       after: true,
     }
@@ -574,9 +771,17 @@ export function addNode(
             ? { id, type: 'condition', kind: 'wait', x, y, mins: 1440 }
             : kind === 'reply'
               ? { id, type: 'condition', kind: 'reply', x, y, words: [] }
-              : kind === 'source' || kind === 'tag' || kind === 'pic' || kind === 'form' || kind === 'keyword'
-            ? { id, type: 'condition', kind, x, y, ids: [] }
-            : { id, type: 'condition', kind: 'classroom', x, y, ids: [] }
+              : kind === 'subject'
+                ? { id, type: 'condition', kind: 'subject', x, y, is: 'student' }
+                : kind === 'weekday'
+                  ? { id, type: 'condition', kind: 'weekday', x, y, days: [1, 2, 3, 4, 5], from: 9, to: 21 }
+                  : kind === 'absent_streak'
+                    ? { id, type: 'condition', kind: 'absent_streak', x, y, min: 2 }
+                    : kind === 'hours_is'
+                      ? { id, type: 'condition', kind: 'hours_is', x, y, value: 3 }
+                      : (CHOICE_KINDS as string[]).includes(kind)
+                        ? { id, type: 'condition', kind: kind as ChoiceKind, x, y, ids: [] }
+                        : { id, type: 'condition', kind: 'classroom', x, y, ids: [] }
   return { graph: { ...graph, nodes: [...graph.nodes, node] }, id }
 }
 
@@ -738,6 +943,15 @@ export type FlowTestChild = {
   // For a flow that starts from a message: what the pretend parent wrote and where.
   message?: string
   channel?: FlowChannel | null
+  // The newer questions: a student or a lead, the student kind, when it happens, absences in a row, the
+  // tag just added, how the child was marked.
+  isStudent?: boolean | null
+  studentKind?: string | null
+  weekday?: number | null
+  hour?: number | null
+  absentStreak?: number | null
+  addedTagId?: string | null
+  attStatus?: string | null
 }
 
 // What is typed in the tester, as text.
@@ -757,6 +971,15 @@ export type TestInputs = {
   // A flow that starts from a message: the text that came in, and the channel ('' = WhatsApp).
   message: string
   channel: string
+  // '' / 'student' / 'lead'
+  subject: string
+  studentKind: string
+  // '0'..'6' and '0'..'23'
+  weekday: string
+  hour: string
+  absentStreak: string
+  addedTagId: string
+  attStatus: string
 }
 export const EMPTY_TEST: TestInputs = {
   age: '',
@@ -772,6 +995,13 @@ export const EMPTY_TEST: TestInputs = {
   replyText: '',
   message: '',
   channel: '',
+  subject: '',
+  studentKind: '',
+  weekday: '',
+  hour: '',
+  absentStreak: '',
+  addedTagId: '',
+  attStatus: '',
 }
 
 export function isTesting(test: TestInputs) {
@@ -794,6 +1024,13 @@ export function testChildOf(test: TestInputs): FlowTestChild {
     replyText: test.replyText,
     message: test.message,
     channel: FLOW_CHANNELS.some((entry) => entry.key === test.channel) ? (test.channel as FlowChannel) : null,
+    isStudent: test.subject === 'student' ? true : test.subject === 'lead' ? false : null,
+    studentKind: test.studentKind === '' ? null : test.studentKind,
+    weekday: number(test.weekday),
+    hour: number(test.hour),
+    absentStreak: number(test.absentStreak),
+    addedTagId: test.addedTagId === '' ? null : test.addedTagId,
+    attStatus: test.attStatus === '' ? null : test.attStatus,
   }
 }
 
@@ -877,6 +1114,22 @@ export function simulateFlow(graph: FlowGraph, child: FlowTestChild): FlowTestRe
       } else if (node.kind === 'stage') {
         const stage = child.stage ?? null
         port = stage !== null && node.stages.includes(stage) ? 'yes' : 'no'
+      } else if (node.kind === 'hours_is') {
+        port = (child.hours ?? null) === node.value ? 'yes' : 'no'
+      } else if (node.kind === 'subject') {
+        const isStudent = child.isStudent ?? null
+        port = isStudent !== null && isStudent === (node.is === 'student') ? 'yes' : 'no'
+      } else if (node.kind === 'absent_streak') {
+        const streak = child.absentStreak ?? null
+        port = streak !== null && streak >= node.min ? 'yes' : 'no'
+      } else if (node.kind === 'weekday') {
+        const day = child.weekday ?? null
+        const hour = child.hour ?? null
+        const inHours = (node.from === null || (hour !== null && hour >= node.from)) && (node.to === null || (hour !== null && hour < node.to))
+        port = day !== null && node.days.includes(day) && inHours ? 'yes' : 'no'
+      } else if (node.kind === 'tag_not') {
+        const tag = child.tagId ?? null
+        port = tag === null || !node.ids.includes(String(tag)) ? 'yes' : 'no'
       } else if (isChoiceCondition(node)) {
         const chosen = {
           source: child.sourceId ?? null,
@@ -884,6 +1137,10 @@ export function simulateFlow(graph: FlowGraph, child: FlowTestChild): FlowTestRe
           tag: child.tagId ?? null,
           form: child.formId ?? null,
           keyword: child.keywordId ?? null,
+          tag_not: null,
+          tag_added: child.addedTagId ?? null,
+          student_kind: child.studentKind ?? null,
+          att_status: child.attStatus ?? null,
         }[node.kind]
         port = chosen !== null && node.ids.some((id) => id.toLowerCase() === String(chosen).toLowerCase()) ? 'yes' : 'no'
       } else {
@@ -945,14 +1202,26 @@ export function validateDraft(draft: FlowDraft): string | null {
     return 'Add at least one message or one step that changes the lead.'
   }
   const settings = draft.graph.settings
-  if (draft.trigger === 'message_keyword' && cleanKeywords(settings?.keywords ?? []).length === 0) {
+  if (startsFromKeyword(draft.trigger) && cleanKeywords(settings?.keywords ?? []).length === 0) {
     return 'A flow that starts from a message needs at least one keyword.'
   }
+  const keywordLength = keywordLengthFor(draft.trigger)
   if (
     (settings?.keywords ?? []).length > MAX_KEYWORDS ||
-    (settings?.keywords ?? []).some((word) => word.trim().length > MAX_KEYWORD_LENGTH)
+    (settings?.keywords ?? []).some((word) => word.trim().length > keywordLength)
   ) {
-    return `A flow can have up to ${MAX_KEYWORDS} keywords, each up to ${MAX_KEYWORD_LENGTH} characters.`
+    return `A flow can have up to ${MAX_KEYWORDS} keywords, each up to ${keywordLength} characters.`
+  }
+  if (draft.trigger === 'first_message_keyword') {
+    if (draft.graph.nodes.some((node) => !isAction(node) || !SOURCE_KEYWORD_ACTIONS.includes(node.action))) {
+      return 'A source keyword flow can only make the lead, set the source and add tags. To send a message, make a flow that starts from "A lead comes in with a source keyword".'
+    }
+    if (!draft.graph.nodes.some((node) => isAction(node) && node.action === 'make_lead')) {
+      return 'A source keyword flow needs the step that makes the lead.'
+    }
+    if (draft.graph.nodes.filter((node) => isAction(node) && node.action === 'set_source').length > 1) {
+      return 'A source keyword flow can set one source.'
+    }
   }
   for (const node of draft.graph.nodes) {
     if (isMessage(node)) {
@@ -993,13 +1262,25 @@ export function validateDraft(draft: FlowDraft): string | null {
       if (node.action === 'add_tag' && !/^[0-9]{1,12}$/.test(node.value)) {
         return 'A step that adds a tag needs a tag picked.'
       }
+      if (node.action === 'remove_tag' && !/^[0-9]{1,12}$/.test(node.value)) {
+        return 'A step that removes a tag needs a tag picked.'
+      }
+      if (node.action === 'notify_staff' || node.action === 'create_task') {
+        const step = parseStaffStep(node.value)
+        if (node.action === 'notify_staff' && (step.text.trim() === '' || step.text.length > 1000)) {
+          return 'A note to staff needs text (up to 1000 characters).'
+        }
+        if (node.action === 'create_task' && (step.title.trim() === '' || step.title.length > 160)) {
+          return 'A task needs a title (up to 160 characters).'
+        }
+      }
       if (node.action === 'assign_pic' && !/^[0-9]{1,12}$/.test(node.value)) {
         return 'A step that assigns a PIC needs a person picked.'
       }
       if (node.action === 'set_source' && !/^[0-9]{1,12}$/.test(node.value)) {
         return 'A step that sets the source needs a source picked.'
       }
-      if (node.action === 'make_lead' && draft.trigger !== 'message_keyword') {
+      if (node.action === 'make_lead' && !startsFromKeyword(draft.trigger)) {
         return 'Making a lead only works in a flow that starts from a message with a keyword.'
       }
       if (node.action === 'set_stage' && !isSettableStage(node.value)) {
@@ -1033,14 +1314,33 @@ export function validateDraft(draft: FlowDraft): string | null {
       if (!Number.isInteger(node.max) || node.max < 0 || node.max > 500) {
         return 'Hours left must be a whole number from 0 to 500.'
       }
+    } else if (node.kind === 'hours_is') {
+      if (!Number.isInteger(node.value) || node.value < 0 || node.value > 500) {
+        return 'Lessons left must be a whole number from 0 to 500.'
+      }
+    } else if (node.kind === 'subject') {
+      // Always one of the two.
+    } else if (node.kind === 'absent_streak') {
+      if (!Number.isInteger(node.min) || node.min < 2 || node.min > 20) {
+        return 'Absent in a row must be 2 to 20 times.'
+      }
+    } else if (node.kind === 'weekday') {
+      if (node.days.length === 0) {
+        return 'A day and time block needs at least one day ticked.'
+      }
+      if (node.from !== null && node.to !== null && node.from >= node.to) {
+        return 'The start hour must be before the end hour.'
+      }
     } else if (node.kind === 'stage') {
       if (node.stages.length === 0) {
         return 'A stage block needs at least one stage ticked.'
       }
     } else if (isChoiceCondition(node)) {
       if (node.ids.length === 0) {
-        const label = { source: 'source', tag: 'tag', pic: 'PIC', form: 'form', keyword: 'source keyword' }[node.kind]
-        return `A ${label} block needs at least one ${label} ticked.`
+        const label = { source: 'source', tag: 'tag', pic: 'PIC', form: 'form', keyword: 'source keyword' }[node.kind as string]
+        return label
+          ? `A ${label} block needs at least one ${label} ticked.`
+          : `A “${CHOICE_LABELS[node.kind]}” block needs at least one choice ticked.`
       }
     } else if (node.ids.length === 0) {
       return 'A class block needs at least one class ticked.'
@@ -1158,6 +1458,18 @@ export function parseGraph(raw: unknown): FlowGraph {
       nodes.push({ ...base, type: 'condition', kind: 'age', min: ageOrNull(node.min), max: ageOrNull(node.max) })
     } else if (node.type === 'condition' && node.kind === 'hours') {
       nodes.push({ ...base, type: 'condition', kind: 'hours', max: numberOr(node.max, 2) })
+    } else if (node.type === 'condition' && node.kind === 'hours_is') {
+      nodes.push({ ...base, type: 'condition', kind: 'hours_is', value: numberOr(node.value, 3) })
+    } else if (node.type === 'condition' && node.kind === 'subject') {
+      nodes.push({ ...base, type: 'condition', kind: 'subject', is: node.is === 'lead' ? 'lead' : 'student' })
+    } else if (node.type === 'condition' && node.kind === 'absent_streak') {
+      nodes.push({ ...base, type: 'condition', kind: 'absent_streak', min: numberOr(node.min, 2) })
+    } else if (node.type === 'condition' && node.kind === 'weekday') {
+      const days = Array.isArray(node.days)
+        ? [...new Set(node.days.map((day) => Number(day)).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))]
+        : []
+      const hour = (value: unknown) => (typeof value === 'number' && Number.isInteger(value) ? value : null)
+      nodes.push({ ...base, type: 'condition', kind: 'weekday', days, from: hour(node.from), to: hour(node.to) })
     } else if (node.type === 'condition' && node.kind === 'stage') {
       const stages = Array.isArray(node.stages)
         ? node.stages.filter((stage): stage is LeadStatus => typeof stage === 'string' && stage !== '')

@@ -19,6 +19,8 @@ import type { Classroom } from '../../types/domain'
 type FlowTesterProps = {
   classrooms: Classroom[]
   filterOptions: FilterOptions
+  // The condition kinds the flow has: the fields for the newer ones are only shown when a block needs them.
+  usedKinds?: string[]
   test: TestInputs
   outcome: FlowTestResult
   // A flow that starts from a message: the tester asks for the text; missReason says why it would not start.
@@ -64,6 +66,7 @@ function rememberPhone(phone: string) {
 export function FlowTester({
   classrooms,
   filterOptions,
+  usedKinds = [],
   test,
   outcome,
   startsFromMessage = false,
@@ -81,7 +84,8 @@ export function FlowTester({
   // In the panel every field is as wide as the panel.
   const fieldCx = (width: string) => cn(fieldClass, panel ? 'w-full' : width)
   const choiceName = (kind: ChoiceKind, id: string) =>
-    filterOptions[kind].find((choice) => choice.id === id)?.label ?? 'a removed choice'
+    (filterOptions[kind] ?? []).find((choice) => choice.id === id)?.label ?? 'a removed choice'
+  const uses = (kind: string) => usedKinds.includes(kind)
   const testing = isTesting(test)
   const [phone, setPhone] = useState(readSavedPhone)
   const [isSending, setIsSending] = useState(false)
@@ -252,6 +256,121 @@ export function FlowTester({
               </select>
             </span>
           ),
+        )}
+        {uses('subject') && (
+          <span className={row}>
+            <span>Is</span>
+            <select
+              aria-label="Test lead or student"
+              value={test.subject}
+              onChange={(event) => onTest({ subject: event.target.value })}
+              className={fieldCx('max-w-[150px]')}
+            >
+              <option value="">Not said</option>
+              <option value="student">A student</option>
+              <option value="lead">Still a lead</option>
+            </select>
+          </span>
+        )}
+        {uses('student_kind') && (
+          <span className={row}>
+            <span>Student kind</span>
+            <select
+              aria-label="Test student kind"
+              value={test.studentKind}
+              onChange={(event) => onTest({ studentKind: event.target.value })}
+              className={fieldCx('max-w-[150px]')}
+            >
+              <option value="">None</option>
+              {filterOptions.student_kind.map((choice) => (
+                <option key={choice.id} value={choice.id}>
+                  {choice.label}
+                </option>
+              ))}
+            </select>
+          </span>
+        )}
+        {uses('weekday') && (
+          <span className={row}>
+            <span>Due on</span>
+            <select
+              aria-label="Test day"
+              value={test.weekday}
+              onChange={(event) => onTest({ weekday: event.target.value })}
+              className={fieldCx('max-w-[110px]')}
+            >
+              <option value="">Any day</option>
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((name, day) => (
+                <option key={name} value={String(day)}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Test hour"
+              value={test.hour}
+              onChange={(event) => onTest({ hour: event.target.value })}
+              className={fieldCx('max-w-[110px]')}
+            >
+              <option value="">Any time</option>
+              {Array.from({ length: 24 }, (_, hour) => hour).map((hour) => (
+                <option key={hour} value={String(hour)}>
+                  {String(hour).padStart(2, '0')}:00
+                </option>
+              ))}
+            </select>
+          </span>
+        )}
+        {uses('absent_streak') && (
+          <span className={row}>
+            <span>Absent in a row</span>
+            <input
+              type="number"
+              aria-label="Test absent in a row"
+              min={1}
+              max={20}
+              value={test.absentStreak}
+              placeholder="unknown"
+              onChange={(event) => onTest({ absentStreak: event.target.value })}
+              className={fieldCx('w-24')}
+            />
+          </span>
+        )}
+        {uses('tag_added') && (
+          <span className={row}>
+            <span>Tag added</span>
+            <select
+              aria-label="Test tag added"
+              value={test.addedTagId}
+              onChange={(event) => onTest({ addedTagId: event.target.value })}
+              className={fieldCx('max-w-[150px]')}
+            >
+              <option value="">Not said</option>
+              {filterOptions.tag.map((choice) => (
+                <option key={choice.id} value={choice.id}>
+                  {choice.label}
+                </option>
+              ))}
+            </select>
+          </span>
+        )}
+        {uses('att_status') && (
+          <span className={row}>
+            <span>Absence kind</span>
+            <select
+              aria-label="Test absence kind"
+              value={test.attStatus}
+              onChange={(event) => onTest({ attStatus: event.target.value })}
+              className={fieldCx('max-w-[150px]')}
+            >
+              <option value="">Not said</option>
+              {filterOptions.att_status.map((choice) => (
+                <option key={choice.id} value={choice.id}>
+                  {choice.label}
+                </option>
+              ))}
+            </select>
+          </span>
         )}
         <span className={row}>
           <span>Parent</span>

@@ -18,6 +18,7 @@ export type FlowLogKind =
   | 'action_skipped'
   | 'channel_off'
   | 'keyword_matched'
+  | 'weekly_limit'
 
 export type FlowLogRow = {
   id: number
@@ -161,10 +162,11 @@ const LOG_TITLES: Record<FlowLogKind, string> = {
   replied: 'Parent replied',
   no_reply: 'No reply in time',
   reply_branch: 'Reply checked',
-  action_done: 'Changed the lead',
+  action_done: 'Step done',
   action_skipped: 'Step not done',
   channel_off: 'Not sent: wrong channel',
   keyword_matched: 'Wrote a keyword',
+  weekly_limit: 'Not sent: weekly limit for this family',
 }
 
 // What a log row of each kind means for the filter chips: the three about replies are steps in between; a
@@ -183,6 +185,7 @@ const LOG_GROUPS: Record<FlowLogKind, TimelineEntry['group']> = {
   action_skipped: 'skipped',
   channel_off: 'skipped',
   keyword_matched: 'other',
+  weekly_limit: 'skipped',
 }
 
 export function personLabel(row: { childName: string | null; parentName: string | null; phone: string | null }) {

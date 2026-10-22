@@ -576,23 +576,10 @@ export type Database = {
           tag_ids: number[]
           is_active: boolean
           created_at: string
+          flow_id: number | null
         }
-        Insert: {
-          id?: number
-          phrase: string
-          source_id?: number | null
-          tag_ids?: number[]
-          is_active?: boolean
-          created_at?: string
-        }
-        Update: {
-          id?: number
-          phrase?: string
-          source_id?: number | null
-          tag_ids?: number[]
-          is_active?: boolean
-          created_at?: string
-        }
+        Insert: never
+        Update: never
         Relationships: []
       }
       quick_replies: {
@@ -926,6 +913,7 @@ export type Database = {
             | 'action_skipped'
             | 'channel_off'
             | 'keyword_matched'
+            | 'weekly_limit'
           detail: string | null
           phone: string | null
           parent_name: string | null
@@ -948,6 +936,7 @@ export type Database = {
           send_from_hour: number
           send_until_hour: number
           sender_seen_at: string | null
+          family_weekly_cap: number
           updated_at: string
         }
         Insert: never
@@ -957,6 +946,7 @@ export type Database = {
           gap_seconds?: number
           send_from_hour?: number
           send_until_hour?: number
+          family_weekly_cap?: number
           updated_at?: string
         }
         Relationships: []
@@ -1002,7 +992,7 @@ export type Database = {
         Row: {
           id: number
           name: string
-          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'trial_attended' | 'trial_absent' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword'
+          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'trial_attended' | 'trial_absent' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword' | 'class_absent' | 'lessons_left' | 'birthday' | 'student_created' | 'app_account' | 'lead_stage' | 'lead_tag' | 'first_message_keyword'
           enabled: boolean
           graph: Json
           last_run_at: string | null
@@ -1013,13 +1003,13 @@ export type Database = {
         }
         Insert: {
           name: string
-          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'trial_attended' | 'trial_absent' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword'
+          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'trial_attended' | 'trial_absent' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword' | 'class_absent' | 'lessons_left' | 'birthday' | 'student_created' | 'app_account' | 'lead_stage' | 'lead_tag' | 'first_message_keyword'
           enabled?: boolean
           graph?: Json
         }
         Update: {
           name?: string
-          trigger_type?: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'trial_attended' | 'trial_absent' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword'
+          trigger_type?: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'trial_attended' | 'trial_absent' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword' | 'class_absent' | 'lessons_left' | 'birthday' | 'student_created' | 'app_account' | 'lead_stage' | 'lead_tag' | 'first_message_keyword'
           enabled?: boolean
           graph?: Json
         }
@@ -2919,6 +2909,24 @@ export type Database = {
         Relationships: []
       }
       // Working hours, time off and swaps (20261026030000). Changed only through the admin functions.
+      staff_notifications: {
+        Row: {
+          id: number
+          teacher_id: number
+          title: string
+          body: string
+          lead_id: number | null
+          student_id: number | null
+          flow_id: number | null
+          created_at: string
+          read_at: string | null
+        }
+        Insert: never
+        Update: {
+          read_at?: string | null
+        }
+        Relationships: []
+      }
       staff_shifts: {
         Row: {
           id: number
@@ -3358,6 +3366,12 @@ export type Database = {
           p_ids: number[]
         }
         Returns: undefined
+      }
+      mark_staff_notifications_read: {
+        Args: {
+          p_ids?: number[] | null
+        }
+        Returns: number
       }
       mark_ai_draft_accepted: {
         Args: {

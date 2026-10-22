@@ -40,27 +40,4 @@ export async function fetchSourceRules(): Promise<SourceRule[]> {
   }))
 }
 
-export type SourceRuleDraft = Omit<SourceRule, 'id'>
-
-export async function saveSourceRule(existing: SourceRule | null, draft: SourceRuleDraft) {
-  const client = requireSupabase()
-  const row = {
-    phrase: draft.phrase.trim(),
-    source_id: draft.sourceId,
-    tag_ids: draft.tagIds,
-    is_active: draft.isActive,
-  }
-  const { error } = existing
-    ? await client.from('lead_source_rules').update(row).eq('id', existing.id)
-    : await client.from('lead_source_rules').insert(row)
-  if (error) {
-    throw error
-  }
-}
-
-export async function deleteSourceRule(rule: SourceRule) {
-  const { error } = await requireSupabase().from('lead_source_rules').delete().eq('id', rule.id)
-  if (error) {
-    throw error
-  }
-}
+// The list is written only by the source keyword flows (Automations), never from here.

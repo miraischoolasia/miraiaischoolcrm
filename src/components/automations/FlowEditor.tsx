@@ -148,11 +148,13 @@ export function FlowEditor({
   // The name of a ticked source, tag, PIC or form, for the cards on the canvas.
   const choiceName = useMemo(() => {
     return (kind: ChoiceKind, id: string) =>
-      filterOptions[kind].find((choice) => choice.id.toLowerCase() === id.toLowerCase())?.label ?? 'a removed choice'
+      // 'staff' (a team step's person) is not a block kind, so it may have no list.
+      (filterOptions[kind] ?? []).find((choice) => choice.id.toLowerCase() === id.toLowerCase())?.label ?? 'a removed choice'
   }, [filterOptions])
 
   const readOnly = !canEdit || isWorking
   const selectedNode = draft.graph.nodes.find((node) => node.id === selectedId) ?? null
+  const usedKinds = draft.graph.nodes.flatMap((node) => (node.type === 'condition' ? [node.kind] : []))
   // The panel on the left is there only while a card is selected.
   const panelOpen = selectedId === TRIGGER_ID || selectedNode !== null
 
@@ -245,7 +247,11 @@ export function FlowEditor({
     setDraft(saved)
     setBaseline(JSON.stringify(saved))
     setNotice({
-      text: saved.enabled ? 'Saved. This flow is checked every minute.' : 'Saved. This flow is off, so it will not run.',
+      text: !saved.enabled
+        ? 'Saved. This flow is off, so it will not run.'
+        : saved.trigger === 'first_message_keyword'
+          ? 'Saved. It works from the next first message that comes in.'
+          : 'Saved. This flow is checked every minute.',
       isError: false,
     })
     onSaved(result.flow)
@@ -478,7 +484,7 @@ export function FlowEditor({
                     setGraph('mins' in change || 'after' in change ? reorderMessages(changed) : changed)
                   }}
                 />
-                <section className="rounded-xl border border-slate-200 bg-white">
+                <section className="rounded-xl border border-slate-200 bg-white" hidden={draft.trigger === 'first_message_keyword'}>
                   <button
                     type="button"
                     aria-expanded={tryOpen}
@@ -492,6 +498,7 @@ export function FlowEditor({
                     <FlowTester
                       classrooms={classrooms}
                       filterOptions={filterOptions}
+                      usedKinds={usedKinds}
                       test={test}
                       outcome={outcome}
                       startsFromMessage={startsFromMessage}
@@ -599,6 +606,7 @@ export function FlowEditor({
               layout="panel"
               classrooms={classrooms}
               filterOptions={filterOptions}
+              usedKinds={usedKinds}
               test={test}
               outcome={outcome}
               startsFromMessage={startsFromMessage}
@@ -626,6 +634,7 @@ export function FlowEditor({
             <ActionPicker
               key={`${adding.from}:${adding.port}`}
               where={addingWhere(adding)}
+              trigger={draft.trigger}
               onPick={(kind) => addAfter(adding.from, adding.port, kind)}
               onClose={() => setAdding(null)}
             />

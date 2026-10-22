@@ -8,6 +8,7 @@ import {
   nextNodeId,
   triggerInfo,
   type ActionKind,
+  staffStepValue,
   type ActionNode,
   type ConditionNode,
   type FlowDraft,
@@ -511,10 +512,14 @@ export function removeBranchMessage(graph: FlowGraph, id: string): FlowGraph {
 // ---- how the triggers are grouped in the picker
 
 export const TRIGGER_GROUPS: { label: string; keys: FlowTrigger[] }[] = [
-  { label: 'Leads and forms', keys: ['lead_created', 'form_submitted', 'lead_idle', 'task_due'] },
-  { label: 'Chats', keys: ['message_keyword', 'parent_no_reply', 'parent_waiting'] },
+  { label: 'Leads and forms', keys: ['lead_created', 'form_submitted', 'lead_idle', 'task_due', 'lead_stage', 'lead_tag'] },
+  { label: 'Chats', keys: ['first_message_keyword', 'message_keyword', 'parent_no_reply', 'parent_waiting'] },
   { label: 'Classes', keys: ['class_start', 'replacement_start', 'trial_booked', 'trial_start', 'trial_attended', 'trial_absent', 'zoom_start'] },
-  { label: 'Students and fees', keys: ['lesson_expiry', 'account_fee_expiry', 'club_fee_expiry', 'package_start'] },
+  { label: 'Attendance', keys: ['class_absent'] },
+  {
+    label: 'Students and fees',
+    keys: ['student_created', 'app_account', 'birthday', 'lessons_left', 'lesson_expiry', 'account_fee_expiry', 'club_fee_expiry', 'package_start'],
+  },
 ]
 
 // ---- recipes: a flow that is already written, to start from
@@ -535,10 +540,11 @@ function recipeDraft(
   filters: ConditionNode[],
   messages: MessageNode[],
   settings?: FlowGraph['settings'],
+  actions: ActionNode[] = [],
 ): FlowDraft {
   const graph = buildGraph(
     { trigger: { x: 24, y: 140 }, nodes: [], edges: [], ...(settings ? { settings } : {}) },
-    { filters, messages: orderMessages(messages) },
+    { filters, messages: orderMessages(messages), ...(actions.length > 0 ? { actions } : {}) },
   )
   return { id: null, name, trigger, enabled: false, graph }
 }
@@ -589,7 +595,44 @@ function keywordLeadDraft(): FlowDraft {
   }
 }
 
+// A source keyword: the first message with the keyword makes the lead at once, with a source and a tag.
+function sourceKeywordDraft(): FlowDraft {
+  const step = (id: string, action: ActionNode['action'], x: number): ActionNode => ({
+    id,
+    type: 'action',
+    x,
+    y: 140,
+    action,
+    value: '',
+    mins: 0,
+    after: true,
+  })
+  return {
+    id: null,
+    name: 'Source keyword',
+    trigger: 'first_message_keyword',
+    enabled: false,
+    graph: {
+      trigger: { x: 24, y: 140 },
+      nodes: [step('a1', 'make_lead', 300), step('a2', 'set_source', 580), step('a3', 'add_tag', 860)],
+      edges: [
+        { from: TRIGGER_ID, port: 'out', to: 'a1' },
+        { from: 'a1', port: 'out', to: 'a2' },
+        { from: 'a2', port: 'out', to: 'a3' },
+      ],
+      settings: { channels: ['whatsapp', 'messenger', 'instagram'] },
+    },
+  }
+}
+
 const ALL_FLOW_RECIPES: FlowRecipe[] = [
+  {
+    key: 'source_keyword',
+    title: 'Make a lead from a first message with a keyword',
+    summary:
+      'A source keyword: when a parent’s first message holds your words (for example an advert’s opening line), they become a lead at once with the source and tag you pick.',
+    build: () => sourceKeywordDraft(),
+  },
   {
     key: 'keyword_to_lead',
     title: 'Turn a message with a keyword into a lead',
@@ -689,6 +732,78 @@ const ALL_FLOW_RECIPES: FlowRecipe[] = [
     },
   },
   {
+    key: 'absent_notice',
+    title: 'Check on a child who missed class',
+    summary: 'A child is marked absent in a regular class: a kind note to the parent 30 minutes after the attendance is saved.',
+    build: () =>
+      recipeDraft('Missed class note', 'class_absent', [], [
+        message('m1', 30, 'Hi {parent}, we missed {child} in class today ({class}). We hope all is well! Let us know if {child} needs help catching up.', {
+          after: true,
+        }),
+      ]),
+  },
+  {
+    key: 'absent_twice',
+    title: 'Call a family after 2 missed classes in a row',
+    summary: 'A child misses 2 lessons in a row: a follow-up task for the PIC, due the same day. Nothing is sent to the parent.',
+    build: () =>
+      recipeDraft(
+        'Absent twice in a row',
+        'class_absent',
+        [{ id: 'c1', type: 'condition', kind: 'absent_streak', x: 0, y: 0, min: 2 }],
+        [],
+        undefined,
+        [
+          {
+            id: 'a1',
+            type: 'action',
+            x: 0,
+            y: 0,
+            action: 'create_task',
+            value: staffStepValue('create_task', { to: 'pic', text: '', title: 'Call {parent}: {child} missed 2 classes in a row', days: 0 }),
+            mins: 0,
+            after: true,
+          },
+        ],
+      ),
+  },
+  {
+    key: 'lessons_three_left',
+    title: 'Remind parents when 3 lessons are left',
+    summary: 'A lesson is used and the child has exactly 3 left: ask the parent about renewing, an hour later.',
+    build: () =>
+      recipeDraft(
+        'Three lessons left',
+        'lessons_left',
+        [{ id: 'c1', type: 'condition', kind: 'hours_is', x: 0, y: 0, value: 3 }],
+        [
+          message('m1', 60, 'Hi {parent}, {child} has {hours_left} lessons left. Shall we help you renew so there is no break in classes?', {
+            after: true,
+          }),
+        ],
+      ),
+  },
+  {
+    key: 'birthday',
+    title: 'Wish a child happy birthday',
+    summary: 'At 9 am on the child’s birthday.',
+    build: () =>
+      recipeDraft('Happy birthday', 'birthday', [], [
+        message('m1', 9 * 60, `Happy birthday, {child}! Everyone at ${brand.name} wishes you a wonderful day.`, { after: true }),
+      ]),
+  },
+  {
+    key: 'app_ready_check',
+    title: 'Check that the family got into the app',
+    summary: 'One day after a student-app login is made, ask the parent if they need help.',
+    build: () =>
+      recipeDraft('App login check', 'app_account', [], [
+        message('m1', 1440, `Hi {parent}, has {child} tried the ${brand.name} app yet? Reply here if you need any help logging in.`, {
+          after: true,
+        }),
+      ]),
+  },
+  {
     key: 'fee_ending',
     title: 'Remind parents the account fee is ending',
     summary: 'Two weeks before a child’s account fee ends.',
@@ -699,4 +814,6 @@ const ALL_FLOW_RECIPES: FlowRecipe[] = [
   },
 ]
 
-export const FLOW_RECIPES: FlowRecipe[] = ALL_FLOW_RECIPES.filter((recipe) => brand.usesFees || recipe.key !== 'fee_ending')
+// A school without fees has no renewals to talk about.
+const FEE_RECIPES = new Set(['fee_ending', 'lessons_three_left'])
+export const FLOW_RECIPES: FlowRecipe[] = ALL_FLOW_RECIPES.filter((recipe) => brand.usesFees || !FEE_RECIPES.has(recipe.key))

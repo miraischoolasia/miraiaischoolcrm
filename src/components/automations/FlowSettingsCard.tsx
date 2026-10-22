@@ -1,5 +1,6 @@
 import { cn } from '../../lib/cn'
 import {
+  startsFromKeyword,
   FLOW_CHANNELS,
   type FlowChannel,
   type FlowGraph,
@@ -28,14 +29,22 @@ export function FlowSettingsCard({ settings, trigger, readOnly, onChange }: Flow
   return (
     <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-3">
       <h3 className="text-sm font-semibold text-slate-900">For the whole flow</h3>
-      {trigger === 'message_keyword' && (
+      {trigger !== undefined && startsFromKeyword(trigger) && (
         <KeywordsField
+          firstMessage={trigger === 'first_message_keyword'}
           keywords={settings?.keywords}
           everyTime={settings?.everyTime}
           readOnly={readOnly}
           onChange={onChange}
         />
       )}
+      {trigger === 'first_message_keyword' ? (
+        <p className="text-xs text-slate-500">
+          Works on WhatsApp, Messenger and Instagram the moment the first message comes in. Nothing is sent, so there is
+          nothing to approve.
+        </p>
+      ) : (
+      <>
       <div
         className={cn(
           'space-y-1 rounded-lg border p-3',
@@ -125,6 +134,8 @@ export function FlowSettingsCard({ settings, trigger, readOnly, onChange }: Flow
       <p className="text-xs text-slate-500">
         A parent who writes STOP is never messaged by any flow. The steps of one flow are not blocked by this.
       </p>
+      </>
+      )}
     </section>
   )
 }

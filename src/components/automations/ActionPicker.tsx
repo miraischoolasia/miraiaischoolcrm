@@ -1,31 +1,34 @@
 import { useMemo, useState } from 'react'
 import { MagnifyingGlass, X } from '@phosphor-icons/react'
-import type { NewBlockKind } from '../../lib/automationFlows'
+import type { FlowTrigger, NewBlockKind } from '../../lib/automationFlows'
 
-import { PICK_GROUPS } from './pickGroups'
+import { pickGroupsFor } from './pickGroups'
 
 type ActionPickerProps = {
   // Where the new step goes, for the heading ("after this message").
   where: string
+  // The trigger of the flow, so steps that only fit another trigger are not offered.
+  trigger?: FlowTrigger
   onPick: (kind: NewBlockKind) => void
   onClose: () => void
 }
 
 // The panel on the right that opens from a "+": search, then pick the step to add.
-export function ActionPicker({ where, onPick, onClose }: ActionPickerProps) {
+export function ActionPicker({ where, trigger, onPick, onClose }: ActionPickerProps) {
   const [query, setQuery] = useState('')
   const groups = useMemo(() => {
     const needle = query.trim().toLowerCase()
+    const all = pickGroupsFor(trigger)
     if (needle === '') {
-      return PICK_GROUPS
+      return all
     }
-    return PICK_GROUPS.map((group) => ({
+    return all.map((group) => ({
       ...group,
       picks: group.picks.filter(
         (pick) => pick.label.toLowerCase().includes(needle) || pick.hint.toLowerCase().includes(needle),
       ),
     })).filter((group) => group.picks.length > 0)
-  }, [query])
+  }, [query, trigger])
 
   return (
     <div className="space-y-3">

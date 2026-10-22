@@ -161,7 +161,7 @@ describe('flowSteps', () => {
   it('lists every trigger once in the picker groups', () => {
     const keys = TRIGGER_GROUPS.flatMap((group) => group.keys)
     expect(new Set(keys).size).toBe(keys.length)
-    expect(keys).toHaveLength(18)
+    expect(keys).toHaveLength(26)
   })
 
   describe('recipes', () => {
@@ -179,7 +179,7 @@ describe('flowSteps', () => {
         // The source recipe is only finished once a source is ticked.
         if (recipe.key === 'lead_from_source' || recipe.key === 'lead_from_keyword') {
           expect(validateDraft(draft)).toMatch(/ticked/)
-        } else if (recipe.key === 'keyword_to_lead') {
+        } else if (recipe.key === 'keyword_to_lead' || recipe.key === 'source_keyword') {
           // ... and this one once its keywords, tag and source are filled in.
           expect(validateDraft(draft)).toMatch(/keyword/)
         } else {

@@ -8,6 +8,7 @@ import { getStudentKind, type StudentKind } from './studentLink'
 import { addDays } from './teacherAgenda'
 import type { StudentParent } from './studentParents'
 import { weekdayLabels } from './schedule'
+import { classroomCategoryName, defaultClassCategories, type ClassCategory } from './classCategories'
 import type { Classroom, FilterKey, Package, Schedule, Student, Teacher, TrialBooking } from '../types/domain'
 import { getStudentClassIds } from './roster'
 
@@ -32,6 +33,8 @@ export type StudentRow = {
   booking: TrialBooking | null
   // The programme of the student's class (or of the class they were booked into), or null.
   programmeId: number | null
+  // The class categories (My Classroom) of the classes the student is in now; empty when they are in no class.
+  categoryNames: string[]
 }
 
 export type StudentRowSources = {
@@ -44,6 +47,8 @@ export type StudentRowSources = {
   parents: Map<number, StudentParent>
   // Students marked present in a lesson, so an HOA child who came can be followed up.
   attendedStudentIds?: Set<number>
+  // The school's class categories, to put each class in one (the three defaults when not given).
+  categories?: ClassCategory[]
   todayString: string
 }
 
@@ -56,6 +61,7 @@ export function buildStudentRows({
   trialBookings,
   parents,
   attendedStudentIds,
+  categories = defaultClassCategories,
   todayString,
 }: StudentRowSources): StudentRow[] {
   const packageById = new Map(packages.map((pkg) => [pkg.id, pkg]))
@@ -127,9 +133,12 @@ export function buildStudentRows({
         classroom?.programmeId ??
         classroomById.get(scheduleById.get(booking?.scheduleId ?? -1)?.classroomId ?? -1)?.programmeId ??
         null,
+      categoryNames: [...new Set(studentClassrooms.filter((entry) => entry.category).map((entry) => classroomCategoryName(entry, categories)))],
     }
   })
 }
+
+export const categoryFilterKey = (name: string): FilterKey => `category:${name}`
 
 export function filterStudentRows(
   rows: StudentRow[],
@@ -156,6 +165,14 @@ export function filterStudentRows(
     if (type.startsWith('programme:')) {
       const wanted = type === 'programme:none' ? null : Number(type.slice('programme:'.length))
       if (row.programmeId !== wanted) {
+        return false
+      }
+    } else if (type === 'category-none') {
+      if (row.categoryNames.length > 0) {
+        return false
+      }
+    } else if (type.startsWith('category:')) {
+      if (!row.categoryNames.includes(type.slice('category:'.length))) {
         return false
       }
     } else if (type !== 'all' && row.kind !== type) {

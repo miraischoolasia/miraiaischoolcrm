@@ -1,4 +1,4 @@
--- Checks for 20261029400000_lead_stage_rules.sql.
+-- Checks for 20261029400000_lead_stage_rules.sql (and 20261029500000_trial_events_use_attended_flag.sql).
 -- Run on a scratch copy of the schema (never the live database); it rolls back.
 --   psql -d <scratch db> -v ON_ERROR_STOP=1 -f supabase/tests/lead_stage_rules.sql
 -- Part 1 proves that with the default switches every function behaves as it did before; the rest proves each switch
@@ -215,6 +215,20 @@ insert into public.lesson_log_students (lesson_log_id, student_id, attendance_st
 values (99892, :s1, 'absent'), (99892, :s2, 'absent'), (99892, :s3, 'leave');
 select pg_temp.ok(not exists (select 1 from automation.rule_events where event_key = 'trial_attended:' || :b1)
   and exists (select 1 from automation.rule_events where event_key = 'trial_absent:' || :b1), 'a corrected attendance replaces the old event');
+
+-- A status the school added itself counts by its own flag: Late (attended) is an attended event, No-show (not attended) an absent one.
+insert into public.attendance_statuses (key, label, attended, deducts_lesson, color, sort_order)
+values ('late_t', 'Late T', true, true, 'amber', 40), ('noshow_t', 'No-show T', false, true, 'rose', 50);
+insert into public.lesson_logs (id, schedule_id, teacher_id, lesson_date, revision_number, parent_log_id) overriding system value
+values (99893, 99881, 99861, :'monday'::date, 3, 99892);
+insert into public.lesson_log_students (lesson_log_id, student_id, attendance_status)
+values (99893, :s1, 'late_t'), (99893, :s2, 'noshow_t'), (99893, :s3, 'present');
+select pg_temp.ok(exists (select 1 from automation.rule_events where event_key = 'trial_attended:' || :b1), 'a school status that counts as attended is an attended event');
+select pg_temp.ok(exists (select 1 from automation.rule_events where event_key = 'trial_absent:' || :b2), 'a school status that does not count as attended is an absent event');
+select pg_temp.ok(exists (select 1 from automation.rule_events where event_key = 'trial_attended:' || :b3), 'present is still attended');
+-- Back to the corrected attendance of revision 2 for the flow check below.
+delete from public.lesson_log_students where lesson_log_id = 99893;
+delete from public.lesson_logs where id = 99893;
 
 -- A flow on the new trigger moves the lead with "Change stage".
 insert into public.lead_stages (key, label, color, sort_order, is_system) values ('stage_rules_absent', 'Stage Rules Absent', 'slate', 70, false);

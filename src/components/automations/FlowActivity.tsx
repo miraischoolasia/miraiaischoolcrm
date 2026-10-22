@@ -88,11 +88,15 @@ function StatusStrip({
   onReload: () => void
 }) {
   const sendsBySelf = flow.graph.settings?.autoSend === true
-  const facts = [
-    flow.enabled ? 'Flow is LIVE' : 'Flow is OFF, so it does not run',
-    `Last checked ${timeAgo(flow.lastRunAt)} (every minute)`,
-    sendsBySelf ? 'Sends by itself' : 'Waits for approval',
-  ]
+  // A source keyword flow is run by the chat webhook the moment a first message comes in, and sends nothing.
+  const facts =
+    flow.trigger === 'first_message_keyword'
+      ? [flow.enabled ? 'Flow is LIVE' : 'Flow is OFF, so it does not run', 'Runs the moment a first message comes in']
+      : [
+          flow.enabled ? 'Flow is LIVE' : 'Flow is OFF, so it does not run',
+          `Last checked ${timeAgo(flow.lastRunAt)} (every minute)`,
+          sendsBySelf ? 'Sends by itself' : 'Waits for approval',
+        ]
   return (
     <section className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-700">

@@ -22,8 +22,18 @@ export type AppSection =
   | 'activity'
   | 'team-replies'
 // A tab on the Students page: a kind of student, or (for a school with programmes of its own) one programme,
-// 'programme:<id>', or the students in none, 'programme:none'.
-export type FilterKey = 'all' | 'hoa' | 'trial' | 'regular' | 'camp' | `programme:${number}` | 'programme:none'
+// 'programme:<id>', or the students in none, 'programme:none'. A school whose tabs follow its class categories
+// (My Classroom) has 'category:<name>', and 'category-none' for the students in no class.
+export type FilterKey =
+  | 'all'
+  | 'hoa'
+  | 'trial'
+  | 'regular'
+  | 'camp'
+  | `programme:${number}`
+  | 'programme:none'
+  | `category:${string}`
+  | 'category-none'
 // The key of one of the school's attendance statuses ('present', 'absent',
 // 'leave', or one an admin added such as 'late').
 export type AttendanceStatus = string

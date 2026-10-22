@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { ChatCircleText, Funnel, Lightning, Plus, Tag, X } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import {
+  SOURCE_KEYWORD_ACTIONS,
   TRIGGERS,
   describeAction,
   describeNode,
   describeOffset,
   previewMessage,
+  startsFromKeyword,
   triggerInfo,
   updateSettings,
   type ActionKind,
@@ -57,7 +59,7 @@ type SimpleBuilderProps = {
   onNodeChange: (id: string, change: Record<string, unknown>) => void
 }
 
-const FILTER_KINDS: { kind: Exclude<NewBlockKind, 'message'>; label: string; hint: string }[] = [
+const FILTER_KINDS: { kind: Exclude<NewBlockKind, 'message'>; label: string; hint: string; onlyFor?: FlowTrigger[] }[] = [
   { kind: 'source', label: 'Source', hint: 'Where the lead came from' },
   { kind: 'tag', label: 'Tag', hint: 'Leads with a tag' },
   { kind: 'form', label: 'Form', hint: 'Filled in a form' },
@@ -67,6 +69,14 @@ const FILTER_KINDS: { kind: Exclude<NewBlockKind, 'message'>; label: string; hin
   { kind: 'pic', label: 'PIC', hint: 'Who handles the lead' },
   { kind: 'classroom', label: 'Class', hint: 'Which class' },
   { kind: 'hours', label: 'Lessons left', hint: 'Nearly out of lessons' },
+  { kind: 'hours_is', label: 'Lessons left is exactly', hint: 'For example exactly 3 left', onlyFor: ['lessons_left'] },
+  { kind: 'tag_not', label: 'Does not have a tag', hint: 'Leads without a tag' },
+  { kind: 'tag_added', label: 'The tag added', hint: 'Which tag was just added', onlyFor: ['lead_tag'] },
+  { kind: 'subject', label: 'Lead or student', hint: 'Still a lead, or already a student' },
+  { kind: 'student_kind', label: 'Student kind', hint: 'The kinds set on the Students page' },
+  { kind: 'absent_streak', label: 'Absent in a row', hint: 'Missed 2 or more lessons in a row', onlyFor: ['class_absent'] },
+  { kind: 'att_status', label: 'Absence kind', hint: 'Absent, sick leave, ...', onlyFor: ['class_absent'] },
+  { kind: 'weekday', label: 'Day and time', hint: 'Only on some days or hours' },
 ]
 
 const STEP_KINDS: { kind: ActionKind; label: string; hint: string }[] = [
@@ -75,6 +85,9 @@ const STEP_KINDS: { kind: ActionKind; label: string; hint: string }[] = [
   { kind: 'set_source', label: 'Set the source', hint: 'Change the lead’s source' },
   { kind: 'assign_pic', label: 'Assign a PIC', hint: 'Who handles the lead from now on' },
   { kind: 'set_stage', label: 'Change the lead stage', hint: 'Move the lead to another stage' },
+  { kind: 'remove_tag', label: 'Remove a tag', hint: 'Take a tag off the lead' },
+  { kind: 'notify_staff', label: 'Notify staff', hint: 'A note under the bell for the PIC or the teachers' },
+  { kind: 'create_task', label: 'Create a follow-up task', hint: 'A task in the Calendar with a due day' },
 ]
 
 // "A lead comes in from a source" is the new-lead trigger with a Source filter in front. It is shown as
@@ -114,6 +127,8 @@ export function SimpleBuilder({
   const [pickingFilter, setPickingFilter] = useState(false)
   const [pickingStep, setPickingStep] = useState(false)
   const info = triggerInfo(draft.trigger)
+  // A source keyword flow only makes the lead (with its source and tags), the moment the first message comes in.
+  const sourceKeyword = draft.trigger === 'first_message_keyword'
 
   function toggle(id: string) {
     setOpenId((current) => (current === id ? null : id))
@@ -391,8 +406,9 @@ export function SimpleBuilder({
             {triggerValue === FROM_SOURCE && ' Tick the sources under "Who it is for".'}
             {triggerValue === FROM_KEYWORD && ' Tick the source keywords under "Who it is for".'}
           </p>
-          {draft.trigger === 'message_keyword' && (
+          {startsFromKeyword(draft.trigger) && (
             <KeywordsField
+              firstMessage={sourceKeyword}
               keywords={draft.graph.settings?.keywords}
               everyTime={draft.graph.settings?.everyTime}
               readOnly={readOnly}
@@ -403,7 +419,7 @@ export function SimpleBuilder({
       </section>
 
       {/* 2. Only for */}
-      <section className="space-y-2">
+      <section className="space-y-2" hidden={sourceKeyword}>
         <div className="flex items-center gap-2">
           <StepNumber n={2} />
           <h2 className="text-sm font-bold text-slate-900">Who it is for</h2>
@@ -434,7 +450,7 @@ export function SimpleBuilder({
                   aria-label="Filters"
                   className="absolute left-0 top-11 z-10 w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg"
                 >
-                  {FILTER_KINDS.map((entry) => (
+                  {FILTER_KINDS.filter((entry) => !entry.onlyFor || entry.onlyFor.includes(draft.trigger)).map((entry) => (
                     <li key={entry.kind} role="none">
                       <button
                         type="button"
@@ -454,13 +470,22 @@ export function SimpleBuilder({
         </div>
       </section>
 
-      {/* 3. Then change the lead */}
+      {/* 3. Then change the lead or tell the team */}
       <section className="space-y-2">
         <div className="flex items-center gap-2">
-          <StepNumber n={3} />
-          <h2 className="text-sm font-bold text-slate-900">Then update the lead</h2>
+          <StepNumber n={sourceKeyword ? 2 : 3} />
+          <h2 className="text-sm font-bold text-slate-900">
+            {sourceKeyword ? 'Then make the lead' : 'Then update the lead or tell the team'}
+          </h2>
         </div>
         <div className="ml-8 space-y-2">
+          {sourceKeyword && (
+            <p className="text-xs text-slate-500">
+              Done at once, the moment the first message comes in, on WhatsApp, Messenger and Instagram. Someone who is
+              already a lead or a student is left as they are. To send a welcome message, make another flow that starts
+              from “A lead comes in with a source keyword”.
+            </p>
+          )}
           {steps.length === 0 ? (
             <p className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
               Nothing changes on the lead. Add a step to tag them, set the source and more.
@@ -485,7 +510,11 @@ export function SimpleBuilder({
                   aria-label="Steps"
                   className="absolute left-0 top-11 z-10 w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg"
                 >
-                  {STEP_KINDS.filter((entry) => entry.kind !== 'make_lead' || draft.trigger === 'message_keyword').map(
+                  {STEP_KINDS.filter((entry) =>
+                    sourceKeyword
+                      ? SOURCE_KEYWORD_ACTIONS.includes(entry.kind)
+                      : entry.kind !== 'make_lead' || draft.trigger === 'message_keyword',
+                  ).map(
                     (entry) => (
                       <li key={entry.kind} role="none">
                         <button
@@ -508,7 +537,7 @@ export function SimpleBuilder({
       </section>
 
       {/* 4. Then send */}
-      <section className="space-y-2">
+      <section className="space-y-2" hidden={sourceKeyword}>
         <div className="flex items-center gap-2">
           <StepNumber n={4} />
           <h2 className="text-sm font-bold text-slate-900">Then send</h2>

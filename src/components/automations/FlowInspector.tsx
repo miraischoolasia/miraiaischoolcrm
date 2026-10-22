@@ -24,6 +24,7 @@ import {
 import { displayContactPhone, type AutomationContact } from '../../lib/automationContacts'
 import { leadStatusOptions } from '../../lib/constants'
 import { uploadFormImageToSupabase } from '../../lib/api'
+import { StaffStepEditor } from './StaffStepEditor'
 import type { Classroom } from '../../types/domain'
 
 type FlowInspectorProps = {
@@ -390,8 +391,10 @@ export function FlowInspector({
     const tags = filterOptions.tag
     const people = filterOptions.pic
     const sources = filterOptions.source
+    const isTag = node.action === 'add_tag' || node.action === 'remove_tag'
+    const isStaff = node.action === 'notify_staff' || node.action === 'create_task'
     const known =
-      node.action === 'add_tag'
+      isTag
         ? tags.some((choice) => choice.id === node.value)
         : node.action === 'assign_pic'
           ? people.some((choice) => choice.id === node.value)
@@ -404,7 +407,9 @@ export function FlowInspector({
         <p className="mt-1 text-xs text-slate-500">
           {node.action === 'make_lead'
             ? 'Makes the person who wrote a lead, if they are not one yet (nothing is sent). Put it first, so the steps after it have a lead to change.'
-            : 'Changes the lead of this family by itself: nothing is sent and nothing waits for approval. A family with no lead is left as it is, and the Execution logs say so.'}
+            : isStaff
+              ? 'Tells your team, not the family: nothing is sent to the parent and nothing waits for approval. If nobody fits (for example the lead has no PIC), the Execution logs say so.'
+              : 'Changes the lead of this family by itself: nothing is sent and nothing waits for approval. A family with no lead is left as it is, and the Execution logs say so.'}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
           <span>Do it</span>
@@ -435,10 +440,21 @@ export function FlowInspector({
             </select>
           )}
         </div>
-        {node.action !== 'make_lead' && (
+        {isStaff && (
+          <StaffStepEditor
+            key={node.id}
+            action={node.action as 'notify_staff' | 'create_task'}
+            value={node.value}
+            staff={filterOptions.staff ?? []}
+            readOnly={readOnly}
+            fieldClass={fieldClass}
+            onChange={(value) => onChange({ value })}
+          />
+        )}
+        {node.action !== 'make_lead' && !isStaff && (
           <label className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
             <span>
-              {node.action === 'add_tag'
+              {isTag
                 ? 'Tag'
                 : node.action === 'assign_pic'
                   ? 'PIC'
@@ -450,6 +466,8 @@ export function FlowInspector({
               aria-label={
                 node.action === 'add_tag'
                   ? 'Tag to add'
+                  : node.action === 'remove_tag'
+                    ? 'Tag to remove'
                   : node.action === 'assign_pic'
                     ? 'PIC to assign'
                     : node.action === 'set_source'
@@ -462,7 +480,7 @@ export function FlowInspector({
               className={cn(fieldClass, 'min-w-0 flex-1')}
             >
               <option value="">Choose…</option>
-              {node.action === 'add_tag' &&
+              {isTag &&
                 tags.map((choice) => (
                   <option key={choice.id} value={choice.id}>
                     {choice.label}
@@ -497,7 +515,10 @@ export function FlowInspector({
             “Converted” is not offered: a lead is converted by a person, because that makes the student.
           </p>
         )}
-        {node.action === 'add_tag' && tags.length === 0 && (
+        {node.action === 'remove_tag' && (
+          <p className="mt-1 text-xs text-slate-500">A lead without this tag is left as it is.</p>
+        )}
+        {isTag && tags.length === 0 && (
           <p className="mt-1 text-xs text-slate-500">There are no tags yet. Add one on the Leads page first.</p>
         )}
       </>
@@ -620,6 +641,143 @@ export function FlowInspector({
         </fieldset>
       </>
     )
+  } else if (node.kind === 'hours_is') {
+    body = (
+      <>
+        <h3 className="text-sm font-semibold text-slate-900">Lessons left is exactly</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Children with exactly this many lessons left follow the Yes line; everyone else follows No. Use it after
+          “Lessons left drops” so the message goes once, at that number.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
+          <input
+            type="number"
+            aria-label="Lessons left"
+            min={0}
+            max={500}
+            value={node.value}
+            disabled={readOnly}
+            onChange={(event) => onChange({ value: Number(event.target.value) })}
+            className={cn(fieldClass, 'w-24')}
+          />
+          <span>lessons left</span>
+        </div>
+      </>
+    )
+  } else if (node.kind === 'subject') {
+    body = (
+      <>
+        <h3 className="text-sm font-semibold text-slate-900">Lead or student</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Checks who the family is at the moment the step is due. The chosen kind follows the Yes line; everyone else
+          follows No.
+        </p>
+        <fieldset className="mt-3 space-y-1" disabled={readOnly}>
+          {(
+            [
+              ['student', 'Is a student (has a child in the Students list)'],
+              ['lead', 'Is still a lead (no student yet)'],
+            ] as const
+          ).map(([value, label]) => (
+            <label key={value} className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="radio"
+                name={`subject-${node.id}`}
+                checked={node.is === value}
+                onChange={() => onChange({ is: value })}
+                className="h-4 w-4 accent-[#fc0c97]"
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </fieldset>
+      </>
+    )
+  } else if (node.kind === 'absent_streak') {
+    body = (
+      <>
+        <h3 className="text-sm font-semibold text-slate-900">Absent in a row</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Children who missed at least this many lessons in a row (up to this one) follow the Yes line; everyone else
+          follows No.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
+          <span>At least</span>
+          <input
+            type="number"
+            aria-label="Lessons missed in a row"
+            min={2}
+            max={20}
+            value={node.min}
+            disabled={readOnly}
+            onChange={(event) => onChange({ min: Number(event.target.value) })}
+            className={cn(fieldClass, 'w-20')}
+          />
+          <span>lessons in a row</span>
+        </div>
+      </>
+    )
+  } else if (node.kind === 'weekday') {
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    body = (
+      <>
+        <h3 className="text-sm font-semibold text-slate-900">Day and time</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          When the step is due on a ticked day, between these hours (Malaysia time), the flow follows Yes; otherwise
+          No.
+        </p>
+        <fieldset className="mt-3 flex flex-wrap gap-2" disabled={readOnly}>
+          {dayNames.map((name, day) => (
+            <label key={name} className="flex items-center gap-1 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={node.days.includes(day)}
+                onChange={(event) =>
+                  onChange({
+                    days: event.target.checked
+                      ? [...node.days, day].sort((a, b) => a - b)
+                      : node.days.filter((other) => other !== day),
+                  })
+                }
+                className="h-4 w-4 accent-[#fc0c97]"
+              />
+              <span>{name}</span>
+            </label>
+          ))}
+        </fieldset>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">
+          <span>From</span>
+          <select
+            aria-label="From hour"
+            value={node.from ?? 0}
+            disabled={readOnly}
+            onChange={(event) => onChange({ from: Number(event.target.value) })}
+            className={fieldClass}
+          >
+            {Array.from({ length: 24 }, (_, hour) => hour).map((hour) => (
+              <option key={hour} value={hour}>
+                {String(hour).padStart(2, '0')}:00
+              </option>
+            ))}
+          </select>
+          <span>to</span>
+          <select
+            aria-label="To hour"
+            value={node.to ?? 24}
+            disabled={readOnly}
+            onChange={(event) => onChange({ to: Number(event.target.value) })}
+            className={fieldClass}
+          >
+            {Array.from({ length: 24 }, (_, index) => index + 1).map((hour) => (
+              <option key={hour} value={hour}>
+                {String(hour).padStart(2, '0')}:00
+              </option>
+            ))}
+          </select>
+        </div>
+        {(node.from ?? 0) >= (node.to ?? 24) && <p className="mt-1 text-xs text-red-700">The start must be before the end.</p>}
+      </>
+    )
   } else if (isChoiceCondition(node)) {
     const copy = {
       source: { title: 'Source', plural: 'sources', hint: 'Leads that came from a ticked source follow the Yes line; everyone else follows No.' },
@@ -631,9 +789,13 @@ export function FlowInspector({
         plural: 'source keywords',
         hint: 'Leads that came in with a ticked source keyword (the phrase in their first WhatsApp message) follow the Yes line; everyone else follows No.',
       },
+      tag_not: { title: 'Does not have tag', plural: 'tags', hint: 'Leads with none of the ticked tags follow the Yes line; leads with any of them follow No.' },
+      tag_added: { title: 'The tag added', plural: 'tags', hint: 'When the tag just added is a ticked one, the flow follows Yes; otherwise No.' },
+      student_kind: { title: 'Student kind', plural: 'student kinds', hint: 'Students of a ticked kind follow the Yes line; everyone else, and leads, follow No.' },
+      att_status: { title: 'Absence kind', plural: 'absence kinds', hint: 'When the absence was marked with a ticked kind, the flow follows Yes; otherwise No.' },
     }[node.kind]
     // A ticked choice that was deleted stays in the list so it can be unticked.
-    const known = filterOptions[node.kind]
+    const known = filterOptions[node.kind === 'tag_not' || node.kind === 'tag_added' ? 'tag' : node.kind]
     const choices = [
       ...known,
       ...node.ids.filter((id) => !known.some((choice) => choice.id === id)).map((id) => ({ id, label: 'A removed choice' })),
@@ -642,7 +804,7 @@ export function FlowInspector({
       <>
         <h3 className="text-sm font-semibold text-slate-900">{copy.title}</h3>
         <p className="mt-1 text-xs text-slate-500">
-          {copy.hint} A family\’s child is checked through the parent\’s lead.
+          {copy.hint} A family’s child is checked through the parent’s lead.
         </p>
         <fieldset className="mt-3 grid gap-1 sm:grid-cols-2" disabled={readOnly}>
           {choices.length === 0 && <p className="text-sm text-slate-500">No {copy.plural} yet.</p>}

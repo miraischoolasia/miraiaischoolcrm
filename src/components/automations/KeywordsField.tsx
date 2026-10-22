@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react'
-import { cleanKeywords, MAX_KEYWORDS, MAX_KEYWORD_LENGTH, type FlowSettings } from '../../lib/automationFlows'
+import {
+  cleanKeywords,
+  MAX_KEYWORDS,
+  MAX_KEYWORD_LENGTH,
+  MAX_SOURCE_KEYWORD_LENGTH,
+  type FlowSettings,
+} from '../../lib/automationFlows'
 
 type KeywordsFieldProps = {
   keywords: string[] | undefined
   everyTime: boolean | undefined
+  // A source keyword flow: only the first message counts, and a keyword can be a whole opening line.
+  firstMessage?: boolean
   readOnly: boolean
   onChange: (change: FlowSettings) => void
 }
@@ -13,7 +21,8 @@ const fieldClass =
 
 // The words that start a flow made for messages, one per line. The box keeps what is typed (a half-written line,
 // a blank line); the flow keeps the clean list.
-export function KeywordsField({ keywords, everyTime, readOnly, onChange }: KeywordsFieldProps) {
+export function KeywordsField({ keywords, everyTime, firstMessage = false, readOnly, onChange }: KeywordsFieldProps) {
+  const maxLength = firstMessage ? MAX_SOURCE_KEYWORD_LENGTH : MAX_KEYWORD_LENGTH
   const saved = keywords ?? []
   const [text, setText] = useState(saved.join('\n'))
 
@@ -30,13 +39,13 @@ export function KeywordsField({ keywords, everyTime, readOnly, onChange }: Keywo
   return (
     <div className="space-y-1.5">
       <label className="block text-sm font-semibold text-slate-900">
-        Starts when a message holds
+        {firstMessage ? 'Starts when the first message holds' : 'Starts when a message holds'}
         <textarea
           aria-label="Keywords"
           value={text}
           rows={4}
           disabled={readOnly}
-          maxLength={MAX_KEYWORDS * (MAX_KEYWORD_LENGTH + 1)}
+          maxLength={MAX_KEYWORDS * (maxLength + 1)}
           placeholder={'one word or phrase per line, for example\nprice list\nI want to join'}
           onChange={(event) => {
             setText(event.target.value)
@@ -47,9 +56,12 @@ export function KeywordsField({ keywords, everyTime, readOnly, onChange }: Keywo
       </label>
       <p className="text-xs text-slate-500">
         Any one of the lines is enough. Capital letters, spacing and punctuation do not matter. Up to {MAX_KEYWORDS}{' '}
-        lines{count > 0 ? ` (${count} now)` : ''}. It listens on the channels ticked under “Send on”.
+        lines{count > 0 ? ` (${count} now)` : ''}, each up to {maxLength} characters.
+        {firstMessage
+          ? ' Only a parent’s very first message counts; the longest keyword it holds decides the source.'
+          : ' It listens on the channels ticked under “Send on”.'}
       </p>
-      <label className="flex items-start gap-2 text-sm text-slate-700">
+      <label className="flex items-start gap-2 text-sm text-slate-700" hidden={firstMessage}>
         <input
           type="checkbox"
           checked={everyTime === true}

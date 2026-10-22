@@ -17,6 +17,9 @@ export type AutoSendSettings = {
   // When it said it would ask again (it sleeps up to 30 minutes at night or while paused); null before
   // that was recorded.
   senderNextAt?: string | null
+  // Most automatic messages one family gets in 7 days, from every flow (approved ones too); 0 = no limit.
+  // Undefined before migration 20261029700000.
+  familyWeeklyCap?: number
 }
 
 export const DEFAULT_AUTO_SEND: AutoSendSettings = {
@@ -81,6 +84,12 @@ export function validateAutoSend(settings: AutoSendSettings): string | null {
   if (settings.fromHour >= settings.untilHour) {
     return 'The first hour must be before the last hour.'
   }
+  if (
+    settings.familyWeeklyCap !== undefined &&
+    (!Number.isInteger(settings.familyWeeklyCap) || settings.familyWeeklyCap < 0 || settings.familyWeeklyCap > 50)
+  ) {
+    return 'The weekly limit per family must be from 0 to 50.'
+  }
   return null
 }
 
@@ -94,6 +103,8 @@ function requireSupabase() {
 const COLUMNS = 'paused, daily_cap, gap_seconds, send_from_hour, send_until_hour, sender_seen_at'
 // Before migration 20261024950000 there is no sender_next_at: then it is read without it.
 const COLUMNS_WITH_NEXT = `${COLUMNS}, sender_next_at`
+// Before migration 20261029700000 there is no family_weekly_cap.
+const COLUMNS_WITH_CAP = `${COLUMNS_WITH_NEXT}, family_weekly_cap`
 
 type Row = {
   paused: boolean
@@ -103,11 +114,15 @@ type Row = {
   send_until_hour: number
   sender_seen_at: string | null
   sender_next_at?: string | null
+  family_weekly_cap?: number
 }
 
 export async function fetchAutoSend(): Promise<AutoSendSettings> {
   const select = (columns: string) => requireSupabase().from('automation_settings').select(columns).maybeSingle()
-  let { data, error } = await select(COLUMNS_WITH_NEXT)
+  let { data, error } = await select(COLUMNS_WITH_CAP)
+  if (error?.code === '42703') {
+    ;({ data, error } = await select(COLUMNS_WITH_NEXT))
+  }
   if (error?.code === '42703') {
     ;({ data, error } = await select(COLUMNS))
   }
@@ -124,6 +139,7 @@ export async function fetchAutoSend(): Promise<AutoSendSettings> {
         untilHour: row.send_until_hour,
         senderSeenAt: row.sender_seen_at,
         senderNextAt: row.sender_next_at ?? null,
+        ...(row.family_weekly_cap !== undefined ? { familyWeeklyCap: row.family_weekly_cap } : {}),
       }
     : DEFAULT_AUTO_SEND
 }
@@ -146,6 +162,9 @@ export async function saveAutoSend(change: Partial<Omit<AutoSendSettings, 'sende
   }
   if (change.untilHour !== undefined) {
     update.send_until_hour = change.untilHour
+  }
+  if (change.familyWeeklyCap !== undefined) {
+    update.family_weekly_cap = change.familyWeeklyCap
   }
   const { data, error } = await requireSupabase().from('automation_settings').update(update).eq('id', true).select('id')
   if (error) {

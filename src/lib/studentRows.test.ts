@@ -129,3 +129,39 @@ describe('HOA follow-up', () => {
     expect(row.issues.map((issue) => issue.label)).toEqual(['Deactivated'])
   })
 })
+
+describe('class categories', () => {
+  const categories = [
+    { name: '正课', kind: 'regular' as const, sortOrder: 10, isActive: true },
+    { name: '免费课', kind: 'regular' as const, sortOrder: 20, isActive: true },
+  ]
+  const rooms = [
+    { id: 1, name: 'A', category: 'regular', categoryName: '正课' },
+    { id: 2, name: 'B', category: 'regular', categoryName: '免费课' },
+    { id: 3, name: 'C', category: 'regular', categoryName: null },
+  ] as unknown as Classroom[]
+  const rows = buildStudentRows({
+    students: [
+      student(1, { classroomId: 1 }),
+      student(2, { classroomId: 1, classPeriods: [{ classroomId: 1, startDate: null, endDate: null }, { classroomId: 2, startDate: null, endDate: null }] }),
+      student(3, { classroomId: 3 }),
+      student(4),
+    ],
+    packages, classrooms: rooms, schedules: [], teacherMap: new Map(), trialBookings: [], parents: new Map(),
+    categories, todayString: today,
+  })
+  const ids = (type: Parameters<typeof filterStudentRows>[1]['type']) =>
+    filterStudentRows(rows, { type, followUpOnly: false, search: '' }).map((row) => row.student.id)
+
+  it('puts a student in the category of each class they are in now, and in No class when they have none', () => {
+    expect(rows.map((row) => row.categoryNames)).toEqual([['正课'], ['正课', '免费课'], ['正课'], []])
+  })
+
+  it('filters by a category (a student in two classes counts in both) and by No class', () => {
+    expect(ids('category:正课')).toEqual([1, 2, 3])
+    expect(ids('category:免费课')).toEqual([2])
+    expect(ids('category-none')).toEqual([4])
+    expect(ids('all')).toEqual([1, 2, 3, 4])
+  })
+})
+

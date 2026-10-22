@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { defaultClassCategories, resetClassCategoriesForTests } from '../../lib/classCategories'
 import { StudentDashboardSection } from './StudentDashboardSection'
 import { NO_STUDENT_FIELDS } from '../../lib/studentFields'
 import type { Student, Teacher } from '../../types/domain'
@@ -59,6 +60,9 @@ function renderList(setting = { ...NO_STUDENT_FIELDS, name_zh: true, student_kin
 }
 
 const names = () => [...document.querySelectorAll('tbody tr')].map((row) => row.querySelector('button')?.textContent).sort()
+
+// The class categories are the defaults; nothing is read from the database.
+beforeAll(() => resetClassCategoriesForTests(defaultClassCategories))
 
 describe('student list with the extra student fields', () => {
   it('filters by kind of student, including students with none', async () => {

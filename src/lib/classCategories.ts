@@ -72,7 +72,15 @@ export async function reloadClassCategories() {
     publish(defaultClassCategories, false)
     return
   }
-  const { data, error } = await supabase.from('class_categories').select('name, kind, sort_order, is_active')
+  let result
+  try {
+    result = await supabase.from('class_categories').select('name, kind, sort_order, is_active')
+  } catch {
+    // The network (or a page that has no database) must never leave an unhandled error behind.
+    publish(defaultClassCategories, false)
+    return
+  }
+  const { data, error } = result
   if (error) {
     // Before the migration the table is not there.
     publish(defaultClassCategories, false)

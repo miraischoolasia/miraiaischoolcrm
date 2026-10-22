@@ -243,6 +243,7 @@ import { WhatsAppOpenProvider, type WhatsAppTarget } from './components/WhatsApp
 import type { LeadFormValues, WhatsAppCrm } from './components/whatsapp/crm'
 import { todaysFollowUps } from './lib/followUps'
 import { FollowUpReminders } from './components/whatsapp/FollowUpReminders'
+import { StaffNotificationBell } from './components/StaffNotificationBell'
 import { describeHoaSlot, upcomingHoaSlots, type HoaSlot } from './lib/hoaSlots'
 import { classesOfStudent } from './lib/studentClasses'
 import { findLeadsByPhone, sameNumberMessage } from './lib/chatLink'
@@ -313,6 +314,7 @@ import { CancelledOccurrenceModal } from './components/modals/CancelledOccurrenc
 import { CalendarItemModal } from './components/modals/CalendarItemModal'
 import { useCalendarItems } from './hooks/useCalendarItems'
 import { useFollowUpReminders } from './hooks/useFollowUpReminders'
+import { useStaffNotifications } from './hooks/useStaffNotifications'
 import { useLeadChannels } from './hooks/useLeadChannels'
 import { contactSiblings, mergeLeads } from './lib/leadChannels'
 import { leadParentName } from './lib/parentLabel'
@@ -1087,6 +1089,8 @@ function App() {
   const canOpenWhatsAppChat = allowedSections.includes('whatsapp') && Boolean(whatsAppApiUrl && whatsAppUser)
   // Follow-ups whose time has come ring for the person they are for (cards in the corner of the screen).
   const followUpReminders = useFollowUpReminders(calendarItems.items, currentSession?.teacherId ?? null)
+  // Notes automations left for the signed-in person (the bell at the top).
+  const staffNotes = useStaffNotifications({ enabled: Boolean(currentSession?.teacherId) })
   // A follow-up's "Open chat": the lead's own chat (also a Messenger / Instagram lead with no phone), else its number;
   // only a lead with no chat at all opens its profile, saying so.
   function openFollowUpChat(leadId: number) {
@@ -7184,6 +7188,20 @@ function App() {
                         ))}
                     </select>
                   </label>
+                )}
+                {staffNotes.available && (
+                  <StaffNotificationBell
+                    items={staffNotes.items}
+                    unread={staffNotes.unread}
+                    onMarkRead={(ids) => void staffNotes.markRead(ids)}
+                    onOpenChat={can('leads') ? openFollowUpChat : null}
+                    onOpenLead={can('leads') ? openEditLeadModal : null}
+                    onOpenStudent={(studentId) =>
+                      students.some((student) => student.id === studentId)
+                        ? openStudentDetail(studentId)
+                        : showToast('This student is not in your list.', 'info')
+                    }
+                  />
                 )}
                 <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600">
                   <span className="font-medium">{currentTeacher.fullName}</span>

@@ -9,7 +9,7 @@ type FirstMessageCardProps = {
   // The chat has older messages that are not loaded, so this may not be the very first.
   hasOlder: boolean
   onLoadOlder: () => void
-  // Only for people who may edit source rules. The phrase is what to start the rule from.
+  // Opens the source keywords (they are changed on Automations); the phrase is the message to start one from.
   onManageRules?: (phrase: string) => void
 }
 
@@ -65,11 +65,11 @@ export function FirstMessageCard({ first, guess, hasOlder, onLoadOlder, onManage
             <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-medium">
               {first?.text && !guess.rule && (
                 <button type="button" onClick={() => onManageRules(first.text)} className="underline hover:text-sky-700">
-                  Make a rule from this message
+                  Make a source keyword from this message
                 </button>
               )}
               <button type="button" onClick={() => onManageRules('')} className="underline hover:text-sky-700">
-                Source rules
+                Source keywords
               </button>
             </p>
           )}
