@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { aspectRatioOf, buildDrawPrompt, imageKeyFrom, imagePath, noPictureReason, pictureOf, wordsForPage, type DrawContext, type DrawItem } from '../../supabase/functions/content-images/logic'
+import { aspectRatioOf, buildDrawPrompt, imageKeyFrom, imagePath, noPictureIsWorthRetrying, noPictureReason, pictureOf, wordsForPage, type DrawContext, type DrawItem } from '../../supabase/functions/content-images/logic'
 import { currentImage, downloadName, drawingProgress, failedImage, pendingImage, versionsOf, type ContentImage } from './contentImages'
 
 vi.mock('./supabase', () => ({ supabase: null }))
@@ -74,6 +74,13 @@ describe('drawing prompts', () => {
     expect(imageKeyFrom(env({ CONTENT_IMAGE_API_KEY: '  ', GEMINI_API_KEY: 'free' }))).toBe('free')
     expect(imageKeyFrom(env({ GEMINI_API_KEY: 'free' }))).toBe('free')
     expect(imageKeyFrom(env({}))).toBeNull()
+  })
+
+  it('tries again when Gemini just gave no picture, not when it refused', () => {
+    expect(noPictureIsWorthRetrying({ candidates: [{ finishReason: 'NO_IMAGE' }] })).toBe(true)
+    expect(noPictureIsWorthRetrying({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'hi' }] } }] })).toBe(true)
+    expect(noPictureIsWorthRetrying({ candidates: [{ finishReason: 'IMAGE_SAFETY' }] })).toBe(false)
+    expect(noPictureIsWorthRetrying({ promptFeedback: { blockReason: 'SAFETY' } })).toBe(false)
   })
 
   it('names files and sizes the way the database accepts them', () => {

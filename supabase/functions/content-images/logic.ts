@@ -94,7 +94,7 @@ export function buildDrawPrompt(item: DrawItem, job: Pick<DrawJob, 'page' | 'qua
       ? [words && `Main text: "${words}"`]
       : [`Big title: "${item.headline}"`, item.subheadline && `Small title: "${item.subheadline}"`, words && `Other text:\n${words}`]
   return [
-    `Design a social media ${item.kind === 'carousel' ? `carousel page ${job.page} of ${item.pages}` : 'poster'} for ${context.schoolName}, a children's education centre in Malaysia. Aspect ratio ${ratio}.`,
+    `Generate an image. Design a social media ${item.kind === 'carousel' ? `carousel page ${job.page} of ${item.pages}` : 'poster'} for ${context.schoolName}, a children's education centre in Malaysia. Aspect ratio ${ratio}.`,
     `Style: ${context.styleName}${context.styleDescription ? ` - ${context.styleDescription}` : ''}`,
     item.visual && `Picture: ${item.visual}`,
     'Write this text on the poster exactly as given, in Simplified Chinese, large and easy to read, spelled correctly, and no other words:',
@@ -136,6 +136,15 @@ export function noPictureReason(data: unknown): string {
   const said = candidate?.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join(' ').trim()
   if (said) return `The AI did not draw a picture: ${said.slice(0, 160)}`
   return `The AI did not draw a picture${reason ? ` (${reason})` : ''}. Try again.`
+}
+
+// Whether trying again may help: yes when Gemini simply gave no picture this time (NO_IMAGE, OTHER, cut
+// short); no when it refused for safety or the words were blocked (the same request would be refused again).
+export function noPictureIsWorthRetrying(data: unknown): boolean {
+  const answer = data as { candidates?: { finishReason?: string }[]; promptFeedback?: { blockReason?: string } }
+  if (answer?.promptFeedback?.blockReason) return false
+  const reason = answer?.candidates?.[0]?.finishReason ?? ''
+  return !['SAFETY', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII', 'IMAGE_SAFETY', 'RECITATION'].includes(reason)
 }
 
 export const EXTENSIONS: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }

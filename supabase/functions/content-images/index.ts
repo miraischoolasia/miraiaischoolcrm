@@ -18,7 +18,7 @@
 //   GEMINI_API_BASE         optional, only for the local test (a stand-in for Google)
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import { encodeBase64, decodeBase64 } from 'jsr:@std/encoding@1/base64'
-import { aspectRatioOf, buildDrawPrompt, imageKeyFrom, imagePath, noPictureReason, pictureOf, type DrawItem } from './logic.ts'
+import { aspectRatioOf, buildDrawPrompt, imageKeyFrom, imagePath, noPictureIsWorthRetrying, noPictureReason, pictureOf, type DrawItem } from './logic.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -33,9 +33,15 @@ function jsonResponse(body: unknown, status: number) {
 const DRAFT_MODEL = 'gemini-2.5-flash-image'
 const HD_MODEL = 'gemini-3-pro-image-preview'
 const DEFAULT_SCHOOL_NAME = 'Mirai AI School'
-// Pictures drawn at the same time, and how long one run keeps taking new pictures before handing over.
+// Pictures drawn at the same time. A run only starts pictures in its first seconds, then hands the rest to a
+// fresh run, so a slow picture (Gemini can take over a minute) never runs past the function's time limit
+// (150 s on the free plan) and gets cut off half way.
 const WORKERS = 3
-const START_NEW_FOR_MS = 60_000
+const START_NEW_FOR_MS = 10_000
+// How long one picture may take before it is tried again.
+const DRAW_TIMEOUT_MS = 125_000
+// After a failed try, wait this long before the next run picks the picture up again.
+const RETRY_PAUSE_MS = 15_000
 const MAX_SAMPLES = 3
 
 type Part = { text: string } | { inline_data: { mime_type: string; data: string } }
@@ -69,11 +75,12 @@ async function drawWithGemini(
       body: JSON.stringify({
         contents: [{ role: 'user', parts }],
         generationConfig: {
-          responseModalities: ['IMAGE'],
+          // Text and image: with image only, Gemini sometimes ends with NO_IMAGE instead of drawing.
+          responseModalities: ['TEXT', 'IMAGE'],
           imageConfig: hd ? { aspectRatio, imageSize: '2K' } : { aspectRatio },
         },
       }),
-      signal: AbortSignal.timeout(110_000),
+      signal: AbortSignal.timeout(DRAW_TIMEOUT_MS),
     })
     if (!response.ok) {
       const body = (await response.text()).slice(0, 400)
@@ -92,7 +99,7 @@ async function drawWithGemini(
     }
     const data = await response.json()
     const picture = pictureOf(data)
-    if (!picture) return { ok: false, error: noPictureReason(data).slice(0, 280), retry: false }
+    if (!picture) return { ok: false, error: noPictureReason(data).slice(0, 280), retry: noPictureIsWorthRetrying(data) }
     return { ok: true, ...picture }
   } catch (problem) {
     const reason = problem instanceof Error ? `${problem.name}: ${problem.message}` : 'unknown'
@@ -136,6 +143,7 @@ async function drawOne(admin: SupabaseClient, key: string, job: JobRow) {
       error: error.slice(0, 300),
       latency_ms: Date.now() - startedAt,
     })
+    return false
   }
 
   const { data: item } = await admin.from('content_items').select('*').eq('id', job.item_id).maybeSingle()
@@ -210,6 +218,7 @@ async function drawOne(admin: SupabaseClient, key: string, job: JobRow) {
   const hd = job.quality === 'hd'
   const model = hd ? Deno.env.get('CONTENT_IMAGE_HD_MODEL') || HD_MODEL : Deno.env.get('CONTENT_IMAGE_MODEL') || DRAFT_MODEL
   const drawn = await drawWithGemini(key, model, parts, aspectRatioOf(item.size), hd)
+  console.log(`picture ${job.id} try ${job.attempts} ${model} ${Date.now() - startedAt}ms ${drawn.ok ? 'drawn' : `failed: ${drawn.error.slice(0, 120)}`}`)
   if (!drawn.ok) return fail(drawn.error, drawn.retry)
 
   const path = imagePath(job.item_id, job.id, drawn.mime)
@@ -231,29 +240,35 @@ async function drawOne(admin: SupabaseClient, key: string, job: JobRow) {
     ok: true,
     latency_ms: Date.now() - startedAt,
   })
+  return true
 }
 
 // Takes waiting pictures one after another until none are left or time is up; WORKERS of these run at once.
-async function work(admin: SupabaseClient, key: string, until: number) {
+async function work(admin: SupabaseClient, key: string, until: number): Promise<boolean> {
+  let allDrawn = true
   while (Date.now() < until) {
     const { data, error } = await admin.rpc('content_claim_image_job')
     const job = data as JobRow | null
-    if (error || !job || !job.id) return
+    if (error || !job || !job.id) return allDrawn
     try {
-      await drawOne(admin, key, job)
+      if ((await drawOne(admin, key, job)) === false) allDrawn = false
     } catch (problem) {
+      allDrawn = false
       console.error('Drawing failed', problem instanceof Error ? problem.message : problem)
       await admin.from('content_images').update({ status: 'queued' }).eq('id', job.id).eq('status', 'working')
     }
   }
+  return allDrawn
 }
 
 async function runQueue(admin: SupabaseClient, key: string, supabaseUrl: string, serviceRoleKey: string) {
   const until = Date.now() + START_NEW_FOR_MS
-  await Promise.all(Array.from({ length: WORKERS }, () => work(admin, key, until)))
-  // Pictures still waiting: hand over to a fresh run of this function.
+  const results = await Promise.all(Array.from({ length: WORKERS }, () => work(admin, key, until)))
+  // Pictures still waiting: hand over to a fresh run of this function (after a short pause when a try just
+  // failed, so a busy Gemini gets a moment before the next try).
   const { count } = await admin.from('content_images').select('id', { count: 'exact', head: true }).eq('status', 'queued')
   if ((count ?? 0) > 0) {
+    if (results.includes(false)) await new Promise((resume) => setTimeout(resume, RETRY_PAUSE_MS))
     await fetch(`${supabaseUrl}/functions/v1/content-images`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${serviceRoleKey}`, 'Content-Type': 'application/json' },
