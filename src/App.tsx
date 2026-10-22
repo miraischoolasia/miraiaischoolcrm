@@ -2142,7 +2142,8 @@ function App() {
   )
 
   // The month calendar shows only the special class days: cancelled, replacement, extra class and booked trial
-  // (lib/calendarSpecial). Week and agenda show everything. Null until the calendar says which view it shows.
+  // (lib/calendarSpecial), except in the classic layout, which shows every class. Week and agenda show everything.
+  // Null until the calendar says which view it shows.
   const [calendarViewType, setCalendarViewType] = useState<string | null>(null)
   // Whether the month also shows each weekly class, faded (Class Settings > Calendar).
   const [monthWeekly, setMonthWeekly] = useState(MONTH_WEEKLY_DEFAULT)
@@ -2150,41 +2151,6 @@ function App() {
     () => linkReplacements(scheduleExceptions, schedules, classroomMap),
     [scheduleExceptions, schedules, classroomMap],
   )
-  const shownCalendarEvents = useMemo(() => {
-    if (calendarViewType !== 'dayGridMonth') return calendarEvents
-    const subjectName = new Map(subjects.map((subject) => [subject.id, subject.name]))
-    const trialSlots = visibleSchedules.filter(
-      (schedule) =>
-        getScheduleClassKind(schedule, classroomMap) === 'trial' &&
-        scheduleShown(schedule, classroomMap, calendarFilter, calendarPeople),
-    )
-    return [
-      ...monthSpecialEvents(calendarEvents, {
-        schedules,
-        classroomMap,
-        subjectName: (id) => subjectName.get(id) ?? null,
-        links: replacementLinks,
-        makeupPlans,
-        weekly: monthWeekly,
-      }),
-      ...bookedTrialEvents(trialBookings, trialSlots, scheduleExceptions, classroomMap, (id) => teacherMap.get(id)?.fullName ?? ''),
-    ]
-  }, [
-    calendarViewType,
-    monthWeekly,
-    calendarEvents,
-    subjects,
-    visibleSchedules,
-    classroomMap,
-    calendarFilter,
-    calendarPeople,
-    schedules,
-    replacementLinks,
-    makeupPlans,
-    trialBookings,
-    scheduleExceptions,
-    teacherMap,
-  ])
 
   // The Calendar's day list (a school with many classes a day; Class Settings > Calendar). Month, week and
   // agenda stay one click away; null = the layout's own first view.
@@ -2214,6 +2180,47 @@ function App() {
     void fetchMonthWeekly().then(setMonthWeekly)
   }, [currentSession])
   const dayListOn = usesDayList(calendarLayout, schedules)
+  // A school that picked the classic layout (Class Settings > Calendar) keeps the month it always had: every class
+  // a solid block, no "nothing on" note. Automatic and day list show the small special-day cards.
+  const classicMonth = calendarLayout === 'classic'
+  const shownCalendarEvents = useMemo(() => {
+    // The classic month shows every class; with "show each weekly class" switched off it keeps just the special
+    // days (still drawn as blocks).
+    if (calendarViewType !== 'dayGridMonth' || (classicMonth && monthWeekly)) return calendarEvents
+    const subjectName = new Map(subjects.map((subject) => [subject.id, subject.name]))
+    const trialSlots = visibleSchedules.filter(
+      (schedule) =>
+        getScheduleClassKind(schedule, classroomMap) === 'trial' &&
+        scheduleShown(schedule, classroomMap, calendarFilter, calendarPeople),
+    )
+    return [
+      ...monthSpecialEvents(calendarEvents, {
+        schedules,
+        classroomMap,
+        subjectName: (id) => subjectName.get(id) ?? null,
+        links: replacementLinks,
+        makeupPlans,
+        weekly: monthWeekly,
+      }),
+      ...bookedTrialEvents(trialBookings, trialSlots, scheduleExceptions, classroomMap, (id) => teacherMap.get(id)?.fullName ?? ''),
+    ]
+  }, [
+    calendarViewType,
+    classicMonth,
+    monthWeekly,
+    calendarEvents,
+    subjects,
+    visibleSchedules,
+    classroomMap,
+    calendarFilter,
+    calendarPeople,
+    schedules,
+    replacementLinks,
+    makeupPlans,
+    trialBookings,
+    scheduleExceptions,
+    teacherMap,
+  ])
   const showDayList = dayListOn && (calendarMode ?? 'day_list') === 'day_list'
   const shownDayListDate = dayListDate ?? todayString
   const shownDayListMonth = dayListMonth ?? shownDayListDate.slice(0, 7)
@@ -6582,7 +6589,8 @@ function App() {
 
   function renderCalendarEventContent(eventInfo: EventContentArg) {
     const special = eventInfo.event.extendedProps.special as SpecialCard | undefined
-    if (special && eventInfo.view.type === 'dayGridMonth') {
+    // The classic month draws every class as a block, not as a small special-day card.
+    if (special && eventInfo.view.type === 'dayGridMonth' && !classicMonth) {
       const done =
         special.kind !== 'cancel' &&
         latestLessonLogMap.has(`${Number(eventInfo.event.extendedProps.scheduleId)}:${String(eventInfo.event.extendedProps.occurrenceDate ?? (eventInfo.event.start ? getDateKeyFromDate(eventInfo.event.start) : ''))}`)
@@ -7397,15 +7405,15 @@ function App() {
                       height="auto"
                       timeZone="local"
                       events={shownCalendarEvents}
-                      // The month shows at most 4 cards a day, the special days before the weekly classes;
-                      // "+N more" opens the rest.
-                      dayMaxEvents={4}
+                      // The month shows at most 4 cards a day, the special days before the weekly classes; the
+                      // classic month 2 big blocks, as it always had. "+N more" opens the rest.
+                      dayMaxEvents={classicMonth ? 2 : 4}
                       eventOrder="monthRank,start,-duration,allDay,title"
                       datesSet={(arg) => setCalendarViewType(arg.view.type)}
-                      // Each day of the month carries the "nothing on" note; index.css shows it only on a day
-                      // without a card.
+                      // Each day of the month carries the "nothing on" note (not in the classic month); index.css
+                      // shows it only on a day without a card.
                       dayCellContent={(arg) =>
-                        arg.view.type === 'dayGridMonth' && !arg.isOther ? (
+                        arg.view.type === 'dayGridMonth' && !arg.isOther && !classicMonth ? (
                           <>
                             <span>{arg.dayNumberText}</span>
                             <span className="fc-day-empty-note">No class event scheduled.</span>

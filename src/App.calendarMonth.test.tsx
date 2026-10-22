@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   view: 'dayGridMonth',
   // Class Settings > Calendar: the weekly classes on the month too.
   monthWeekly: false,
+  // Class Settings > Calendar: the layout (automatic shows the special-day cards on the month).
+  layout: 'auto' as 'auto' | 'classic' | 'day_list',
 }))
 
 vi.mock('./lib/supabase', () => ({
@@ -106,6 +108,7 @@ const oneOff = (id: number, date: string, title: string) => ({
 vi.mock('./lib/calendarLayout', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   fetchMonthWeekly: async () => mocks.monthWeekly,
+  fetchCalendarLayout: async () => mocks.layout,
 }))
 
 vi.mock('./lib/subjects', async (importOriginal) => ({
@@ -184,6 +187,7 @@ describe('the month calendar', () => {
     mocks.rpc.mockResolvedValue({ data: null, error: null })
     mocks.view = 'dayGridMonth'
     mocks.monthWeekly = false
+    mocks.layout = 'auto'
     window.localStorage.clear()
     vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 19, 10, 0) })
   })
@@ -243,6 +247,28 @@ describe('the month calendar', () => {
     // The special days are still there.
     expect(card('schedule-101-cancelled-2026-10-12')).not.toBeNull()
     expect(card('schedule-202')).not.toBeNull()
+  })
+
+  it('in the classic layout keeps every class on the month as a block, without the "nothing on" note', async () => {
+    mocks.layout = 'classic'
+    mocks.monthWeekly = true
+    await signInAndOpenCalendar()
+    await vi.waitFor(() => expect(card('schedule-101')).not.toBeNull())
+
+    expect(card('schedule-101')!.querySelector('[data-special-kind]')).toBeNull()
+    expect(card('schedule-202')!.querySelector('[data-special-kind]')).toBeNull()
+    expect(screen.getByTestId('day-20')).not.toHaveTextContent('No class event scheduled.')
+  })
+
+  it('in the classic layout with the weekly classes off keeps only the special days, still as blocks', async () => {
+    mocks.layout = 'classic'
+    await signInAndOpenCalendar()
+    await vi.waitFor(() => expect(card('schedule-202')).not.toBeNull())
+
+    expect(card('schedule-101')).toBeNull()
+    expect(card('schedule-202')!.querySelector('[data-special-kind]')).toBeNull()
+    expect(card('schedule-101-cancelled-2026-10-12')).not.toBeNull()
+    expect(screen.getByTestId('day-20')).not.toHaveTextContent('No class event scheduled.')
   })
 
   it('leaves the week view with every class', async () => {
