@@ -25,7 +25,8 @@ function timeLabel(iso: string, now = new Date()) {
     : at.toLocaleDateString('en-MY', { day: 'numeric', month: 'short' })
 }
 
-// The Inbox's "App" tab: messages students send from the student app. The list
+// Students > Student Chat (a page of its own; it can also sit inside another page as a tab): messages students
+// send from the student app. The list
 // on the left (student code · name, to whom, last line, unread), the thread on
 // the right with the answer box. An admin sees every thread but answers only
 // the ones written to them; the others are read only, marked "Viewing".

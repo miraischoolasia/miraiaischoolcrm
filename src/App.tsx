@@ -30,6 +30,7 @@ import {
   Exam,
   GearSix,
   Package as PackageIcon,
+  ChatsCircle,
   DeviceMobile,
   FilmStrip,
   Brain,
@@ -355,7 +356,7 @@ import {
 } from './lib/makeup'
 
 // The menu's order (AppNav groups them).
-const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'ai-knowledge', 'content-studio', 'content-library', 'calendar', 'classrooms', 'videos', 'questions', 'students', 'app-logins', 'programmes', 'packages', 'teachers', 'team-replies', 'class-settings', 'activity']
+const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'ai-knowledge', 'content-studio', 'content-library', 'calendar', 'classrooms', 'videos', 'questions', 'students', 'app-logins', 'student-chat', 'programmes', 'packages', 'teachers', 'team-replies', 'class-settings', 'activity']
 
 // The shared WhatsApp inbox only shows up once its address is set.
 const chatwootUrl = getChatwootUrl(import.meta.env.VITE_CHATWOOT_URL)
@@ -888,8 +889,8 @@ function App() {
   const seesAllClasses = can('calendar') || can('classrooms') || can('students')
   // Same rule as can_edit_classes(): may set a class day's substitute teacher.
   const canEditClasses = can('calendar', 'edit') || can('classrooms', 'edit') || can('students', 'edit')
-  // Messages students send from the student app (when the school turned it on): every staff login reads the
-  // chats written to it in the Inbox, with or without the Inbox tick; an admin reads them all.
+  // Messages students send from the student app (when the school turned it on), on their own Student Chat page:
+  // every staff login reads the chats written to it, with or without any tick; an admin reads them all.
   const appChat = useAppChat(Boolean(currentSession?.teacherId))
   const allowedSections = useMemo(() => {
     const sections: AppSection[] = []
@@ -899,7 +900,7 @@ function App() {
     }
     if (can('leads')) sections.push('leads')
     // Same ticks as Leads: whoever follows up leads answers their WhatsApp.
-    if ((can('inbox') && chatwootUrl) || appChat.on) sections.push('whatsapp')
+    if (can('inbox') && chatwootUrl) sections.push('whatsapp')
     // Anyone who can see Leads can look at the automations; only an admin changes them.
     if (can('automations')) sections.push('automations')
     // What the AI reply drafts know about the school; same rule: everybody who sees Leads reads it, an admin edits.
@@ -918,6 +919,7 @@ function App() {
     if (can('students')) sections.push('students')
     // The student app's logins: their own tick (copied from Students).
     if (can('app_logins')) sections.push('app-logins')
+    if (appChat.on) sections.push('student-chat')
     // My Team: accounts and teams are the admin's; Working hours can be seen with its own tick.
     if (isAdmin || can('staff_hours')) sections.push('teachers')
     // How each person answers the chats: its own tick, since it is about the team's work.
@@ -2391,6 +2393,7 @@ function App() {
         { key: 'questions', label: 'Question Bank', icon: Exam, group: 'teaching' },
         { key: 'students', label: 'Student List', icon: GraduationCap, group: 'students' },
         { key: 'app-logins', label: 'App Logins', icon: DeviceMobile, group: 'students' },
+        { key: 'student-chat', label: 'Student Chat', icon: ChatsCircle, group: 'students' },
         { key: 'teachers', label: 'My Team', icon: IdentificationBadge, group: 'admin' },
         { key: 'team-replies', label: 'Team Replies', icon: ChatCenteredText, group: 'admin' },
         { key: 'activity', label: 'Activity Log', icon: ClockCounterClockwise, group: 'admin' },
@@ -2407,8 +2410,10 @@ function App() {
           item.key === 'forms'
             ? { count: unreadFormSubmissions, noun: 'new submissions' }
             : item.key === 'whatsapp'
-              ? { count: unreadWhatsApp + appChat.unread, noun: 'chats waiting' }
-              : undefined,
+              ? { count: unreadWhatsApp, noun: 'chats waiting' }
+              : item.key === 'student-chat'
+                ? { count: appChat.unread, noun: 'unread messages' }
+                : undefined,
       })),
     // Windows that used to sit behind a button on a page.
     ...(can('packages')
@@ -7015,6 +7020,8 @@ function App() {
                         ? 'Programmes'
                       : activeSection === 'app-logins'
                         ? 'App Logins'
+                      : activeSection === 'student-chat'
+                        ? 'Student Chat'
                       : activeSection === 'teachers'
                         ? 'My Team'
                         : activeSection === 'team-replies'
@@ -7701,7 +7708,7 @@ function App() {
 
             {/* Once opened, the WhatsApp page stays mounted behind other pages, so coming back to it
                 finds the same chat, search, filters and scroll position. */}
-            {(visibleSection === 'whatsapp' || hasOpenedWhatsApp) && chatwootUrl && canUseWhatsApp && (
+            {(visibleSection === 'whatsapp' || hasOpenedWhatsApp) && chatwootUrl && (
               <div className={visibleSection === 'whatsapp' ? undefined : 'hidden'}>
                 <WhatsAppSection
                   chatwootUrl={chatwootUrl}
@@ -7727,14 +7734,7 @@ function App() {
                     onReload: whatsAppNumbers.reload,
                     problems: channelAlerts.problemOf,
                   }}
-                  appChat={{ state: appChat, isAdmin }}
                 />
-              </div>
-            )}
-            {/* Without the Inbox tick: only the student app chats written to this login. */}
-            {visibleSection === 'whatsapp' && !(chatwootUrl && canUseWhatsApp) && (
-              <div className="h-[calc(100dvh-234px)] min-h-[520px]">
-                <AppChatPanel chat={appChat} isAdmin={isAdmin} />
               </div>
             )}
 
@@ -7778,6 +7778,12 @@ function App() {
             )}
 
             {visibleSection === 'programmes' && <ProgrammesSection canEdit={isAdmin} state={programmes} />}
+
+            {visibleSection === 'student-chat' && (
+              <div className="h-[calc(100dvh-234px)] min-h-[520px]">
+                <AppChatPanel chat={appChat} isAdmin={isAdmin} />
+              </div>
+            )}
 
             {visibleSection === 'app-logins' && (
               <AppLoginsSection students={students} canManage={can('students', 'edit')} onOpenStudent={openStudentDetail} />

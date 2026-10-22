@@ -4,7 +4,6 @@ import type { Sender } from '../../lib/chatwootClient'
 import type { WhatsAppCrm } from '../whatsapp/crm'
 import type { ChatwootConversation } from '../../lib/whatsappInbox'
 import type { InboxCopyLive } from '../../hooks/useInboxCopyLive'
-import type { AppChatState } from '../../hooks/useAppChat'
 import { WhatsAppInbox, type WhatsAppNumbersView } from '../whatsapp/WhatsAppInbox'
 
 type WhatsAppSectionProps = {
@@ -26,8 +25,6 @@ type WhatsAppSectionProps = {
   everyOpenChat?: ChatwootConversation[]
   // The CRM's copy of the inbox (see useInboxCopyLive).
   inboxCopy?: InboxCopyLive | null
-  // The student app chat, as the Inbox's App tab.
-  appChat?: { state: AppChatState; isAdmin: boolean } | null
 }
 
 export function WhatsAppSection({
@@ -41,7 +38,6 @@ export function WhatsAppSection({
   numbersView,
   everyOpenChat,
   inboxCopy = null,
-  appChat = null,
 }: WhatsAppSectionProps) {
   if (apiUrl && currentUser) {
     return (
@@ -55,7 +51,6 @@ export function WhatsAppSection({
         numbersView={numbersView}
         everyOpenChat={everyOpenChat}
         inboxCopy={inboxCopy}
-        appChat={appChat}
       />
     )
   }

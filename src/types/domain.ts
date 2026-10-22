@@ -8,6 +8,7 @@ export type AppSection =
   | 'videos'
   | 'students'
   | 'app-logins'
+  | 'student-chat'
   | 'teachers'
   | 'leads'
   | 'whatsapp'

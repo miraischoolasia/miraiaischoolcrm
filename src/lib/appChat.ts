@@ -80,7 +80,7 @@ export async function markAppChatRead(threadId: number) {
   await client().rpc('app_chat_mark_read', { p_thread_id: threadId })
 }
 
-// What the Inbox's App tab and the menu count: unread messages in threads
+// What the Student Chat page's menu badge counts: unread messages in threads
 // written to this login (an admin looking at others' threads does not count them).
 export function appChatUnread(threads: AppChatThread[]) {
   return threads.reduce((sum, thread) => sum + (thread.mine && thread.unread_for_staff > 0 ? thread.unread_for_staff : 0), 0)

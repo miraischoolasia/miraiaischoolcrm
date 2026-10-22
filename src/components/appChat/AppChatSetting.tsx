@@ -45,7 +45,7 @@ export function AppChatSetting() {
       </label>
       <p className="text-sm text-slate-500">
         Only the student&apos;s own login (not a parent&apos;s). Class teachers include assistants, not substitutes. Messages arrive in
-        Inbox &gt; App; each teacher sees the chats written to them, admins see all chats but only read them. No WhatsApp is sent.
+        Students &gt; Student Chat; each teacher sees the chats written to them, admins see all chats but only read them. No WhatsApp is sent.
       </p>
       {error && <p className="text-sm text-rose-600">{error}</p>}
     </section>
