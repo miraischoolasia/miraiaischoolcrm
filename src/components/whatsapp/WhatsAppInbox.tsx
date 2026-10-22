@@ -16,6 +16,8 @@ import { cancelSchedule, scheduleError, type ChatSchedule, type ScheduleTarget }
 import { ScheduleDialog } from './ScheduleDialog'
 import { ScheduledList } from './ScheduledList'
 import { useFillToBottom } from '../../hooks/useFillToBottom'
+import { useInboxColumns } from '../../hooks/useInboxColumns'
+import { ColumnHandle } from './ColumnHandle'
 import {
   type ChatwootConversation,
   type ChatwootMessage,
@@ -64,7 +66,7 @@ import { usePeople } from '../../hooks/usePeople'
 import { useHandlerSources } from '../../hooks/useHandlerSources'
 import { familyHandler } from '../../lib/familyHandler'
 import { codesLabel, withCodes } from '../../lib/studentCodeLabel'
-import { linkContactToLead, linkContactToStudents, setContactRole } from '../../lib/peopleApi'
+import { linkContactToLead, linkContactToStudents, setContactRole, unlinkContactFromLead } from '../../lib/peopleApi'
 import { draftPreview, draftsFirst, type Draft } from '../../lib/draft'
 import { createWaActionsByInstance, waIdOf } from '../../lib/waActions'
 import { instanceOfInbox } from '../../lib/waInstance'
@@ -626,14 +628,29 @@ export function WhatsAppInbox({
   )
   const setLeadLinkAndFamily = useCallback(
     async (conversationId: number, leadId: number | null) => {
+      const conversation = inbox.conversations.find((entry) => entry.id === conversationId)
+      // The lead the chat is on now (written on the chat, or found through the lists), for taking it off.
+      const wasOn = leadId === null && conversation ? leadIdOf(conversation) : null
       const ok = await inbox.setLeadLink(conversationId, leadId)
       const contact = contactOf(conversationId)
       if (ok && leadId !== null && contact !== null) {
         tellFamily(linkContactToLead(contact, leadId))
       }
+      if (ok && wasOn !== null && contact !== null && conversation) {
+        // The chat is also tied to the lead in the lead's chats list and the family table; without clearing those the
+        // page finds the lead again at once and Unlink does nothing.
+        tellFamily(
+          unlinkContactFromLead(
+            contact,
+            wasOn,
+            conversation.meta.sender.name ?? null,
+            getRealPhone(conversation.meta.sender.phone_number),
+          ).then(() => crm.refreshLeadChannels()),
+        )
+      }
       return ok
     },
-    [inbox, contactOf, tellFamily],
+    [inbox, contactOf, tellFamily, leadIdOf, crm],
   )
   // A new chat that matches a source rule becomes a lead without anyone pressing "Save lead".
   useAutoLeads({
@@ -1391,6 +1408,8 @@ export function WhatsAppInbox({
   // On a computer the Inbox reaches down to the bottom of the window, whatever its height.
   const inboxBox = useRef<HTMLDivElement>(null)
   const inboxHeight = useFillToBottom(inboxBox)
+  // The two lines between the columns can be dragged; the widths are kept on this browser.
+  const columns = useInboxColumns(inboxBox, Boolean(inbox.selected))
 
   return (
     <StickerSourceContext.Provider value={stickerSource}>
@@ -1428,15 +1447,17 @@ export function WhatsAppInbox({
     </div>
     <div
       ref={inboxBox}
-      style={inboxHeight ? { height: inboxHeight } : undefined}
+      style={inboxHeight ? { ...columns.style, height: inboxHeight } : columns.style}
       className={cn(
         // The channel switch above the box takes 52px (40 + the gap), which the box gives back.
-        'grid h-[calc(100dvh-314px)] min-h-[520px] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white lg:h-[calc(100dvh-234px)] lg:grid-cols-[380px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)_280px]',
+        'relative grid h-[calc(100dvh-314px)] min-h-[520px] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-white lg:h-[calc(100dvh-234px)] lg:grid-cols-[var(--inbox-list)_minmax(0,1fr)] xl:grid-cols-[var(--inbox-list)_minmax(0,1fr)_var(--inbox-details)]',
         // On a phone an open chat takes the whole screen, above the page title and
         // tools, and stops just above the bottom menu.
         hasChat && 'max-lg:fixed max-lg:inset-x-0 max-lg:top-0 max-lg:bottom-[5.7rem] max-lg:z-30 max-lg:h-auto max-lg:min-h-0 max-lg:rounded-none max-lg:border-0',
       )}
     >
+      <ColumnHandle handle={columns.list} className="left-[var(--inbox-list)] lg:block" />
+      {columns.withDetails && <ColumnHandle handle={columns.details} className="left-[calc(100%-var(--inbox-details))] xl:block" />}
       <ConversationList
         className={cn(hasChat && 'hidden lg:flex')}
         conversations={visible}

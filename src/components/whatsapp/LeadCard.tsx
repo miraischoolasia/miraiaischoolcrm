@@ -7,6 +7,7 @@ import type { Lead } from '../../types/domain'
 export function LeadHeader({
   lead,
   byPhone,
+  sameNumber = false,
   isStudent = false,
   parentName,
   codes = [],
@@ -14,6 +15,9 @@ export function LeadHeader({
 }: {
   lead: Lead
   byPhone: boolean
+  // The lead has this chat's own number: it is the right lead by definition, and unlinking would only be undone
+  // (the number finds it again), so there is no Unlink.
+  sameNumber?: boolean
   // The chat is the student themself.
   isStudent?: boolean
   // Given when the chat is a child's own number: the lead is the family's, called by the parent's name (the
@@ -38,13 +42,13 @@ export function LeadHeader({
       <div className="min-w-0">
         <p className="text-slate-500">
           {forChild ? "Family lead · the parent" : isStudent ? 'Lead · the student themself' : 'Lead'}
-          {byPhone ? ' (found by phone number)' : ''}
+          {byPhone ? ' (found by phone number)' : sameNumber && !isStudent && !forChild ? ' (same number as this chat)' : ''}
         </p>
         <h4 className="truncate text-sm font-semibold text-slate-900" title={name}>
           {name}
         </h4>
       </div>
-      {!byPhone && (
+      {!byPhone && !sameNumber && (
         <button
           type="button"
           onClick={onUnlink}

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { CaretLeft, GraduationCap, Star, UserCircle } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
-import { getFirstMessage, guessSourceAndTags, parentNumberUpdate, resolveChatLead } from '../../lib/chatLink'
+import { canonicalPhone, getFirstMessage, guessSourceAndTags, parentNumberUpdate, resolveChatLead } from '../../lib/chatLink'
 import { parentPhoneOf } from '../../lib/studentContact'
 import { familyOf } from '../../lib/family'
 import type { Person } from '../../lib/peopleApi'
@@ -502,6 +502,7 @@ export function DetailsPanel({
           <LeadHeader
             lead={lead}
             byPhone={byPhone}
+            sameNumber={!childChat && canonicalPhone(lead.phone) !== null && canonicalPhone(lead.phone) === canonicalPhone(phone)}
             isStudent={role === 'student'}
             parentName={childChat ? (family?.parent?.name ?? null) : undefined}
             codes={[
@@ -632,7 +633,8 @@ export function DetailsPanel({
         ) : null}
         {!showLeadPart ? null : lead || crm.canEditLeads ? (
           <LeadForm
-            key={conversation.id}
+            // A new form when the chat gets a lead or loses it (Unlink), so it never keeps the old lead's name and number.
+            key={`${conversation.id}:${lead?.id ?? 'new'}`}
             crm={crm}
             lead={lead}
             initialName={nameWithoutNumber}

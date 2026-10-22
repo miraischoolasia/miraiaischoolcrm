@@ -256,6 +256,38 @@ describe('DetailsPanel', () => {
     expect(onLinkLead).not.toHaveBeenCalled()
   })
 
+  it('has no Unlink for a lead with the same number as the chat, since the number would find it again', () => {
+    renderPanel(makeCrm({ leads: [lead] }), { crm_lead_id: 11 })
+
+    expect(screen.getByText('Lead (same number as this chat)')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Unlink/ })).not.toBeInTheDocument()
+  })
+
+  it('unlinks a lead tied to the chat that has another number', async () => {
+    const onLinkLead = renderPanel(makeCrm({ leads: [{ ...lead, phone: '019-888 7777' }] }), { crm_lead_id: 11 })
+
+    await userEvent.click(screen.getByRole('button', { name: /Unlink/ }))
+    expect(onLinkLead).toHaveBeenCalledWith(null)
+  })
+
+  it('starts a fresh form once Unlink has taken the lead off, not keeping the old lead name and number', () => {
+    const props = {
+      messages: [firstMessage],
+      hasOlder: false,
+      sourceRules: [],
+      onLoadOlder: vi.fn(),
+      onLinkLead: vi.fn().mockResolvedValue(true),
+      onLinkStudents: vi.fn().mockResolvedValue(true),
+    }
+    const linked = makeCrm({ leads: [{ ...lead, phone: '019-888 7777' }] })
+    const { rerender } = render(<DetailsPanel conversation={conversation({ crm_lead_id: 11 })} crm={linked} {...props} />)
+    expect(screen.getByLabelText('Contact name')).toHaveValue('Mei Ling')
+
+    rerender(<DetailsPanel conversation={conversation({ crm_lead_id: null })} crm={makeCrm({ leads: [] })} {...props} />)
+    expect(screen.getByLabelText('Contact name')).toHaveValue('')
+    expect(screen.getByLabelText('Phone number')).toHaveValue('+60123456789')
+  })
+
   it('reads every form the lead filled in, in the panel, from a Form button by the source', async () => {
     const submission = (id: number, formName: string, value: string) => ({
       id,

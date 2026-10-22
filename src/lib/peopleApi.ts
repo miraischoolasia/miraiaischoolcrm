@@ -127,3 +127,17 @@ export async function setContactRole(contactId: number, role: 'parent' | 'studen
     throw error
   }
 }
+
+// Takes a chat off the lead it was tied to: the chat's row in the lead's chats list and its place in the family table.
+// name / phone are what the chat itself shows (the family row took the lead's own when it was tied).
+export async function unlinkContactFromLead(contactId: number, leadId: number, name: string | null, phone: string | null) {
+  const { error } = await requireSupabase().rpc('unlink_contact_from_lead' as never, {
+    p_contact_id: contactId,
+    p_lead_id: leadId,
+    p_name: name,
+    p_phone: phone,
+  } as never)
+  if (error) {
+    throw error
+  }
+}

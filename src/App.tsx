@@ -6909,7 +6909,8 @@ function App() {
       <div className="flex min-h-screen">
         <aside
           className={cn(
-            'hidden shrink-0 bg-[#0a0a0a] text-white transition-[width] lg:flex lg:flex-col',
+            // The menu stays put on the left while the page scrolls, and scrolls by itself when it is taller than the window.
+            'hidden shrink-0 bg-[#0a0a0a] text-white transition-[width] lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col lg:self-start lg:overflow-y-auto lg:overscroll-contain',
             isSidebarCollapsed ? 'w-[64px]' : 'w-[220px]',
           )}
         >
