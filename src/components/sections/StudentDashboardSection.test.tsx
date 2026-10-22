@@ -388,4 +388,11 @@ describe('StudentDashboardSection student codes', () => {
     expect(screen.getAllByRole('button', { name: 'S1100784 · Ada Lovelace' }).length).toBeGreaterThan(0)
     expect(screen.queryAllByRole('button', { name: 'Grace Hopper' })).toHaveLength(0)
   })
+
+  it('shows the code instead of the internal number, and the number only for a student without a code', () => {
+    renderSection([{ ...student, id: 1, age: 9 }, { ...student, id: 2, name: 'Grace Hopper' }], { studentCodes: codes })
+
+    expect(screen.queryByText(/#001/)).not.toBeInTheDocument()
+    expect(screen.getAllByText('#002').length).toBeGreaterThan(0)
+  })
 })

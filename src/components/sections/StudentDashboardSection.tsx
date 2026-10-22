@@ -777,9 +777,9 @@ function StudentIdentity({
           )}
         </div>
         <div className={secondary}>
-          #{student.id.toString().padStart(3, '0')}
-          {age ? ` · ${age}` : ''}
-          {parent?.name ? ` · ${parent.name}` : ''}
+          {/* A student with a code shows the code (in the name above), not the internal number. */}
+          {code ? null : `#${student.id.toString().padStart(3, '0')}`}
+          {[age, parent?.name].filter(Boolean).map((part, index) => (code && index === 0 ? part : ` · ${part}`))}
         </div>
       </div>
     </div>

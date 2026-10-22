@@ -319,8 +319,7 @@ export function StudentDetailModal({
               <span className="rounded-full bg-[#fff1f8] px-2.5 py-0.5 text-xs font-semibold text-[#be185d]">
                 {typeLabel}
               </span>
-              <span>#{String(student.id).padStart(3, '0')}</span>
-              {studentCode && <span>Student code {studentCode}</span>}
+              {studentCode ? <span>Student code {studentCode}</span> : <span>#{String(student.id).padStart(3, '0')}</span>}
               <span>{student.isActive ? 'Active' : 'Deactivated'}</span>
             </div>
             {(parentName || student.phone) && (

@@ -82,6 +82,15 @@ describe('StudentDetailModal', () => {
     expect(screen.queryByRole('button', { name: 'Renew' })).not.toBeInTheDocument()
   })
 
+  it('shows the student code instead of the internal number, and the number only without a code', () => {
+    const { unmount } = renderModal({ studentCode: 'S1100784' })
+    expect(screen.getByText('Student code S1100784')).toBeInTheDocument()
+    expect(screen.queryByText('#001')).not.toBeInTheDocument()
+    unmount()
+    renderModal()
+    expect(screen.getByText('#001')).toBeInTheDocument()
+  })
+
   it('shows the parent and phone, and can copy the number', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
