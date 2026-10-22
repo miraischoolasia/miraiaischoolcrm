@@ -232,22 +232,23 @@ export function StudentGrid({
                 setFilter(chip.key)
               }}
               className={cn(
-                'rounded-full border px-2.5 py-1 text-xs font-semibold transition',
-                filter === chip.key && !search ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+                'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-sm font-semibold transition',
+                filter === chip.key && !search ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
               )}
             >
-              {chip.label} {counts[chip.key]}
+              {chip.label}
+              <span className={cn('tabular-nums', filter === chip.key && !search ? 'text-white/80' : 'text-slate-500')}>{counts[chip.key]}</span>
             </button>
           ))}
-        <label className="relative ml-auto min-w-[140px]">
-          <MagnifyingGlass size={14} className="absolute left-2 top-2 text-slate-400" aria-hidden="true" />
+        <label className="relative ml-auto min-w-[160px]">
+          <MagnifyingGlass size={16} className="absolute left-3 top-2.5 text-slate-400" aria-hidden="true" />
           <input
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Find a child"
             aria-label="Find a child"
-            className="w-full rounded-full border border-slate-200 py-1 pl-7 pr-2 text-xs"
+            className="min-h-9 w-full rounded-full border border-slate-200 py-1 pr-3 pl-9! text-sm"
           />
         </label>
         <div role="radiogroup" aria-label="How the children are shown" className="flex overflow-hidden rounded-full border border-slate-200">
@@ -259,7 +260,7 @@ export function StudentGrid({
               aria-checked={view === entry.key}
               onClick={() => setView(entry.key)}
               className={cn(
-                'px-2.5 py-1 text-xs font-semibold transition',
+                'min-h-9 px-3 text-sm font-semibold transition',
                 view === entry.key ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50',
               )}
             >
@@ -520,77 +521,118 @@ function ChildPanel({
     setMessage(problem ?? 'Note saved')
   }
 
+  const statePill =
+    child.state === 'here'
+      ? child.late
+        ? 'bg-amber-100 text-amber-900'
+        : 'bg-emerald-100 text-emerald-800'
+      : child.state === 'waiting'
+        ? 'bg-amber-100 text-amber-900'
+        : 'bg-slate-100 text-slate-700'
+
   return (
-    <section aria-label={`${child.name}`} className="rounded-2xl border border-sky-200 bg-sky-50/50 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <h4 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
-          <HandWaving size={16} className="text-sky-600" aria-hidden="true" />
-          {child.name}
-        </h4>
-        <button type="button" onClick={onClose} aria-label="Close" className="rounded-full p-1 text-slate-500 hover:bg-white">
-          <X size={14} aria-hidden="true" />
+    <section aria-label={`${child.name}`} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start gap-3">
+        <StudentAvatar id={child.studentId} name={child.name} size={48} dim={child.state === 'not_yet' || child.state === 'left'} />
+        <div className="min-w-0 flex-1">
+          <h4 className="flex items-center gap-1.5 text-base font-bold text-slate-900">
+            <HandWaving size={16} className="shrink-0 text-sky-600" aria-hidden="true" />
+            <span className="truncate">{child.name}</span>
+          </h4>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+            <span className={cn('rounded-full px-2 py-0.5 font-semibold', statePill)}>
+              {stateText[child.state]}
+              {child.state === 'here' && child.late ? ' · late' : ''}
+            </span>
+            {child.points > 0 && <span className="rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800">⭐ {child.points} points</span>}
+            {child.answer && <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">{answerText[child.answer]}</span>}
+          </div>
+        </div>
+        <button type="button" onClick={onClose} aria-label="Close" className="grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100">
+          <X size={16} aria-hidden="true" />
         </button>
       </div>
-      {child.background && (
-        <p className="mt-1 text-xs text-slate-600">
-          {child.background.lessonsLeft !== null ? `${child.background.lessonsLeft} lessons left` : ''}
-          {child.background.expiresOn ? ` · package ends ${dayOf(child.background.expiresOn)}` : ''}
-        </p>
-      )}
-      <p className="mt-1 text-xs text-slate-600">
-        {child.zoomCheck
-          ? child.zoomCheck.ok
-            ? `Zoom check: worked on ${dayOf(child.zoomCheck.checkedAt.slice(0, 10))}${child.zoomCheck.platform ? ` (${child.zoomCheck.platform})` : ''}`
-            : `Zoom check: did NOT work on ${dayOf(child.zoomCheck.checkedAt.slice(0, 10))}${child.zoomCheck.platform ? ` (${child.zoomCheck.platform})` : ''}`
-          : 'Zoom check: not done yet'}
-      </p>
-      {child.background?.lastRemark && (
-        <p className="mt-1 line-clamp-4 rounded-lg bg-white px-2 py-1 text-xs text-slate-700" title={child.background.lastRemark}>
-          <span className="font-semibold">Last lesson ({dayOf(child.background.lastRemarkDate ?? '')}):</span> {child.background.lastRemark}
-        </p>
-      )}
-      {child.canRemind && (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void remind()}
-            className="rounded-xl border border-emerald-300 bg-white px-3 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
-          >
-            {child.remindedAt ? 'Remind the parent again' : 'Remind the parent on WhatsApp'}
-          </button>
-          {child.remindedAt && <span className="text-xs text-slate-500">Reminded at {timeOf(child.remindedAt)}</span>}
+
+      <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+        {child.background && (child.background.lessonsLeft !== null || child.background.expiresOn) && (
+          <div className="rounded-xl bg-slate-50 px-3 py-2">
+            <dt className="font-semibold text-slate-500">Package</dt>
+            <dd className="mt-0.5 text-slate-800">
+              {child.background.lessonsLeft !== null ? `${child.background.lessonsLeft} lessons left` : ''}
+              {child.background.expiresOn ? ` · package ends ${dayOf(child.background.expiresOn)}` : ''}
+            </dd>
+          </div>
+        )}
+        <div className={cn('rounded-xl px-3 py-2', child.zoomCheck && !child.zoomCheck.ok ? 'bg-amber-50' : 'bg-slate-50')}>
+          <dt className="font-semibold text-slate-500">Zoom check</dt>
+          <dd className={cn('mt-0.5', child.zoomCheck && !child.zoomCheck.ok ? 'font-semibold text-amber-900' : 'text-slate-800')}>
+            {child.zoomCheck
+              ? child.zoomCheck.ok
+                ? `Zoom check: worked on ${dayOf(child.zoomCheck.checkedAt.slice(0, 10))}${child.zoomCheck.platform ? ` (${child.zoomCheck.platform})` : ''}`
+                : `Zoom check: did NOT work on ${dayOf(child.zoomCheck.checkedAt.slice(0, 10))}${child.zoomCheck.platform ? ` (${child.zoomCheck.platform})` : ''}`
+              : 'Zoom check: not done yet'}
+          </dd>
+        </div>
+        {child.background?.lastRemark && (
+          <div className="rounded-xl bg-slate-50 px-3 py-2 sm:col-span-2">
+            <dt className="font-semibold text-slate-500">Last lesson ({dayOf(child.background.lastRemarkDate ?? '')})</dt>
+            <dd className="mt-0.5 line-clamp-4 text-slate-800" title={child.background.lastRemark}>
+              {child.background.lastRemark}
+            </dd>
+          </div>
+        )}
+      </dl>
+
+      {(child.canRemind || onStar) && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {child.canRemind && (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void remind()}
+                className="min-h-9 rounded-xl border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
+              >
+                {child.remindedAt ? 'Remind the parent again' : 'Remind the parent on WhatsApp'}
+              </button>
+              {child.remindedAt && <span className="text-xs text-slate-500">Reminded at {timeOf(child.remindedAt)}</span>}
+            </>
+          )}
+          {onStar && (
+            <button
+              type="button"
+              onClick={() => {
+                onStar(child.studentId)
+                setMessage(`${child.name} is on the class screen's stage`)
+              }}
+              className="min-h-9 rounded-xl border border-amber-300 bg-amber-50 px-3 text-sm font-semibold text-amber-900 hover:bg-amber-100"
+            >
+              ⭐ Star of the day
+            </button>
+          )}
         </div>
       )}
-      {onStar && (
-        <button
-          type="button"
-          onClick={() => {
-            onStar(child.studentId)
-            setMessage(`${child.name} is on the class screen's stage`)
-          }}
-          className="mt-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100"
-        >
-          ⭐ Star of the day
-        </button>
-      )}
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {presets
-          .filter((preset) => preset.isActive)
-          .map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              disabled={busy}
-              onClick={() => void give(preset)}
-              className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-amber-50 disabled:opacity-50"
-            >
-              {preset.emoji ? `${preset.emoji} ` : ''}
-              {preset.label} +{preset.points}
-            </button>
-          ))}
+
+      <div className="mt-3">
+        <div className="text-xs font-semibold text-slate-500">Give points</div>
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          {presets
+            .filter((preset) => preset.isActive)
+            .map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                disabled={busy}
+                onClick={() => void give(preset)}
+                className="min-h-9 rounded-full border border-amber-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-amber-50 disabled:opacity-50"
+              >
+                {preset.emoji ? `${preset.emoji} ` : ''}
+                {preset.label} +{preset.points}
+              </button>
+            ))}
+        </div>
       </div>
-      <label className="mt-2 block">
+      <label className="mt-3 block">
         <span className="text-xs font-semibold text-slate-700">Note (goes into the lesson remark when you take attendance)</span>
         <textarea
           rows={2}
@@ -609,7 +651,7 @@ function ChildPanel({
           type="button"
           disabled={busy || note.trim() === (child.note ?? '').trim()}
           onClick={() => void save()}
-          className="rounded-xl bg-sky-600 px-3 py-1 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+          className="min-h-9 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
         >
           Save note
         </button>
