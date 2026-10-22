@@ -135,6 +135,63 @@ export async function saveQuickReply(existing: QuickReply | null, draft: QuickRe
   }
 }
 
+// A copy of a quick reply, saved at once, for the team to change: "<title> (copy)" (or "(copy 2)"... when that
+// title is taken), the same rows, and its own copies of the photos, videos and voice messages, so deleting or
+// changing either one never takes the other's files. It stays in the same list (the team's, or the person's own).
+export async function duplicateQuickReply(reply: QuickReply): Promise<QuickReply> {
+  const client = requireSupabase()
+  const ownerId = reply.ownerId ?? null
+  const copied: string[] = []
+  try {
+    const steps: QuickReplyStep[] = []
+    for (const step of reply.steps) {
+      if (step.kind === 'text') {
+        steps.push(step)
+        continue
+      }
+      const extension = step.media.path.includes('.') ? step.media.path.split('.').pop() : 'bin'
+      const path = `${ownerId ? `u/${ownerId}/` : ''}${crypto.randomUUID()}.${extension}`
+      const { error } = await client.storage.from(BUCKET).copy(step.media.path, path)
+      if (error) {
+        throw error
+      }
+      copied.push(path)
+      steps.push({ kind: 'media', media: { ...step.media, path } })
+    }
+
+    const scope = client.from('quick_replies').select('sort_order')
+    const { data: last } = await (ownerId ? scope.eq('owner_id', ownerId) : scope.is('owner_id', null))
+      .order('sort_order', { ascending: false })
+      .limit(1)
+    const sortOrder = (last?.[0]?.sort_order ?? 0) + 10
+    for (let attempt = 1; attempt <= 20; attempt += 1) {
+      const title = copyTitle(reply.title, attempt)
+      const { data, error } = await client
+        .from('quick_replies')
+        .insert({ title, steps, is_active: reply.isActive, owner_id: ownerId, sort_order: sortOrder })
+        .select('id')
+        .single()
+      if (!error && data) {
+        return { id: data.id, title, steps, isActive: reply.isActive, ownerId }
+      }
+      // That title is taken: try the next number.
+      if (error?.code !== '23505') {
+        throw error
+      }
+    }
+    throw new Error('There are too many copies of this quick reply already.')
+  } catch (error) {
+    await removeFiles(copied).catch(() => undefined)
+    throw error
+  }
+}
+
+// "Hello (copy)", then "Hello (copy 2)", "Hello (copy 3)"... A long title is cut so the whole fits in 80 letters.
+export function copyTitle(title: string, attempt: number) {
+  const suffix = ` (copy${attempt > 1 ? ` ${attempt}` : ''})`
+  return `${title.trim().slice(0, 80 - suffix.length).trimEnd()}${suffix}`
+}
+
 // Saves the order the quick replies were dragged into (the team's for everyone, a person's own for them).
 export async function saveQuickReplyOrder(ids: number[]) {
   const client = requireSupabase()

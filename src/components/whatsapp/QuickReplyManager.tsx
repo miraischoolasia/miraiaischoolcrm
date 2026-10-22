@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   CaretDown,
   CaretUp,
+  Copy,
   DotsSixVertical,
   FileText,
   Image,
@@ -45,6 +46,8 @@ type QuickReplyManagerProps = {
   onRemove: (reply: QuickReply) => Promise<string | null>
   // The ids in the order the team dragged them into.
   onReorder: (ids: number[]) => Promise<string | null>
+  // Saves a copy (its files copied too) and gives it back; without it there is no Duplicate button.
+  onDuplicate?: (reply: QuickReply) => Promise<{ copy: QuickReply } | { error: string }>
 }
 
 const fieldClass =
@@ -376,6 +379,7 @@ export function QuickReplyManager({
   onSave,
   onRemove,
   onReorder,
+  onDuplicate,
 }: QuickReplyManagerProps) {
   // Whoever may change the team's list starts there; everyone else starts on their own.
   const [tab, setTab] = useState<'mine' | 'team'>(start || !canEditTeam ? 'mine' : 'team')
@@ -397,6 +401,23 @@ export function QuickReplyManager({
       return
     }
     setError(await onRemove(reply))
+  }
+
+  // The copy opens in the form at once, to be renamed and changed.
+  const [copying, setCopying] = useState<number | null>(null)
+  async function duplicate(reply: QuickReply) {
+    if (!onDuplicate) {
+      return
+    }
+    setError(null)
+    setCopying(reply.id)
+    const result = await onDuplicate(reply)
+    setCopying(null)
+    if ('error' in result) {
+      setError(result.error)
+      return
+    }
+    setEditing(result.copy)
   }
 
   async function drop(to: number) {
@@ -570,6 +591,18 @@ export function QuickReplyManager({
                     >
                       <PencilSimple size={14} />
                     </button>
+                    {onDuplicate && (
+                      <button
+                        type="button"
+                        onClick={() => void duplicate(reply)}
+                        disabled={copying !== null}
+                        aria-label={`Duplicate ${reply.title}`}
+                        title="Make a copy (photos and videos too), then change it"
+                        className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        <Copy size={14} />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => void remove(reply)}

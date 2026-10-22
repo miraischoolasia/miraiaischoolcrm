@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { quickReplyErrorMessage } from './quickRepliesApi'
+import { copyTitle, quickReplyErrorMessage } from './quickRepliesApi'
 
 describe('quickReplyErrorMessage', () => {
   it('says so when the title is taken', () => {
@@ -18,5 +18,18 @@ describe('quickReplyErrorMessage', () => {
   it('falls back to the message, then to the given text', () => {
     expect(quickReplyErrorMessage({ message: 'Boom' }, 'x')).toBe('Boom')
     expect(quickReplyErrorMessage(null, 'Could not save')).toBe('Could not save')
+  })
+})
+
+describe('copyTitle (Duplicate, 2026-10-22)', () => {
+  it('adds (copy), then a number when that is taken', () => {
+    expect(copyTitle('Trial details', 1)).toBe('Trial details (copy)')
+    expect(copyTitle('  Trial details ', 2)).toBe('Trial details (copy 2)')
+  })
+
+  it('keeps the whole title within 80 letters', () => {
+    const title = copyTitle('x'.repeat(80), 12)
+    expect(title).toHaveLength(80)
+    expect(title.endsWith(' (copy 12)')).toBe(true)
   })
 })

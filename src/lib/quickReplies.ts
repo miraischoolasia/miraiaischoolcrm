@@ -26,7 +26,7 @@ export type QuickReply = {
   ownerId?: string | null
 }
 
-export const MAX_QUICK_REPLY_STEPS = 5
+export const MAX_QUICK_REPLY_STEPS = 10
 // The most WhatsApp accepts for a video or document.
 export const MAX_QUICK_REPLY_FILE_BYTES = 16 * 1024 * 1024
 // A video may be bigger, the same limit as a video typed into a chat.

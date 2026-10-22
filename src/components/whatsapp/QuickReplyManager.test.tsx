@@ -38,6 +38,73 @@ function setup(replies: QuickReply[] = [existing], canEditTeam = true, start: Qu
 }
 
 describe('QuickReplyManager', () => {
+  it('duplicates a quick reply and opens the copy in the form (2026-10-22)', async () => {
+    const copy: QuickReply = {
+      ...existing,
+      id: 40,
+      title: 'Trial details (copy)',
+      steps: [existing.steps[0], { kind: 'media', media: { path: 'a/2.png', name: 'map.png', type: 'image/png', size: 10 } }],
+    }
+    const onDuplicate = vi.fn().mockResolvedValue({ copy })
+    const onSave = vi.fn().mockResolvedValue(null)
+    render(
+      <QuickReplyManager
+        replies={[existing]}
+        isLoading={false}
+        loadError={null}
+        onClose={vi.fn()}
+        onSave={onSave}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+        onDuplicate={onDuplicate}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Duplicate Trial details' }))
+    expect(onDuplicate).toHaveBeenCalledWith(existing)
+    expect(await screen.findByRole('heading', { name: 'Edit quick reply' })).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Title/)).toHaveValue('Trial details (copy)')
+    expect(screen.getByText('map.png')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Save quick reply' }))
+    // Saving changes the copy, never the original.
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(copy, expect.objectContaining({ title: 'Trial details (copy)' })))
+  })
+
+  it('says why a copy could not be made, and stays on the list', async () => {
+    render(
+      <QuickReplyManager
+        replies={[existing]}
+        isLoading={false}
+        loadError={null}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+        onDuplicate={vi.fn().mockResolvedValue({ error: "Couldn't copy this quick reply." })}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Duplicate Trial details' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't copy this quick reply.")
+    expect(screen.getByRole('heading', { name: 'Quick replies' })).toBeInTheDocument()
+  })
+
+  it('has no Duplicate button for a list the person may not change', () => {
+    render(
+      <QuickReplyManager
+        replies={[existing]}
+        isLoading={false}
+        loadError={null}
+        canEditTeam={false}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+        onDuplicate={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /Duplicate/ })).not.toBeInTheDocument()
+  })
+
   it('lists the replies with their rows in order', () => {
     setup()
 
@@ -74,21 +141,22 @@ describe('QuickReplyManager', () => {
     )
   })
 
-  it('offers up to five rows, and skips a blank text row when saving', async () => {
+  it('offers up to ten rows, and skips a blank text row when saving (10 since 2026-10-22)', async () => {
     const { onSave } = setup()
 
     await userEvent.click(screen.getByRole('button', { name: /New quick reply/ }))
     await userEvent.type(screen.getByLabelText(/^Title/), 'Welcome')
     await userEvent.type(screen.getByLabelText('Row 1 text'), 'First')
-    for (let count = 0; count < 4; count += 1) {
+    for (let count = 0; count < 9; count += 1) {
       await userEvent.click(screen.getByRole('button', { name: 'Add a row' }))
     }
     expect(screen.queryByRole('button', { name: 'Add a row' })).not.toBeInTheDocument()
-    expect(screen.getAllByRole('listitem')).toHaveLength(5)
+    expect(screen.getAllByRole('listitem')).toHaveLength(10)
     await userEvent.type(screen.getByLabelText('Row 2 text'), 'Second')
-    await userEvent.click(screen.getByRole('button', { name: 'Remove row 5' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Remove row 4' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Remove row 3' }))
+    await userEvent.type(screen.getByLabelText('Row 10 text'), 'Tenth')
+    for (let row = 9; row >= 3; row -= 1) {
+      await userEvent.click(screen.getByRole('button', { name: `Remove row ${row}` }))
+    }
     await userEvent.click(screen.getByRole('button', { name: 'Save quick reply' }))
 
     await waitFor(() =>
@@ -96,6 +164,7 @@ describe('QuickReplyManager', () => {
         steps: [
           { kind: 'text', text: 'First' },
           { kind: 'text', text: 'Second' },
+          { kind: 'text', text: 'Tenth' },
         ],
       })),
     )

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { mineFirst, type QuickReply } from '../lib/quickReplies'
 import {
   deleteQuickReply,
+  duplicateQuickReply,
   fetchQuickReplies,
   quickReplyErrorMessage,
   saveQuickReply,
@@ -61,6 +62,20 @@ export function useQuickReplies(enabled: boolean) {
     [reload],
   )
 
+  // A copy saved at once (photos and videos copied too); gives the copy back, for the form to open on it.
+  const duplicate = useCallback(
+    async (reply: QuickReply): Promise<{ copy: QuickReply } | { error: string }> => {
+      try {
+        const copy = await duplicateQuickReply(reply)
+        await reload()
+        return { copy }
+      } catch (problem) {
+        return { error: quickReplyErrorMessage(problem, "Couldn't copy this quick reply.") }
+      }
+    },
+    [reload],
+  )
+
   // Shows the new order at once, then saves it; if that fails the saved order comes back.
   const reorder = useCallback(
     async (ids: number[]) => {
@@ -82,5 +97,5 @@ export function useQuickReplies(enabled: boolean) {
     [reload],
   )
 
-  return { replies, isLoading, error, reload, save, remove, reorder }
+  return { replies, isLoading, error, reload, save, remove, duplicate, reorder }
 }

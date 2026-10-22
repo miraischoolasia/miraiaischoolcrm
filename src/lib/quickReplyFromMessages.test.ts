@@ -83,14 +83,24 @@ describe('quickReplyStartFrom', () => {
     expect(empty.note).toBe('There was no text, photo or file in the messages picked.')
   })
 
-  it('holds at most 5 rows and says so', async () => {
+  it('holds at most 10 rows and says so', async () => {
     const start = await quickReplyStartFrom(
-      ['a', 'b', 'c', 'd', 'e', 'f'].map((text, index) => message(index + 1, text)),
+      'abcdefghijk'.split('').map((text, index) => message(index + 1, text)),
       async () => new Blob([]),
     )
 
-    expect(start.steps).toHaveLength(5)
-    expect(start.note).toMatch(/only the first 5/)
+    expect(start.steps).toHaveLength(10)
+    expect(start.note).toMatch(/only the first 10/)
+  })
+
+  it('copies 10 picked messages whole', async () => {
+    const start = await quickReplyStartFrom(
+      'abcdefghij'.split('').map((text, index) => message(index + 1, text)),
+      async () => new Blob([]),
+    )
+
+    expect(start.steps).toHaveLength(10)
+    expect(start.note).toBeUndefined()
   })
 })
 
