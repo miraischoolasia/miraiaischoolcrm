@@ -9,6 +9,7 @@ export type AppSection =
   | 'students'
   | 'app-logins'
   | 'student-chat'
+  | 'student-inbox'
   | 'teachers'
   | 'leads'
   | 'whatsapp'
@@ -214,6 +215,7 @@ export type PermissionModule =
   | 'questions'
   | 'app_logins'
   | 'packages'
+  | 'student_inbox'
   | 'class_settings'
   | 'staff_hours'
 

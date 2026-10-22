@@ -5,6 +5,7 @@ import { ChatActivityCard } from '../automations/ChatActivityCard'
 import { ContactsCard } from '../automations/ContactsCard'
 import { AutoSendCard } from '../automations/AutoSendCard'
 import { OptoutsCard } from '../automations/OptoutsCard'
+import { StageRulesCard } from '../automations/StageRulesCard'
 import { RecipePicker } from '../automations/RecipePicker'
 import { FlowSwitch } from '../automations/FlowSwitch'
 import { useAutomationContacts } from '../../hooks/useAutomationContacts'
@@ -17,6 +18,7 @@ import {
   useAutomationStats,
 } from '../../hooks/useAutomationExtras'
 import { useChatWebhook } from '../../hooks/useChatWebhook'
+import { useStageRules } from '../../hooks/useStageRules'
 import { useConfirm } from '../../hooks/useConfirm'
 import { cn } from '../../lib/cn'
 import { EMPTY_FILTER_OPTIONS, describeFlow, type FilterOptions, type FlowDraft } from '../../lib/automationFlows'
@@ -48,6 +50,7 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
   const optouts = useAutomationOptouts({ enabled: true })
   const forms = useAutomationForms({ enabled: true })
   const autoSend = useAutoSend({ enabled: true })
+  const stageRules = useStageRules({ enabled: true })
   const sourceRules = useSourceRules(true)
 
   // What the source, tag, PIC and form blocks can tick (hidden options are not offered).
@@ -259,6 +262,13 @@ export function AutomationsSection({ classrooms, canEdit, leadOptions = [] }: Au
             canEdit={canEdit}
             loadError={autoSend.error}
             onSave={autoSend.save}
+          />
+          <StageRulesCard
+            rules={stageRules.rules}
+            missing={stageRules.missing}
+            canEdit={canEdit}
+            loadError={stageRules.error}
+            onSave={stageRules.save}
           />
           <OptoutsCard optouts={optouts.optouts} loadError={optouts.error} onAllowAgain={optouts.allowAgain} />
           {canEdit && (

@@ -31,6 +31,7 @@ import {
   GearSix,
   Package as PackageIcon,
   ChatsCircle,
+  ChatCircleDots,
   DeviceMobile,
   FilmStrip,
   Brain,
@@ -46,6 +47,7 @@ import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { useLiveSync } from './hooks/useLiveSync'
 import { fetchTableVersions, type CoreGroup, type CoreSyncTarget, type TableVersions } from './lib/coreSync'
 import { useWhatsAppNumbers } from './hooks/useWhatsAppNumbers'
+import { showsStudentInbox, zoneFilter } from './lib/inboxZones'
 import { useChannelAlerts } from './hooks/useChannelAlerts'
 import { ChannelAlertBar } from './components/ChannelAlertBar'
 import { CHANNEL_ACCESS_HASH } from './lib/channelAlerts'
@@ -227,6 +229,7 @@ import { teamsOf } from './lib/staffTeams'
 import { fetchHoursInUse } from './lib/staffHours'
 import { FormsSection } from './components/sections/FormsSection'
 import { WhatsAppSection } from './components/sections/WhatsAppSection'
+import type { WhatsAppNumbersView } from './components/whatsapp/WhatsAppInbox'
 import { AppChatPanel } from './components/appChat/AppChatPanel'
 import { AiKnowledgeSection } from './components/sections/AiKnowledgeSection'
 import { ContentStudioSection } from './components/contentStudio/ContentStudioSection'
@@ -356,7 +359,7 @@ import {
 } from './lib/makeup'
 
 // The menu's order (AppNav groups them).
-const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'ai-knowledge', 'content-studio', 'content-library', 'calendar', 'classrooms', 'videos', 'questions', 'students', 'app-logins', 'student-chat', 'programmes', 'packages', 'teachers', 'team-replies', 'class-settings', 'activity']
+const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'ai-knowledge', 'content-studio', 'content-library', 'calendar', 'classrooms', 'videos', 'questions', 'students', 'student-inbox', 'student-chat', 'app-logins', 'programmes', 'packages', 'teachers', 'team-replies', 'class-settings', 'activity']
 
 // The shared WhatsApp inbox only shows up once its address is set.
 const chatwootUrl = getChatwootUrl(import.meta.env.VITE_CHATWOOT_URL)
@@ -892,6 +895,12 @@ function App() {
   // Messages students send from the student app (when the school turned it on), on their own Student Chat page:
   // every staff login reads the chats written to it, with or without any tick; an admin reads them all.
   const appChat = useAppChat(Boolean(currentSession?.teacherId))
+  // Teams and permissions (20261026000000): the Inbox has its own tick, copied from Leads; the Student Inbox
+  // (20261029300000) has its own too. Either one opens the school's WhatsApp.
+  const canUseWhatsApp = can('inbox') || can('student_inbox')
+  // The school's WhatsApp numbers: which the signed-in person may see (an admin sees all), and which are students ones.
+  const whatsAppNumbers = useWhatsAppNumbers(Boolean(whatsAppApiUrl) && canUseWhatsApp)
+  const hasStudentInbox = showsStudentInbox(can('student_inbox'), whatsAppNumbers.studentInboxIds)
   const allowedSections = useMemo(() => {
     const sections: AppSection[] = []
     // A teacher's own day, or the admin's / staff's overview of the school.
@@ -919,6 +928,8 @@ function App() {
     if (can('students')) sections.push('students')
     // The student app's logins: their own tick (copied from Students).
     if (can('app_logins')) sections.push('app-logins')
+    // The Student Inbox: its own tick, once the school has a WhatsApp number set to the students zone.
+    if (hasStudentInbox && chatwootUrl) sections.push('student-inbox')
     if (appChat.on) sections.push('student-chat')
     // My Team: accounts and teams are the admin's; Working hours can be seen with its own tick.
     if (isAdmin || can('staff_hours')) sections.push('teachers')
@@ -926,7 +937,7 @@ function App() {
     if (can('team_replies')) sections.push('team-replies')
     if (can('activity')) sections.push('activity')
     return sections
-  }, [can, isAdmin, isTeacherAccount, appChat.on])
+  }, [can, isAdmin, isTeacherAccount, appChat.on, hasStudentInbox])
   const visibleSection = allowedSections.includes(activeSection) ? activeSection : null
   useEffect(() => {
     if (!currentSession) return
@@ -941,34 +952,53 @@ function App() {
     }
   }, [currentSession])
   const [hasOpenedWhatsApp, setHasOpenedWhatsApp] = useState(false)
+  const [hasOpenedStudentInbox, setHasOpenedStudentInbox] = useState(false)
   useEffect(() => {
     if (visibleSection === 'whatsapp') {
       setHasOpenedWhatsApp(true)
     }
+    if (visibleSection === 'student-inbox') {
+      setHasOpenedStudentInbox(true)
+    }
   }, [visibleSection])
   const { unread: unreadFormSubmissions, markSeen: markFormSubmissionsSeen } =
     useUnreadFormSubmissions(can('forms'))
-  // Teams and permissions (20261026000000): the Inbox has its own tick, copied from Leads.
-  const canUseWhatsApp = can('inbox')
   const whatsAppClient = useMemo(
     () => (whatsAppApiUrl && canUseWhatsApp ? createChatwootClient(whatsAppApiUrl) : null),
     [canUseWhatsApp],
   )
-  // The school's WhatsApp numbers: which the signed-in person may see (an admin sees all).
-  const whatsAppNumbers = useWhatsAppNumbers(Boolean(whatsAppApiUrl) && canUseWhatsApp)
   // Channels that stopped working (a WhatsApp number logged out, restricted, silent): the red bar on Today and the Inbox.
   const channelAlerts = useChannelAlerts(Boolean(whatsAppApiUrl) && canUseWhatsApp, whatsAppNumbers.allowedInboxIds, isAdmin)
   const whatsAppSiblings = useMemo(() => contactSiblings(leadChannels.rows), [leadChannels.rows])
   // The CRM's copy of the inbox, live: the Inbox reads from it and hears of new messages by itself.
   const inboxCopy = useInboxCopyLive(Boolean(whatsAppClient), whatsAppClient)
+  // The Inbox and the Student Inbox count their own numbers (each has its own red dot).
+  const marketingNumbers = useMemo(
+    () => zoneFilter('marketing', whatsAppNumbers.allowedInboxIds, whatsAppNumbers.studentInboxIds),
+    [whatsAppNumbers.allowedInboxIds, whatsAppNumbers.studentInboxIds],
+  )
+  const studentNumbers = useMemo(
+    () => zoneFilter('students', whatsAppNumbers.allowedInboxIds, whatsAppNumbers.studentInboxIds),
+    [whatsAppNumbers.allowedInboxIds, whatsAppNumbers.studentInboxIds],
+  )
   const {
     unread: unreadWhatsApp,
     waiting: waitingWhatsApp,
     openChats: everyOpenChat,
   } = useWhatsAppUnread(
     // Nothing is counted until it is known which numbers this person may see.
-    whatsAppNumbers.allowedInboxIds === undefined ? null : whatsAppClient,
-    whatsAppNumbers.allowedInboxIds ?? null,
+    marketingNumbers === undefined || !can('inbox') ? null : whatsAppClient,
+    marketingNumbers?.allowed ?? null,
+    whatsAppSiblings,
+    inboxCopy,
+    marketingNumbers?.excluded,
+  )
+  const {
+    unread: unreadStudentInbox,
+    openChats: everyOpenStudentChat,
+  } = useWhatsAppUnread(
+    studentNumbers === undefined || !hasStudentInbox ? null : whatsAppClient,
+    studentNumbers?.allowed ?? [],
     whatsAppSiblings,
     inboxCopy,
   )
@@ -1037,6 +1067,22 @@ function App() {
     setWhatsAppRequest((current) => ({ ...target, id: (current?.id ?? 0) + 1 }))
     setActiveSection('whatsapp')
   }, [])
+  // What both Inboxes (Marketing and Student) know about the school's WhatsApp numbers.
+  const whatsAppNumbersView: WhatsAppNumbersView = {
+    numbers: whatsAppNumbers.numbers,
+    assignments: whatsAppNumbers.assignments,
+    allowedInboxIds: whatsAppNumbers.allowedInboxIds,
+    studentInboxIds: whatsAppNumbers.studentInboxIds,
+    isAdmin,
+    // Admins see every number anyway, so only the other accounts can be given one.
+    staff: teachers
+      .filter((teacher) => teacher.isActive && teacher.role !== 'admin')
+      .map((teacher) => ({ id: teacher.id, name: teacher.fullName })),
+    onSave: whatsAppNumbers.save,
+    onRemove: whatsAppNumbers.remove,
+    onReload: whatsAppNumbers.reload,
+    problems: channelAlerts.problemOf,
+  }
   // Only when the school's own WhatsApp page is there to open; otherwise the button opens wa.me.
   const canOpenWhatsAppChat = allowedSections.includes('whatsapp') && Boolean(whatsAppApiUrl && whatsAppUser)
   // Follow-ups whose time has come ring for the person they are for (cards in the corner of the screen).
@@ -2393,6 +2439,7 @@ function App() {
         { key: 'questions', label: 'Question Bank', icon: Exam, group: 'teaching' },
         { key: 'students', label: 'Student List', icon: GraduationCap, group: 'students' },
         { key: 'app-logins', label: 'App Logins', icon: DeviceMobile, group: 'students' },
+        { key: 'student-inbox', label: 'Student Inbox', icon: ChatCircleDots, group: 'students' },
         { key: 'student-chat', label: 'Student Chat', icon: ChatsCircle, group: 'students' },
         { key: 'teachers', label: 'My Team', icon: IdentificationBadge, group: 'admin' },
         { key: 'team-replies', label: 'Team Replies', icon: ChatCenteredText, group: 'admin' },
@@ -2411,9 +2458,11 @@ function App() {
             ? { count: unreadFormSubmissions, noun: 'new submissions' }
             : item.key === 'whatsapp'
               ? { count: unreadWhatsApp, noun: 'chats waiting' }
-              : item.key === 'student-chat'
-                ? { count: appChat.unread, noun: 'unread messages' }
-                : undefined,
+              : item.key === 'student-inbox'
+                ? { count: unreadStudentInbox, noun: 'chats waiting' }
+                : item.key === 'student-chat'
+                  ? { count: appChat.unread, noun: 'unread messages' }
+                  : undefined,
       })),
     // Windows that used to sit behind a button on a page.
     ...(can('packages')
@@ -7022,6 +7071,8 @@ function App() {
                         ? 'App Logins'
                       : activeSection === 'student-chat'
                         ? 'Student Chat'
+                      : activeSection === 'student-inbox'
+                        ? 'Student Inbox'
                       : activeSection === 'teachers'
                         ? 'My Team'
                         : activeSection === 'team-replies'
@@ -7051,7 +7102,7 @@ function App() {
                 <div
                   className={cn(
                     'rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600',
-                    activeSection === 'whatsapp' && 'max-sm:hidden',
+                    (activeSection === 'whatsapp' || activeSection === 'student-inbox') && 'max-sm:hidden',
                   )}
                 >
                   Local Date: {formatDate(todayString)}
@@ -7066,7 +7117,7 @@ function App() {
                     title="When on, teachers can edit attendance and feedback of past classes, not only within 24 hours."
                     className={cn(
                       'flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-60',
-                      activeSection === 'whatsapp' && 'max-sm:hidden',
+                      (activeSection === 'whatsapp' || activeSection === 'student-inbox') && 'max-sm:hidden',
                       lateFeedbackEdit
                         ? 'border-amber-300 bg-amber-50 text-amber-800'
                         : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
@@ -7147,7 +7198,7 @@ function App() {
           </div>
 
           <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-4 lg:px-5">
-            {(showAdminHome || visibleSection === 'whatsapp') && (
+            {(showAdminHome || visibleSection === 'whatsapp' || visibleSection === 'student-inbox') && (
               <ChannelAlertBar
                 alerts={channelAlerts.alerts}
                 isAdmin={isAdmin}
@@ -7720,20 +7771,24 @@ function App() {
                   openRequest={whatsAppRequest}
                   everyOpenChat={everyOpenChat}
                   inboxCopy={inboxCopy}
-                  numbersView={{
-                    numbers: whatsAppNumbers.numbers,
-                    assignments: whatsAppNumbers.assignments,
-                    allowedInboxIds: whatsAppNumbers.allowedInboxIds,
-                    isAdmin,
-                    // Admins see every number anyway, so only the other accounts can be given one.
-                    staff: teachers
-                      .filter((teacher) => teacher.isActive && teacher.role !== 'admin')
-                      .map((teacher) => ({ id: teacher.id, name: teacher.fullName })),
-                    onSave: whatsAppNumbers.save,
-                    onRemove: whatsAppNumbers.remove,
-                    onReload: whatsAppNumbers.reload,
-                    problems: channelAlerts.problemOf,
-                  }}
+                  numbersView={whatsAppNumbersView}
+                />
+              </div>
+            )}
+            {/* The Student Inbox: the same page over the students numbers only; also kept mounted once opened. */}
+            {(visibleSection === 'student-inbox' || hasOpenedStudentInbox) && chatwootUrl && (
+              <div className={visibleSection === 'student-inbox' ? undefined : 'hidden'}>
+                <WhatsAppSection
+                  chatwootUrl={chatwootUrl}
+                  apiUrl={whatsAppApiUrl}
+                  currentUser={whatsAppUser}
+                  staff={whatsAppStaff}
+                  crm={whatsAppCrm}
+                  active={visibleSection === 'student-inbox'}
+                  everyOpenChat={everyOpenStudentChat}
+                  inboxCopy={inboxCopy}
+                  numbersView={whatsAppNumbersView}
+                  zone="students"
                 />
               </div>
             )}

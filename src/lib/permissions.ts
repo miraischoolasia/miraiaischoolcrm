@@ -49,6 +49,8 @@ export const permissionModules: {
   { key: 'students', label: 'Students', canEdit: true, deleteHint: 'Deactivate students', scopes: [], group: 'Students' },
   { key: 'app_logins', label: 'App Logins', canEdit: true, scopes: [], group: 'Students' },
   { key: 'packages', label: 'Packages', canEdit: true, scopes: [], group: 'Students' },
+  // The Student Inbox: the WhatsApp numbers set to the students zone (apart from the Marketing Inbox).
+  { key: 'student_inbox', label: 'Student Inbox', canEdit: true, deleteHint: 'Delete messages', scopes: [], group: 'Students' },
   { key: 'class_settings', label: 'Class Settings', canEdit: true, scopes: [], group: 'Admin' },
   { key: 'team_replies', label: 'Team Replies', canEdit: false, scopes: ['all', 'own'], group: 'Admin' },
   { key: 'staff_hours', label: 'Working Hours', canEdit: false, scopes: [], group: 'Admin' },

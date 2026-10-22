@@ -271,7 +271,16 @@ export function getChatIdentity(
 
 // False for a chat on a WhatsApp number this person is not given. `allowed` is null when nothing is
 // restricted (see useWhatsAppNumbers).
-export function isOnAllowedNumber(conversation: Pick<ChatwootConversation, 'inbox_id'>, allowed: number[] | null) {
+// excluded: numbers that belong to the other inbox (the Marketing Inbox leaves out the Student Inbox's numbers,
+// see inboxZones.ts), left out even when everything else is allowed.
+export function isOnAllowedNumber(
+  conversation: Pick<ChatwootConversation, 'inbox_id'>,
+  allowed: number[] | null,
+  excluded: readonly number[] = [],
+) {
+  if (conversation.inbox_id !== undefined && excluded.includes(conversation.inbox_id)) {
+    return false
+  }
   return allowed === null || (conversation.inbox_id !== undefined && allowed.includes(conversation.inbox_id))
 }
 
@@ -643,6 +652,7 @@ export function countUnreadAcross(
   fresher: ChatwootConversation[],
   allowedInboxIds: number[] | null,
   siblings?: Map<number, number[]>,
+  excludedInboxIds: readonly number[] = [],
 ): UnreadCounts {
   const byId = new Map(everyOpen.map((conversation) => [conversation.id, conversation]))
   for (const conversation of fresher) {
@@ -650,7 +660,7 @@ export function countUnreadAcross(
   }
   const byCategory = unreadByCategory(
     onePerParent(
-      [...byId.values()].filter((conversation) => isOnAllowedNumber(conversation, allowedInboxIds)),
+      [...byId.values()].filter((conversation) => isOnAllowedNumber(conversation, allowedInboxIds, excludedInboxIds)),
       siblings,
     ),
   )

@@ -103,7 +103,11 @@ export function useWhatsAppUnread(
   siblings?: Map<number, number[]>,
   // The CRM's copy of the inbox: once available the open chats come from it, not from Chatwoot's pages.
   copy: InboxCopyLive | null = null,
+  // Numbers of the other inbox, never counted here (see inboxZones.ts).
+  excludedInboxIds: readonly number[] = [],
 ) {
+  const excludedRef = useRef(excludedInboxIds)
+  excludedRef.current = excludedInboxIds
   const siblingsRef = useRef(siblings)
   useEffect(() => {
     siblingsRef.current = siblings
@@ -126,9 +130,9 @@ export function useWhatsAppUnread(
   const publishRef = useRef<(chats: ChatwootConversation[]) => void>(() => undefined)
   publishRef.current = (everyChat: ChatwootConversation[]) => {
     setOpenChats(everyChat)
-    setCounts(countUnreadAcross(everyChat, [], allowedInboxIds, siblingsRef.current))
+    setCounts(countUnreadAcross(everyChat, [], allowedInboxIds, siblingsRef.current, excludedRef.current))
     const conversations = onePerParent(
-      everyChat.filter((entry) => isOnAllowedNumber(entry, allowedInboxIds)),
+      everyChat.filter((entry) => isOnAllowedNumber(entry, allowedInboxIds, excludedRef.current)),
       siblingsRef.current,
     )
     // A chat that has just passed 30 minutes unanswered rings once. The first look
@@ -252,7 +256,7 @@ export function useWhatsAppUnread(
       window.clearInterval(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, copyAvailable, subscribeChats, JSON.stringify(allowedInboxIds)])
+  }, [client, copyAvailable, subscribeChats, JSON.stringify(allowedInboxIds), excludedInboxIds.join(',')])
 
   // Without the copy (not in this database yet, or not complete yet): Chatwoot's pages, as before.
   useEffect(() => {
@@ -309,7 +313,7 @@ export function useWhatsAppUnread(
       window.clearInterval(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, copyAvailable, JSON.stringify(allowedInboxIds)])
+  }, [client, copyAvailable, JSON.stringify(allowedInboxIds), excludedInboxIds.join(',')])
 
   return { unread: counts.total, unreadByCategory: counts.byCategory, openChats, waiting }
 }

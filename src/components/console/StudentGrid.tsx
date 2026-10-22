@@ -5,7 +5,7 @@ import type { Room } from '../../lib/zoomRoom'
 import type { RewardPreset } from '../../lib/rewards'
 import type { StudentBackground } from '../../lib/studentBackground'
 import type { ZoomCheck } from '../../lib/zoomChecks'
-import { BIG_CLASS, filterGrid, gridCounts, shortName, type GridFilter } from '../../lib/gridFilters'
+import { BIG_CLASS, filterGrid, gridCounts, needsAttention, shortName, type GridFilter } from '../../lib/gridFilters'
 import { StudentAvatar } from '../StudentAvatar'
 import { RadialMenu, type RadialItem } from './RadialMenu'
 
@@ -90,6 +90,22 @@ const dayOf = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString(
 
 type GridView = 'classroom' | 'big' | 'small'
 
+// On a narrow window (the console beside Zoom) the children are a list or small tiles; the teacher's choice is
+// kept on this browser.
+type NarrowView = 'list' | 'tiles'
+const NARROW_VIEW_KEY = 'console-student-view'
+const narrowViews: { key: NarrowView; label: string }[] = [
+  { key: 'list', label: 'List' },
+  { key: 'tiles', label: 'Tiles' },
+]
+function readNarrowView(): NarrowView {
+  try {
+    return window.localStorage.getItem(NARROW_VIEW_KEY) === 'tiles' ? 'tiles' : 'list'
+  } catch {
+    return 'list'
+  }
+}
+
 const gridViews: { key: GridView; label: string }[] = [
   { key: 'classroom', label: 'Classroom' },
   { key: 'big', label: 'Big' },
@@ -105,6 +121,7 @@ export function StudentGrid({
   onSaveNote,
   onRemind,
   onStar,
+  narrow = false,
 }: {
   items: GridChild[]
   presets: RewardPreset[]
@@ -113,6 +130,8 @@ export function StudentGrid({
   onRemind: (studentId: number) => Promise<string | null>
   // Star of the day: the child on the class screen's stage.
   onStar?: (studentId: number) => void
+  // A narrow window: a list or small tiles (the teacher picks), "All" first, and a child opens as a card from below.
+  narrow?: boolean
 }) {
   const [openId, setOpenId] = useState<number | null>(null)
   const open = items.find((child) => child.studentId === openId) ?? null
@@ -121,6 +140,15 @@ export function StudentGrid({
   // A class up to BIG_CLASS children starts as a classroom; bigger ones as small tiles.
   const [view, setView] = useState<GridView>(big ? 'small' : 'classroom')
   const [search, setSearch] = useState('')
+  const [narrowView, setNarrowView] = useState<NarrowView>(readNarrowView)
+  function chooseNarrowView(next: NarrowView) {
+    setNarrowView(next)
+    try {
+      window.localStorage.setItem(NARROW_VIEW_KEY, next)
+    } catch {
+      // A private window: the choice works now, it is just not kept.
+    }
+  }
   // A class that grows past the line (children added) switches once.
   const [wasBig, setWasBig] = useState(big)
   if (big !== wasBig) {
@@ -143,6 +171,8 @@ export function StudentGrid({
     { key: 'to_mark', label: 'To mark', show: counts.to_mark > 0 },
     { key: 'notes', label: 'Notes', show: counts.notes > 0 },
   ]
+
+  const shownChips = narrow ? [...chips.filter((chip) => chip.key === 'all'), ...chips.filter((chip) => chip.key !== 'all')] : chips
 
   const select = (studentId: number) => setOpenId(studentId === openId ? null : studentId)
   // Classroom view: a tap opens the one-tap ring on that seat.
@@ -220,7 +250,9 @@ export function StudentGrid({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-1.5">
-        {chips
+        {/* On a narrow window the filters are one row that slides sideways. */}
+        <div className={narrow ? 'flex w-full gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none]' : 'contents'}>
+        {shownChips
           .filter((chip) => chip.show)
           .map((chip) => (
             <button
@@ -232,7 +264,7 @@ export function StudentGrid({
                 setFilter(chip.key)
               }}
               className={cn(
-                'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-sm font-semibold transition',
+                'inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-semibold transition',
                 filter === chip.key && !search ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
               )}
             >
@@ -240,7 +272,8 @@ export function StudentGrid({
               <span className={cn('tabular-nums', filter === chip.key && !search ? 'text-white/80' : 'text-slate-500')}>{counts[chip.key]}</span>
             </button>
           ))}
-        <label className="relative ml-auto min-w-[160px]">
+        </div>
+        <label className={cn('relative min-w-[160px]', narrow ? 'flex-1' : 'ml-auto')}>
           <MagnifyingGlass size={16} className="absolute left-3 top-2.5 text-slate-400" aria-hidden="true" />
           <input
             type="search"
@@ -251,28 +284,61 @@ export function StudentGrid({
             className="min-h-9 w-full rounded-full border border-slate-200 py-1 pr-3 pl-9! text-sm"
           />
         </label>
-        <div role="radiogroup" aria-label="How the children are shown" className="flex overflow-hidden rounded-full border border-slate-200">
-          {gridViews.map((entry) => (
-            <button
-              key={entry.key}
-              type="button"
-              role="radio"
-              aria-checked={view === entry.key}
-              onClick={() => setView(entry.key)}
-              className={cn(
-                'min-h-9 px-3 text-sm font-semibold transition',
-                view === entry.key ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50',
-              )}
-            >
-              {entry.label}
-            </button>
-          ))}
-        </div>
+        {narrow ? (
+          <div role="radiogroup" aria-label="How the children are shown" className="flex overflow-hidden rounded-full border border-slate-200">
+            {narrowViews.map((entry) => (
+              <button
+                key={entry.key}
+                type="button"
+                role="radio"
+                aria-checked={narrowView === entry.key}
+                onClick={() => chooseNarrowView(entry.key)}
+                className={cn(
+                  'min-h-9 px-3 text-sm font-semibold transition',
+                  narrowView === entry.key ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50',
+                )}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div role="radiogroup" aria-label="How the children are shown" className="flex overflow-hidden rounded-full border border-slate-200">
+            {gridViews.map((entry) => (
+              <button
+                key={entry.key}
+                type="button"
+                role="radio"
+                aria-checked={view === entry.key}
+                onClick={() => setView(entry.key)}
+                className={cn(
+                  'min-h-9 px-3 text-sm font-semibold transition',
+                  view === entry.key ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50',
+                )}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {open && <ChildPanel key={open.studentId} child={open} presets={presets} onGive={onGive} onSaveNote={onSaveNote} onRemind={onRemind} onStar={onStar} onClose={() => setOpenId(null)} />}
+      {open &&
+        (narrow ? (
+          // On a narrow window the child's card comes up from the bottom, over the list.
+          <div className="fixed inset-0 z-50 flex flex-col justify-end">
+            <button type="button" aria-label="Close" onClick={() => setOpenId(null)} className="absolute inset-0 bg-slate-900/40" />
+            <div className="relative max-h-[85dvh] overflow-y-auto rounded-t-2xl bg-white shadow-2xl">
+              <ChildPanel key={open.studentId} child={open} presets={presets} onGive={onGive} onSaveNote={onSaveNote} onRemind={onRemind} onStar={onStar} onClose={() => setOpenId(null)} />
+            </div>
+          </div>
+        ) : (
+          <ChildPanel key={open.studentId} child={open} presets={presets} onGive={onGive} onSaveNote={onSaveNote} onRemind={onRemind} onStar={onStar} onClose={() => setOpenId(null)} />
+        ))}
 
-      {view === 'classroom' ? (
+      {narrow ? (
+        <NarrowChildren items={shown} view={narrowView} openId={openId} onSelect={select} />
+      ) : view === 'classroom' ? (
         <div className="rounded-2xl bg-amber-50/70 p-3">
           <div className="mx-auto mb-3 w-1/2 rounded-lg border border-slate-200 bg-white py-1 text-center text-xs font-semibold text-slate-500">
             Teacher · Board
@@ -403,6 +469,111 @@ export function StudentGrid({
         </button>
       )}
     </div>
+  )
+}
+
+// The children on a narrow window: a list (one child a row) or small tiles (three or four a row), each with where
+// they are, the answer mark and the points. A tap opens the child's card.
+function NarrowChildren({
+  items,
+  view,
+  openId,
+  onSelect,
+}: {
+  items: GridChild[]
+  view: NarrowView
+  openId: number | null
+  onSelect: (studentId: number) => void
+}) {
+  const stateTone = (child: GridChild) =>
+    child.state === 'here' ? (child.late ? 'text-amber-700' : 'text-emerald-700') : child.state === 'waiting' ? 'text-amber-700' : child.state === 'not_yet' ? 'text-rose-700' : 'text-slate-500'
+  const mark = (child: GridChild) =>
+    child.answer === 'right'
+      ? { text: '✓', className: 'bg-emerald-100 text-emerald-800' }
+      : child.answer === 'wrong'
+        ? { text: '✗', className: 'bg-rose-100 text-rose-800' }
+        : child.answer === 'pending'
+          ? { text: '…', className: 'bg-amber-100 text-amber-800' }
+          : null
+  const title = (child: GridChild) => `${child.name} · ${stateText[child.state]}${child.answer ? ` · ${answerText[child.answer]}` : ''} · ${child.points} points`
+
+  if (view === 'list') {
+    return (
+      <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        {items.map((child) => {
+          const answer = mark(child)
+          return (
+            <li key={child.studentId}>
+              <button
+                type="button"
+                onClick={() => onSelect(child.studentId)}
+                aria-pressed={child.studentId === openId}
+                title={title(child)}
+                className={cn(
+                  'relative flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left transition hover:bg-slate-50',
+                  needsAttention(child) && 'shadow-[inset_4px_0_0_#f59e0b]',
+                  child.picked && 'bg-pink-50',
+                )}
+              >
+                <StudentAvatar id={child.studentId} name={child.name} size={36} dim={child.state === 'not_yet' || child.state === 'left'} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-slate-900">{child.name}</span>
+                  <span className={cn('block truncate text-xs', stateTone(child))}>
+                    {stateText[child.state]}
+                    {child.state === 'here' && child.late ? ' · late' : ''}
+                    {child.remindedAt ? ` · reminded ${timeOf(child.remindedAt)}` : ''}
+                    {child.zoomCheck && !child.zoomCheck.ok ? ' · ⚠ Zoom check' : ''}
+                  </span>
+                </span>
+                {child.note && <NotePencil size={14} className="shrink-0 text-violet-600" aria-label="Has a note" />}
+                {answer && (
+                  <span className={cn('grid h-7 w-7 shrink-0 place-items-center rounded-lg text-sm font-bold', answer.className)} aria-label={answerText[child.answer ?? 'none']}>
+                    {answer.text}
+                  </span>
+                )}
+                <span className="w-10 shrink-0 text-right text-sm font-bold tabular-nums text-amber-600">{child.points > 0 ? `★${child.points}` : ''}</span>
+                {child.flash ? <PointsFlash points={child.flash} /> : null}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    )
+  }
+  return (
+    <ul className="grid grid-cols-3 gap-2 min-[440px]:grid-cols-4">
+      {items.map((child) => {
+        const answer = mark(child)
+        return (
+          <li key={child.studentId}>
+            <button
+              type="button"
+              onClick={() => onSelect(child.studentId)}
+              aria-pressed={child.studentId === openId}
+              title={title(child)}
+              className={cn(
+                'relative flex min-h-[5.75rem] w-full flex-col items-center gap-1 rounded-xl border px-1 pb-1.5 pt-2 transition hover:brightness-95',
+                needsAttention(child) ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white',
+                child.picked && 'ring-2 ring-[#fc0c97]',
+              )}
+            >
+              {child.points > 0 && <span className="absolute left-1.5 top-1 text-[11px] font-bold text-amber-600">★{child.points}</span>}
+              {answer && (
+                <span className={cn('absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-md text-[11px] font-bold', answer.className)} aria-label={answerText[child.answer ?? 'none']}>
+                  {answer.text}
+                </span>
+              )}
+              <StudentAvatar id={child.studentId} name={child.name} size={40} dim={child.state === 'not_yet' || child.state === 'left'} />
+              <span className="w-full truncate text-center text-xs font-semibold text-slate-800">{shortName(child.name)}</span>
+              <span className={cn('text-[11px]', stateTone(child))}>
+                {child.state === 'here' ? (child.late ? 'Late' : 'In') : child.state === 'waiting' ? 'Waiting' : child.state === 'left' ? 'Left' : 'Not here'}
+              </span>
+              {child.flash ? <PointsFlash points={child.flash} /> : null}
+            </button>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 

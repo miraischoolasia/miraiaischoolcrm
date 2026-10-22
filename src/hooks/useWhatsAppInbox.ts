@@ -144,6 +144,8 @@ export function useWhatsAppInbox(
   copy: { link: InboxCopyLive; everyOpen?: ChatwootConversation[] } | null = null,
   // The Evolution name of the number a chat is on (see waInstance), so its read ticks go to that phone.
   instanceOfInbox: (inboxId: number | undefined) => string | null = () => null,
+  // Numbers of the other inbox, never listed here (see inboxZones.ts).
+  excludedInboxIds: readonly number[] = [],
 ) {
   const instanceOfInboxRef = useRef(instanceOfInbox)
   useEffect(() => {
@@ -222,11 +224,12 @@ export function useWhatsAppInbox(
     () =>
       onePerParent(
         [...conversationMap.values()]
-          .filter((entry) => isOnAllowedNumber(entry, allowedInboxIds))
+          .filter((entry) => isOnAllowedNumber(entry, allowedInboxIds, excludedInboxIds))
           .map((entry) => withLeadLink(entry, leadOfContact)),
         siblings,
       ),
-    [conversationMap, allowedInboxIds, siblings, leadOfContact],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the excluded list is compared by its contents
+    [conversationMap, allowedInboxIds, siblings, leadOfContact, excludedInboxIds.join(',')],
   )
   // Reads ahead the newest messages of the chats at the top of the list (they are the ones opened).
   const topKey = useMemo(

@@ -87,7 +87,8 @@ import { NewChatDialog } from './NewChatDialog'
 import { FollowUpButton, FollowUpChip } from './FollowUpButton'
 import { NumbersDialog, type AssignableStaff } from './NumbersDialog'
 import { problemLabel, type ChannelAlert } from '../../lib/channelAlerts'
-import type { WhatsAppNumber, WhatsAppNumberDraft } from '../../lib/whatsappNumbers'
+import type { InboxZone, WhatsAppNumber, WhatsAppNumberDraft } from '../../lib/whatsappNumbers'
+import { listedInboxIds, zoneFilter } from '../../lib/inboxZones'
 import { QuickReplyManager, type QuickReplyStart } from './QuickReplyManager'
 import { quickReplyStartFrom } from '../../lib/quickReplyFromMessages'
 import { ownMediaUrl } from '../../lib/chatwoot'
@@ -110,6 +111,9 @@ type WhatsAppInboxProps = {
   // The CRM's copy of the inbox: chats and messages read from it, new ones heard of by themselves, search across
   // every message. Without it (or while it is not live) the page asks Chatwoot as before.
   inboxCopy?: InboxCopyLive | null
+  // Which inbox this is: the Marketing Inbox (default) or the Student Inbox under Students, which shows only the
+  // students numbers, makes no leads by itself and runs no automations (docs/student-inbox-spec.md).
+  zone?: InboxZone
 }
 
 // What the inbox needs to know about the school's WhatsApp numbers.
@@ -118,6 +122,8 @@ export type WhatsAppNumbersView = {
   assignments: Map<number, number[]>
   // undefined while loading; null when nothing is restricted; otherwise the Chatwoot inboxes this person sees.
   allowedInboxIds: number[] | null | undefined
+  // The Chatwoot inboxes of the Student Inbox; the Marketing Inbox leaves them out.
+  studentInboxIds?: number[]
   isAdmin: boolean
   staff: AssignableStaff[]
   onSave: (existing: WhatsAppNumber | null, draft: WhatsAppNumberDraft, teacherIds: number[]) => Promise<string | null>
@@ -144,7 +150,9 @@ export function WhatsAppInbox({
   numbersView,
   everyOpenChat,
   inboxCopy = null,
+  zone = 'marketing',
 }: WhatsAppInboxProps) {
+  const isStudentInbox = zone === 'students'
   const client = useMemo(() => createChatwootClient(apiUrl), [apiUrl])
   // Reactions, edits, deletes and read ticks go to the phone of the number the chat is on (its Evolution name in the
   // numbers table); a school with no names set up has one number, as before.
@@ -155,7 +163,20 @@ export function WhatsAppInbox({
     [schoolNumbers],
   )
   // While the numbers load nothing is listed, so a restricted person never sees a chat flash by.
-  const allowedInboxIds = numbersView ? (numbersView.allowedInboxIds === undefined ? [] : numbersView.allowedInboxIds) : null
+  // Each inbox shows the numbers of its own zone only (the Student Inbox: nothing without the numbers list).
+  const numbersAllowed = numbersView?.allowedInboxIds
+  const studentInboxIds = numbersView?.studentInboxIds
+  const zoned = useMemo(
+    () => (numbersView ? zoneFilter(zone, numbersAllowed, studentInboxIds ?? []) : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- numbersView itself is a new object on every render
+    [Boolean(numbersView), zone, numbersAllowed, studentInboxIds],
+  )
+  const hasNumbersView = Boolean(numbersView)
+  const allowedInboxIds = useMemo(
+    () => (hasNumbersView ? listedInboxIds(zoned) : isStudentInbox ? [] : null),
+    [hasNumbersView, zoned, isStudentInbox],
+  )
+  const excludedInboxIds = useMemo(() => zoned?.excluded ?? [], [zoned])
   // One person who writes from a phone number and from a hidden ID is one chat once they are one lead.
   const siblings = useMemo(() => contactSiblings(crm.leadChannels), [crm.leadChannels])
   const leadOfContact = useMemo(() => leadOfContacts(crm.leadChannels), [crm.leadChannels])
@@ -163,7 +184,17 @@ export function WhatsAppInbox({
     () => (inboxCopy ? { link: inboxCopy, everyOpen: everyOpenChat } : null),
     [inboxCopy, everyOpenChat],
   )
-  const inbox = useWhatsAppInbox(client, currentUser, active, allowedInboxIds, siblings, leadOfContact, copyLink, instanceOf)
+  const inbox = useWhatsAppInbox(
+    client,
+    currentUser,
+    active,
+    allowedInboxIds,
+    siblings,
+    leadOfContact,
+    copyLink,
+    instanceOf,
+    excludedInboxIds,
+  )
   const waActions = waActionsFor(instanceOf(inbox.selected?.inbox_id))
   // The family table: who is whose parent. The database keeps it in step with leads and students; the
   // page adds each WhatsApp contact and what the team ties together by hand.
@@ -207,8 +238,8 @@ export function WhatsAppInbox({
     [inbox.conversations, category],
   )
   const categoryUnread = useMemo(
-    () => countUnreadAcross(everyOpenChat ?? [], inbox.conversations, allowedInboxIds, siblings).byCategory,
-    [everyOpenChat, inbox.conversations, allowedInboxIds, siblings],
+    () => countUnreadAcross(everyOpenChat ?? [], inbox.conversations, allowedInboxIds, siblings, excludedInboxIds).byCategory,
+    [everyOpenChat, inbox.conversations, allowedInboxIds, siblings, excludedInboxIds],
   )
   useEffect(() => {
     if (categoryDecided.current || inbox.conversations.length === 0) {
@@ -603,7 +634,8 @@ export function WhatsAppInbox({
   const quickReplies = useQuickReplies(true)
   const sourceRules = useSourceRules(true)
   // Messages the automations want to send; each goes out only when a person approves it.
-  const automation = useAutomationQueue({ enabled: active })
+  // The Student Inbox runs no automations.
+  const automation = useAutomationQueue({ enabled: active && !isStudentInbox })
   const [automationOpen, setAutomationOpen] = useState(false)
   const automationWaiting = useMemo(
     () => automation.items.filter((entry) => needsApproval(entry, automation.autoRuleKeys, Date.now())).length,
@@ -653,8 +685,9 @@ export function WhatsAppInbox({
     [inbox, contactOf, tellFamily, leadIdOf, crm],
   )
   // A new chat that matches a source rule becomes a lead without anyone pressing "Save lead".
+  // Never in the Student Inbox: its chats belong to students' families, not new leads.
   useAutoLeads({
-    enabled: active,
+    enabled: active && !isStudentInbox,
     client,
     conversations: inbox.conversations,
     crm,
@@ -671,7 +704,7 @@ export function WhatsAppInbox({
   // A Messenger / Instagram chat is a lead of its own (no phone), every chat is listed on its lead, and the
   // chats that were here before this existed are caught up once, by whoever has the inbox open.
   useSocialLeads({
-    enabled: active && !inbox.isLoading,
+    enabled: active && !inbox.isLoading && !isStudentInbox,
     canEdit: crm.canEditLeads,
     conversations: inbox.conversations,
     channels: crm.leadChannels,
@@ -895,6 +928,8 @@ export function WhatsAppInbox({
     const allowed = numbersView.allowedInboxIds
     return numbersView.numbers
       .filter((entry) => entry.isActive && (allowed === null || allowed === undefined || allowed.includes(entry.inboxId)))
+      // Each inbox writes from its own numbers only.
+      .filter((entry) => entry.zone === zone)
       .map((entry) => {
         const look = channelLabels.labels.get(String(entry.inboxId))
         return {
@@ -910,7 +945,7 @@ export function WhatsAppInbox({
           })(),
         }
       })
-  }, [numbersView, channelLabels.labels])
+  }, [numbersView, channelLabels.labels, zone])
   // The number a chat is on (its short name and colour); shown only when there is more than one to tell apart.
   const numberLabelOf = useCallback(
     (conversation: ChatwootConversation) => {
@@ -1149,8 +1184,11 @@ export function WhatsAppInbox({
           .map((id) => studentName.get(id))
           .filter((name): name is string => Boolean(name)),
       allowedInboxIds,
-    }).map((option) => ({ ...option, color: colorOf(option.inboxId) }))
-  }, [inbox.selected, inbox.conversations, leadIdOf, leadOfContact, leadChannelsByLead, crm.students, numbersView, sendingFromOf, allowedInboxIds, channelLabels.labels])
+    })
+      // A chat of the other inbox (Marketing / Student Inbox) is not switched to from here.
+      .filter((option) => option.inboxId === undefined || !excludedInboxIds.includes(option.inboxId))
+      .map((option) => ({ ...option, color: colorOf(option.inboxId) }))
+  }, [inbox.selected, inbox.conversations, leadIdOf, leadOfContact, leadChannelsByLead, crm.students, numbersView, sendingFromOf, allowedInboxIds, excludedInboxIds, channelLabels.labels])
 
   // The chat picked there: opened at once when it is on the list, otherwise fetched first (an older chat).
   const [switchRequest, setSwitchRequest] = useState<{ option: ChatSwitchOption; fetched: boolean } | null>(null)
@@ -1414,7 +1452,8 @@ export function WhatsAppInbox({
   return (
     <StickerSourceContext.Provider value={stickerSource}>
     <div>
-    <div role="group" aria-label="Channel" className={cn('mb-3 flex flex-wrap gap-2', hasChat && 'max-lg:hidden')}>
+    {/* The Student Inbox is WhatsApp only: no channel buttons. */}
+    <div role="group" aria-label="Channel" className={cn('mb-3 flex flex-wrap gap-2', hasChat && 'max-lg:hidden', isStudentInbox && 'hidden')}>
       {CATEGORY_BUTTONS.map(({ key, label, icon: ChannelIcon, color }) => {
         const selected = category === key
         const unread = categoryUnread[key]
@@ -1510,7 +1549,7 @@ export function WhatsAppInbox({
         onLoadMore={() => void inbox.loadMore(tab === 'done' ? 'resolved' : 'open')}
         onNewChat={() => setStartingChat(true)}
         automationCount={automationWaiting}
-        onOpenAutomations={() => setAutomationOpen(true)}
+        onOpenAutomations={isStudentInbox ? undefined : () => setAutomationOpen(true)}
         category={category}
         allChannelsLabel={category === 'whatsapp' ? 'All numbers' : category === 'instagram' ? 'All Instagram accounts' : 'All Messenger pages'}
         numberOf={numberLabelOf}
@@ -1648,6 +1687,7 @@ export function WhatsAppInbox({
             people={people}
             chatOfContact={chatOfContact}
             onPeopleChanged={() => refreshPeople()}
+            studentZone={isStudentInbox}
             userName={currentUser.name}
             onWriteMessage={(text) => {
               setDraftRequest((current) => ({ id: (current?.id ?? 0) + 1, text }))

@@ -513,7 +513,7 @@ export function removeBranchMessage(graph: FlowGraph, id: string): FlowGraph {
 export const TRIGGER_GROUPS: { label: string; keys: FlowTrigger[] }[] = [
   { label: 'Leads and forms', keys: ['lead_created', 'form_submitted', 'lead_idle', 'task_due'] },
   { label: 'Chats', keys: ['message_keyword', 'parent_no_reply', 'parent_waiting'] },
-  { label: 'Classes', keys: ['class_start', 'replacement_start', 'trial_booked', 'trial_start', 'zoom_start'] },
+  { label: 'Classes', keys: ['class_start', 'replacement_start', 'trial_booked', 'trial_start', 'trial_attended', 'trial_absent', 'zoom_start'] },
   { label: 'Students and fees', keys: ['lesson_expiry', 'account_fee_expiry', 'club_fee_expiry', 'package_start'] },
 ]
 

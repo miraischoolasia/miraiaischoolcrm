@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NumbersDialog } from './NumbersDialog'
 
-const main = { id: 1, label: 'Main', phone: '60108079133', inboxId: 1, instance: 'mirai-test', isActive: true }
+const main = { id: 1, label: 'Main', phone: '60108079133', inboxId: 1, instance: 'mirai-test', isActive: true, zone: 'marketing' as const }
 
 function setup(overrides: Partial<Parameters<typeof NumbersDialog>[0]> = {}) {
   const props = {
@@ -55,11 +55,25 @@ describe('NumbersDialog', () => {
 
     expect(onSave).toHaveBeenCalledWith(
       null,
-      expect.objectContaining({ label: 'Sales', inboxId: 2, isActive: true }),
+      expect.objectContaining({ label: 'Sales', inboxId: 2, isActive: true, zone: 'marketing' as const }),
       [8],
     )
     // Back to the list after saving.
     expect(screen.getByRole('button', { name: 'Add a number' })).toBeInTheDocument()
+  })
+
+  it('moves a number to the Student Inbox and says so in the list (2026-10-22)', async () => {
+    const { onSave } = setup()
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    expect(screen.getByLabelText('Its chats go to')).toHaveValue('marketing')
+    await userEvent.selectOptions(screen.getByLabelText('Its chats go to'), 'students')
+    await userEvent.click(screen.getByRole('button', { name: 'Save number' }))
+    expect(onSave).toHaveBeenCalledWith(main, expect.objectContaining({ zone: 'students' }), [7])
+  })
+
+  it('marks a Student Inbox number in the list', () => {
+    setup({ numbers: [{ ...main, zone: 'students' as const }] })
+    expect(screen.getByText(/Inbox 1 · mirai-test · Student Inbox/)).toBeInTheDocument()
   })
 
   it('keeps the form open and says why when the save fails', async () => {
@@ -81,7 +95,7 @@ describe('NumbersDialog', () => {
     afterEach(() => {
       vi.unstubAllGlobals()
     })
-    const second = { id: 2, label: 'Second', phone: null, inboxId: 6, instance: 'school-2', isActive: true }
+    const second = { id: 2, label: 'Second', phone: null, inboxId: 6, instance: 'school-2', isActive: true, zone: 'marketing' as const }
     const stubGateway = () => {
       const fetchMock = vi.fn(async () => new Response(JSON.stringify({ instance: { state: 'close' } }), { status: 200 }))
       vi.stubGlobal('fetch', fetchMock)
@@ -132,7 +146,7 @@ describe('NumbersDialog', () => {
     afterEach(() => {
       vi.unstubAllGlobals()
     })
-    const second = { id: 2, label: 'Second', phone: null, inboxId: 6, instance: 'school-2', isActive: true }
+    const second = { id: 2, label: 'Second', phone: null, inboxId: 6, instance: 'school-2', isActive: true, zone: 'marketing' as const }
     const serverList = [
       { instance: 'school-1', inboxId: 1, label: 'Main', state: 'open' as const, active: true },
       { instance: 'school-2', inboxId: 6, label: 'Second', state: 'close' as const, active: true },
@@ -167,6 +181,54 @@ describe('NumbersDialog', () => {
       expect(onReload).toHaveBeenCalled()
       // The hand-written form is not used: the server writes the number into the list.
       expect(screen.queryByLabelText('Chatwoot inbox')).not.toBeInTheDocument()
+    })
+
+    it('adds a number to the Student Inbox when that is picked (2026-10-22)', async () => {
+      stubGateway()
+      const server = fakeServer()
+      const setZone = vi.fn(async () => undefined)
+      const onReload = vi.fn(async () => undefined)
+      setup({ numbers: [{ ...main, instance: 'school-1' }, second], apiUrl: 'https://wa.example', numbersApi: server as never, onReload, setZone })
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Add a number' }))
+      await userEvent.type(screen.getByLabelText('Name of the new number'), 'Students')
+      await userEvent.selectOptions(screen.getByLabelText('Its chats go to'), 'students')
+      await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+      expect(screen.getByRole('alertdialog')).toHaveTextContent('Its chats go to the Student Inbox.')
+      await userEvent.click(screen.getByRole('button', { name: 'Yes, add it' }))
+
+      await waitFor(() => expect(setZone).toHaveBeenCalledWith(7, 'students'))
+      expect(onReload).toHaveBeenCalled()
+    })
+
+    it('leaves a new number in the Marketing Inbox by default', async () => {
+      stubGateway()
+      const server = fakeServer()
+      const setZone = vi.fn(async () => undefined)
+      setup({ numbers: [{ ...main, instance: 'school-1' }, second], apiUrl: 'https://wa.example', numbersApi: server as never, setZone })
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Add a number' }))
+      await userEvent.type(screen.getByLabelText('Name of the new number'), 'Sales')
+      await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Yes, add it' }))
+      await waitFor(() => expect(server.add).toHaveBeenCalledWith('Sales'))
+      expect(setZone).not.toHaveBeenCalled()
+    })
+
+    it('says so when the number was added but could not be moved to the Student Inbox', async () => {
+      stubGateway()
+      const server = fakeServer()
+      const setZone = vi.fn(async () => {
+        throw new Error('nope')
+      })
+      setup({ numbers: [{ ...main, instance: 'school-1' }, second], apiUrl: 'https://wa.example', numbersApi: server as never, setZone })
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Add a number' }))
+      await userEvent.type(screen.getByLabelText('Name of the new number'), 'Students')
+      await userEvent.selectOptions(screen.getByLabelText('Its chats go to'), 'students')
+      await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Yes, add it' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('Students was added, but not moved to the Student Inbox.')
     })
 
     it('asks before turning a number off, and warns more for the first number', async () => {
@@ -205,7 +267,7 @@ describe('NumbersDialog', () => {
       await userEvent.click(screen.getAllByRole('button', { name: 'Add to the list' })[1])
       expect(props.onSave).toHaveBeenCalledWith(
         null,
-        { label: 'Second', phone: '', inboxId: 6, instance: 'school-2', isActive: true },
+        { label: 'Second', phone: '', inboxId: 6, instance: 'school-2', isActive: true, zone: 'marketing' as const },
         [],
       )
     })

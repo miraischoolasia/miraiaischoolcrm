@@ -3,6 +3,7 @@ import {
   deleteWhatsAppNumber,
   fetchMyInboxIds,
   fetchNumberAssignments,
+  fetchStudentInboxIds,
   fetchWhatsAppNumbers,
   numberDraftError,
   numberSaveMessage,
@@ -20,19 +21,23 @@ export function useWhatsAppNumbers(enabled: boolean) {
   const [numbers, setNumbers] = useState<WhatsAppNumber[]>([])
   const [assignments, setAssignments] = useState<Map<number, number[]>>(new Map())
   const [allowedInboxIds, setAllowedInboxIds] = useState<number[] | null | undefined>(enabled ? undefined : null)
+  // The numbers of the Student Inbox (students zone); the Marketing Inbox leaves them out.
+  const [studentInboxIds, setStudentInboxIds] = useState<number[]>([])
 
   const reload = useCallback(async () => {
     if (!enabled) {
       setAllowedInboxIds(null)
       return
     }
-    const [list, mine, assigned] = await Promise.allSettled([
+    const [list, mine, assigned, students] = await Promise.allSettled([
       fetchWhatsAppNumbers(),
       fetchMyInboxIds(),
       fetchNumberAssignments(),
+      fetchStudentInboxIds(),
     ])
     setNumbers(list.status === 'fulfilled' ? list.value : [])
     setAssignments(assigned.status === 'fulfilled' ? assigned.value : new Map())
+    setStudentInboxIds(students.status === 'fulfilled' ? students.value : [])
     setAllowedInboxIds(mine.status === 'fulfilled' ? mine.value : null)
   }, [enabled])
 
@@ -76,5 +81,5 @@ export function useWhatsAppNumbers(enabled: boolean) {
     [reload],
   )
 
-  return { numbers, assignments, allowedInboxIds, reload, save, remove }
+  return { numbers, assignments, allowedInboxIds, studentInboxIds, reload, save, remove }
 }

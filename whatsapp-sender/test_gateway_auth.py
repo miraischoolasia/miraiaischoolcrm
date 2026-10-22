@@ -142,6 +142,59 @@ class Decide(unittest.TestCase):
         self.assertEqual(len(fake.calls), 2)
 
 
+class FakeTicks:
+    """Answers has_permission per tick, like Supabase for a person with only some ticks."""
+
+    def __init__(self, ticks):
+        self.ticks = ticks
+        self.asked = []
+
+    def __call__(self, path, token, body=None):
+        if path == "/auth/v1/user":
+            return 200, {"id": "u1"}
+        self.asked.append((body or {}).get("p_module"))
+        return 200, (body or {}).get("p_module") in self.ticks
+
+
+class AlsoModules(unittest.TestCase):
+    """ALSO_MODULES: the Student Inbox tick opens the gateway too (each chat is still checked on its own)."""
+
+    def setUp(self):
+        gateway_auth._cache.clear()
+        gateway_auth._asking.clear()
+        for name, value in (("REQUIRED_MODULE", "inbox"), ("ALSO_MODULES", ["student_inbox"])):
+            patcher = mock.patch.object(gateway_auth, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def use(self, fake):
+        patcher = mock.patch.object(gateway_auth, "supabase", fake)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return fake
+
+    def test_the_inbox_tick_alone_asks_once(self):
+        fake = self.use(FakeTicks({"inbox"}))
+        self.assertEqual(gateway_auth.decide(token_with_exp(time.time() + 3600)), 200)
+        self.assertEqual(fake.asked, ["inbox"])
+
+    def test_the_student_inbox_tick_alone_is_let_in(self):
+        fake = self.use(FakeTicks({"student_inbox"}))
+        self.assertEqual(gateway_auth.decide(token_with_exp(time.time() + 3600)), 200)
+        self.assertEqual(fake.asked, ["inbox", "student_inbox"])
+
+    def test_neither_tick_is_403(self):
+        fake = self.use(FakeTicks(set()))
+        self.assertEqual(gateway_auth.decide(token_with_exp(time.time() + 3600)), 403)
+        self.assertEqual(fake.asked, ["inbox", "student_inbox"])
+
+    def test_without_also_modules_nothing_changes(self):
+        with mock.patch.object(gateway_auth, "ALSO_MODULES", []):
+            fake = self.use(FakeTicks({"student_inbox"}))
+            self.assertEqual(gateway_auth.decide(token_with_exp(time.time() + 3600)), 403)
+            self.assertEqual(fake.asked, ["inbox"])
+
+
 class FakeChats:
     """Answers inbox_conversation_access like Supabase, per chat number."""
 

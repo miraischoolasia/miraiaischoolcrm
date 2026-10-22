@@ -5,6 +5,7 @@ import type { WhatsAppCrm } from '../whatsapp/crm'
 import type { ChatwootConversation } from '../../lib/whatsappInbox'
 import type { InboxCopyLive } from '../../hooks/useInboxCopyLive'
 import { WhatsAppInbox, type WhatsAppNumbersView } from '../whatsapp/WhatsAppInbox'
+import type { InboxZone } from '../../lib/whatsappNumbers'
 
 type WhatsAppSectionProps = {
   // The address of the shared WhatsApp inbox (Chatwoot), used for the fallback.
@@ -25,6 +26,8 @@ type WhatsAppSectionProps = {
   everyOpenChat?: ChatwootConversation[]
   // The CRM's copy of the inbox (see useInboxCopyLive).
   inboxCopy?: InboxCopyLive | null
+  // The Marketing Inbox (default) or the Student Inbox.
+  zone?: InboxZone
 }
 
 export function WhatsAppSection({
@@ -38,6 +41,7 @@ export function WhatsAppSection({
   numbersView,
   everyOpenChat,
   inboxCopy = null,
+  zone = 'marketing',
 }: WhatsAppSectionProps) {
   if (apiUrl && currentUser) {
     return (
@@ -51,6 +55,7 @@ export function WhatsAppSection({
         numbersView={numbersView}
         everyOpenChat={everyOpenChat}
         inboxCopy={inboxCopy}
+        zone={zone}
       />
     )
   }

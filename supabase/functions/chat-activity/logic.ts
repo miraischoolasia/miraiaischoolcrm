@@ -23,6 +23,8 @@ export type ChatMessage = {
   pageName: string | null
   // Where a GoHighLevel contact came from, as the bridge wrote it on the contact; null for any other chat.
   origin: ChatOrigin | null
+  // A message of ours that an automation sent (the automatic sender writes crm_sender.id 0), not a person.
+  automated: boolean
 }
 
 export type ChatOrigin = {
@@ -117,6 +119,19 @@ function originOf(attributes: Json | null): ChatOrigin | null {
   }
 }
 
+// The zone of the chat's number (20261029300000_student_inbox): a students number belongs to the Student Inbox.
+// Anything else the database answers (an error, or the migration not pushed yet) counts as marketing, as before.
+export type ChatZone = 'marketing' | 'students'
+
+export function asZone(value: unknown): ChatZone {
+  return value === 'students' ? 'students' : 'marketing'
+}
+
+// Only a WhatsApp chat with a known inbox can be on a students number, so only those are asked about.
+export function mayBeStudentChat(message: Pick<ChatMessage, 'channel' | 'inboxId'>): boolean {
+  return message.channel === 'whatsapp' && message.inboxId !== null
+}
+
 export function isStopRequest(content: unknown): boolean {
   if (typeof content !== 'string') {
     return false
@@ -146,6 +161,13 @@ function directionOf(value: unknown): 'incoming' | 'outgoing' | null {
 // the team when a school number stops working. Such a note is not a reply to a parent: it moves no lead and starts
 // no automation (the inbox copy still keeps it).
 export const SYSTEM_ALERT_MARK = '【CRM 系统提醒】'
+
+// The automatic sender writes crm_sender.id 0 on what it sends; a person in the CRM writes their own id and a
+// message typed on the school's phone has none.
+function isAutomationSender(attributes: unknown) {
+  const id = asObject(asObject(attributes)?.crm_sender)?.id
+  return id === 0 || id === '0'
+}
 
 // Only a real message in a chat counts: a new message from the parent (incoming) or from the team
 // (outgoing). Private notes, the number watch's notes, activity lines and every other kind of event are ignored.
@@ -220,6 +242,7 @@ export function parseChatwootEvent(payload: unknown): ParsedEvent {
       inboxName: asText(inbox?.name),
       pageName: asText(attributes?.ghl_page_name),
       origin: identifier.startsWith('ghl:') ? originOf(attributes) : null,
+      automated: direction === 'outgoing' && isAutomationSender(body.content_attributes),
     },
   }
 }

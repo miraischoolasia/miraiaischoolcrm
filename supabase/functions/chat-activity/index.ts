@@ -18,6 +18,9 @@
 //
 // A message the school sends moves the lead of that chat from "new" to "contacted" (mark_lead_contacted_from_chat).
 //
+// A chat on a number of the Student Inbox (students zone, student_chat_from_webhook) is tied to the student's
+// family instead, and none of the lead steps above run for it.
+//
 // Every message (new, edited, deleted; private notes too) and every chat change is also written to the CRM's
 // own copy of the inbox (inbox_chats / inbox_messages, see copy.ts). Chatwoot sends edits, deletes and chat
 // changes only when "Message updated", "Conversation updated" and "Conversation status changed" are ticked too.
@@ -26,7 +29,7 @@
 //   npx supabase functions deploy chat-activity --no-verify-jwt
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { copyFromWebhook } from './copy.ts'
-import { parseChatwootEvent } from './logic.ts'
+import { asZone, mayBeStudentChat, parseChatwootEvent, type ChatZone } from './logic.ts'
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -86,11 +89,33 @@ Deno.serve(async (req) => {
   }
   const message = parsed.message
 
+  // A number of the Student Inbox (students zone): the chat is tied to the student's family and never makes,
+  // lists on or moves a lead. Asked only for WhatsApp; if the database cannot say, the chat counts as marketing.
+  let zone: ChatZone = 'marketing'
+  if (mayBeStudentChat(message)) {
+    const { data: zoneData, error: zoneError } = await admin.rpc('student_chat_from_webhook', {
+      p_key: key,
+      p_inbox_id: message.inboxId,
+      p_contact_id: message.contactId,
+      p_phone: message.phone,
+      p_name: message.name,
+    })
+    if (zoneError) {
+      // 42883: the Student Inbox is not in this database yet (its migration not pushed).
+      if (zoneError.code !== '42883') {
+        console.error('Could not tell the zone of the chat', zoneError.code, zoneError.message)
+      }
+    } else {
+      zone = asZone(zoneData)
+    }
+  }
+  const touchesLeads = zone === 'marketing'
+
   // A parent's first message that holds an advert's keyword makes the lead right now, so the automations
   // that start from "a new lead" do not wait for someone to open the inbox. It runs before the message is
   // recorded: the database only treats a chat it has not seen yet as a first message. It never stops the
   // message from being recorded.
-  if (message.direction === 'incoming' && message.text !== null && message.phone !== null) {
+  if (touchesLeads && message.direction === 'incoming' && message.text !== null && message.phone !== null) {
     const { data: leadId, error: leadError } = await admin.rpc('auto_lead_from_chat', {
       p_key: key,
       p_conversation_id: message.conversationId,
@@ -109,7 +134,7 @@ Deno.serve(async (req) => {
 
   // The chat is listed on its lead: a Messenger / Instagram person becomes a lead of their own, and a
   // WhatsApp chat is listed on the lead of that contact or number. It never stops the message from being recorded.
-  if (message.contactId !== null) {
+  if (touchesLeads && message.contactId !== null) {
     const { error: channelError } = await admin.rpc('record_chat_channel', {
       p_key: key,
       p_channel: message.channel,
@@ -130,7 +155,7 @@ Deno.serve(async (req) => {
 
   // A GoHighLevel person arrives with where they came from (advert or not, campaign, first met): the lead made
   // from the chat gets that as its source, date, note and tags. It only touches a lead nobody has edited yet.
-  if (message.origin !== null && message.contactId !== null) {
+  if (touchesLeads && message.origin !== null && message.contactId !== null) {
     const { error: originError } = await admin.rpc('record_lead_origin', {
       p_key: key,
       p_contact_id: message.contactId,
@@ -147,11 +172,12 @@ Deno.serve(async (req) => {
 
   // Anything the school sends (a person in the inbox, an automation, the phone) means the parent has been
   // contacted: a lead still in "new" moves to "contacted". It never stops the message from being recorded.
-  if (message.direction === 'outgoing') {
+  if (touchesLeads && message.direction === 'outgoing') {
     const { data: movedId, error: stageError } = await admin.rpc('mark_lead_contacted_from_chat', {
       p_key: key,
       p_contact_id: message.contactId,
       p_phone: message.phone,
+      p_automated: message.automated,
     })
     if (stageError) {
       console.error('Could not move the lead to contacted', stageError.code, stageError.message)

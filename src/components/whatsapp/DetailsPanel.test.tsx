@@ -140,6 +140,26 @@ describe('DetailsPanel', () => {
     expect(screen.getByLabelText(/Where did they find us/)).toHaveValue('1')
   })
 
+  it('in the Student Inbox, offers no lead form by itself, only "Also a lead?" (2026-10-22)', async () => {
+    render(
+      <DetailsPanel
+        conversation={conversation()}
+        messages={[firstMessage]}
+        hasOlder={false}
+        crm={makeCrm()}
+        sourceRules={[]}
+        onLoadOlder={vi.fn()}
+        onLinkLead={vi.fn().mockResolvedValue(true)}
+        onLinkStudents={vi.fn().mockResolvedValue(true)}
+        studentZone
+      />,
+    )
+    expect(screen.queryByRole('heading', { name: 'Add as a new lead' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Source Keyword/ })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Also a lead? Add or find the lead' }))
+    expect(screen.getByRole('heading', { name: 'Add as a new lead' })).toBeInTheDocument()
+  })
+
   it('does not make a second lead for a number that already has one', async () => {
     const owner = { ...lead, id: 21, fullName: '@yvonne.ywbl', phone: '0198888888' } as Lead
     const crm = makeCrm({ leads: [owner] })

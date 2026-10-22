@@ -36,9 +36,9 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
 }
 
 const numbers = [
-  { id: 1, label: 'Main', phone: '60120000001', inboxId: 3, instance: 'school-1', isActive: true },
-  { id: 2, label: 'Second', phone: null, inboxId: 6, instance: 'school-2', isActive: true },
-  { id: 3, label: 'Third (no name yet)', phone: null, inboxId: 7, instance: null, isActive: true },
+  { id: 1, label: 'Main', phone: '60120000001', inboxId: 3, instance: 'school-1', isActive: true, zone: 'marketing' as const },
+  { id: 2, label: 'Second', phone: null, inboxId: 6, instance: 'school-2', isActive: true, zone: 'students' as const },
+  { id: 3, label: 'Third (no name yet)', phone: null, inboxId: 7, instance: null, isActive: true, zone: 'marketing' as const },
 ]
 
 // &staff=40 adds that many made-up staff, to see a long list of ticks (the window must scroll, its buttons stay in view).

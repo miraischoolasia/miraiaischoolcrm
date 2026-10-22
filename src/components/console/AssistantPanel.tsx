@@ -35,6 +35,7 @@ export function AssistantPanel({
   bank,
   ageGroup,
   runner,
+  micCommand,
 }: {
   sessionId: number | null
   roster: { id: number; name: string }[]
@@ -42,6 +43,9 @@ export function AssistantPanel({
   bank: { id: number; prompt: string }[]
   ageGroup: string | null
   runner: AssistantRunner
+  // Changes each time the console's AI button is pressed: starts listening (or, while listening, stops and sends),
+  // the same as the microphone button here. What the assistant suggests still waits for Confirm.
+  micCommand?: number
 }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
@@ -105,6 +109,16 @@ export function AssistantPanel({
       setError('The microphone is blocked. Allow it in the browser and try again.')
     }
   }
+
+  // Each press is handled once (a second run of the effect, as in development, does nothing).
+  const toggleMicRef = useRef(toggleMic)
+  toggleMicRef.current = toggleMic
+  const handledMic = useRef(0)
+  useEffect(() => {
+    if (!micCommand || micCommand === handledMic.current) return
+    handledMic.current = micCommand
+    void toggleMicRef.current()
+  }, [micCommand])
 
   async function sendPhoto(file: File) {
     setBusy('Reading the photo…')
@@ -219,7 +233,7 @@ export function AssistantPanel({
           }}
           placeholder={recording ? 'Listening… tap the red button when done' : 'Type what to do (or a hint for the photo)'}
           aria-label="What to do"
-          className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm"
+          className="min-w-[10rem] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm"
         />
         <button
           type="button"

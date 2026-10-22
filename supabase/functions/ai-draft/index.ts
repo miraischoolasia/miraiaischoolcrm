@@ -181,10 +181,17 @@ Deno.serve(async (req) => {
   if (!user) {
     return jsonResponse({ ok: false, error: 'Not authenticated.' }, 401)
   }
-  const { data: allowed, error: permissionError } = await callerClient.rpc('has_permission', {
+  // Leads edit, as before; or the Student Inbox edit tick (20261029300000_student_inbox), for its own chats.
+  let { data: allowed, error: permissionError } = await callerClient.rpc('has_permission', {
     p_module: 'leads',
     p_action: 'edit',
   })
+  if (!permissionError && allowed !== true) {
+    ;({ data: allowed, error: permissionError } = await callerClient.rpc('has_permission', {
+      p_module: 'student_inbox',
+      p_action: 'edit',
+    }))
+  }
   if (permissionError || allowed !== true) {
     return jsonResponse({ ok: false, error: 'You do not have permission to use AI drafts.' }, 403)
   }

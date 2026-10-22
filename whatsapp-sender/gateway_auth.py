@@ -28,7 +28,9 @@ with the same login wait for its answer instead of asking again.
 
 Runs on the server in /opt/mirai-inbox, mounted into the containers gateway-auth
 (Mirai) and gateway-auth-eduhero (EduHero), each with its own env file
-(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, REQUIRED_MODULE). Kept in the CRM repo in
+(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, REQUIRED_MODULE, and optionally ALSO_MODULES: more ticks
+that also open the gateway, comma separated, e.g. "student_inbox" for the Student Inbox; each chat is then still
+checked by inbox_conversation_access, which knows which inbox a number belongs to). Kept in the CRM repo in
 whatsapp-sender/; copy it to the server after changes.
 """
 
@@ -59,6 +61,8 @@ socket.getaddrinfo = _ipv4_only
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 PUBLISHABLE_KEY = os.environ["SUPABASE_PUBLISHABLE_KEY"]
 REQUIRED_MODULE = os.environ.get("REQUIRED_MODULE", "leads")
+# Asked one after the other, only when the ones before said no. Empty (the default): only REQUIRED_MODULE.
+ALSO_MODULES = [m.strip() for m in os.environ.get("ALSO_MODULES", "").split(",") if m.strip()]
 ALLOWED_TTL = 300
 DENIED_TTL = 60
 MAX_CACHED = 2000
@@ -116,16 +120,21 @@ def ask(token: str, admin: bool) -> int | None:
         return None
 
     if admin:
-        status, allowed = supabase("/rest/v1/rpc/is_admin", token, {})
+        questions = [("/rest/v1/rpc/is_admin", {})]
     else:
-        status, allowed = supabase("/rest/v1/rpc/has_permission", token, {"p_module": REQUIRED_MODULE})
-    if status == 200:
-        return 200 if allowed is True else 403
-    if status == 401:
-        return 401
-    if is_refusal(status):
-        return 403
-    return None
+        questions = [("/rest/v1/rpc/has_permission", {"p_module": m}) for m in [REQUIRED_MODULE, *ALSO_MODULES]]
+    for path, body in questions:
+        status, allowed = supabase(path, token, body)
+        if status == 200:
+            if allowed is True:
+                return 200
+            continue
+        if status == 401:
+            return 401
+        if is_refusal(status):
+            return 403
+        return None
+    return 403
 
 
 # /api/v1/accounts/1/conversations/123/messages, after whatever prefix the gateway puts in front.

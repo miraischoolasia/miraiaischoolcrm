@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowSquareOut, ChartBar, ChatCircleText, CircleDashed, ClockCountdown, DoorOpen, DotsThree, Monitor, NotePencil, Robot, ShieldWarning, Shuffle, SignOut, Star, Timer, UserMinus, UsersFour, VideoCamera, X } from '@phosphor-icons/react'
+import { ArrowSquareOut, ChartBar, ChatCircleText, CircleDashed, ClockCountdown, DoorOpen, DotsThree, Microphone, Monitor, NotePencil, Play, Robot, ShieldWarning, Shuffle, SignOut, SquaresFour, Star, Timer, UserMinus, UsersFour, VideoCamera, X } from '@phosphor-icons/react'
 import { cn } from '../lib/cn'
 import { LessonZoomCard } from './LessonZoomCard'
 import { LessonReportModal } from './LessonReportModal'
-import { LiveQuestionsPanel } from './LiveQuestionsPanel'
+import { LiveQuestionsPanel, type NextUp } from './LiveQuestionsPanel'
 import { GivePointsBar } from './GivePointsBar'
 import { StudentGrid, gridChildren } from './console/StudentGrid'
 import { RandomPickTool, TimerTool } from './console/ConsoleTools'
@@ -19,6 +19,7 @@ import { buildRoom, clearStranger, fetchRoom, watchRoom, type RoomData } from '.
 import { awardPoints, fetchLessonPoints, fetchRewardPresets, watchLessonPoints, type PointsEntry, type RewardPreset } from '../lib/rewards'
 import { fetchClassNotes, saveClassNote } from '../lib/classNotes'
 import { formatClock } from '../lib/consoleTools'
+import { needsAttention } from '../lib/gridFilters'
 import { fetchZoomChecks, type ZoomCheck } from '../lib/zoomChecks'
 import { endLessonZoom } from '../lib/zoomLessons'
 import {
@@ -50,6 +51,20 @@ const tools: { key: Tool; label: string; icon: typeof Timer; shortcut: string; w
   { key: 'assistant', label: 'Assistant', icon: Robot, shortcut: 'A' },
 ]
 const toolByKey = new Map(tools.map((tool) => [tool.shortcut.toLowerCase(), tool.key]))
+
+// Up to this width the console is the narrow one (beside Zoom): tabs on top, five big buttons at the bottom.
+const NARROW_QUERY = '(max-width: 1023px)'
+function useNarrow() {
+  const [narrow, setNarrow] = useState(() => (typeof window === 'undefined' ? false : (window.matchMedia?.(NARROW_QUERY).matches ?? false)))
+  useEffect(() => {
+    const media = window.matchMedia?.(NARROW_QUERY)
+    if (!media) return undefined
+    const onChange = () => setNarrow(media.matches)
+    media.addEventListener?.('change', onChange)
+    return () => media.removeEventListener?.('change', onChange)
+  }, [])
+  return narrow
+}
 
 // "End class" ends only after being held this long, so it never happens by a stray tap.
 const END_HOLD_MS = 1000
@@ -91,7 +106,7 @@ export function LiveClassConsole({
   // After "End class": the attendance form, filled from Zoom and the notes.
   onEndClass: () => void
 }) {
-  const [live, setLive] = useState<{ sessionId: number; questions: LiveQuestion[]; keys: Map<number, LiveKey>; answers: LiveAnswer[] } | null>(null)
+  const [live, setLive] = useState<{ sessionId: number; questions: LiveQuestion[]; keys: Map<number, LiveKey>; answers: LiveAnswer[]; next: NextUp | null } | null>(null)
   const sessionId = live?.sessionId ?? null
   const [roomData, setRoomData] = useState<RoomData | null>(null)
   const [entries, setEntries] = useState<PointsEntry[]>([])
@@ -112,6 +127,11 @@ export function LiveClassConsole({
   const [holding, setHolding] = useState(false)
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const narrow = useNarrow()
+  const [narrowTab, setNarrowTab] = useState<'student' | 'questions' | 'class'>('student')
+  const [moreOpen, setMoreOpen] = useState(false)
+  // The AI button: each press tells the assistant to start listening (or to stop and send).
+  const [micCommand, setMicCommand] = useState(0)
   const [timerState, setTimerState] = useState<{ endsAt: number | null; pausedLeft: number | null }>({ endsAt: null, pausedLeft: null })
   const [leaderboardTop, setLeaderboardTop] = useState(3)
   // Points just given: "+5" on the child's tile, and a cheer on the class screen for awards.
@@ -563,6 +583,26 @@ export function LiveClassConsole({
     }
   }, [menuOpen])
 
+  const moreRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!moreOpen) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      setMoreOpen(false)
+    }
+    const onPointer = (event: PointerEvent) => {
+      if (!moreRef.current?.contains(event.target as Node)) setMoreOpen(false)
+    }
+    document.addEventListener('keydown', onKey, true)
+    document.addEventListener('pointerdown', onPointer)
+    return () => {
+      document.removeEventListener('keydown', onKey, true)
+      document.removeEventListener('pointerdown', onPointer)
+    }
+  }, [moreOpen])
+
   // Keys: G P T M O A open and close the dock's tools, N pops the next planned question. Never while typing, with a
   // modifier key held, or while a window (the report, a question editor, the child ring) is on top of the console.
   const popNextRef = useRef<() => void>(() => {})
@@ -607,17 +647,337 @@ export function LiveClassConsole({
     loadRoom()
   }
 
+  // The class at a glance (how many are where, what needs the teacher, the Zoom card): the first tab on the right.
+  const classPanel = (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-2">
+        {[
+          { label: 'in class', count: tally.inClass, icon: VideoCamera, tone: 'text-emerald-600' },
+          { label: 'late', count: tally.late, icon: ClockCountdown, tone: 'text-amber-600' },
+          { label: 'waiting', count: tally.waiting, icon: DoorOpen, tone: 'text-sky-600' },
+          { label: 'not here', count: tally.out, icon: UserMinus, tone: 'text-slate-500' },
+        ].map(({ label, count, icon: Icon, tone }) => (
+          <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+            <div className={cn('text-2xl font-extrabold leading-none', tone)}>{room ? count : '–'}</div>
+            <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-600">
+              <Icon size={14} aria-hidden="true" />
+              {label}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">To do now{todoCount > 0 ? ` · ${todoCount}` : ''}</h3>
+      <div className="space-y-2">
+        {error && (
+          <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </p>
+        )}
+        {room?.strangers.map((stranger) => (
+          <div key={stranger.id} role="alert" className="space-y-2 rounded-xl border border-slate-200 border-l-4 border-l-red-500 bg-white p-3 text-sm text-slate-700">
+            <p className="flex gap-2">
+              <ShieldWarning size={18} className="mt-0.5 shrink-0 text-red-500" aria-hidden="true" />
+              <span>
+                <strong className="text-slate-900">{stranger.name}</strong> joined Zoom at {timeOf(stranger.joinedAt)} without a child's own link.
+                {stranger.stillHere ? ' Remove them in Zoom if you do not know them.' : ' They have left.'}
+              </span>
+            </p>
+            <button
+              type="button"
+              onClick={() => void clear(stranger.id)}
+              className="min-h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+            >
+              OK
+            </button>
+          </div>
+        ))}
+        {room && room.waiting.length > 0 && (
+          <div className="flex gap-2 rounded-xl border border-slate-200 border-l-4 border-l-sky-400 bg-white p-3 text-sm text-slate-700">
+            <DoorOpen size={18} className="mt-0.5 shrink-0 text-sky-500" aria-hidden="true" />
+            <span>
+              <strong className="text-slate-900">Waiting room:</strong> {room.waiting.map((row) => row.name).join(', ')} · Admit them in Zoom
+            </span>
+          </div>
+        )}
+        {notHereIds.length > 0 && (
+          <div className="space-y-2 rounded-xl border border-slate-200 border-l-4 border-l-amber-400 bg-white p-3 text-sm text-slate-700">
+            <p className="flex gap-2">
+              <ChatCircleText size={18} className="mt-0.5 shrink-0 text-amber-500" aria-hidden="true" />
+              <span>
+                <strong className="text-slate-900">
+                  {notHereIds.length} {notHereIds.length === 1 ? 'child is' : 'children are'} not in class yet
+                </strong>
+                <br />
+                {notHereIds.map((id) => names.get(id) ?? id).join(', ')}
+              </span>
+            </p>
+            <button
+              type="button"
+              disabled={remindingAll || !sendWhatsApp}
+              title={sendWhatsApp ? undefined : 'Tap each child to remind from your own WhatsApp.'}
+              onClick={() => void remindAll()}
+              className="flex min-h-9 items-center gap-1.5 rounded-lg bg-[#fc0c97] px-3 text-xs font-semibold text-white hover:bg-[#de0a84] disabled:opacity-50"
+            >
+              <ChatCircleText size={16} aria-hidden="true" />
+              {remindingAll
+                ? (remindProgress ?? 'Sending…')
+                : `Remind ${remindCount} ${remindCount === 1 ? 'parent' : 'parents'}${notHereIds.length > REMIND_AT_ONCE ? ` of ${notHereIds.length}` : ''}`}
+            </button>
+            {!sendWhatsApp && <p className="text-xs text-slate-500">Tap each child to remind from your own WhatsApp.</p>}
+          </div>
+        )}
+        {toMark > 0 && (
+          <div className="flex gap-2 rounded-xl border border-slate-200 border-l-4 border-l-amber-400 bg-white p-3 text-sm text-slate-700">
+            <CircleDashed size={18} className="mt-0.5 shrink-0 text-amber-500" aria-hidden="true" />
+            <span>
+              <strong className="text-slate-900">
+                {toMark} {toMark === 1 ? 'answer' : 'answers'} to mark
+              </strong>{' '}
+              (Question {current?.number}) · in the Now tab
+            </span>
+          </div>
+        )}
+        {room && todoCount === 0 && !error && <p className="text-sm text-slate-500">Nothing needs you right now.</p>}
+      </div>
+
+      {sessionId && (
+        <>
+          <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Zoom</h3>
+          <div>
+            <LessonZoomCard scheduleId={scheduleId} lessonDate={lessonDate} rosterCount={everyone.length} />
+          </div>
+        </>
+      )}
+    </div>
+  )
+  const classNeeds = todoCount + (error ? 1 : 0)
+
+  // The open tools (timer, pick, teams, points, notes, assistant): above the dock on a wide window, as a sheet from the
+  // bottom on a narrow one.
+  const toolsGrid = (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {openTools.includes('assistant') && (
+        <div className="sm:col-span-2">
+          <AssistantPanel
+            sessionId={sessionId}
+            roster={(roomData?.roster ?? []).map((child) => ({ id: child.studentId, name: child.name }))}
+            presets={presets}
+            bank={bankForClass}
+            ageGroup={classroom?.ageGroup ?? null}
+            runner={runner}
+            micCommand={micCommand}
+          />
+        </div>
+      )}
+      {openTools.includes('timer') && <TimerTool onChange={setTimerState} command={timerCommand} />}
+      {openTools.includes('pick') && (
+        <RandomPickTool
+          candidates={inZoom.length > 0 ? inZoom : everyone}
+          names={names}
+          onPicked={(studentId) => picked(studentId, inZoom.length > 0 ? inZoom : everyone)}
+          command={pickCommand}
+        />
+      )}
+      {openTools.includes('teams') && (
+        <div className="sm:col-span-2">
+          <TeamsTool
+            candidates={inZoom.length > 0 ? inZoom : everyone}
+            names={names}
+            teams={teams}
+            presets={presets}
+            onTeams={setTeams}
+            onGiveTeam={giveTeam}
+            onScreen={teamsOnScreen}
+            onScreenChange={setTeamsOnScreen}
+          />
+        </div>
+      )}
+      {openTools.includes('points') && (
+        <div className="sm:col-span-2">
+          <GivePointsBar scheduleId={scheduleId} lessonDate={lessonDate} students={rosterStudents} presets={presets} onChanged={loadPoints} />
+        </div>
+      )}
+      {openTools.includes('notes') && (
+        <section aria-label="Notes" className="rounded-2xl border border-slate-200 bg-white p-3 sm:col-span-2">
+          <h4 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+            <NotePencil size={16} className="text-sky-600" aria-hidden="true" />
+            Notes this lesson
+          </h4>
+          {notes.size === 0 ? (
+            <p className="mt-1 text-sm text-slate-500">Tap a child to write a note. Notes go into the lesson remark when you take attendance.</p>
+          ) : (
+            <ul className="mt-1 space-y-1 text-sm">
+              {[...notes].map(([studentId, note]) => (
+                <li key={studentId}>
+                  <strong className="text-slate-800">{names.get(studentId) ?? `Student ${studentId}`}:</strong> <span className="text-slate-700">{note}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+    </div>
+  )
+
+  // The narrow window (beside Zoom): the next planned question with Pop, three tabs, and five big buttons at the bottom.
+  const nextUp = live?.next ?? null
+  const nextCard = (
+    <section aria-label="Next question" className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-3 py-2">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+          {current ? `Q${current.number} now · ${currentAnswers?.size ?? 0} of ${everyone.length} answered · ` : ''}Next question
+        </div>
+        <div className="truncate text-sm font-semibold text-slate-900">{nextUp ? nextUp.prompt : 'No planned question left'}</div>
+        {nextUp && (
+          <div className="truncate text-xs text-slate-500">
+            {nextUp.kind} · {nextUp.points} pts · {nextUp.seconds}s
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        disabled={!nextUp || !sessionId}
+        onClick={() => popNextRef.current()}
+        aria-keyshortcuts="N"
+        className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl bg-[#fc0c97] px-4 text-sm font-bold text-white hover:bg-[#de0a84] disabled:opacity-50"
+      >
+        <Play size={16} weight="fill" aria-hidden="true" />
+        Pop
+      </button>
+    </section>
+  )
+  const studentNeeds = items.filter(needsAttention).length
+  const narrowTabs = (
+    <nav aria-label="Console sections" className="grid shrink-0 grid-cols-3 border-b border-slate-200 bg-white">
+      {(
+        [
+          { key: 'student', label: 'Student', count: studentNeeds, tone: 'bg-amber-500', countLabel: 'need you' },
+          { key: 'questions', label: 'Questions', count: toMark, tone: 'bg-amber-500', countLabel: 'to mark' },
+          { key: 'class', label: 'Class', count: classNeeds, tone: 'bg-red-500', countLabel: 'need you' },
+        ] as const
+      ).map(({ key, label, count, tone, countLabel }) => (
+        <button
+          key={key}
+          type="button"
+          aria-pressed={narrowTab === key}
+          onClick={() => setNarrowTab(key)}
+          className={cn(
+            'flex min-h-11 items-center justify-center gap-1.5 border-b-[3px] text-sm font-bold transition',
+            narrowTab === key ? 'border-[#fc0c97] text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800',
+          )}
+        >
+          {label}
+          {count > 0 && (
+            <span className={cn('inline-grid h-[18px] min-w-[18px] place-items-center rounded-full px-1.5 text-[11px] font-bold text-white', tone)}>
+              {count}
+              <span className="sr-only"> {countLabel}</span>
+            </span>
+          )}
+        </button>
+      ))}
+    </nav>
+  )
+  const dockButton = 'flex min-h-[3.75rem] flex-col items-center justify-center gap-0.5 rounded-xl border text-xs font-bold transition disabled:opacity-50'
+  const narrowDock = (
+    <nav
+      aria-label="Tools"
+      className="relative grid shrink-0 grid-cols-[1fr_1fr_1.35fr_1fr_1fr] gap-1.5 border-t border-slate-200 bg-white px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-6px_18px_rgba(15,23,42,0.06)]"
+    >
+      {(
+        [
+          { key: 'points', label: 'Points', icon: Star, shortcut: 'G' },
+          { key: 'pick', label: 'Pick', icon: Shuffle, shortcut: 'P' },
+        ] as const
+      ).map(({ key, label, icon: Icon, shortcut }) => (
+        <button
+          key={key}
+          type="button"
+          aria-pressed={openTools.includes(key)}
+          aria-keyshortcuts={shortcut}
+          onClick={() => toggleTool(key)}
+          className={cn(dockButton, openTools.includes(key) ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50')}
+        >
+          <Icon size={22} aria-hidden="true" />
+          {label}
+        </button>
+      ))}
+      <button
+        type="button"
+        onClick={() => {
+          openTool('assistant')
+          setMicCommand(Date.now())
+        }}
+        title="Speak: the assistant lists what it will do, and nothing happens until you press Confirm"
+        className={cn(dockButton, 'border-[#fc0c97] bg-[#fc0c97] text-white hover:bg-[#de0a84]')}
+      >
+        <Microphone size={24} aria-hidden="true" />
+        AI assistant
+      </button>
+      <button
+        type="button"
+        disabled={!sessionId}
+        onClick={() => popNextRef.current()}
+        aria-keyshortcuts="N"
+        className={cn(dockButton, 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50')}
+      >
+        <Play size={22} aria-hidden="true" />
+        Pop
+      </button>
+      <div ref={moreRef} className="relative">
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={moreOpen}
+          onClick={() => setMoreOpen((open) => !open)}
+          className={cn(dockButton, 'w-full', moreOpen ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50')}
+        >
+          <SquaresFour size={22} aria-hidden="true" />
+          More
+        </button>
+        {moreOpen && (
+          <div role="menu" aria-label="More tools" className="absolute right-0 bottom-[calc(100%+0.5rem)] z-40 w-52 rounded-xl border border-slate-200 bg-white p-1.5 text-slate-800 shadow-xl">
+            {(
+              [
+                { key: 'timer', label: 'Timer', icon: Timer },
+                { key: 'teams', label: 'Teams', icon: UsersFour },
+                { key: 'notes', label: `Notes${notes.size > 0 ? ` (${notes.size})` : ''}`, icon: NotePencil },
+                { key: 'assistant', label: 'Assistant (type)', icon: Robot },
+              ] as const
+            ).map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMoreOpen(false)
+                  toggleTool(key)
+                }}
+                className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-semibold hover:bg-slate-100"
+              >
+                <Icon size={18} aria-hidden="true" />
+                {label}
+                {openTools.includes(key) && <span className="ml-auto text-xs font-normal text-slate-500">open</span>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </nav>
+  )
+
   return (
-    <div role="dialog" aria-modal="true" aria-label={`Live class: ${title}`} className="fixed inset-0 z-40 flex flex-col bg-slate-50">
-      <header className="flex items-center gap-3 bg-[#0a0a0a] px-4 py-2.5 text-white">
-        <div className="min-w-0 max-w-[16rem]">
+    // Above the CRM's own phone menu (z-40), so that menu is hidden while the console is open.
+    <div role="dialog" aria-modal="true" aria-label={`Live class: ${title}`} className="fixed inset-0 z-[45] flex flex-col bg-slate-50">
+      <header className="flex items-center gap-2 bg-[#0a0a0a] px-3 py-2 text-white lg:gap-3 lg:px-4 lg:py-2.5">
+        <div className="min-w-0 flex-1 lg:max-w-[16rem] lg:flex-none">
           <h2 className="truncate text-base font-bold">{title}</h2>
           <p className="truncate text-xs text-slate-400">{lessonDate}</p>
         </div>
         {clock && (
           <span
             className={cn(
-              'flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-3 py-1 text-sm font-bold tabular-nums',
+              'flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold tabular-nums lg:px-3 lg:text-sm',
               clock.startsWith('Live') ? 'bg-red-600 text-white' : 'bg-slate-800 text-slate-200',
             )}
           >
@@ -625,12 +985,12 @@ export function LiveClassConsole({
             {clock}
           </span>
         )}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 lg:gap-2">
           <button
             type="button"
             onClick={() => window.open(classScreenUrl(scheduleId, lessonDate), `class-screen-${scheduleId}`, 'width=1280,height=720')}
             title="A big window to share in Zoom: timer, who is picked, the question and the top of the board"
-            className="flex min-h-10 items-center gap-1.5 rounded-xl border border-slate-700 px-3 text-sm font-semibold text-slate-100 hover:bg-slate-800"
+            className="hidden min-h-10 items-center gap-1.5 rounded-xl border border-slate-700 px-3 text-sm font-semibold text-slate-100 hover:bg-slate-800 lg:flex"
           >
             <Monitor size={18} aria-hidden="true" />
             Class screen
@@ -648,6 +1008,20 @@ export function LiveClassConsole({
             </button>
             {menuOpen && (
               <div role="menu" aria-label="More" className="absolute right-0 top-12 z-50 w-56 rounded-xl border border-slate-200 bg-white p-1.5 text-slate-800 shadow-xl">
+                {narrow && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      window.open(classScreenUrl(scheduleId, lessonDate), `class-screen-${scheduleId}`, 'width=1280,height=720')
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold hover:bg-slate-100"
+                  >
+                    <Monitor size={16} aria-hidden="true" />
+                    Class screen
+                  </button>
+                )}
                 <button
                   type="button"
                   role="menuitem"
@@ -683,7 +1057,7 @@ export function LiveClassConsole({
               className="flex min-h-10 items-center gap-1.5 rounded-xl bg-red-600 px-3 text-sm font-semibold text-white hover:bg-red-700"
             >
               <SignOut size={18} aria-hidden="true" />
-              Take attendance anyway
+              {narrow ? 'Attendance' : 'Take attendance anyway'}
             </button>
           ) : (
             <button
@@ -712,7 +1086,7 @@ export function LiveClassConsole({
                 style={{ width: holding ? '100%' : '0%', transitionDuration: holding ? `${END_HOLD_MS}ms` : '120ms' }}
               />
               <SignOut size={18} aria-hidden="true" className="relative" />
-              <span className="relative text-white">{ending === 'ending' ? 'Ending…' : holding ? 'Keep holding…' : 'End class'}</span>
+              <span className="relative text-white">{ending === 'ending' ? 'Ending…' : holding ? (narrow ? 'Hold…' : 'Keep holding…') : narrow ? 'End' : 'End class'}</span>
               <span id="end-class-hint" className="sr-only">
                 Hold for one second to end the class.
               </span>
@@ -724,126 +1098,27 @@ export function LiveClassConsole({
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 overflow-y-auto lg:grid-cols-[264px_minmax(0,1fr)_360px] lg:overflow-hidden min-[1400px]:grid-cols-[300px_minmax(0,1fr)_420px]">
-        <aside aria-label="Class pulse" className="space-y-4 bg-slate-900 p-4 text-slate-100 lg:min-h-0 lg:overflow-y-auto">
-          <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Class pulse</h3>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { label: 'in class', count: tally.inClass, icon: VideoCamera, tone: 'text-emerald-400' },
-              { label: 'late', count: tally.late, icon: ClockCountdown, tone: 'text-amber-400' },
-              { label: 'waiting', count: tally.waiting, icon: DoorOpen, tone: 'text-sky-400' },
-              { label: 'not here', count: tally.out, icon: UserMinus, tone: 'text-slate-400' },
-            ].map(({ label, count, icon: Icon, tone }) => (
-              <div key={label} className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5">
-                <div className={cn('text-2xl font-extrabold leading-none', tone)}>{room ? count : '–'}</div>
-                <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-300">
-                  <Icon size={14} aria-hidden="true" />
-                  {label}
-                </div>
-              </div>
-            ))}
-          </div>
+      {narrow && nextCard}
+      {narrow && narrowTabs}
 
-          <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">To do now{todoCount > 0 ? ` · ${todoCount}` : ''}</h3>
-          <div className="space-y-2">
-            {error && (
-              <p role="alert" className="rounded-xl border border-red-800 bg-red-950 px-3 py-2 text-sm text-red-200">
-                {error}
-              </p>
-            )}
-            {room?.strangers.map((stranger) => (
-              <div key={stranger.id} role="alert" className="space-y-2 rounded-xl border border-slate-800 border-l-4 border-l-red-500 bg-slate-950 p-3 text-sm">
-                <p className="flex gap-2">
-                  <ShieldWarning size={18} className="mt-0.5 shrink-0 text-red-400" aria-hidden="true" />
-                  <span>
-                    <strong className="text-white">{stranger.name}</strong> joined Zoom at {timeOf(stranger.joinedAt)} without a child's own link.
-                    {stranger.stillHere ? ' Remove them in Zoom if you do not know them.' : ' They have left.'}
-                  </span>
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void clear(stranger.id)}
-                  className="min-h-9 rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs font-semibold hover:bg-slate-700"
-                >
-                  OK
-                </button>
-              </div>
-            ))}
-            {room && room.waiting.length > 0 && (
-              <div className="flex gap-2 rounded-xl border border-slate-800 border-l-4 border-l-sky-400 bg-slate-950 p-3 text-sm">
-                <DoorOpen size={18} className="mt-0.5 shrink-0 text-sky-400" aria-hidden="true" />
-                <span>
-                  <strong className="text-white">Waiting room:</strong> {room.waiting.map((row) => row.name).join(', ')} · Admit them in Zoom
-                </span>
-              </div>
-            )}
-            {notHereIds.length > 0 && (
-              <div className="space-y-2 rounded-xl border border-slate-800 border-l-4 border-l-amber-400 bg-slate-950 p-3 text-sm">
-                <p className="flex gap-2">
-                  <ChatCircleText size={18} className="mt-0.5 shrink-0 text-amber-400" aria-hidden="true" />
-                  <span>
-                    <strong className="text-white">
-                      {notHereIds.length} {notHereIds.length === 1 ? 'child is' : 'children are'} not in class yet
-                    </strong>
-                    <br />
-                    {notHereIds.map((id) => names.get(id) ?? id).join(', ')}
-                  </span>
-                </p>
-                <button
-                  type="button"
-                  disabled={remindingAll || !sendWhatsApp}
-                  title={sendWhatsApp ? undefined : 'Tap each child to remind from your own WhatsApp.'}
-                  onClick={() => void remindAll()}
-                  className="flex min-h-9 items-center gap-1.5 rounded-lg bg-[#fc0c97] px-3 text-xs font-semibold text-white hover:bg-[#de0a84] disabled:opacity-50"
-                >
-                  <ChatCircleText size={16} aria-hidden="true" />
-                  {remindingAll
-                    ? (remindProgress ?? 'Sending…')
-                    : `Remind ${remindCount} ${remindCount === 1 ? 'parent' : 'parents'}${notHereIds.length > REMIND_AT_ONCE ? ` of ${notHereIds.length}` : ''}`}
-                </button>
-                {!sendWhatsApp && <p className="text-xs text-slate-400">Tap each child to remind from your own WhatsApp.</p>}
-              </div>
-            )}
-            {toMark > 0 && (
-              <div className="flex gap-2 rounded-xl border border-slate-800 border-l-4 border-l-amber-400 bg-slate-950 p-3 text-sm">
-                <CircleDashed size={18} className="mt-0.5 shrink-0 text-amber-400" aria-hidden="true" />
-                <span>
-                  <strong className="text-white">
-                    {toMark} {toMark === 1 ? 'answer' : 'answers'} to mark
-                  </strong>{' '}
-                  (Question {current?.number}) · on the right
-                </span>
-              </div>
-            )}
-            {room && todoCount === 0 && !error && <p className="text-sm text-slate-400">Nothing needs you right now.</p>}
-          </div>
+      <div className="grid min-h-0 flex-1 overflow-y-auto max-lg:grid-rows-[minmax(0,1fr)] max-lg:overflow-hidden lg:grid-cols-[minmax(0,1fr)_380px] lg:overflow-hidden min-[1400px]:grid-cols-[minmax(0,1fr)_440px]">
 
-          {sessionId && (
-            <>
-              <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Zoom</h3>
-              <div className="rounded-2xl bg-white text-slate-900">
-                <LessonZoomCard scheduleId={scheduleId} lessonDate={lessonDate} rosterCount={everyone.length} />
-              </div>
-            </>
-          )}
-        </aside>
-
-        <main aria-label="Children" className="relative flex min-h-0 min-w-0 flex-col">
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 pb-32">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <main aria-label="Children" className={cn('relative flex min-h-0 min-w-0 flex-col', narrow && narrowTab !== 'student' && 'hidden')}>
+          <div className={cn('min-h-0 flex-1 space-y-3 overflow-y-auto', narrow ? 'p-3' : 'p-4 pb-32')}>
+            <div className={cn('flex flex-wrap items-baseline justify-between gap-2', narrow && 'hidden')}>
               <h3 className="text-lg font-bold text-slate-900">Children</h3>
               <span className="text-sm text-slate-500">
                 {current ? `Q${current.number} now: ${currentAnswers?.size ?? 0} of ${everyone.length} answered` : 'Tap a child for points and a note'}
               </span>
             </div>
             {room ? (
-              <StudentGrid items={items} presets={presets} onGive={giveOne} onSaveNote={saveNote} onRemind={remind} onStar={starOfTheDay} />
+              <StudentGrid items={items} presets={presets} onGive={giveOne} onSaveNote={saveNote} onRemind={remind} onStar={starOfTheDay} narrow={narrow} />
             ) : (
               <p className="text-sm text-slate-500">{sessionId ? 'Loading…' : 'Opening the lesson…'}</p>
             )}
           </div>
 
-          {openTools.length > 0 && (
+          {!narrow && openTools.length > 0 && (
             <section
               aria-label="Open tools"
               className="absolute inset-x-3 bottom-[6.5rem] z-20 max-h-[calc(100%-8rem)] space-y-3 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl"
@@ -858,103 +1133,51 @@ export function LiveClassConsole({
                   <X size={18} aria-hidden="true" />
                 </button>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {openTools.includes('assistant') && (
-                  <div className="sm:col-span-2">
-                    <AssistantPanel
-                      sessionId={sessionId}
-                      roster={(roomData?.roster ?? []).map((child) => ({ id: child.studentId, name: child.name }))}
-                      presets={presets}
-                      bank={bankForClass}
-                      ageGroup={classroom?.ageGroup ?? null}
-                      runner={runner}
-                    />
-                  </div>
-                )}
-                {openTools.includes('timer') && <TimerTool onChange={setTimerState} command={timerCommand} />}
-                {openTools.includes('pick') && (
-                  <RandomPickTool
-                    candidates={inZoom.length > 0 ? inZoom : everyone}
-                    names={names}
-                    onPicked={(studentId) => picked(studentId, inZoom.length > 0 ? inZoom : everyone)}
-                    command={pickCommand}
-                  />
-                )}
-                {openTools.includes('teams') && (
-                  <div className="sm:col-span-2">
-                    <TeamsTool
-                      candidates={inZoom.length > 0 ? inZoom : everyone}
-                      names={names}
-                      teams={teams}
-                      presets={presets}
-                      onTeams={setTeams}
-                      onGiveTeam={giveTeam}
-                      onScreen={teamsOnScreen}
-                      onScreenChange={setTeamsOnScreen}
-                    />
-                  </div>
-                )}
-                {openTools.includes('points') && (
-                  <div className="sm:col-span-2">
-                    <GivePointsBar scheduleId={scheduleId} lessonDate={lessonDate} students={rosterStudents} presets={presets} onChanged={loadPoints} />
-                  </div>
-                )}
-                {openTools.includes('notes') && (
-                  <section aria-label="Notes" className="rounded-2xl border border-slate-200 bg-white p-3 sm:col-span-2">
-                    <h4 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
-                      <NotePencil size={16} className="text-sky-600" aria-hidden="true" />
-                      Notes this lesson
-                    </h4>
-                    {notes.size === 0 ? (
-                      <p className="mt-1 text-sm text-slate-500">Tap a child to write a note. Notes go into the lesson remark when you take attendance.</p>
-                    ) : (
-                      <ul className="mt-1 space-y-1 text-sm">
-                        {[...notes].map(([studentId, note]) => (
-                          <li key={studentId}>
-                            <strong className="text-slate-800">{names.get(studentId) ?? `Student ${studentId}`}:</strong> <span className="text-slate-700">{note}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </section>
-                )}
-              </div>
+              {toolsGrid}
             </section>
           )}
 
-          <nav aria-label="Tools" className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 gap-1 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl">
-            {tools.map(({ key, label, icon: Icon, shortcut, wide }) => (
-              <button
-                key={key}
-                type="button"
-                aria-pressed={openTools.includes(key)}
-                aria-keyshortcuts={shortcut}
-                onClick={() => toggleTool(key)}
-                className={cn(
-                  'flex min-h-16 flex-col items-center justify-center gap-0.5 whitespace-nowrap rounded-xl px-2 text-xs font-semibold transition',
-                  wide ? 'min-w-[5.5rem] min-[1400px]:min-w-[6.25rem]' : 'min-w-[4.75rem] min-[1400px]:min-w-[5.5rem]',
-                  openTools.includes(key) ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100',
-                )}
-              >
-                <Icon size={22} aria-hidden="true" />
-                <span>
-                  {label}
-                  {key === 'notes' && notes.size > 0 ? ` (${notes.size})` : ''}
-                </span>
-                <kbd
+          {!narrow && (
+            <nav aria-label="Tools" className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 gap-1 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl">
+              {tools.map(({ key, label, icon: Icon, shortcut, wide }) => (
+                <button
+                  key={key}
+                  type="button"
+                  aria-pressed={openTools.includes(key)}
+                  aria-keyshortcuts={shortcut}
+                  onClick={() => toggleTool(key)}
                   className={cn(
-                    'rounded border px-1 text-[10px] font-semibold leading-4',
-                    openTools.includes(key) ? 'border-slate-500 text-slate-300' : 'border-slate-300 text-slate-500',
+                    'flex min-h-16 flex-col items-center justify-center gap-0.5 whitespace-nowrap rounded-xl px-2 text-xs font-semibold transition',
+                    wide ? 'min-w-[5.5rem] min-[1400px]:min-w-[6.25rem]' : 'min-w-[4.75rem] min-[1400px]:min-w-[5.5rem]',
+                    openTools.includes(key) ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100',
                   )}
                 >
-                  {shortcut}
-                </kbd>
-              </button>
-            ))}
-          </nav>
+                  <Icon size={22} aria-hidden="true" />
+                  <span>
+                    {label}
+                    {key === 'notes' && notes.size > 0 ? ` (${notes.size})` : ''}
+                  </span>
+                  <kbd
+                    className={cn(
+                      'rounded border px-1 text-[10px] font-semibold leading-4',
+                      openTools.includes(key) ? 'border-slate-500 text-slate-300' : 'border-slate-300 text-slate-500',
+                    )}
+                  >
+                    {shortcut}
+                  </kbd>
+                </button>
+              ))}
+            </nav>
+          )}
         </main>
 
-        <aside aria-label="Questions" className="flex min-h-0 flex-col border-l border-slate-200 bg-white lg:overflow-hidden">
+        {narrow && narrowTab === 'class' && (
+          <section aria-label="Class" className="min-h-0 overflow-y-auto p-3">
+            {classPanel}
+          </section>
+        )}
+
+        <aside aria-label="Questions" className={cn('flex min-h-0 flex-col border-slate-200 bg-white lg:overflow-hidden lg:border-l', narrow && narrowTab !== 'questions' && 'hidden')}>
           <LiveQuestionsPanel
             scheduleId={scheduleId}
             lessonDate={lessonDate}
@@ -962,9 +1185,31 @@ export function LiveClassConsole({
             studentNames={names}
             rosterCount={everyone.length}
             onLive={setLive}
+            classTab={narrow ? undefined : { label: 'Class', count: classNeeds, content: classPanel }}
           />
         </aside>
       </div>
+
+      {narrow && openTools.length > 0 && (
+        <section
+          aria-label="Open tools"
+          className="fixed inset-x-0 bottom-[4.75rem] z-30 max-h-[70dvh] space-y-2 overflow-y-auto rounded-t-2xl border-t border-slate-200 bg-white p-3 shadow-[0_-12px_32px_rgba(15,23,42,0.18)]"
+        >
+          <div className="flex items-center justify-end">
+            <span aria-hidden="true" className="mr-auto ml-[calc(50%-1.25rem)] h-1.5 w-10 rounded-full bg-slate-300" />
+            <button
+              type="button"
+              onClick={() => setOpenTools([])}
+              aria-label="Close the tools"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+            >
+              <X size={18} aria-hidden="true" />
+            </button>
+          </div>
+          {toolsGrid}
+        </section>
+      )}
+      {narrow && narrowDock}
 
       {showReport && sessionId && live && (
         <LessonReportModal

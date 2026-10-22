@@ -21,6 +21,8 @@ export type FlowTrigger =
   | 'parent_no_reply'
   | 'parent_waiting'
   | 'trial_booked'
+  | 'trial_attended'
+  | 'trial_absent'
   | 'package_start'
   | 'lead_idle'
   | 'task_due'
@@ -108,6 +110,20 @@ const ALL_TRIGGERS: TriggerInfo[] = [
     label: 'A trial class is booked',
     phrase: 'a trial class is booked',
     classroomCategory: null,
+    afterOnly: true,
+  },
+  {
+    key: 'trial_attended',
+    label: 'A child attended the trial class',
+    phrase: 'a child attended the trial class',
+    classroomCategory: 'trial',
+    afterOnly: true,
+  },
+  {
+    key: 'trial_absent',
+    label: 'A child missed the trial class',
+    phrase: 'a child missed the trial class',
+    classroomCategory: 'trial',
     afterOnly: true,
   },
   {

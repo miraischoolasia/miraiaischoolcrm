@@ -161,7 +161,7 @@ describe('flowSteps', () => {
   it('lists every trigger once in the picker groups', () => {
     const keys = TRIGGER_GROUPS.flatMap((group) => group.keys)
     expect(new Set(keys).size).toBe(keys.length)
-    expect(keys).toHaveLength(16)
+    expect(keys).toHaveLength(18)
   })
 
   describe('recipes', () => {

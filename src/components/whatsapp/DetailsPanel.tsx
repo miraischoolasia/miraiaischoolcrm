@@ -76,6 +76,9 @@ type DetailsPanelProps = {
   chatOfContact?: (contactId: number) => number | null
   // The family table is read again (after the team changed the tags of a parent or child).
   onPeopleChanged?: () => Promise<void> | void
+  // A chat of the Student Inbox: it belongs to a student's family, so the lead form is not offered by itself
+  // (it stays one press away, "Also a lead?").
+  studentZone?: boolean
 }
 
 // The side panel: who the parent is, and what the school already knows about
@@ -177,6 +180,7 @@ export function DetailsPanel({
   people = [],
   chatOfContact = () => null,
   onPeopleChanged,
+  studentZone = false,
 }: DetailsPanelProps) {
   const sender = conversation.meta.sender
   const phone = getRealPhone(sender.phone_number)
@@ -342,7 +346,7 @@ export function DetailsPanel({
     bookingProgrammeId: crm.bookingProgrammeId,
   })
   const offer = offers.find((entry) => entry.key === offerKey) ?? offers[0] ?? null
-  const showLeadPart = lead !== null || students.length === 0 || leadFormFor === conversation.id
+  const showLeadPart = lead !== null || (students.length === 0 && !studentZone) || leadFormFor === conversation.id
 
   // The steps of the programme the team picked, for the lead of this chat.
   function enrolBlock(forLead: Lead, write: (text: string) => void) {

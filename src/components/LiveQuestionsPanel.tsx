@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, Check, Eye, ListNumbers, MagnifyingGlass, Play, Plus, Robot, Stop, Timer, X } from '@phosphor-icons/react'
 import { QuestionEditorModal } from './questions/QuestionEditorModal'
 import { cn } from '../lib/cn'
@@ -43,7 +43,10 @@ const primaryButton =
 const secondaryButton =
   'rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50'
 
-type QuestionTab = 'now' | 'plan' | 'bank' | 'points'
+type QuestionTab = 'class' | 'now' | 'plan' | 'bank' | 'points'
+
+// The next planned question, for the console's "next question" card.
+export type NextUp = { prompt: string; kind: string; points: number; seconds: number }
 
 function clock(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
@@ -60,13 +63,16 @@ export function LiveQuestionsPanel({
   studentNames,
   rosterCount,
   onLive,
+  classTab,
 }: {
   scheduleId: number
   lessonDate: string
   classroom: { subjectId?: number | null; ageGroup: AgeGroup } | null
   studentNames: Map<number, string>
   rosterCount: number
-  onLive?: (live: { sessionId: number; questions: LiveQuestion[]; keys: Map<number, LiveKey>; answers: LiveAnswer[] }) => void
+  onLive?: (live: { sessionId: number; questions: LiveQuestion[]; keys: Map<number, LiveKey>; answers: LiveAnswer[]; next: NextUp | null }) => void
+  // A first tab the console fills itself (the class at a glance); `count` is how many things need the teacher.
+  classTab?: { label: string; count: number; content: ReactNode }
 }) {
   const [sessionId, setSessionId] = useState<number | null>(null)
   const [questions, setQuestions] = useState<LiveQuestion[]>([])
@@ -85,14 +91,16 @@ export function LiveQuestionsPanel({
   const [writing, setWriting] = useState(false)
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [plan, setPlan] = useState<number[]>([])
-  const [tab, setTab] = useState<QuestionTab>('now')
+  const [tab, setTab] = useState<QuestionTab>(classTab ? 'class' : 'now')
+  // The console takes the Class tab away on a narrow window (it has its own); then this column opens on Now.
+  const hasClassTab = Boolean(classTab)
+  useEffect(() => {
+    if (!hasClassTab) setTab((current) => (current === 'class' ? 'now' : current))
+  }, [hasClassTab])
   const aiAsked = useRef(new Set<number>())
 
   const onLiveRef = useRef(onLive)
   onLiveRef.current = onLive
-  useEffect(() => {
-    if (sessionId) onLiveRef.current?.({ sessionId, questions, keys, answers })
-  }, [answers, keys, questions, sessionId])
 
   const load = useCallback(async (id: number) => {
     try {
@@ -212,6 +220,18 @@ export function LiveQuestionsPanel({
   const nextId = nextPlanned(plan, questions)
   const nextQuestion = nextId !== null ? bankById.get(nextId) ?? null : null
 
+  // What is loaded goes up to the console (the student grid, the report, the "next question" card).
+  const nextUp: NextUp | null = useMemo(
+    () =>
+      nextQuestion
+        ? { prompt: nextQuestion.prompt, kind: questionKindLabels[nextQuestion.kind], points: nextQuestion.points, seconds: nextQuestion.timeLimitSeconds }
+        : null,
+    [nextQuestion],
+  )
+  useEffect(() => {
+    if (sessionId) onLiveRef.current?.({ sessionId, questions, keys, answers, next: nextUp })
+  }, [answers, keys, questions, sessionId, nextUp])
+
   const nameOf = (studentId: number) => studentNames.get(studentId) ?? `Student ${studentId}`
 
   // A question that has just been popped (here, with the N key or by the assistant) brings the "Now" tab forward.
@@ -225,6 +245,7 @@ export function LiveQuestionsPanel({
   const toMark = currentAnswers.filter((answer) => answer.result === 'pending').length
   const planLeft = plan.filter((id) => !poppedIds.has(id)).length
   const tabs: { key: QuestionTab; label: string; count?: number; countLabel?: string }[] = [
+    ...(classTab ? [{ key: 'class' as const, label: classTab.label, count: classTab.count, countLabel: 'need you' }] : []),
     { key: 'now', label: 'Now', count: toMark, countLabel: 'to mark' },
     { key: 'plan', label: 'Plan', count: planLeft, countLabel: 'left in the plan' },
     { key: 'bank', label: 'Bank' },
@@ -314,7 +335,7 @@ export function LiveQuestionsPanel({
             onClick={() => setTab(entry.key)}
             onKeyDown={(event) => moveTab(event, entry.key)}
             className={cn(
-              'flex min-h-11 items-center gap-1.5 border-b-[3px] px-3 text-sm font-bold transition',
+              'flex min-h-11 items-center gap-1.5 border-b-[3px] px-2.5 text-sm font-bold transition',
               tab === entry.key ? 'border-[#fc0c97] text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800',
             )}
           >
@@ -323,7 +344,7 @@ export function LiveQuestionsPanel({
               <span
                 className={cn(
                   'inline-grid h-[18px] min-w-[18px] place-items-center rounded-full px-1.5 text-[11px] font-bold',
-                  entry.key === 'now' ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-700',
+                  entry.key === 'class' ? 'bg-red-500 text-white' : entry.key === 'now' ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-700',
                 )}
               >
                 {entry.count}
@@ -342,6 +363,8 @@ export function LiveQuestionsPanel({
         )}
 
         {!sessionId && !error && <p className="text-sm text-slate-500">Opening the lesson…</p>}
+
+        {tab === 'class' && classTab?.content}
 
         {tab === 'now' && (
           <>

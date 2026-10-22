@@ -2,7 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { LinkWhatsAppPanel } from './LinkWhatsAppPanel'
-import type { WhatsAppNumber, WhatsAppNumberDraft } from '../../lib/whatsappNumbers'
+import {
+  inboxZoneLabels,
+  setNumberZone,
+  type InboxZone,
+  type WhatsAppNumber,
+  type WhatsAppNumberDraft,
+} from '../../lib/whatsappNumbers'
 import { createWaNumbersApi, type ServerNumber, type WaNumbersApi } from '../../lib/waNumbersApi'
 import { channelLabelProblem, shortLabelOf, type ChannelLabel, type ChannelLabels } from '../../lib/channelLabels'
 import { ChannelLabelFields } from './ChannelLabelFields'
@@ -28,11 +34,13 @@ type NumbersDialogProps = {
   // Each number's short name and colour (channel_labels, keyed by the inbox id), and how one is saved.
   labels?: ChannelLabels
   onSaveLabel?: (key: string, label: ChannelLabel) => Promise<string | null>
+  // Puts a number the server just added into the Student Inbox (tests pass their own).
+  setZone?: (inboxId: number, zone: InboxZone) => Promise<void>
 }
 
 // A step that changes the phones waits for "Yes" first.
 type Asking =
-  | { kind: 'add'; label: string }
+  | { kind: 'add'; label: string; zone: InboxZone }
   | { kind: 'off'; instance: string; label: string; first: boolean }
   | { kind: 'on'; instance: string; label: string }
 
@@ -44,7 +52,7 @@ const ASKING_TEXT: Record<Asking['kind'], { title: (label: string) => string; ye
 
 function askingDetail(asking: Asking) {
   if (asking.kind === 'add') {
-    return 'The WhatsApp server makes it now (it takes a moment), then its QR code shows here. Have the new phone ready to scan it.'
+    return `Its chats go to the ${inboxZoneLabels[asking.zone]}. The WhatsApp server makes it now (it takes a moment), then its QR code shows here. Have the new phone ready to scan it.`
   }
   if (asking.kind === 'on') {
     return 'Then scan its QR code again with its phone.'
@@ -56,7 +64,20 @@ function askingDetail(asking: Asking) {
 
 const fieldClass = 'w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#fc0c97]'
 
-const emptyDraft: WhatsAppNumberDraft = { label: '', phone: '', inboxId: null, instance: '', isActive: true }
+const emptyDraft: WhatsAppNumberDraft = { label: '', phone: '', inboxId: null, instance: '', isActive: true, zone: 'marketing' }
+
+// Which inbox a number's chats go to: the Marketing Inbox, or the Student Inbox under Students.
+function ZoneField({ value, onChange }: { value: InboxZone; onChange: (zone: InboxZone) => void }) {
+  return (
+    <label className="block">
+      <span className="text-sm font-medium text-slate-700">Its chats go to</span>
+      <select value={value} onChange={(event) => onChange(event.target.value as InboxZone)} className={fieldClass}>
+        <option value="marketing">{inboxZoneLabels.marketing} (new parents, enrolment)</option>
+        <option value="students">{inboxZoneLabels.students} (students and their parents)</option>
+      </select>
+    </label>
+  )
+}
 
 // Admin: the school's WhatsApp numbers, and which staff work on which. An admin sees every number.
 export function NumbersDialog({
@@ -72,6 +93,7 @@ export function NumbersDialog({
   numbersApi,
   labels,
   onSaveLabel,
+  setZone = setNumberZone,
 }: NumbersDialogProps) {
   // null: not editing; 'new': a new number; otherwise the number being changed.
   const [editing, setEditing] = useState<WhatsAppNumber | 'new' | null>(null)
@@ -86,6 +108,7 @@ export function NumbersDialog({
   const server = useMemo(() => numbersApi ?? (apiUrl ? createWaNumbersApi(apiUrl) : null), [numbersApi, apiUrl])
   const [serverNumbers, setServerNumbers] = useState<ServerNumber[] | null>(null)
   const [newLabel, setNewLabel] = useState<string | null>(null)
+  const [newZone, setNewZone] = useState<InboxZone>('marketing')
   const [asking, setAsking] = useState<Asking | null>(null)
   const [isWorking, setIsWorking] = useState(false)
   // The number just added or turned on: its QR code opens at once.
@@ -124,7 +147,15 @@ export function NumbersDialog({
       if (asking.kind === 'add') {
         const made = await server.add(asking.label)
         setNewLabel(null)
+        setNewZone('marketing')
         setJustAdded(made.instance)
+        if (asking.zone === 'students') {
+          try {
+            await setZone(made.inboxId, 'students')
+          } catch {
+            setError(`${asking.label} was added, but not moved to the Student Inbox. Press Edit on it and pick the Student Inbox.`)
+          }
+        }
       } else if (asking.kind === 'off') {
         await server.turnOff(asking.instance)
       } else {
@@ -146,7 +177,7 @@ export function NumbersDialog({
     setError(null)
     const problem = await onSave(
       null,
-      { label: entry.label, phone: '', inboxId: entry.inboxId, instance: entry.instance, isActive: entry.active },
+      { label: entry.label, phone: '', inboxId: entry.inboxId, instance: entry.instance, isActive: entry.active, zone: 'marketing' },
       [],
     )
     if (problem) {
@@ -167,6 +198,7 @@ export function NumbersDialog({
         inboxId: editing.inboxId,
         instance: editing.instance ?? '',
         isActive: editing.isActive,
+        zone: editing.zone,
       })
       setTeacherIds(assignments.get(editing.id) ?? [])
     }
@@ -257,6 +289,7 @@ export function NumbersDialog({
                             <p className="truncate text-xs text-slate-500">
                               {number.phone ? `+${number.phone} · ` : ''}Inbox {number.inboxId}
                               {number.instance ? ` · ${number.instance}` : ''}
+                              {number.zone === 'students' ? ` · ${inboxZoneLabels.students}` : ''}
                             </p>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
@@ -392,7 +425,7 @@ export function NumbersDialog({
                       return
                     }
                     setError(null)
-                    setAsking({ kind: 'add', label })
+                    setAsking({ kind: 'add', label, zone: newZone })
                   }}
                 >
                   <label className="min-w-0 flex-1">
@@ -404,6 +437,9 @@ export function NumbersDialog({
                       className={fieldClass}
                     />
                   </label>
+                  <div className="min-w-0 flex-1">
+                    <ZoneField value={newZone} onChange={setNewZone} />
+                  </div>
                   <button type="submit" className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white hover:bg-[#de0a84]">
                     Next
                   </button>
@@ -439,6 +475,7 @@ export function NumbersDialog({
                   className={fieldClass}
                 />
               </label>
+              <ZoneField value={draft.zone} onChange={(zone) => setDraft({ ...draft, zone })} />
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">Phone number (optional, for showing)</span>
                 <input

@@ -528,6 +528,7 @@ export type Database = {
           chatwoot_inbox_id: number
           evolution_instance: string | null
           is_active: boolean
+          zone: 'marketing' | 'students'
           created_at: string
         }
         Insert: {
@@ -537,6 +538,7 @@ export type Database = {
           chatwoot_inbox_id: number
           evolution_instance?: string | null
           is_active?: boolean
+          zone?: 'marketing' | 'students'
           created_at?: string
         }
         Update: {
@@ -546,6 +548,7 @@ export type Database = {
           chatwoot_inbox_id?: number
           evolution_instance?: string | null
           is_active?: boolean
+          zone?: 'marketing' | 'students'
           created_at?: string
         }
         Relationships: []
@@ -999,7 +1002,7 @@ export type Database = {
         Row: {
           id: number
           name: string
-          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword'
+          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'trial_attended' | 'trial_absent' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword'
           enabled: boolean
           graph: Json
           last_run_at: string | null
@@ -1010,13 +1013,13 @@ export type Database = {
         }
         Insert: {
           name: string
-          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword'
+          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'trial_attended' | 'trial_absent' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword'
           enabled?: boolean
           graph?: Json
         }
         Update: {
           name?: string
-          trigger_type?: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword'
+          trigger_type?: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'trial_attended' | 'trial_absent' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword'
           enabled?: boolean
           graph?: Json
         }
@@ -2901,6 +2904,7 @@ export type Database = {
           label: string
           access: 'open' | 'limited'
           is_active: boolean
+          zone: 'marketing' | 'students'
           created_at: string
           updated_at: string
         }
@@ -3955,6 +3959,18 @@ export type Database = {
       inbox_access_level: {
         Args: { p_inbox_id: number }
         Returns: 'reply' | 'view' | null
+      }
+      inbox_zone: {
+        Args: { p_inbox_id: number }
+        Returns: 'marketing' | 'students'
+      }
+      student_zone_inbox_ids: {
+        Args: Record<string, never>
+        Returns: number[]
+      }
+      chat_may_schedule: {
+        Args: { p_inbox_id: number }
+        Returns: boolean
       }
       set_inbox_channel: {
         Args: { p_inbox_id: number; p_kind: string; p_label: string; p_access: string; p_grants?: Json; p_is_active?: boolean }

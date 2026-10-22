@@ -10,6 +10,15 @@ export type WhatsAppNumber = {
   // The name of the number inside Evolution (for reactions, edits...); null when not set.
   instance: string | null
   isActive: boolean
+  // Which inbox its chats are in: marketing = Inbox (Marketing), students = Student Inbox (Students).
+  zone: InboxZone
+}
+
+export type InboxZone = 'marketing' | 'students'
+
+export const inboxZoneLabels: Record<InboxZone, string> = {
+  marketing: 'Marketing Inbox',
+  students: 'Student Inbox',
 }
 
 export type WhatsAppNumberDraft = {
@@ -18,6 +27,7 @@ export type WhatsAppNumberDraft = {
   inboxId: number | null
   instance: string
   isActive: boolean
+  zone: InboxZone
 }
 
 type Row = {
@@ -27,6 +37,8 @@ type Row = {
   chatwoot_inbox_id: number
   evolution_instance: string | null
   is_active: boolean
+  // Missing until 20261029300000_student_inbox is in the database: marketing.
+  zone?: string | null
 }
 
 function toNumber(row: Row): WhatsAppNumber {
@@ -37,6 +49,7 @@ function toNumber(row: Row): WhatsAppNumber {
     inboxId: row.chatwoot_inbox_id,
     instance: row.evolution_instance,
     isActive: row.is_active,
+    zone: row.zone === 'students' ? 'students' : 'marketing',
   }
 }
 
@@ -44,14 +57,38 @@ export async function fetchWhatsAppNumbers(): Promise<WhatsAppNumber[]> {
   if (!supabase) {
     return []
   }
-  const { data, error } = await supabase
+  const withZone = await supabase
     .from('whatsapp_numbers')
-    .select('id, label, phone, chatwoot_inbox_id, evolution_instance, is_active')
+    .select('id, label, phone, chatwoot_inbox_id, evolution_instance, is_active, zone')
     .order('id')
+  // 42703: no zone column yet (the Student Inbox migration not pushed); read without it, everything is marketing.
+  const { data, error } =
+    withZone.error?.code === '42703'
+      ? await supabase
+          .from('whatsapp_numbers')
+          .select('id, label, phone, chatwoot_inbox_id, evolution_instance, is_active')
+          .order('id')
+      : withZone
   if (error) {
     throw error
   }
   return ((data ?? []) as Row[]).map(toNumber)
+}
+
+// The Chatwoot inboxes of the Student Inbox (students zone). Empty when there are none, or before the
+// Student Inbox migration is in the database.
+export async function fetchStudentInboxIds(): Promise<number[]> {
+  if (!supabase) {
+    return []
+  }
+  const { data, error } = await supabase.rpc('student_zone_inbox_ids')
+  if (error) {
+    if (error.code === '42883' || error.code === 'PGRST202') {
+      return []
+    }
+    throw error
+  }
+  return Array.isArray(data) ? (data as number[]).map(Number) : []
 }
 
 // number id -> ids of the staff it is given to. An admin gets every row, anyone else only their own.
@@ -123,11 +160,24 @@ export async function saveWhatsAppNumber(existing: WhatsAppNumber | null, draft:
     chatwoot_inbox_id: draft.inboxId,
     evolution_instance: draft.instance.trim() || null,
     is_active: draft.isActive,
+    // Sent only when it is not the default, so saving still works before the Student Inbox migration is pushed.
+    ...(draft.zone === 'students' || existing?.zone === 'students' ? { zone: draft.zone } : {}),
   }
   const query = existing
     ? supabase.from('whatsapp_numbers').update(values).eq('id', existing.id)
     : supabase.from('whatsapp_numbers').insert(values)
   const { error } = await query
+  if (error) {
+    throw error
+  }
+}
+
+// Moves a number (by its Chatwoot inbox) to the Marketing Inbox or the Student Inbox. Admin only (the table's rule).
+export async function setNumberZone(inboxId: number, zone: InboxZone) {
+  if (!supabase) {
+    throw new Error('Not connected to the database.')
+  }
+  const { error } = await supabase.from('whatsapp_numbers').update({ zone }).eq('chatwoot_inbox_id', inboxId)
   if (error) {
     throw error
   }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { numberDraftError, numberSaveMessage, type WhatsAppNumberDraft } from './whatsappNumbers'
 
-const draft: WhatsAppNumberDraft = { label: 'Sales', phone: '60123456789', inboxId: 2, instance: 'mirai-2', isActive: true }
+const draft: WhatsAppNumberDraft = { label: 'Sales', phone: '60123456789', inboxId: 2, instance: 'mirai-2', isActive: true, zone: 'marketing' }
 
 describe('checking a WhatsApp number before it is saved', () => {
   it('accepts a complete number', () => {

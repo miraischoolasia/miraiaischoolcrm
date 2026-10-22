@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isStopRequest, parseChatwootEvent } from '../../supabase/functions/chat-activity/logic'
+import { asZone, isStopRequest, mayBeStudentChat, parseChatwootEvent } from '../../supabase/functions/chat-activity/logic'
 import { chatWebhookAddress, chatWebhookErrorMessage, describeAgo, isWebhookRecent } from './chatActivity'
 
 const incoming = {
@@ -37,6 +37,7 @@ describe('reading what the WhatsApp inbox sends for a message', () => {
         inboxName: null,
         pageName: null,
         origin: null,
+        automated: false,
       },
     })
   })
@@ -151,6 +152,20 @@ describe('reading what the WhatsApp inbox sends for a message', () => {
       conversation: { id: 77, contact_inbox: { contact_id: 42, source_id: '60122552285' } },
     })
     expect(parsed).toMatchObject({ ok: true, message: { contactId: 42, phone: '60122552285' } })
+  })
+
+  it('tells a message the automatic sender wrote (crm_sender.id 0) from one by a person or by the phone', () => {
+    const outgoing = { ...incoming, message_type: 'outgoing', sender: { id: 5, name: 'Lex', type: 'user' } }
+    const automated = (attributes: unknown) =>
+      parseChatwootEvent({ ...outgoing, content_attributes: attributes }) as { message: { automated: boolean } }
+    expect(automated({ crm_sender: { id: 0, name: 'Automation' } }).message.automated).toBe(true)
+    expect(automated({ crm_sender: { id: '0', name: 'Automation' } }).message.automated).toBe(true)
+    expect(automated({ crm_sender: { id: 7, name: 'Lex' } }).message.automated).toBe(false)
+    expect(automated({}).message.automated).toBe(false)
+    expect(automated(null).message.automated).toBe(false)
+    expect(parseChatwootEvent({ ...incoming, content_attributes: { crm_sender: { id: 0 } } })).toMatchObject({
+      message: { automated: false },
+    })
   })
 
   it('never takes a team member as the contact of an outgoing message', () => {
@@ -284,5 +299,22 @@ describe('a parent asking not to be messaged again', () => {
     expect(
       parseChatwootEvent({ ...incoming, content: 'STOP', message_type: 'outgoing', sender: { id: 5, type: 'user' } }),
     ).toMatchObject({ ok: true, message: { optOut: false } })
+  })
+})
+
+describe('a chat on a number of the Student Inbox', () => {
+  it('counts as students only when the database says so', () => {
+    expect(asZone('students')).toBe('students')
+    expect(asZone('marketing')).toBe('marketing')
+    expect(asZone(null)).toBe('marketing')
+    expect(asZone(undefined)).toBe('marketing')
+    expect(asZone('Students')).toBe('marketing')
+  })
+
+  it('asks only about WhatsApp chats with a known inbox', () => {
+    expect(mayBeStudentChat({ channel: 'whatsapp', inboxId: 6 })).toBe(true)
+    expect(mayBeStudentChat({ channel: 'whatsapp', inboxId: null })).toBe(false)
+    expect(mayBeStudentChat({ channel: 'messenger', inboxId: 2 })).toBe(false)
+    expect(mayBeStudentChat({ channel: 'instagram', inboxId: 4 })).toBe(false)
   })
 })
