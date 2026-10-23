@@ -1397,3 +1397,33 @@ describe('DetailsPanel optional lead fields', () => {
     )
   })
 })
+
+describe('DetailsPanel Quotation tab (2026-10-23)', () => {
+  const panel = (crm: WhatsAppCrm) =>
+    render(
+      <DetailsPanel
+        conversation={conversation()}
+        messages={[firstMessage]}
+        hasOlder={false}
+        crm={crm}
+        sourceRules={[]}
+        onLoadOlder={vi.fn()}
+        onLinkLead={vi.fn().mockResolvedValue(true)}
+        onLinkStudents={vi.fn().mockResolvedValue(true)}
+        onWriteMessage={vi.fn()}
+      />,
+    )
+
+  it('shows the tab when the school uses quotations and the person may', () => {
+    panel(makeCrm({ quotations: { enabled: true, canUse: true, canApprove: false } }))
+    expect(screen.getByRole('button', { name: 'Quotation' })).toBeInTheDocument()
+  })
+
+  it('has no tab when quotations are off, or the person may not use them', () => {
+    const off = panel(makeCrm({ quotations: { enabled: false, canUse: true, canApprove: false } }))
+    expect(screen.queryByRole('button', { name: 'Quotation' })).not.toBeInTheDocument()
+    off.unmount()
+    panel(makeCrm({ quotations: { enabled: true, canUse: false, canApprove: false } }))
+    expect(screen.queryByRole('button', { name: 'Quotation' })).not.toBeInTheDocument()
+  })
+})

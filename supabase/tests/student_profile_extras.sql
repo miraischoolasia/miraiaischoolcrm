@@ -89,7 +89,9 @@ set local role authenticated;
 select public.set_student_fields('{"name_zh": true, "consultant": true, "junk": 1}');
 reset role;
 select pg_temp.ok((select value from public.app_settings where key = 'student_fields')
-                   = '{"name_zh": true, "student_kind": false, "consultant": true, "second_parent_phone": false}'::jsonb,
+                   = '{"name_zh": true, "student_kind": false, "consultant": true, "second_parent_phone": false,
+                       "sales_person": false, "membership": false, "fb_name": false, "region": false, "enrol_method": false,
+                       "payment_mode": false, "hero_member": false, "fee_month": false, "roster_table": false}'::jsonb,
   'an admin switches fields on; anything else in the setting is dropped');
 
 rollback;

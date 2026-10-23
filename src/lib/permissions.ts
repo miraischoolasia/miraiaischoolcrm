@@ -28,6 +28,8 @@ export const permissionModules: {
   { key: 'content_studio', label: 'Content Studio', canEdit: true, scopes: [], group: 'Marketing' },
   // See approved posts and claim them to share.
   { key: 'content_library', label: 'Content Library', canEdit: false, scopes: [], group: 'Marketing' },
+  // Quotations in the Inbox (view = see, edit = make and send); delete = approve a discount over the cap.
+  { key: 'quotations', label: 'Quotations', canEdit: true, deleteHint: 'Approve big discounts, cancel others’ quotations', scopes: [], group: 'Marketing' },
   {
     key: 'calendar',
     label: 'Calendar',
@@ -51,6 +53,8 @@ export const permissionModules: {
   { key: 'packages', label: 'Packages', canEdit: true, scopes: [], group: 'Students' },
   // The Student Inbox: the WhatsApp numbers set to the students zone (apart from the Marketing Inbox).
   { key: 'student_inbox', label: 'Student Inbox', canEdit: true, deleteHint: 'Delete messages', scopes: [], group: 'Students' },
+  // Use the Fee Calculator (view); change its prices, subjects and text (edit). Shown once the school switches it on.
+  { key: 'fee_calculator', label: 'Fee Calculator', canEdit: true, scopes: [], group: 'Students' },
   // Send a student's monthly progress card to the family: only their own students (Learning Consultant) or everyone's.
   { key: 'progress_cards', label: 'Progress Cards', canEdit: false, scopes: ['all', 'own'], group: 'Students' },
   // The teacher scorecard and retention (view), the alert settings (edit); a view tick also gets the class alerts.

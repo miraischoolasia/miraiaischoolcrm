@@ -114,3 +114,32 @@ describe('ChatPanel files dropped on the chat', () => {
     expect(screen.queryByText('Drop files to attach them to your message')).not.toBeInTheDocument()
   })
 })
+
+describe('ChatPanel files from the side panel (2026-10-23)', () => {
+  it('puts a file handed over (a quotation PDF) in the message box, once', () => {
+    const pdf = new File(['%PDF'], 'Quotation Q-1001.pdf', { type: 'application/pdf' })
+    const props = setup([ours]).rerender
+    props(
+      <ChatPanel
+        conversation={conversation}
+        messages={[ours]}
+        waitingMessages={[]}
+        hasOlder={false}
+        staff={[]}
+        actionError={null}
+        onBack={vi.fn()}
+        onOpenDetails={vi.fn()}
+        onLoadOlder={vi.fn()}
+        onSend={vi.fn().mockResolvedValue(true)}
+        onDismissUnsent={vi.fn()}
+        onSetOwner={vi.fn()}
+        onSetStatus={vi.fn()}
+        onMarkUnread={vi.fn()}
+        quickReplies={{ replies: [], isLoading: false, error: null, reload: vi.fn().mockResolvedValue(undefined) }}
+        quickReplyValues={{}}
+        fileRequest={{ id: 1, files: [pdf] }}
+      />,
+    )
+    expect(screen.getAllByText('Quotation Q-1001.pdf')).toHaveLength(1)
+  })
+})

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { CaretLeft, GraduationCap, Star, UserCircle } from '@phosphor-icons/react'
+import { CaretLeft, GraduationCap, Receipt, Star, UserCircle } from '@phosphor-icons/react'
+import { QuotationPanel } from '../quotation/QuotationPanel'
 import { cn } from '../../lib/cn'
 import { canonicalPhone, getFirstMessage, guessSourceAndTags, parentNumberUpdate, resolveChatLead } from '../../lib/chatLink'
 import { parentPhoneOf } from '../../lib/studentContact'
@@ -77,6 +78,8 @@ type DetailsPanelProps = {
   pictureOfContact?: (contactId: number) => string | null
   // The family table is read again (after the team changed the tags of a parent or child).
   onPeopleChanged?: () => Promise<void> | void
+  // Puts a file in the chat's message box (the Quotation tab's PDF); without it the PDF is only downloaded.
+  onAttachFile?: (file: File) => void
   // A chat of the Student Inbox: it belongs to a student's family, so the lead form is not offered by itself
   // (it stays one press away, "Also a lead?").
   studentZone?: boolean
@@ -85,11 +88,13 @@ type DetailsPanelProps = {
 // The side panel: who the parent is, and what the school already knows about
 // them (a lead, a student), or a way to add them.
 // Which sign-up the steps below are for: one of the school's programmes.
-type PanelTab = 'contact' | 'enrol' | 'chat'
+type PanelTab = 'contact' | 'enrol' | 'quote' | 'chat'
 
 const TAB_ICONS: Record<PanelTab, { label: string; Icon: typeof UserCircle }> = {
   contact: { label: 'Contact', Icon: UserCircle },
   enrol: { label: 'Sign-up', Icon: GraduationCap },
+  // Quotations (docs: quotation-payment-plan-detail.md 13.4): the Fee team's QuotationPanel, when the school uses them.
+  quote: { label: 'Quotation', Icon: Receipt },
   chat: { label: 'Chat notes', Icon: Star },
 }
 
@@ -130,6 +135,7 @@ export function DetailsPanel({
   pictureOfContact,
   onPeopleChanged,
   studentZone = false,
+  onAttachFile,
 }: DetailsPanelProps) {
   const sender = conversation.meta.sender
   const phone = getRealPhone(sender.phone_number)
@@ -401,7 +407,13 @@ export function DetailsPanel({
 
   const hasChatNotes = starredMessages.length > 0 || whatsappLabels.length > 0
   const canEnrol = Boolean(lead && onWriteMessage)
-  const tabs: PanelTab[] = ['contact', ...(canEnrol ? (['enrol'] as const) : []), ...(hasChatNotes ? (['chat'] as const) : [])]
+  const canQuote = Boolean(crm.quotations?.enabled && crm.quotations.canUse && onWriteMessage)
+  const tabs: PanelTab[] = [
+    'contact',
+    ...(canEnrol ? (['enrol'] as const) : []),
+    ...(canQuote ? (['quote'] as const) : []),
+    ...(hasChatNotes ? (['chat'] as const) : []),
+  ]
   const shownTab: PanelTab = tabs.includes(tab) ? tab : 'contact'
 
   return (
@@ -658,6 +670,21 @@ export function DetailsPanel({
         )}
               {!hasChatNotes && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">No starred messages or phone labels on this chat.</p>}
             </div>
+          )}
+          {shownTab === 'quote' && onWriteMessage && (
+            <QuotationPanel
+              lead={lead}
+              chat={{
+                conversationId: conversation.id,
+                contactId: conversation.meta.sender.id,
+                inboxId: conversation.inbox_id ?? null,
+                phone,
+              }}
+              classrooms={crm.classrooms}
+              canApprove={crm.quotations?.canApprove ?? false}
+              onWriteMessage={onWriteMessage}
+              onAttachFile={onAttachFile}
+            />
           )}
           {shownTab === 'enrol' && (
             <div className="space-y-5">

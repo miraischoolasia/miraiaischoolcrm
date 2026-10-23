@@ -42,6 +42,7 @@ import {
   WarningCircle,
   WhatsappLogo,
   ChatCenteredText,
+  Calculator,
 } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
@@ -234,6 +235,9 @@ import type { WhatsAppNumbersView } from './components/whatsapp/WhatsAppInbox'
 import { AppChatPanel } from './components/appChat/AppChatPanel'
 import { AiKnowledgeSection } from './components/sections/AiKnowledgeSection'
 import { ContentStudioSection } from './components/contentStudio/ContentStudioSection'
+import { FeeCalculatorSection } from './components/feeCalculator/FeeCalculatorSection'
+import { useFeeCalculatorEnabled } from './hooks/useFeeCalculatorEnabled'
+import { useQuotationsEnabled } from './hooks/useQuotationsEnabled'
 import { ContentLibrarySection } from './components/contentStudio/ContentLibrarySection'
 import { fetchThread } from './lib/aiLearning'
 import { ProgrammesSection } from './components/sections/ProgrammesSection'
@@ -363,7 +367,7 @@ import {
 } from './lib/makeup'
 
 // The menu's order (AppNav groups them).
-const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'ai-knowledge', 'content-studio', 'content-library', 'calendar', 'classrooms', 'videos', 'questions', 'students', 'student-inbox', 'student-chat', 'app-logins', 'programmes', 'packages', 'teachers', 'teacher-quality', 'team-replies', 'class-settings', 'activity']
+const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'ai-knowledge', 'content-studio', 'content-library', 'calendar', 'classrooms', 'videos', 'questions', 'students', 'student-inbox', 'student-chat', 'fee-calculator', 'app-logins', 'programmes', 'packages', 'teachers', 'teacher-quality', 'team-replies', 'class-settings', 'activity']
 
 // The shared WhatsApp inbox only shows up once its address is set.
 const chatwootUrl = getChatwootUrl(import.meta.env.VITE_CHATWOOT_URL)
@@ -905,6 +909,10 @@ function App() {
   // The school's WhatsApp numbers: which the signed-in person may see (an admin sees all), and which are students ones.
   const whatsAppNumbers = useWhatsAppNumbers(Boolean(whatsAppApiUrl) && canUseWhatsApp)
   const hasStudentInbox = showsStudentInbox(can('student_inbox'), whatsAppNumbers.studentInboxIds)
+  // The Fee Calculator (20261030300000): the school's switch (Class Settings), apart from brand.usesFees.
+  const feeCalculatorOn = useFeeCalculatorEnabled(authUserId !== null)
+  // Quotations (20261031100000): the Inbox's Quotation tab, when the school switched them on.
+  const quotationsOn = useQuotationsEnabled(authUserId !== null)
   const allowedSections = useMemo(() => {
     const sections: AppSection[] = []
     // A teacher's own day, or the admin's / staff's overview of the school.
@@ -935,6 +943,8 @@ function App() {
     // The Student Inbox: its own tick, once the school has a WhatsApp number set to the students zone.
     if (hasStudentInbox && chatwootUrl) sections.push('student-inbox')
     if (appChat.on) sections.push('student-chat')
+    // The Fee Calculator: its own tick, once the school switched it on.
+    if (feeCalculatorOn && can('fee_calculator')) sections.push('fee-calculator')
     // My Team: accounts and teams are the admin's; Working hours can be seen with its own tick.
     if (isAdmin || can('staff_hours')) sections.push('teachers')
     // How each person answers the chats: its own tick, since it is about the team's work.
@@ -943,7 +953,7 @@ function App() {
     if (can('quality')) sections.push('teacher-quality')
     if (can('activity')) sections.push('activity')
     return sections
-  }, [can, isAdmin, isTeacherAccount, appChat.on, hasStudentInbox])
+  }, [can, isAdmin, isTeacherAccount, appChat.on, hasStudentInbox, feeCalculatorOn])
   const visibleSection = allowedSections.includes(activeSection) ? activeSection : null
   useEffect(() => {
     if (!currentSession) return
@@ -2462,6 +2472,7 @@ function App() {
         { key: 'app-logins', label: 'App Logins', icon: DeviceMobile, group: 'students' },
         { key: 'student-inbox', label: 'Student Inbox', icon: ChatCircleDots, group: 'students' },
         { key: 'student-chat', label: 'Student Chat', icon: ChatsCircle, group: 'students' },
+        { key: 'fee-calculator', label: 'Fee Calculator', icon: Calculator, group: 'students' },
         { key: 'teachers', label: 'My Team', icon: IdentificationBadge, group: 'admin' },
         { key: 'team-replies', label: 'Team Replies', icon: ChatCenteredText, group: 'admin' },
         { key: 'teacher-quality', label: 'Teacher Quality', icon: ChartLineUp, group: 'admin' },
@@ -5161,6 +5172,7 @@ function App() {
     leadOptions,
     canEditLeads: can('leads', 'edit'),
     canEditStudents: can('students', 'edit'),
+    quotations: { enabled: quotationsOn, canUse: can('quotations', 'edit'), canApprove: can('quotations', 'delete') },
     canBookMakeup: canEditCalendar,
     onCreateLead: createLeadFromChat,
     onUpdateLead: updateLeadFromChat,
@@ -7098,6 +7110,8 @@ function App() {
                         ? 'Teacher Quality'
                       : activeSection === 'student-chat'
                         ? 'Student Chat'
+                      : activeSection === 'fee-calculator'
+                        ? 'Fee Calculator'
                       : activeSection === 'student-inbox'
                         ? 'Student Inbox'
                       : activeSection === 'teachers'
@@ -7842,6 +7856,7 @@ function App() {
               <ContentStudioSection canEdit={can('content_studio', 'edit')} isAdmin={isAdmin} teacherNames={teacherNames} />
             )}
             {visibleSection === 'content-library' && <ContentLibrarySection />}
+            {visibleSection === 'fee-calculator' && <FeeCalculatorSection canEdit={can('fee_calculator', 'edit')} isAdmin={isAdmin} />}
 
             {visibleSection === 'ai-knowledge' && (
               <AiKnowledgeSection

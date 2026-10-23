@@ -174,6 +174,14 @@ export type Database = {
           student_kind: string | null
           consultant_id: number | null
           second_parent_phone: string | null
+          sales_person_id: number | null
+          membership: string | null
+          fb_name: string | null
+          region: string | null
+          enrol_method: string | null
+          payment_mode: string | null
+          hero_member: string | null
+          fee_month: number | null
           remaining_hours: number
           lesson_expiry_date: string
           account_fee_expiry_date: string
@@ -198,6 +206,14 @@ export type Database = {
           student_kind?: string | null
           consultant_id?: number | null
           second_parent_phone?: string | null
+          sales_person_id?: number | null
+          membership?: string | null
+          fb_name?: string | null
+          region?: string | null
+          enrol_method?: string | null
+          payment_mode?: string | null
+          hero_member?: string | null
+          fee_month?: number | null
           remaining_hours?: number
           lesson_expiry_date: string
           account_fee_expiry_date: string
@@ -222,6 +238,14 @@ export type Database = {
           student_kind?: string | null
           consultant_id?: number | null
           second_parent_phone?: string | null
+          sales_person_id?: number | null
+          membership?: string | null
+          fb_name?: string | null
+          region?: string | null
+          enrol_method?: string | null
+          payment_mode?: string | null
+          hero_member?: string | null
+          fee_month?: number | null
           remaining_hours?: number
           lesson_expiry_date?: string
           account_fee_expiry_date?: string
@@ -2753,6 +2777,125 @@ export type Database = {
           },
         ]
       }
+      // The Fee Calculator (20261030300000_fee_calculator.sql). Read with the fee_calculator tick; written by RPC only.
+      fee_cohorts: {
+        Row: {
+          id: number
+          membership_field: string
+          membership_name: string
+          sort_order: number
+          is_active: boolean
+          materials_included_in_tuition: boolean
+          created_at: string
+          updated_at: string
+          updated_by: number | null
+        }
+        Insert: { membership_name: string; sort_order?: number; is_active?: boolean; materials_included_in_tuition?: boolean }
+        Update: { sort_order?: number; is_active?: boolean; materials_included_in_tuition?: boolean }
+        Relationships: []
+      }
+      fee_rates: {
+        Row: { cohort_id: number; level: string; track: string; subject_count: number; cycle_tier: string; amount: number }
+        Insert: { cohort_id: number; level: string; track: string; subject_count: number; cycle_tier: string; amount: number }
+        Update: { amount?: number }
+        Relationships: []
+      }
+      fee_subjects: {
+        Row: {
+          id: number
+          level: string
+          code: string
+          label: string
+          kind: string
+          sort_order: number
+          is_active: boolean
+          subject_id?: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: { level: string; code: string; label: string; kind: string; sort_order?: number; is_active?: boolean }
+        Update: { code?: string; label?: string; kind?: string; sort_order?: number; is_active?: boolean }
+        Relationships: []
+      }
+      // Quotations (20261031100000_quotations.sql). Read with the quotations tick; written by the edge functions.
+      quotations: {
+        Row: {
+          id: string
+          public_token: string
+          status: string
+          lead_id: number | null
+          conversation_id: number | null
+          contact_id: number | null
+          inbox_id: number | null
+          phone: string | null
+          child_name: string
+          child_age: number | null
+          age_group: string | null
+          cohort_id: number
+          level: string
+          region: string
+          enrol_method: string
+          rate_tier: string
+          months: number
+          start_date: string
+          registration_month: number | null
+          subjects: Json
+          bio_che_phy: Json
+          payment_mode: string | null
+          region_option: string | null
+          fee_month: number | null
+          discount_kind: string | null
+          discount_value: number | null
+          discount_reason: string | null
+          discount_note: string | null
+          discount_approved_by: number | null
+          discount_approved_at: string | null
+          price_snapshot: Json
+          subtotal: number
+          discount_amount: number
+          total: number
+          currency: string
+          expires_at: string | null
+          sales_person_id: number | null
+          consultant_id: number | null
+          reference_no: string
+          payment_route: string
+          rzp_link_id: string | null
+          rzp_link_url: string | null
+          rzp_payment_id: string | null
+          bank_paid_on: string | null
+          bank_reference: string | null
+          payment_proof_path: string | null
+          payment_note: string | null
+          confirmed_by: number | null
+          payment_method: string | null
+          paid_amount: number | null
+          paid_at: string | null
+          student_id: number | null
+          fulfil_status: string | null
+          fulfil_error: string | null
+          login_status: string | null
+          receipt_path: string | null
+          created_by: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      quotation_classes: {
+        Row: { id: number; quotation_id: string; subject_code: string; classroom_id: number }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      fee_settings: {
+        Row: { key: string; value: Json; updated_at: string; updated_by: number | null }
+        Insert: { key: string; value: Json }
+        Update: { value?: Json }
+        Relationships: []
+      }
       forms: {
         Row: {
           id: string
@@ -3001,6 +3144,12 @@ export type Database = {
         }
         Insert: { id?: never; classroom_id: number; title: string; year: number; month: number; bunny_library_id: string; bunny_video_id: string }
         Update: { id?: never }
+        Relationships: []
+      }
+      student_field_options: {
+        Row: { field: string; name: string; sort_order: number; is_active: boolean; created_at: string; updated_at: string }
+        Insert: { field: string; name: string; sort_order?: number; is_active?: boolean }
+        Update: { name?: string; sort_order?: number; is_active?: boolean }
         Relationships: []
       }
       student_kinds: {
@@ -3991,6 +4140,56 @@ export type Database = {
       }
       set_student_fields: {
         Args: { p_value: Json }
+        Returns: undefined
+      }
+      save_student_field_option: {
+        Args: { p_field: string; p_name: string | null; p_new_name: string | null; p_sort_order: number | null; p_is_active: boolean | null }
+        Returns: Database['public']['Tables']['student_field_options']['Row']
+      }
+      save_fee_cohort: {
+        Args: {
+          p_id: number | null
+          p_membership_name: string | null
+          p_sort_order: number | null
+          p_is_active: boolean | null
+          p_materials_included: boolean | null
+        }
+        Returns: Database['public']['Tables']['fee_cohorts']['Row']
+      }
+      save_fee_cohort_rates: {
+        Args: { p_cohort_id: number; p_materials_included: boolean | null; p_rates: Json }
+        Returns: undefined
+      }
+      save_fee_subject: {
+        Args: {
+          p_id: number | null
+          p_level: string | null
+          p_code: string | null
+          p_label: string | null
+          p_kind: string | null
+          p_sort_order: number | null
+          p_is_active: boolean | null
+        }
+        Returns: Database['public']['Tables']['fee_subjects']['Row']
+      }
+      save_fee_settings: {
+        Args: { p_key: string; p_value: Json }
+        Returns: undefined
+      }
+      set_fee_calculator_enabled: {
+        Args: { p_enabled: boolean }
+        Returns: undefined
+      }
+      set_quotation_settings: {
+        Args: { p_value: Json }
+        Returns: undefined
+      }
+      set_fee_subject_class_subject: {
+        Args: { p_fee_subject_id: number; p_subject_id: number | null }
+        Returns: undefined
+      }
+      set_student_roster_counts: {
+        Args: { p_categories: string[]; p_changes_from: string | null }
         Returns: undefined
       }
       save_student_kind: {

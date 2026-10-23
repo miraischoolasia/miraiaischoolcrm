@@ -234,6 +234,8 @@ export function WhatsAppInbox({
   const [search, setSearch] = useState('')
   // Text the enrol steps write for the message box; each new id is added once.
   const [draftRequest, setDraftRequest] = useState<{ id: number; text: string } | null>(null)
+  // Files the side panel puts in the message box (a quotation's PDF).
+  const [fileRequest, setFileRequest] = useState<{ id: number; files: File[] } | null>(null)
   // On a small screen the side panel takes the place of the chat.
   const [detailsOpen, setDetailsOpen] = useState(false)
 
@@ -1619,6 +1621,7 @@ export function WhatsAppInbox({
             quickReplyValues={quickReplyFill}
             onManageQuickReplies={() => setManagingReplies(true)}
             draftRequest={draftRequest}
+            fileRequest={fileRequest}
             messageEvents={messageEvents.events}
             onSendSpecial={messageEvents.sendSpecial}
             onSchedule={() => setScheduling({ editing: null })}
@@ -1717,6 +1720,10 @@ export function WhatsAppInbox({
             userName={currentUser.name}
             onWriteMessage={(text) => {
               setDraftRequest((current) => ({ id: (current?.id ?? 0) + 1, text }))
+              setDetailsOpen(false)
+            }}
+            onAttachFile={(file) => {
+              setFileRequest((current) => ({ id: (current?.id ?? 0) + 1, files: [file] }))
               setDetailsOpen(false)
             }}
             role={getChatRole(inbox.selected)}

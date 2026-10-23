@@ -63,6 +63,8 @@ type ChatPanelProps = {
   onManageQuickReplies?: () => void
   // Text written for the message box by the enrol steps.
   draftRequest?: { id: number; text: string } | null
+  // Files put in the message box from elsewhere (the Quotation tab's PDF); each new id is added once.
+  fileRequest?: { id: number; files: File[] } | null
   // Opens the lead's full page; only for a chat that belongs to a lead.
   onOpenLead?: () => void
   // The parent's WhatsApp picture, in place of the initials when there is one.
@@ -161,6 +163,7 @@ export function ChatPanel({
   quickReplyValues,
   onManageQuickReplies,
   draftRequest,
+  fileRequest = null,
   onOpenLead,
   picture = null,
   draft,
@@ -265,6 +268,16 @@ export function ChatPanel({
   // Files being dragged over the chat, and the ones dropped.
   const [dragging, setDragging] = useState(false)
   const [dropped, setDropped] = useState<{ id: number; files: File[] } | null>(null)
+  // A file handed over from elsewhere goes in like a dropped one.
+  const lastFileRequest = useRef<number | null>(fileRequest?.id ?? null)
+  useEffect(() => {
+    if (!fileRequest || fileRequest.id === lastFileRequest.current) {
+      return
+    }
+    lastFileRequest.current = fileRequest.id
+    dropCount.current += 1
+    setDropped({ id: dropCount.current, files: fileRequest.files })
+  }, [fileRequest])
   // Scrolled away from the newest message, and how many parent messages came in meanwhile.
   const [away, setAway] = useState(false)
   const [newCount, setNewCount] = useState(0)

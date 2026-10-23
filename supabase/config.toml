@@ -438,3 +438,7 @@ verify_jwt = false
 
 [functions.class-videos]
 verify_jwt = true
+
+# A parent opens a quotation's page without a login (the long random token in the link is what authorises it).
+[functions.quote-public]
+verify_jwt = false

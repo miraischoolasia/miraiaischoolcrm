@@ -40,6 +40,9 @@ export type LeadFormValues = {
 
 // Each action resolves to an error message, or null when it worked.
 export type WhatsAppCrm = {
+  // Quotations (20261031100000): the school switched them on, and this login may make / approve them.
+  // Undefined where the Inbox is shown without them (tests, demos).
+  quotations?: { enabled: boolean; canUse: boolean; canApprove: boolean }
   leads: Lead[]
   students: Student[]
   classrooms: Classroom[]

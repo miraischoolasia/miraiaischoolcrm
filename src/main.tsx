@@ -72,6 +72,18 @@ async function start() {
     return
   }
 
+  // /?quote=<token>: a parent's quotation (no login); &return=1 when Razorpay sends them back after paying.
+  const quoteToken = params.get('quote')
+  if (quoteToken) {
+    const { QuotePage } = await import('./components/quotation/QuotePage.tsx')
+    root.render(
+      <StrictMode>
+        <QuotePage token={quoteToken} returned={params.get('return') === '1'} />
+      </StrictMode>,
+    )
+    return
+  }
+
   // /?screen=<timetable entry>&date=<day>: the class screen the teacher shares in Zoom (fed by the live class console).
   const screenSchedule = Number(params.get('screen'))
   const screenDate = params.get('date') ?? ''

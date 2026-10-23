@@ -11,6 +11,7 @@ import { LiveQuestionSettingsForm } from '../LiveQuestionSettingsForm'
 import { ZoomAttendanceRule } from '../ZoomAttendanceRule'
 import { LateReminderSetting } from '../LateReminderSetting'
 import { CalendarLayoutSetting } from '../CalendarLayoutSetting'
+import { FeeCalculatorSwitch } from '../feeCalculator/FeeCalculatorSwitch'
 import type { CalendarLayout } from '../../lib/calendarLayout'
 import { AttendanceTakersSetting } from '../AttendanceTakersSetting'
 import type { AttendanceTakerRules } from '../../lib/attendanceTakers'
@@ -272,6 +273,7 @@ export function ClassSettingsModal({
             <ClassCategoriesSettings />
             {studentFields}
             <CalendarLayoutSetting onSaved={onCalendarLayoutSaved} />
+            <FeeCalculatorSwitch />
           </>
         )}
 
