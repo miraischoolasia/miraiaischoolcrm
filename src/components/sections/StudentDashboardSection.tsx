@@ -5,6 +5,8 @@ import { formatStudentAge, getStudentAge } from '../../lib/age'
 import { formatDate, getWorstFee, type StudentIssue } from '../../domain/studentStatus'
 import { studentFilterOptions } from '../../lib/constants'
 import { sortClassCategories, useClassCategories } from '../../lib/classCategories'
+import { DEFAULT_ROSTER_COUNTS, type RosterCounts } from '../../lib/studentRoster'
+import { StudentRosterTable } from './StudentRosterTable'
 import type { Programme } from '../../lib/programmes'
 import type { Subject } from '../../lib/subjects'
 import { useAgeGroups } from '../../lib/ageGroups'
@@ -95,6 +97,8 @@ type StudentDashboardSectionProps = {
     extras: Map<number, StudentProfileExtras>
     kinds: StudentKind[]
     consultants: Teacher[]
+    // How the roster table counts subjects.
+    rosterCounts?: RosterCounts
   }
   // The students' tags (the same tags the leads use): a filter on the list. The map holds only students that have tags.
   studentTags?: { options: LeadOption[]; map: Map<number, number[]> }
@@ -158,6 +162,10 @@ export function StudentDashboardSection({
   const [subjectFilter, setSubjectFilter] = useState<number | null>(null)
   const [extrasFilter, setExtrasFilter] = useState(NO_EXTRAS_FILTER)
   const [tagFilter, setTagFilter] = useState('')
+  // The roster table (the master list's columns) is the school's own view of the list, shown first when it is on.
+  const rosterAvailable = Boolean(studentFields?.setting.roster_table)
+  const [listView, setListView] = useState<'roster' | 'list'>('roster')
+  const rosterView = rosterAvailable && listView === 'roster'
 
   const rows = useMemo(
     () =>
@@ -555,6 +563,21 @@ export function StudentDashboardSection({
               </option>
             ))}
           </select>
+          {rosterAvailable && (
+            <div role="group" aria-label="List view" className="inline-flex overflow-hidden rounded-xl border border-slate-200 text-sm font-semibold">
+              {(['roster', 'list'] as const).map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  aria-pressed={listView === view}
+                  onClick={() => setListView(view)}
+                  className={cn('px-3 py-2 transition', listView === view ? 'bg-[#fff0f9] text-[#be185d]' : 'bg-white text-slate-600 hover:bg-slate-50')}
+                >
+                  {view === 'roster' ? 'Roster' : 'List'}
+                </button>
+              ))}
+            </div>
+          )}
           <span className="ml-auto text-sm text-slate-500">
             {visibleRows.length > PAGE_SIZE
               ? `${currentPage * PAGE_SIZE + 1}–${currentPage * PAGE_SIZE + pageRows.length} of ${visibleRows.length}`
@@ -580,7 +603,21 @@ export function StudentDashboardSection({
 
         {!isLoading && visibleRows.length > 0 && (
           <>
-            <ul className="divide-y divide-slate-200 border-t border-slate-200 md:hidden">
+            {rosterView && studentFields && (
+              <StudentRosterTable
+                rows={pageRows}
+                setting={studentFields.setting}
+                extras={studentFields.extras}
+                teacherMap={teacherMap}
+                studentCodes={studentCodes}
+                classrooms={classrooms}
+                categories={classCategories}
+                counts={studentFields.rosterCounts ?? DEFAULT_ROSTER_COUNTS}
+                todayString={todayString}
+                onOpenStudent={onOpenStudentDetail}
+              />
+            )}
+            <ul className={cn('divide-y divide-slate-200 border-t border-slate-200 md:hidden', rosterView && 'hidden')}>
               {pageRows.map((row) => (
                 <li
                   key={row.student.id}
@@ -633,7 +670,7 @@ export function StudentDashboardSection({
               ))}
             </ul>
 
-            <div className="hidden overflow-x-auto md:block">
+            <div className={cn('hidden overflow-x-auto', !rosterView && 'md:block')}>
               <table data-compact-table className="min-w-[900px] divide-y divide-slate-200">
                 <thead className="bg-slate-50">
                   <tr className="text-left text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">

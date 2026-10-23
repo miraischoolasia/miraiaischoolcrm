@@ -271,7 +271,7 @@ import { useStudentFields } from './hooks/useStudentFields'
 import { useStudentTags } from './hooks/useStudentTags'
 import { PersonTags } from './components/PersonTags'
 import { setPersonTags } from './lib/personTags'
-import { anyStudentField, consultantOptions, EMPTY_STUDENT_EXTRAS_FORM, extrasChanges, extrasToForm, type StudentExtrasForm } from './lib/studentFields'
+import { anyStudentField, consultantOptions, EMPTY_STUDENT_EXTRAS_FORM, extrasChanges, extrasToForm, salesPersonOptions, type StudentExtrasForm } from './lib/studentFields'
 import { buildStudentParents } from './lib/studentParents'
 import { getAttendedStudentIds } from './lib/studentLessons'
 import { EditStudentModal } from './components/modals/EditStudentModal'
@@ -771,6 +771,7 @@ function App() {
   const tagOptions = useMemo(() => leadOptions.filter((option) => option.kind === 'tag'), [leadOptions])
   const [studentExtrasForm, setStudentExtrasForm] = useState<StudentExtrasForm>(EMPTY_STUDENT_EXTRAS_FORM)
   const studentConsultants = useMemo(() => consultantOptions(teachers), [teachers])
+  const studentSalesPeople = useMemo(() => salesPersonOptions(teachers), [teachers])
   const [isSavingStudentCodeSetting, setIsSavingStudentCodeSetting] = useState(false)
   const [isSavingLateFeedbackEdit, setIsSavingLateFeedbackEdit] = useState(false)
   // A class later than today opens read-only: who is coming, no attendance yet.
@@ -7669,7 +7670,13 @@ function App() {
                 studentCodes={studentCodeEnabled ? studentCodes : undefined}
                 studentFields={
                   anyStudentField(studentFields.setting)
-                    ? { setting: studentFields.setting, extras: studentFields.extras, kinds: studentFields.kinds, consultants: studentConsultants }
+                    ? {
+                        setting: studentFields.setting,
+                        extras: studentFields.extras,
+                        kinds: studentFields.kinds,
+                        consultants: studentConsultants,
+                        rosterCounts: studentFields.rosterCounts,
+                      }
                     : undefined
                 }
                 studentTags={supabase && tagOptions.length > 0 ? { options: tagOptions, map: studentTags.tags } : undefined}
@@ -7951,6 +7958,8 @@ function App() {
                 form={studentExtrasForm}
                 kinds={studentFields.kinds}
                 consultants={studentConsultants}
+                salesPeople={studentSalesPeople}
+                options={studentFields.options}
                 onChange={(field, value) => setStudentExtrasForm((current) => ({ ...current, [field]: value }))}
               />
             ) : undefined
@@ -7979,6 +7988,8 @@ function App() {
                 form={studentExtrasForm}
                 kinds={studentFields.kinds}
                 consultants={studentConsultants}
+                salesPeople={studentSalesPeople}
+                options={studentFields.options}
                 onChange={(field, value) => setStudentExtrasForm((current) => ({ ...current, [field]: value }))}
               />
             ) : undefined
@@ -8159,6 +8170,10 @@ function App() {
               setting={studentFields.setting}
               onSettingChange={studentFields.changeSetting}
               onKindsChange={studentFields.setKinds}
+              options={studentFields.options}
+              onOptionsChange={studentFields.setOptions}
+              counts={studentFields.rosterCounts}
+              onCountsChange={studentFields.setRosterCounts}
             />
           }
           enrolFlows={
@@ -8267,6 +8282,7 @@ function App() {
               setting={studentFields.setting}
               extras={studentFields.extras.get(selectedStudentDetail.id)}
               consultantName={teacherMap.get(studentFields.extras.get(selectedStudentDetail.id)?.consultantId ?? 0)?.fullName ?? null}
+              salesPersonName={teacherMap.get(studentFields.extras.get(selectedStudentDetail.id)?.salesPersonId ?? 0)?.fullName ?? null}
             />
           }
           lessonLogs={lessonLogs}

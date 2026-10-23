@@ -15,7 +15,7 @@ import {
 } from './studentFields'
 import type { Teacher } from '../types/domain'
 
-const allOn: StudentFieldsSetting = { name_zh: true, student_kind: true, consultant: true, second_parent_phone: true }
+const allOn: StudentFieldsSetting = { ...NO_STUDENT_FIELDS, name_zh: true, student_kind: true, consultant: true, second_parent_phone: true }
 const current = { nameZh: '小明', kind: '新生', consultantId: 7, secondParentPhone: null }
 
 describe('student fields setting', () => {

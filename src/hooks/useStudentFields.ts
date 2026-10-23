@@ -11,19 +11,29 @@ import {
   type StudentKind,
   type StudentProfileExtras,
 } from '../lib/studentFields'
+import { DEFAULT_ROSTER_COUNTS, fetchFieldOptions, fetchRosterCounts, type FieldOption, type RosterCounts } from '../lib/studentRoster'
 
-// The school's extra student fields (Chinese name, kind, consultant, second parent phone):
-// which are shown, the kinds of student, and each student's values. The values are read
-// only when the school shows at least one field (never before the database update).
+// The school's extra student fields (Chinese name, kind, consultant, second parent phone, and the roster fields):
+// which are shown, the kinds of student and the other lists of choices, how subjects are counted, and each student's
+// values. The values are read only when the school shows at least one field (never before the database update).
 export function useStudentFields(signedIn: boolean, loadAttempt: number) {
   const [setting, setSetting] = useState<StudentFieldsSetting>(NO_STUDENT_FIELDS)
   const [kinds, setKinds] = useState<StudentKind[]>([])
   const [extras, setExtras] = useState<Map<number, StudentProfileExtras>>(new Map())
+  const [options, setOptions] = useState<FieldOption[]>([])
+  const [rosterCounts, setRosterCounts] = useState<RosterCounts>(DEFAULT_ROSTER_COUNTS)
 
   const loadValues = useCallback(async () => {
-    const [nextKinds, nextExtras] = await Promise.all([fetchStudentKinds(), fetchStudentProfileExtras()])
+    const [nextKinds, nextExtras, nextOptions, nextCounts] = await Promise.all([
+      fetchStudentKinds(),
+      fetchStudentProfileExtras(),
+      fetchFieldOptions(),
+      fetchRosterCounts(),
+    ])
     setKinds(nextKinds)
     setExtras(nextExtras)
+    setOptions(nextOptions)
+    setRosterCounts(nextCounts)
   }, [])
 
   useEffect(() => {
@@ -58,5 +68,5 @@ export function useStudentFields(signedIn: boolean, loadAttempt: number) {
     [extras, setting],
   )
 
-  return { setting, kinds, setKinds, extras, changeSetting, saveFor }
+  return { setting, kinds, setKinds, extras, options, setOptions, rosterCounts, setRosterCounts, changeSetting, saveFor }
 }

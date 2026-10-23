@@ -415,16 +415,31 @@ export function WhatsAppInbox({
     },
     [people, handlerSources, staff, optionsById],
   )
+  // Once a lead has become a student, the family is looked after by the student's consultant (the Learning Consultant);
+  // the lead's PIC (the Education Consultant who closed the sale) stays on the student as the sales person.
+  const learningConsultantOf = useCallback(
+    (conversation: ChatwootConversation, lead: { convertedStudentId: number | null } | null | undefined) => {
+      if (lead?.convertedStudentId == null) {
+        return null
+      }
+      const found = familyHandler(conversation.meta.sender.id, people, handlerSources)
+      return found && 'teacherId' in found ? (staff.find((person) => person.id === found.teacherId) ?? null) : null
+    },
+    [people, handlerSources, staff],
+  )
   const picOf = useCallback(
     (conversation: ChatwootConversation) => {
       const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
       const leadPic = lead?.picId != null ? optionsById.get(lead.picId)?.label : undefined
       const owner = getOwner(conversation)
       const name =
-        (owner ? (staff.find((person) => person.id === owner.id)?.name ?? owner.name) : undefined) ?? leadPic ?? familyStaffOf(conversation)?.name
+        (owner ? (staff.find((person) => person.id === owner.id)?.name ?? owner.name) : undefined) ??
+        learningConsultantOf(conversation, lead)?.name ??
+        leadPic ??
+        familyStaffOf(conversation)?.name
       return name ? { name, initials: getInitials(name) } : null
     },
-    [resolveLead, optionsById, staff, familyStaffOf],
+    [resolveLead, optionsById, staff, familyStaffOf, learningConsultantOf],
   )
   const picOptions = useMemo(() => crm.leadOptions.filter((option) => option.kind === 'pic'), [crm.leadOptions])
   const handlerOf = useCallback(
@@ -434,10 +449,14 @@ export function WhatsAppInbox({
         return { id: owner.id, name: staff.find((person) => person.id === owner.id)?.name ?? owner.name }
       }
       const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
+      const learning = learningConsultantOf(conversation, lead)
+      if (learning) {
+        return learning
+      }
       const pic = lead?.picId != null ? picOptions.find((option) => option.id === lead.picId) : undefined
       return (pic ? staff.find((person) => sameName(person.name, pic.label)) : undefined) ?? familyStaffOf(conversation)
     },
-    [picOptions, resolveLead, staff, familyStaffOf],
+    [picOptions, resolveLead, staff, familyStaffOf, learningConsultantOf],
   )
   // Choosing who handles a chat also sets the lead's person in charge, when that person is one.
   const setHandler = useCallback(
@@ -445,6 +464,10 @@ export function WhatsAppInbox({
       void inbox.setOwner(conversation.id, person)
       const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
       if (!lead || !crm.canEditLeads) {
+        return
+      }
+      // After the sale the lead's PIC is the Education Consultant: handing the chat to the Learning Consultant leaves it.
+      if (learningConsultantOf(conversation, lead)) {
         return
       }
       const pic = person ? picOptions.find((option) => option.isActive && sameName(option.label, person.name)) : undefined
@@ -464,7 +487,7 @@ export function WhatsAppInbox({
         notes: lead.notes ?? '',
       })
     },
-    [crm, inbox, picOptions, resolveLead],
+    [crm, inbox, picOptions, resolveLead, learningConsultantOf],
   )
   // A parent can have two chats: an old one imported under a hidden WhatsApp ID, and the one
   // WhatsApp now uses with their number. Both are tied to the same lead.

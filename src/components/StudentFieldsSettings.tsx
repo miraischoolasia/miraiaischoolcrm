@@ -11,6 +11,8 @@ import {
   type StudentFieldsSetting,
   type StudentKind,
 } from '../lib/studentFields'
+import { DEFAULT_ROSTER_COUNTS, type FieldOption, type RosterCounts } from '../lib/studentRoster'
+import { RosterFieldsSettings } from './RosterFieldsSettings'
 
 export type StudentFieldsApi = {
   setFields: typeof setStudentFields
@@ -26,12 +28,21 @@ export function StudentFieldsSettings({
   setting,
   onSettingChange,
   onKindsChange,
+  // The roster lists and how the roster table counts subjects (the page's copy of them).
+  options = [],
+  onOptionsChange,
+  counts = DEFAULT_ROSTER_COUNTS,
+  onCountsChange,
   // The database unless a demo passes its own.
   api = databaseApi,
 }: {
   setting: StudentFieldsSetting
   onSettingChange: (setting: StudentFieldsSetting) => void
   onKindsChange?: (kinds: StudentKind[]) => void
+  options?: FieldOption[]
+  onOptionsChange?: (options: FieldOption[]) => void
+  counts?: RosterCounts
+  onCountsChange?: (counts: RosterCounts) => void
   api?: StudentFieldsApi
 }) {
   const [kinds, setKinds] = useState<StudentKind[]>([])
@@ -88,7 +99,7 @@ export function StudentFieldsSettings({
         <h3 className="text-sm font-semibold text-slate-900">Student fields</h3>
         <p className="text-sm text-slate-500">
           Extra things kept on each student. Ticked ones show on the student&apos;s profile, the Edit and New Student forms, and as filters on the
-          student list.
+          student list. &quot;Roster table&quot; adds a table of the school&apos;s master-list columns to the Students page.
         </p>
       </div>
       {error && (
@@ -153,6 +164,13 @@ export function StudentFieldsSettings({
           </div>
         </div>
       )}
+      <RosterFieldsSettings
+        setting={setting}
+        options={options}
+        onOptionsChange={(next) => onOptionsChange?.(next)}
+        counts={counts}
+        onCountsChange={(next) => onCountsChange?.(next)}
+      />
     </div>
   )
 }
