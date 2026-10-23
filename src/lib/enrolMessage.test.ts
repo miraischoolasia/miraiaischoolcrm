@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildEnrolMessage } from './enrolMessage'
+import { brand } from './brand'
+import { buildCampMessage, buildEnrolMessage } from './enrolMessage'
 
 describe('buildEnrolMessage', () => {
   it('says the class time, the Zoom meeting and the form, in that order', () => {
@@ -59,5 +60,28 @@ describe('buildEnrolMessage', () => {
 
   it('calls the child "孩子" when there is no name', () => {
     expect(buildEnrolMessage({ childName: ' ', classTime: 'Sat', zoom: null, formUrl: null, paid: false })).toContain('孩子 的 HOA')
+  })
+})
+
+describe('the course and school names', () => {
+  const camp = {
+    childName: 'Ethan',
+    enrolled: { className: 'Camp A', startDate: 'Mon 20 Oct', classes: 8 },
+    zoom: null,
+    formUrl: null,
+    paid: false,
+  }
+
+  it('names the school from its settings, never a fixed school', () => {
+    const text = buildCampMessage(camp)
+    expect(text).toContain(`Ethan 已经报名 ${brand.name} 的 Holiday Camp（Camp A），Mon 20 Oct 开始上课，共 8 堂。`)
+    expect(text).not.toContain('Mirai Online')
+  })
+
+  it('uses the programme name the school gave the course', () => {
+    expect(buildCampMessage({ ...camp, courseName: ' 寒假营 ' })).toContain(`已经报名 ${brand.name} 的 寒假营（Camp A）`)
+    expect(
+      buildEnrolMessage({ childName: 'Ethan', classTime: 'Sat', zoom: null, formUrl: null, paid: false, courseName: 'Trial Class' }),
+    ).toContain('Ethan 的 Trial Class 课程已经安排在 Sat')
   })
 })

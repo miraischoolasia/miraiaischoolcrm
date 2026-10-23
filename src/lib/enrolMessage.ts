@@ -1,5 +1,7 @@
 // The message to the parent once an HOA class is booked, written from what the team saved.
 // It lands in the message box for the team to read and change before pressing Send.
+// The school's name and the course's name come from the settings (every school calls its courses its own way).
+import { brand } from './brand'
 
 export type EnrolMessageInput = {
   childName: string
@@ -13,6 +15,8 @@ export type EnrolMessageInput = {
   paid: boolean
   // The student is the one writing: the message speaks to them (你), not to a parent (您).
   toStudent?: boolean
+  // What the school calls this course (the programme's name); "HOA" when it is not given.
+  courseName?: string
 }
 
 export function formatZoomTime(date: Date) {
@@ -29,6 +33,8 @@ export type CampMessageInput = {
   formUrl: string | null
   paid: boolean
   toStudent?: boolean
+  // What the school calls this course (the programme's name); "Holiday Camp" when it is not given.
+  courseName?: string
 }
 
 // How the same message reads to a parent and to a student who writes themself.
@@ -51,13 +57,14 @@ function voice(toStudent: boolean | undefined) {
 }
 
 // The message to the parent (or to the student) for a Holiday Camp sign-up.
-export function buildCampMessage({ childName, enrolled, zoom, formUrl, paid, toStudent }: CampMessageInput) {
+export function buildCampMessage({ childName, enrolled, zoom, formUrl, paid, toStudent, courseName }: CampMessageInput) {
   const say = voice(toStudent)
   const lines: string[] = []
   lines.push(paid ? `你好，已收到款项，${say.thanks}` : `你好，${say.thanks}`)
   const child = toStudent ? '你' : childName.trim() || '孩子'
   if (enrolled) {
-    lines.push(`${child} 已经报名 Mirai Online AI Holiday Camp（${enrolled.className}），${enrolled.startDate} 开始上课，共 ${enrolled.classes} 堂。`)
+    const course = courseName?.trim() || 'Holiday Camp'
+    lines.push(`${child} 已经报名 ${brand.name} 的 ${course}（${enrolled.className}），${enrolled.startDate} 开始上课，共 ${enrolled.classes} 堂。`)
   }
   if (zoom) {
     lines.push('', `${say.zoom}，时间：${formatZoomTime(zoom.startsAt)}`)
@@ -72,12 +79,13 @@ export function buildCampMessage({ childName, enrolled, zoom, formUrl, paid, toS
   return lines.join('\n')
 }
 
-export function buildEnrolMessage({ childName, classTime, zoom, formUrl, paid, toStudent }: EnrolMessageInput) {
+export function buildEnrolMessage({ childName, classTime, zoom, formUrl, paid, toStudent, courseName }: EnrolMessageInput) {
   const say = voice(toStudent)
   const lines: string[] = []
   lines.push(paid ? `你好，已收到款项，${say.thanks}` : `你好，${say.thanks}`)
   if (classTime) {
-    lines.push(toStudent ? `你的 HOA 课程已经安排在 ${classTime}。` : `${childName.trim() || '孩子'} 的 HOA 课程已经安排在 ${classTime}。`)
+    const course = courseName?.trim() || 'HOA'
+    lines.push(toStudent ? `你的 ${course} 课程已经安排在 ${classTime}。` : `${childName.trim() || '孩子'} 的 ${course} 课程已经安排在 ${classTime}。`)
   }
   if (zoom) {
     lines.push('', `${say.zoom}，时间：${formatZoomTime(zoom.startsAt)}`)

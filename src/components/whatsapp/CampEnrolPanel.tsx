@@ -21,6 +21,8 @@ type CampEnrolPanelProps = {
   onWriteMessage: (text: string) => void
   // The student is the one writing: the message speaks to them, and the form is theirs.
   forStudent?: boolean
+  // What the school calls this course (its programme's name), for the message to the parent.
+  courseName?: string
 }
 
 const FORM_CHOICE_KEY = 'whatsapp-enrol-form-camp'
@@ -41,7 +43,7 @@ function todayKey() {
 // Signing a child up for the Holiday Camp, in the order it usually happens: the parent fills in the camp
 // form, the child is put in a camp class (this makes the student, on the camp package), the payment
 // receipt is kept, and a Zoom meeting is set.
-export function CampEnrolPanel({ lead, crm, userName, onWriteMessage, forStudent = false }: CampEnrolPanelProps) {
+export function CampEnrolPanel({ lead, crm, userName, onWriteMessage, forStudent = false, courseName }: CampEnrolPanelProps) {
   const enrolment = useLeadEnrolment(lead.id, userName)
   const canEdit = crm.canEditLeads
   const campPackage = crm.packages.find((pkg) => pkg.kind === 'camp' && pkg.isActive) ?? null
@@ -170,6 +172,7 @@ export function CampEnrolPanel({ lead, crm, userName, onWriteMessage, forStudent
         formUrl: includeForm && !submitted ? formUrl : null,
         paid: enrolment.receipts.length > 0,
         toStudent: forStudent,
+        courseName,
       }),
     )
   }

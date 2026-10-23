@@ -18,6 +18,8 @@ type EnrolPanelProps = {
   onWriteMessage: (text: string) => void
   // The student is the one writing: the message speaks to them, and the form is theirs.
   forStudent?: boolean
+  // What the school calls this course (its programme's name), for the message to the parent.
+  courseName?: string
 }
 
 const FORM_CHOICE_KEY = 'whatsapp-enrol-form'
@@ -31,7 +33,7 @@ function readFormChoice() {
 
 // Enrolling a lead in an HOA class, in the order it usually happens: the parent fills in the
 // registration form, a class is booked, the payment receipt is kept, and a Zoom meeting is set.
-export function EnrolPanel({ lead, crm, userName, onWriteMessage, forStudent = false }: EnrolPanelProps) {
+export function EnrolPanel({ lead, crm, userName, onWriteMessage, forStudent = false, courseName }: EnrolPanelProps) {
   const enrolment = useLeadEnrolment(lead.id, userName)
   const canEdit = crm.canEditLeads
   const submitted = crm.leadIdsWithForms.has(lead.id)
@@ -115,6 +117,7 @@ export function EnrolPanel({ lead, crm, userName, onWriteMessage, forStudent = f
         formUrl: includeForm && !submitted ? formUrl : null,
         paid: enrolment.receipts.length > 0,
         toStudent: forStudent,
+        courseName,
       }),
     )
   }

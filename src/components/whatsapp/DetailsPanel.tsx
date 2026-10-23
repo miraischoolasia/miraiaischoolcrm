@@ -312,9 +312,9 @@ export function DetailsPanel({
             Nothing to sign up for yet. An admin picks an enrolment flow for each kind of class in Class Settings.
           </p>
         ) : offer.legacy === 'camp' ? (
-          <CampEnrolPanel key={offer.key} {...shared} />
+          <CampEnrolPanel key={offer.key} {...shared} courseName={offer.programme?.name} />
         ) : offer.legacy === 'hoa' ? (
-          <EnrolPanel key={offer.key} {...shared} />
+          <EnrolPanel key={offer.key} {...shared} courseName={offer.programme?.name} />
         ) : offer.programme ? (
           <ClassSignUp key={offer.key} only={offer.programme} {...shared} />
         ) : null}
