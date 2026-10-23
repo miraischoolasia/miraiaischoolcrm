@@ -7,7 +7,8 @@ import { parentPhoneOf } from '../../lib/studentContact'
 import { familyOf } from '../../lib/family'
 import type { Person } from '../../lib/peopleApi'
 import { FamilyCard } from './FamilyCard'
-import { describeStudent, getStudentKind, makeStudentResolver } from '../../lib/studentLink'
+import { getStudentKind, makeStudentResolver } from '../../lib/studentLink'
+import { studentLabel, useStudentLabelContext } from '../../lib/studentLabel'
 import type { SourceRule } from '../../lib/sourceRules'
 import {
   formatListTime,
@@ -335,6 +336,7 @@ export function DetailsPanel({
   // The family around this chat, from the family table.
   const family = useMemo(() => familyOf(sender.id, people), [sender.id, people])
   const familyLead = family?.leadId != null ? (crm.leads.find((entry) => entry.id === family.leadId) ?? null) : null
+  const labelContext = useStudentLabelContext(crm.classrooms, crm.packages)
   function childDetail(person: Person) {
     const enrolled = person.studentId !== null ? crm.students.find((entry) => entry.id === person.studentId) : undefined
     const wanted = (person.name ?? '').toLowerCase().replace(/[\s\p{P}]/gu, '')
@@ -343,7 +345,7 @@ export function DetailsPanel({
     )
     return {
       age: enrolled?.age ?? written?.age ?? null,
-      label: enrolled ? describeStudent(enrolled, crm.packages) : null,
+      label: enrolled ? studentLabel(enrolled, labelContext) : null,
       kind: enrolled ? getStudentKind(enrolled, crm.packages) : null,
     }
   }
@@ -371,6 +373,7 @@ export function DetailsPanel({
     <StudentLinker
       students={crm.students}
       packages={crm.packages}
+      labelOf={(student) => studentLabel(student, labelContext)}
       shownIds={students.map((student) => student.id)}
       isEmpty={students.length === 0}
       onLink={linkStudent}

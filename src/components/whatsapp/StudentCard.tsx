@@ -1,5 +1,5 @@
 import type { Student } from '../../types/domain'
-import { describeStudent } from '../../lib/studentLink'
+import { studentLabel, useStudentLabelContext } from '../../lib/studentLabel'
 import { getStudentClassIds } from '../../lib/roster'
 import type { WhatsAppCrm } from './crm'
 
@@ -18,6 +18,7 @@ export function StudentCard({ student, crm, onUnlink, forStudent = false }: Stud
   const classroom = crm.classrooms.find((entry) => entry.id === student.classroomId)
   const classes = crm.classesOfStudent(student)
   const plan = crm.packages.find((entry) => entry.id === student.packageId)
+  const labelContext = useStudentLabelContext(crm.classrooms, crm.packages)
   // Any of the student's classes (they can take several) that has weekly lessons.
   const canMakeUp =
     crm.canBookMakeup &&
@@ -29,7 +30,7 @@ export function StudentCard({ student, crm, onUnlink, forStudent = false }: Stud
         <p className="flex items-center gap-1.5 text-slate-500">
           Student
           <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-            {describeStudent(student, crm.packages)}
+            {studentLabel(student, labelContext)}
           </span>
         </p>
         <h4 className="text-sm font-semibold text-[#be185d]">{student.name}</h4>

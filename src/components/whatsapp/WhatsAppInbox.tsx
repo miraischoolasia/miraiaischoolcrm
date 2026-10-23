@@ -80,7 +80,8 @@ import { forwardToEach, SOCIAL_WINDOW_REASON, SOCIAL_WINDOW_SECONDS } from '../.
 import { fetchRecentInboundChats } from '../../lib/inboxCopyReader'
 import { useMessageEvents } from '../../hooks/useMessageEvents'
 import { useTyping } from '../../hooks/useTyping'
-import { describeStudent, getStudentKind, makeStudentResolver, type StudentKind } from '../../lib/studentLink'
+import { makeStudentResolver } from '../../lib/studentLink'
+import { studentGroupOptions, studentGroups, studentLabels, useStudentLabelContext } from '../../lib/studentLabel'
 import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
 import { AutomationQueueDialog } from './AutomationQueueDialog'
@@ -212,7 +213,7 @@ export function WhatsAppInbox({
   const [tab, setTab] = useState<InboxTab>('chats')
   const [tagId, setTagId] = useState<number | null>(null)
   const [sourceId, setSourceId] = useState<number | null>(null)
-  const [kind, setKind] = useState<StudentKind | 'none' | null>(null)
+  const [kind, setKind] = useState<string | null>(null)
   const [ownerId, setOwnerId] = useState<number | 'none' | null>(null)
   const [inboxFilter, setInboxFilter] = useState<number | null>(null)
   // WhatsApp, Messenger and Instagram chats are kept apart; WhatsApp is the one that opens first.
@@ -374,16 +375,27 @@ export function WhatsAppInbox({
     },
     [chatLabelOf, codesOfChat, resolveLead, studentsOf, people],
   )
+  // The students' class categories (or identity labels), shown on each chat and used by the type filter.
+  const labelContext = useStudentLabelContext(crm.classrooms, crm.packages)
   const studentLabelsOf = useCallback(
     (conversation: ChatwootConversation) => [
-      ...new Set(studentsOf(conversation).map((student) => describeStudent(student, crm.packages))),
+      ...new Set(studentsOf(conversation).flatMap((student) => studentLabels(student, labelContext))),
     ],
-    [studentsOf, crm.packages],
+    [studentsOf, labelContext],
   )
   const studentKindsOf = useCallback(
     (conversation: ChatwootConversation) =>
-      studentsOf(conversation).map((student) => getStudentKind(student, crm.packages)),
-    [studentsOf, crm.packages],
+      studentsOf(conversation).flatMap((student) => studentGroups(student, labelContext)),
+    [studentsOf, labelContext],
+  )
+  const studentGroupChoices = useMemo(
+    () =>
+      studentGroupOptions(
+        labelContext.categories,
+        crm.students.flatMap((student) => studentGroups(student, labelContext)),
+        labelContext.identityLabels,
+      ),
+    [crm.students, labelContext],
   )
   // The lead's tags and person in charge, shown on each chat in the list.
   const optionsById = useMemo(() => new Map(crm.leadOptions.map((option) => [option.id, option])), [crm.leadOptions])
@@ -1570,6 +1582,7 @@ export function WhatsAppInbox({
         tagsOf={tagsOf}
         picOf={picOf}
         kind={kind}
+        kindChoices={studentGroupChoices}
         onKind={setKind}
         ownerId={ownerId}
         owners={ownerOptions}

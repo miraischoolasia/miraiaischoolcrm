@@ -1,4 +1,3 @@
-import type { StudentKind } from './studentLink'
 import { withoutEditHeading } from './editCopy'
 import { linkedMediaLabel } from './linkedMedia'
 
@@ -414,8 +413,9 @@ export type InboxFilters = {
   sourceId: number | null
   // Chats whose messages contain the search words (found by the server).
   matchedIds?: ReadonlySet<number>
-  // Only chats whose parent has a student of this kind, or none yet.
-  kind?: StudentKind | 'none' | null
+  // Only chats whose parent has a student in this group (a class category or an identity label, see
+  // studentLabel.ts), or 'none' for chats with no student yet.
+  kind?: string | null
   // Only chats this staff member took (their CRM user id), or 'none' for chats nobody has taken.
   ownerId?: number | 'none' | null
   // Only chats on this WhatsApp number (Chatwoot inbox id).
@@ -482,7 +482,7 @@ export function filterConversations(
   conversations: ChatwootConversation[],
   filters: InboxFilters,
   leadOf: LeadOfChat = () => null,
-  kindsOf: (conversation: ChatwootConversation) => StudentKind[] = () => [],
+  kindsOf: (conversation: ChatwootConversation) => string[] = () => [],
   // Every name the team knows this chat by: the label in the list, the parent, the children and the
   // students. Searched together with the WhatsApp name, so "poh" finds "Poh Yu Ni (child)".
   namesOf: (conversation: ChatwootConversation) => string[] = () => [],

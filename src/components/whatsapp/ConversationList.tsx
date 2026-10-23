@@ -10,7 +10,6 @@ import { Highlighted } from './Highlighted'
 import { formatReactionLine, isCheckingReaction, type ReactionPreview } from '../../lib/reactionPreview'
 import { waIdOf } from '../../lib/waActions'
 import type { LeadOption } from '../../types/domain'
-import type { StudentKind } from '../../lib/studentLink'
 import {
   desktopAlertsStatus,
   enableDesktopAlerts,
@@ -128,8 +127,10 @@ type ConversationListProps = {
   isEmptyDuplicate?: (conversation: ChatwootConversation) => boolean
   // True when the team (or the page) said the student themself is on this chat.
   isStudentSelf?: (conversation: ChatwootConversation) => boolean
-  // Show only parents with a student of this kind, or with none yet.
-  kind?: StudentKind | 'none' | null
+  // Show only parents with a student in this group (a class category or an identity label), or 'none' for none yet.
+  kind?: string | null
+  // The groups to pick from (studentGroupOptions); the CRM's four kinds when not given.
+  kindChoices?: string[]
   selectedId: number | null
   // The clock, so a chat that has waited too long is flagged without a refresh.
   nowSeconds: number
@@ -144,7 +145,7 @@ type ConversationListProps = {
   onTab: (tab: InboxTab) => void
   onTag: (tagId: number | null) => void
   onSource: (sourceId: number | null) => void
-  onKind?: (kind: StudentKind | 'none' | null) => void
+  onKind?: (kind: string | null) => void
   // Staff filter: the chats a staff member took. Shown when there is at least one staff to pick.
   ownerId?: number | 'none' | null
   owners?: { id: number; label: string }[]
@@ -237,6 +238,7 @@ export function ConversationList({
   isEmptyDuplicate,
   isStudentSelf,
   kind = null,
+  kindChoices,
   ownerId = null,
   owners = [],
   onOwner,
@@ -560,17 +562,18 @@ export function ConversationList({
               <span className="sr-only">Filter by student type</span>
               <select
                 value={kind ?? ''}
-                onChange={(event) => onKind((event.target.value || null) as StudentKind | 'none' | null)}
+                onChange={(event) => onKind(event.target.value || null)}
                 className={cn(
                   'w-full appearance-none rounded-lg border bg-white py-1.5 pl-2.5 pr-7 text-xs outline-none focus:border-[#fc0c97]',
                   kind ? 'border-[#fc0c97] text-slate-900' : 'border-slate-200 text-slate-700',
                 )}
               >
                 <option value="">All types</option>
-                <option value="regular">Regular</option>
-                <option value="hoa">HOA</option>
-                <option value="trial">Trial</option>
-                <option value="camp">Camp</option>
+                {(kindChoices ?? ['Regular', 'HOA', 'Trial', 'Camp']).map((choice) => (
+                  <option key={choice} value={choice}>
+                    {choice}
+                  </option>
+                ))}
                 <option value="none">Not a student</option>
               </select>
               <CaretDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" />

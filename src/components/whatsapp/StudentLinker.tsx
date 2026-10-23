@@ -5,6 +5,8 @@ import type { Package, Student } from '../../types/domain'
 type StudentLinkerProps = {
   students: Student[]
   packages: Package[]
+  // The label beside each student found (their class categories, see studentLabel.ts); the CRM's kind when not given.
+  labelOf?: (student: Student) => string
   // Students already shown for this chat.
   shownIds: number[]
   // No student was found for this chat yet, so the search is open from the start.
@@ -17,7 +19,7 @@ type StudentLinkerProps = {
 
 // For a parent whose number matches no student (the student has no number written, or WhatsApp
 // hides the parent's): find the child by name and tie them to this chat.
-export function StudentLinker({ students, packages, shownIds, isEmpty, onLink, forStudent = false }: StudentLinkerProps) {
+export function StudentLinker({ students, packages, labelOf, shownIds, isEmpty, onLink, forStudent = false }: StudentLinkerProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [busyId, setBusyId] = useState<number | null>(null)
@@ -95,7 +97,7 @@ export function StudentLinker({ students, packages, shownIds, isEmpty, onLink, f
               >
                 <span className="block truncate text-sm text-slate-900">{student.name}</span>
                 <span className="block truncate text-slate-500">
-                  {describeStudent(student, packages)}
+                  {labelOf ? labelOf(student) : describeStudent(student, packages)}
                   {student.isActive ? '' : ' · Not active now'}
                   {student.phone ? '' : ' · No phone number yet'}
                 </span>
