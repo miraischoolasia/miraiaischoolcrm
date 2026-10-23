@@ -26,11 +26,13 @@ import { PathwaySection } from './PathwaySection'
 import { PointsCard } from './PointsCard'
 import { AiReportCard } from './AiReportCard'
 import { AppLoginsCard } from './AppLoginsCard'
+import { StudentProgressCard } from './quality/StudentProgressCard'
 import { ExtraClassesField } from './ExtraClassesField'
 import { MonthPlansCard } from './MonthPlansCard'
 import { StudentVideosTab } from './StudentVideosTab'
 import type { RewardLevel } from '../lib/rewards'
 import { PerformanceRadarChart } from './PerformanceRadarChart'
+import { StudentLessonHistory } from './StudentLessonHistory'
 import { WhatsAppLink } from './WhatsAppLink'
 import type {
   AttendanceStatus,
@@ -47,7 +49,7 @@ import type {
   Teacher,
 } from '../types/domain'
 
-type TabKey = 'overview' | 'progress' | 'lessons' | 'videos' | 'billing'
+type TabKey = 'overview' | 'progress' | 'lessons' | 'classes' | 'videos' | 'billing'
 
 type StudentDetailModalProps = {
   // 'overlay' when opened from another window (a class's attendance), so the
@@ -70,6 +72,8 @@ type StudentDetailModalProps = {
   showAiReport?: boolean
   // Shows the student app logins on the Overview tab (managed with Students edit).
   showAppLogins?: boolean
+  // Shows the month's progress card (and the text for the family) at the top of the Progress tab (the Progress Cards tick).
+  showProgressCard?: boolean
   onClose: () => void
   schedules: Schedule[]
   teacherMap: Map<number, Teacher>
@@ -148,6 +152,7 @@ export function StudentDetailModal({
   canManagePoints = false,
   showAiReport = false,
   showAppLogins = false,
+  showProgressCard = false,
   onClose,
   schedules,
   teacherMap,
@@ -280,6 +285,8 @@ export function StudentDetailModal({
         { key: 'overview', label: 'Overview' },
         { key: 'progress', label: 'Progress' },
         { key: 'lessons', label: 'Lessons' },
+        // Each class with its attendance, time in Zoom and answers (the lesson reports' records).
+        { key: 'classes', label: 'Class history' },
         ...(showVideos ? [{ key: 'videos' as const, label: 'Videos' }] : []),
         ...(isBilled ? [{ key: 'billing' as const, label: 'Billing' }] : []),
       ]
@@ -600,6 +607,11 @@ export function StudentDetailModal({
 
         {tab === 'progress' && !isPreview && (
           <>
+            {showProgressCard && (
+              <Card title="This month's progress card" note="For the family">
+                <StudentProgressCard studentId={student.id} />
+              </Card>
+            )}
             {rewardLevels && <PointsCard studentId={student.id} levels={rewardLevels} canManage={canManagePoints} />}
             <Card title="Skills profile" note={`Average of ${reviewed.length} reviewed ${reviewed.length === 1 ? 'lesson' : 'lessons'}`}>
               {reviewed.length === 0 ? (
@@ -734,6 +746,8 @@ export function StudentDetailModal({
             )}
           </>
         )}
+
+        {tab === 'classes' && !isPreview && <StudentLessonHistory studentId={student.id} />}
 
         {tab === 'videos' && showVideos && (
           <StudentVideosTab

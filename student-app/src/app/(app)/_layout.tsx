@@ -5,11 +5,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { AppChatContext, fetchChatOn, unreadTotal, useChatContacts } from '@/lib/appChat'
 import { HasVideosContext } from '@/lib/hasVideos'
+import { fetchUnseenReports } from '@/lib/lessonReport'
 import { LiveProvider } from '@/lib/live'
 import { useSession } from '@/lib/session'
 import { useLobbyTheme } from '@/lib/useLobby'
 import { fetchClassVideos } from '@/lib/videos'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { colors, Loading, Screen } from '@/ui/kit'
 import { LiveQuestionBanner } from '@/ui/LiveQuestionCard'
 import { usePointsBursts } from '@/lib/pointsFeed'
@@ -37,6 +38,17 @@ export default function AppLayout() {
   const chatAllowed = chatOn === true && home?.viewer === 'student'
   const chatContacts = useChatContacts(studentId, chatAllowed)
   const chatUnread = unreadTotal(chatContacts.contacts)
+  // A lesson the teacher ended whose report this child has not seen (they left
+  // early, or closed the app): open it first thing, once per app start.
+  const reportsChecked = useRef<number | null>(null)
+  const termsDone = onboarding !== null && !onboarding.needs_terms
+  useEffect(() => {
+    if (studentId === null || !termsDone || reportsChecked.current === studentId) return
+    reportsChecked.current = studentId
+    void fetchUnseenReports(studentId).then((unseen) => {
+      if (unseen[0]) router.push(`/report/${unseen[0].session_id}`)
+    })
+  }, [router, studentId, termsDone])
   useEffect(() => {
     let alive = true
     fetchChatOn().then((on) => {
@@ -90,11 +102,10 @@ export default function AppLayout() {
         <TabTrigger name="home" href="/" asChild>
           <TabButton label="Home" icon="🏠" />
         </TabTrigger>
-        {hasVideos && (
-          <TabTrigger name="videos" href="/videos" asChild>
-            <TabButton label="Videos" icon="🎬" />
-          </TabTrigger>
-        )}
+        {/* Always there (hidden without videos): the lesson report opens a class's questions here. */}
+        <TabTrigger name="videos" href="/videos" asChild>
+          <TabButton label="Videos" icon="🎬" hidden={!hasVideos} />
+        </TabTrigger>
         {/* Always there (hidden while chat is off), so a reload on /chat stays on it while the switch loads. */}
         <TabTrigger name="chat" href="/chat" asChild>
           <TabButton label="Chat" icon="💬" badge={chatUnread} hidden={!chatAllowed} />

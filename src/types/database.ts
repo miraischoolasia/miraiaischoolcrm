@@ -992,7 +992,7 @@ export type Database = {
         Row: {
           id: number
           name: string
-          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'trial_attended' | 'trial_absent' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword' | 'class_absent' | 'lessons_left' | 'birthday' | 'student_created' | 'app_account' | 'lead_stage' | 'lead_tag' | 'first_message_keyword'
+          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'trial_attended' | 'trial_absent' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword' | 'class_absent' | 'lessons_left' | 'birthday' | 'student_created' | 'app_account' | 'lead_stage' | 'lead_tag' | 'first_message_keyword' | 'class_alert' | 'student_care' | 'good_news'
           enabled: boolean
           graph: Json
           last_run_at: string | null
@@ -1003,13 +1003,13 @@ export type Database = {
         }
         Insert: {
           name: string
-          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'trial_attended' | 'trial_absent' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword' | 'class_absent' | 'lessons_left' | 'birthday' | 'student_created' | 'app_account' | 'lead_stage' | 'lead_tag' | 'first_message_keyword'
+          trigger_type: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'trial_attended' | 'trial_absent' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword' | 'class_absent' | 'lessons_left' | 'birthday' | 'student_created' | 'app_account' | 'lead_stage' | 'lead_tag' | 'first_message_keyword' | 'class_alert' | 'student_care' | 'good_news'
           enabled?: boolean
           graph?: Json
         }
         Update: {
           name?: string
-          trigger_type?: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'trial_attended' | 'trial_absent' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword' | 'class_absent' | 'lessons_left' | 'birthday' | 'student_created' | 'app_account' | 'lead_stage' | 'lead_tag' | 'first_message_keyword'
+          trigger_type?: 'class_start' | 'replacement_start' | 'trial_start' | 'zoom_start' | 'lesson_expiry' | 'account_fee_expiry' | 'club_fee_expiry' | 'lead_created' | 'form_submitted' | 'parent_no_reply' | 'parent_waiting' | 'trial_booked' | 'trial_attended' | 'trial_absent' | 'package_start' | 'lead_idle' | 'task_due' | 'message_keyword' | 'class_absent' | 'lessons_left' | 'birthday' | 'student_created' | 'app_account' | 'lead_stage' | 'lead_tag' | 'first_message_keyword' | 'class_alert' | 'student_care' | 'good_news'
           enabled?: boolean
           graph?: Json
         }
@@ -2927,6 +2927,18 @@ export type Database = {
         }
         Relationships: []
       }
+      progress_card_sends: {
+        Row: {
+          id: number
+          student_id: number
+          month: string
+          sent_by: number | null
+          sent_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       staff_shifts: {
         Row: {
           id: number
@@ -3372,6 +3384,66 @@ export type Database = {
           p_ids?: number[] | null
         }
         Returns: number
+      }
+      class_quality_settings: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      set_class_quality: {
+        Args: { p_value: Json }
+        Returns: Json
+      }
+      quality_lessons: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          session_id: number
+          lesson_date: string
+          status: string | null
+          starts_at: string
+          ends_at: string
+          classroom_id: number | null
+          classroom_name: string | null
+          teacher_id: number
+          substitute: boolean
+          has_zoom: boolean
+          marked: number
+          attended: number
+          participation_sum: number
+          participation_count: number
+          correct: number
+          wrong: number
+          questions: number
+          teacher_joined_at: string | null
+          started_on_time: boolean | null
+          recording_at: string | null
+          recording_on_time: boolean | null
+          attendance_sent_at: string | null
+          attendance_on_time: boolean | null
+          present_logged: number
+          commented: number
+        }[]
+      }
+      quality_periods: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          period_id: number
+          student_id: number
+          student_name: string
+          student_code: string | null
+          classroom_id: number
+          classroom_name: string
+          teacher_id: number | null
+          start_date: string | null
+          end_date: string | null
+        }[]
+      }
+      progress_card: {
+        Args: { p_student: number; p_month: string }
+        Returns: Json
+      }
+      mark_progress_card_sent: {
+        Args: { p_student: number; p_month: string }
+        Returns: string
       }
       mark_ai_draft_accepted: {
         Args: {

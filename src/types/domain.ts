@@ -21,6 +21,7 @@ export type AppSection =
   | 'forms'
   | 'activity'
   | 'team-replies'
+  | 'teacher-quality'
 // A tab on the Students page: a kind of student, or (for a school with programmes of its own) one programme,
 // 'programme:<id>', or the students in none, 'programme:none'. A school whose tabs follow its class categories
 // (My Classroom) has 'category:<name>', and 'category-none' for the students in no class.
@@ -226,6 +227,8 @@ export type PermissionModule =
   | 'app_logins'
   | 'packages'
   | 'student_inbox'
+  | 'quality'
+  | 'progress_cards'
   | 'class_settings'
   | 'staff_hours'
 

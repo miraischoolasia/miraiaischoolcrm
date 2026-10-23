@@ -132,7 +132,8 @@ export function LiveProvider({ children, sessionId = null }: PropsWithChildren<{
     }
     soon()
     const channel = supabase
-      .channel(`live-${studentId}-${sessionId ?? 'all'}`)
+      // A fresh name each time: the old channel may still be closing when the screen comes back.
+      .channel(`live-${studentId}-${sessionId ?? 'all'}-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         'postgres_changes',
         sessionId

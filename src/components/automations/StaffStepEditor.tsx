@@ -14,7 +14,7 @@ type StaffStepEditorProps = {
 export function StaffStepEditor({ action, value, staff, readOnly, fieldClass, onChange }: StaffStepEditorProps) {
   const step = parseStaffStep(value)
   const set = (change: Partial<typeof step>) => onChange(staffStepValue(action, { ...step, ...change }))
-  const known = step.to === 'pic' || step.to === 'teachers' || staff.some((person) => person.id === step.to)
+  const known = step.to === 'pic' || step.to === 'teachers' || step.to === 'managers' || staff.some((person) => person.id === step.to)
   return (
     <div className="mt-3 space-y-3 text-sm text-slate-700">
       <label className="flex flex-wrap items-center gap-2">
@@ -26,8 +26,9 @@ export function StaffStepEditor({ action, value, staff, readOnly, fieldClass, on
           onChange={(event) => set({ to: event.target.value as StaffTarget })}
           className={cn(fieldClass, 'min-w-0 flex-1')}
         >
-          <option value="pic">The PIC of the lead (or the student’s consultant)</option>
+          <option value="pic">The student’s Learning Consultant (else the PIC of the lead)</option>
           <option value="teachers">The class teachers</option>
+          <option value="managers">The managers (everyone with the Teacher quality tick)</option>
           {staff.map((person) => (
             <option key={person.id} value={person.id}>
               {person.label}
@@ -49,7 +50,9 @@ export function StaffStepEditor({ action, value, staff, readOnly, fieldClass, on
             className={cn(fieldClass, 'mt-1 w-full')}
           />
           <span className="mt-1 block text-xs text-slate-500">
-            The first line is the title. {'{child}'} and {'{parent}'} are filled in. It shows under the bell at the top of the CRM, only for that person.
+            The first line is the title. {'{child}'} and {'{parent}'} are filled in; in a class quality flow also{' '}
+            {'{class}'}, {'{reason}'}, {'{news}'} and {'{draft}'} (the suggested message for the parent). It shows under the bell
+            at the top of the CRM, only for that person.
           </span>
         </label>
       ) : (

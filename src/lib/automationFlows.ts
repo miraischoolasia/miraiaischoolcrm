@@ -28,6 +28,9 @@ export type FlowTrigger =
   | 'task_due'
   | 'message_keyword'
   | 'first_message_keyword'
+  | 'class_alert'
+  | 'student_care'
+  | 'good_news'
   | 'class_absent'
   | 'lessons_left'
   | 'birthday'
@@ -211,6 +214,29 @@ const ALL_TRIGGERS: TriggerInfo[] = [
     classroomCategory: null,
     afterOnly: true,
   },
+  // Found every 10 minutes from the lessons (thresholds on Teacher quality > Alert settings). A team step's text can
+  // use {class}, {reason}, {news} and {draft} (the suggested message for the parent).
+  {
+    key: 'class_alert',
+    label: 'A class needs attention',
+    phrase: 'a class needs attention (answers right low, attendance falling, the teacher started late)',
+    classroomCategory: null,
+    afterOnly: true,
+  },
+  {
+    key: 'student_care',
+    label: 'A student needs care',
+    phrase: 'a student needs care (missed classes, little time in class, leaving early)',
+    classroomCategory: null,
+    afterOnly: true,
+  },
+  {
+    key: 'good_news',
+    label: 'Good news about a student',
+    phrase: 'a student has good news (came first, every answer right, a top rating)',
+    classroomCategory: null,
+    afterOnly: true,
+  },
 ]
 
 export const TRIGGERS: TriggerInfo[] = ALL_TRIGGERS.filter((entry) => brand.usesFees || !FEE_TRIGGERS.includes(entry.key))
@@ -315,13 +341,13 @@ export const ACTION_KINDS: ActionKind[] = [
 ]
 
 // Who a team step is for.
-export type StaffTarget = 'pic' | 'teachers' | `${number}`
+export type StaffTarget = 'pic' | 'teachers' | 'managers' | `${number}`
 export type StaffStep = { to: StaffTarget; text: string; title: string; days: number }
 
 export function parseStaffStep(value: string): StaffStep {
   try {
     const raw = JSON.parse(value) as Record<string, unknown>
-    const to = typeof raw.to === 'string' && /^(pic|teachers|[0-9]{1,12})$/.test(raw.to) ? (raw.to as StaffTarget) : 'pic'
+    const to = typeof raw.to === 'string' && /^(pic|teachers|managers|[0-9]{1,12})$/.test(raw.to) ? (raw.to as StaffTarget) : 'pic'
     const days = typeof raw.days === 'number' && Number.isInteger(raw.days) ? Math.min(60, Math.max(0, raw.days)) : 1
     return { to, text: typeof raw.text === 'string' ? raw.text : '', title: typeof raw.title === 'string' ? raw.title : '', days }
   } catch {
@@ -336,7 +362,13 @@ export function staffStepValue(action: 'notify_staff' | 'create_task', step: Sta
 }
 
 export function describeStaffTarget(to: StaffTarget, staffName: (id: string) => string = (id) => `#${id}`) {
-  return to === 'pic' ? 'the PIC / consultant' : to === 'teachers' ? 'the class teachers' : staffName(to)
+  return to === 'pic'
+    ? 'the Learning Consultant / PIC'
+    : to === 'teachers'
+      ? 'the class teachers'
+      : to === 'managers'
+        ? 'the managers'
+        : staffName(to)
 }
 export type ActionNode = Placed & {
   type: 'action'

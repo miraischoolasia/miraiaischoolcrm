@@ -1,3 +1,4 @@
+import { useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 
@@ -5,15 +6,21 @@ import { formatDay } from '@/lib/format'
 import { useSession } from '@/lib/session'
 import { fetchClassVideos, monthLabel, videosByMonth, type ClassVideo, type ClassVideos } from '@/lib/videos'
 import { Body, Button, Card, colors, Empty, Heading, Loading, Muted, Pill, Screen, Title } from '@/ui/kit'
+import { QuestionHistory } from '@/ui/QuestionHistory'
 import { VideoPlayer } from '@/ui/VideoPlayer'
 
 // Videos: each class the child is in (a child can take several subjects), its
 // videos by month, newest first, and the months the school has not opened yet.
+// Each class (its Room) also has its questions, lesson by lesson, with the
+// child's own answers. ?class=<id>&tab=questions opens one straight away (from
+// the lesson report).
 export default function Videos() {
+  const params = useLocalSearchParams<{ class?: string; tab?: string }>()
   const { child, branding } = useSession()
+  const [part, setPart] = useState<'videos' | 'questions'>(params.tab === 'questions' ? 'questions' : 'videos')
   const [classes, setClasses] = useState<ClassVideos[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [classId, setClassId] = useState<number | null>(null)
+  const [classId, setClassId] = useState<number | null>(params.class ? Number(params.class) : null)
   const [playing, setPlaying] = useState<ClassVideo | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const studentId = child?.studentId ?? null
@@ -89,7 +96,25 @@ export default function Videos() {
 
       {current && classes.length === 1 && <Muted>{current.class}</Muted>}
 
-      {playing && (
+      {current && (
+        <View style={styles.parts} accessibilityRole="tablist">
+          {(['videos', 'questions'] as const).map((key) => (
+            <Pressable
+              key={key}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: part === key }}
+              onPress={() => setPart(key)}
+              style={[styles.part, part === key && { backgroundColor: colors.text }]}
+            >
+              <Text style={[styles.partText, part === key && { color: '#fff' }]}>{key === 'videos' ? 'Videos' : 'Questions'}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+
+      {current && part === 'questions' && <QuestionHistory studentId={studentId} classroomId={current.classroom_id} />}
+
+      {part === 'videos' && playing && (
         <Card>
           <Heading>{playing.title}</Heading>
           <VideoPlayer studentId={studentId} video={playing} onProgress={load} />
@@ -98,9 +123,9 @@ export default function Videos() {
         </Card>
       )}
 
-      {current && current.videos.length === 0 && current.closed_months.length === 0 && <Empty>No videos in this class yet.</Empty>}
+      {part === 'videos' && current && current.videos.length === 0 && current.closed_months.length === 0 && <Empty>No videos in this class yet.</Empty>}
 
-      {months.map((group) => (
+      {part === 'videos' && months.map((group) => (
         <View key={`${group.year}-${group.month}`} style={styles.month}>
           <Heading>{monthLabel(group.year, group.month)}</Heading>
           {group.videos.map((video) => (
@@ -122,7 +147,7 @@ export default function Videos() {
         </View>
       ))}
 
-      {current && current.closed_months.length > 0 && (
+      {part === 'videos' && current && current.closed_months.length > 0 && (
         <Card>
           <Heading>Not open yet</Heading>
           <Muted>Ask the school to open these months for you.</Muted>
@@ -144,6 +169,9 @@ function Progress({ video }: { video: ClassVideo }) {
 }
 
 const styles = StyleSheet.create({
+  parts: { flexDirection: 'row', gap: 4, padding: 4, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  part: { flex: 1, minHeight: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  partText: { fontSize: 15, fontWeight: '800', color: colors.text },
   chips: { gap: 8, paddingVertical: 4 },
   chip: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
   chipText: { fontSize: 14, fontWeight: '700' },

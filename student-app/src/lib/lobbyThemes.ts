@@ -4,6 +4,7 @@
 // adds its folder and an entry here; the layout is the same for every school.
 
 import type { LobbyScene } from './lobbyLayout'
+import type { ReportWords } from './lessonReportRules'
 
 export type LobbyTheme = {
   key: string
@@ -14,6 +15,8 @@ export type LobbyTheme = {
   scene: LobbyScene
   // The word under the school's shield, top left (until the school sends its emblem).
   emblemWord: string
+  // The lesson report's words (a set without them uses English).
+  report?: ReportWords
   // The words on the screen (the set's pictures already carry their own words).
   words: {
     enterClass: string
@@ -86,6 +89,31 @@ export const lobbyThemes: Record<string, LobbyTheme> = {
       heroVideo: { webm: 'hero-loop.webm', poster: 'hero-loop-poster.webp', width: 444, height: 708, feetX: 222, feetY: 679.5, heroPixels: 679 },
     },
     emblemWord: 'EDUHERO',
+    report: {
+      back: '大厅',
+      missedTitle: '今天的课你没来',
+      missedText: '没关系！课堂录影会放在「影院」，有空看一看，下次一起上课。',
+      watchVideo: '看课堂录影',
+      title: '下课啦！做得好',
+      pointsToday: '今天得到的分数',
+      place: (place) => `全班第 ${place} 名！`,
+      right: '答对',
+      onTime: '准时',
+      arrival: '到课',
+      late: (minutes) => `迟到 ${minutes} 分`,
+      minutesIn: '分钟上课',
+      whereFrom: '分数怎么来的',
+      rightAnswers: '答对题目',
+      writing: '老师正在写今天的评语，等一下再来看',
+      nextLesson: (day, time) => `下一堂课：${day} ${time}`,
+      inDays: (days) => `还有 ${days} 天`,
+      today: '就是今天',
+      tomorrow: '明天',
+      home: '回到大厅',
+      seeQuestions: '看今天的题目和答案',
+      weekdays: ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'],
+      months: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+    },
     words: {
       enterClass: '进入课堂',
       startLearning: '开始学习',

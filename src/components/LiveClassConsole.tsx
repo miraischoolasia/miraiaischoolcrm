@@ -3,6 +3,7 @@ import { ArrowSquareOut, ChartBar, ChatCircleText, CircleDashed, ClockCountdown,
 import { cn } from '../lib/cn'
 import { LessonZoomCard } from './LessonZoomCard'
 import { LessonReportModal } from './LessonReportModal'
+import { recordClassPick } from '../lib/classEndReport'
 import { LiveQuestionsPanel, type NextUp } from './LiveQuestionsPanel'
 import { GivePointsBar } from './GivePointsBar'
 import { StudentGrid, gridChildren } from './console/StudentGrid'
@@ -775,7 +776,10 @@ export function LiveClassConsole({
         <RandomPickTool
           candidates={inZoom.length > 0 ? inZoom : everyone}
           names={names}
-          onPicked={(studentId) => picked(studentId, inZoom.length > 0 ? inZoom : everyone)}
+          onPicked={(studentId) => {
+            picked(studentId, inZoom.length > 0 ? inZoom : everyone)
+            if (sessionId) void recordClassPick(sessionId, studentId)
+          }}
           command={pickCommand}
         />
       )}

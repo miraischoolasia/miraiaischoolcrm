@@ -51,6 +51,10 @@ export const permissionModules: {
   { key: 'packages', label: 'Packages', canEdit: true, scopes: [], group: 'Students' },
   // The Student Inbox: the WhatsApp numbers set to the students zone (apart from the Marketing Inbox).
   { key: 'student_inbox', label: 'Student Inbox', canEdit: true, deleteHint: 'Delete messages', scopes: [], group: 'Students' },
+  // Send a student's monthly progress card to the family: only their own students (Learning Consultant) or everyone's.
+  { key: 'progress_cards', label: 'Progress Cards', canEdit: false, scopes: ['all', 'own'], group: 'Students' },
+  // The teacher scorecard and retention (view), the alert settings (edit); a view tick also gets the class alerts.
+  { key: 'quality', label: 'Teacher Quality', canEdit: true, scopes: [], group: 'Admin' },
   { key: 'class_settings', label: 'Class Settings', canEdit: true, scopes: [], group: 'Admin' },
   { key: 'team_replies', label: 'Team Replies', canEdit: false, scopes: ['all', 'own'], group: 'Admin' },
   { key: 'staff_hours', label: 'Working Hours', canEdit: false, scopes: [], group: 'Admin' },

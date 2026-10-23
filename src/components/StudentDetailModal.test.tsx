@@ -54,12 +54,12 @@ const sixMonths: Package = {
 }
 
 describe('StudentDetailModal', () => {
-  it('is a drawer with Overview, Progress, Lessons and Billing', () => {
+  it('is a drawer with Overview, Progress, Lessons, Class history and Billing', () => {
     renderModal()
 
     expect(screen.getByRole('dialog')).toHaveAttribute('data-drawer-shell')
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'Overview', 'Progress', 'Lessons', 'Billing',
+      'Overview', 'Progress', 'Lessons', 'Class history', 'Billing',
     ])
     expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true')
   })

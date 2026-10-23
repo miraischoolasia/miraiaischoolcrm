@@ -34,6 +34,7 @@ function RootNavigator() {
       <Stack.Protected guard={Boolean(session)}>
         <Stack.Screen name="(app)" />
         <Stack.Screen name="class/[sessionId]" />
+        <Stack.Screen name="report/[sessionId]" />
       </Stack.Protected>
       <Stack.Protected guard={!session}>
         <Stack.Screen name="sign-in" />

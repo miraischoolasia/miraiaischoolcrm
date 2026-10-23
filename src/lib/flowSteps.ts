@@ -516,6 +516,7 @@ export const TRIGGER_GROUPS: { label: string; keys: FlowTrigger[] }[] = [
   { label: 'Chats', keys: ['first_message_keyword', 'message_keyword', 'parent_no_reply', 'parent_waiting'] },
   { label: 'Classes', keys: ['class_start', 'replacement_start', 'trial_booked', 'trial_start', 'trial_attended', 'trial_absent', 'zoom_start'] },
   { label: 'Attendance', keys: ['class_absent'] },
+  { label: 'Class quality', keys: ['class_alert', 'student_care', 'good_news'] },
   {
     label: 'Students and fees',
     keys: ['student_created', 'app_account', 'birthday', 'lessons_left', 'lesson_expiry', 'account_fee_expiry', 'club_fee_expiry', 'package_start'],

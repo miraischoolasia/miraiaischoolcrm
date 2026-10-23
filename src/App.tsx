@@ -33,6 +33,7 @@ import {
   ChatsCircle,
   ChatCircleDots,
   DeviceMobile,
+  ChartLineUp,
   FilmStrip,
   Brain,
   Megaphone,
@@ -244,6 +245,7 @@ import type { LeadFormValues, WhatsAppCrm } from './components/whatsapp/crm'
 import { todaysFollowUps } from './lib/followUps'
 import { FollowUpReminders } from './components/whatsapp/FollowUpReminders'
 import { StaffNotificationBell } from './components/StaffNotificationBell'
+import { TeacherQualitySection } from './components/sections/TeacherQualitySection'
 import { describeHoaSlot, upcomingHoaSlots, type HoaSlot } from './lib/hoaSlots'
 import { classesOfStudent } from './lib/studentClasses'
 import { findLeadsByPhone, sameNumberMessage } from './lib/chatLink'
@@ -361,7 +363,7 @@ import {
 } from './lib/makeup'
 
 // The menu's order (AppNav groups them).
-const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'ai-knowledge', 'content-studio', 'content-library', 'calendar', 'classrooms', 'videos', 'questions', 'students', 'student-inbox', 'student-chat', 'app-logins', 'programmes', 'packages', 'teachers', 'team-replies', 'class-settings', 'activity']
+const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'ai-knowledge', 'content-studio', 'content-library', 'calendar', 'classrooms', 'videos', 'questions', 'students', 'student-inbox', 'student-chat', 'app-logins', 'programmes', 'packages', 'teachers', 'teacher-quality', 'team-replies', 'class-settings', 'activity']
 
 // The shared WhatsApp inbox only shows up once its address is set.
 const chatwootUrl = getChatwootUrl(import.meta.env.VITE_CHATWOOT_URL)
@@ -937,6 +939,8 @@ function App() {
     if (isAdmin || can('staff_hours')) sections.push('teachers')
     // How each person answers the chats: its own tick, since it is about the team's work.
     if (can('team_replies')) sections.push('team-replies')
+    // The teacher scorecard, retention and the class alert settings: their own tick.
+    if (can('quality')) sections.push('teacher-quality')
     if (can('activity')) sections.push('activity')
     return sections
   }, [can, isAdmin, isTeacherAccount, appChat.on, hasStudentInbox])
@@ -2454,6 +2458,7 @@ function App() {
         { key: 'student-chat', label: 'Student Chat', icon: ChatsCircle, group: 'students' },
         { key: 'teachers', label: 'My Team', icon: IdentificationBadge, group: 'admin' },
         { key: 'team-replies', label: 'Team Replies', icon: ChatCenteredText, group: 'admin' },
+        { key: 'teacher-quality', label: 'Teacher Quality', icon: ChartLineUp, group: 'admin' },
         { key: 'activity', label: 'Activity Log', icon: ClockCounterClockwise, group: 'admin' },
       ] satisfies { key: AppSection; label: string; icon: Icon; group?: NavGroupKey }[]
     )
@@ -7050,6 +7055,8 @@ function App() {
                       ? 'Classroom Board'
                       : activeSection === 'programmes'
                         ? 'Settings'
+                      : activeSection === 'teacher-quality'
+                        ? 'Team Board'
                       : activeSection === 'teachers' || activeSection === 'team-replies'
                         ? 'Team Board'
                         : activeSection === 'leads'
@@ -7081,6 +7088,8 @@ function App() {
                         ? 'Programmes'
                       : activeSection === 'app-logins'
                         ? 'App Logins'
+                      : activeSection === 'teacher-quality'
+                        ? 'Teacher Quality'
                       : activeSection === 'student-chat'
                         ? 'Student Chat'
                       : activeSection === 'student-inbox'
@@ -7883,6 +7892,10 @@ function App() {
               <TeamRepliesSection staff={teamReplyStaff} client={whatsAppClient} canCopy={isAdmin} hoursInUse={teamHoursInUse} />
             )}
 
+            {visibleSection === 'teacher-quality' && (
+              <TeacherQualitySection teachers={teamReplyStaff.map((person) => ({ id: person.id, fullName: person.name }))} canEdit={can('quality', 'edit')} />
+            )}
+
             {visibleSection === 'activity' && (
               <AdminActivitySection
                 activities={adminActivities}
@@ -8243,6 +8256,7 @@ function App() {
           canManagePoints={can('students', 'edit')}
           showAiReport={Boolean(supabase)}
           showAppLogins={Boolean(supabase)}
+          showProgressCard={Boolean(supabase) && can('progress_cards')}
           onClose={closeStudentDetail}
           schedules={schedules}
           teacherMap={teacherMap}
