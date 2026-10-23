@@ -109,6 +109,8 @@ type ConversationListProps = {
   leadNameOf?: (conversation: ChatwootConversation) => string | null
   // What the parent's students are to the school ("Regular · 3 Months", "HOA"), per chat.
   studentLabelsOf?: (conversation: ChatwootConversation) => string[]
+  // The lead stage of a chat's lead (the school's own name and colour); null for students and chats with no lead.
+  stageOf?: (conversation: ChatwootConversation) => { label: string; badge: string } | null
   // The lead's tags, shown as chips under the chat.
   tagsOf?: (conversation: ChatwootConversation) => Pick<LeadOption, 'id' | 'label' | 'color' | 'isActive'>[]
   // Who is in charge of the parent: the lead's person in charge, else whoever handles the chat.
@@ -146,6 +148,10 @@ type ConversationListProps = {
   onTag: (tagId: number | null) => void
   onSource: (sourceId: number | null) => void
   onKind?: (kind: string | null) => void
+  // Stage filter: the stage key picked, the school's stages to pick from.
+  stage?: string | null
+  stages?: { key: string; label: string }[]
+  onStage?: (stage: string | null) => void
   // Staff filter: the chats a staff member took. Shown when there is at least one staff to pick.
   ownerId?: number | 'none' | null
   owners?: { id: number; label: string }[]
@@ -228,6 +234,7 @@ export function ConversationList({
   matchOf,
   leadNameOf,
   studentLabelsOf,
+  stageOf,
   tagsOf,
   picOf,
   pictureOf,
@@ -239,6 +246,9 @@ export function ConversationList({
   isStudentSelf,
   kind = null,
   kindChoices,
+  stage = null,
+  stages = [],
+  onStage,
   ownerId = null,
   owners = [],
   onOwner,
@@ -276,6 +286,7 @@ export function ConversationList({
     sourceId !== null,
     ownerId !== null,
     Boolean(kind),
+    Boolean(stage),
   ].filter(Boolean).length
   const [filtersOpen, setFiltersOpen] = useState(false)
   // A channel button held down on a phone shows its full name; the press that showed it does not also pick it.
@@ -474,7 +485,7 @@ export function ConversationList({
             onClick={() => setFiltersOpen((open) => !open)}
             aria-expanded={showFilters}
             aria-label="Filters"
-            title="Filter by staff, tag, source or type"
+            title="Filter by staff, tag, source, type or stage"
             className={cn(
               'relative inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg border transition',
               activeFilters > 0 || showFilters
@@ -493,7 +504,7 @@ export function ConversationList({
           </p>
         )}
         {showFilters && (
-        <div className={cn('mt-2 grid gap-2 text-sm', onKind ? 'grid-cols-3' : 'grid-cols-2')}>
+        <div className={cn('mt-2 grid gap-2 text-sm', onKind && !onStage ? 'grid-cols-3' : 'grid-cols-2')}>
           {onOwner && (
             <label className="relative col-span-full min-w-0">
               <span className="sr-only">Filter by staff</span>
@@ -579,6 +590,27 @@ export function ConversationList({
               <CaretDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" />
             </label>
           )}
+          {onStage && (
+            <label className="relative min-w-0">
+              <span className="sr-only">Filter by lead stage</span>
+              <select
+                value={stage ?? ''}
+                onChange={(event) => onStage(event.target.value || null)}
+                className={cn(
+                  'w-full appearance-none rounded-lg border bg-white py-1.5 pl-2.5 pr-7 text-xs outline-none focus:border-[#fc0c97]',
+                  stage ? 'border-[#fc0c97] text-slate-900' : 'border-slate-200 text-slate-700',
+                )}
+              >
+                <option value="">All stages</option>
+                {stages.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <CaretDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" />
+            </label>
+          )}
         </div>
         )}
         {(tagId !== null || sourceId !== null) && (
@@ -658,6 +690,15 @@ export function ConversationList({
                   <PictureOrText src={pictureOf?.(conversation)} text={identity.initials} />
                 </span>
                 {channel && <ChannelBadge info={channel} className="absolute -bottom-1 -right-1" />}
+                {/* Who handles the chat, by full name, on the picture's top-left corner (a long name ends in "…"). */}
+                {pic && (
+                  <span
+                    title={`Handled by ${pic.name}`}
+                    className="absolute -left-2 -top-2.5 z-10 max-w-[56px] truncate rounded-full border border-white bg-[#fc0c97] px-1.5 py-px text-[9px] font-semibold leading-tight text-white shadow-sm"
+                  >
+                    {pic.name}
+                  </span>
+                )}
               </span>
               <span className="min-w-0">
                 <span className="flex items-baseline justify-between gap-2">
@@ -686,14 +727,6 @@ export function ConversationList({
                     )}
                     {conversation.custom_attributes?.crm_pinned && (
                       <PushPin size={12} weight="fill" className="shrink-0 text-slate-400" aria-label="Pinned" />
-                    )}
-                    {pic && (
-                      <span
-                        title={`In charge: ${pic.name}`}
-                        className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-pink-100 px-1 text-[10px] font-bold leading-none text-[#be185d]"
-                      >
-                        {pic.initials}
-                      </span>
                     )}
                   </span>
                   <span className="shrink-0 text-xs text-slate-400">{formatListTime(conversation.last_activity_at)}</span>
@@ -758,6 +791,14 @@ export function ConversationList({
                       Empty. This parent's chat is another one
                     </span>
                   )}
+                  {(() => {
+                    const shown = stageOf?.(conversation)
+                    return shown ? (
+                      <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', shown.badge)} title="Lead stage">
+                        {shown.label}
+                      </span>
+                    ) : null
+                  })()}
                   {studentLabelsOf?.(conversation).map((label) => (
                     <span
                       key={label}

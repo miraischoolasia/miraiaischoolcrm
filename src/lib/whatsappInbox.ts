@@ -416,6 +416,8 @@ export type InboxFilters = {
   // Only chats whose parent has a student in this group (a class category or an identity label, see
   // studentLabel.ts), or 'none' for chats with no student yet.
   kind?: string | null
+  // Only chats of a lead in this lead stage (its key, see leadStages.ts).
+  stage?: string | null
   // Only chats this staff member took (their CRM user id), or 'none' for chats nobody has taken.
   ownerId?: number | 'none' | null
   // Only chats on this WhatsApp number (Chatwoot inbox id).
@@ -486,6 +488,8 @@ export function filterConversations(
   // Every name the team knows this chat by: the label in the list, the parent, the children and the
   // students. Searched together with the WhatsApp name, so "poh" finds "Poh Yu Ni (child)".
   namesOf: (conversation: ChatwootConversation) => string[] = () => [],
+  // The lead stage shown on the chat (null for a student's chat or a chat with no lead).
+  stageOf: (conversation: ChatwootConversation) => string | null = () => null,
 ) {
   const query = filters.search.trim().toLowerCase()
 
@@ -520,6 +524,7 @@ export function filterConversations(
       const kinds = kindsOf(conversation)
       return filters.kind === 'none' ? kinds.length === 0 : kinds.includes(filters.kind)
     })
+    .filter((conversation) => !filters.stage || stageOf(conversation) === filters.stage)
     .filter((conversation) => {
       if (!query) {
         return true

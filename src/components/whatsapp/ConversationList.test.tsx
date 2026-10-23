@@ -168,14 +168,21 @@ describe('ConversationList waiting display', () => {
 })
 
 describe('ConversationList chat details', () => {
-  it('shows the lead tags under the chat and the person in charge as a small circle by the name', () => {
+  it('shows the lead tags under the chat and who handles it, by full name, on the picture', () => {
     renderList([chat(1, 'Mei Ling', 60)], 0, {
       tagsOf: () => [{ id: 10, label: 'Free HOA', color: null, isActive: true }],
       picOf: () => ({ name: 'Amy Lim', initials: 'AL' }),
     })
 
     expect(screen.getByText('Free HOA')).toBeInTheDocument()
-    expect(screen.getByTitle('In charge: Amy Lim')).toHaveTextContent('AL')
+    expect(screen.getByTitle('Handled by Amy Lim')).toHaveTextContent('Amy Lim')
+    expect(screen.queryByText('AL')).not.toBeInTheDocument()
+  })
+
+  it('shows no name tag when nobody handles the chat', () => {
+    renderList([chat(1, 'Mei Ling', 60)], 0, { picOf: () => null })
+
+    expect(screen.queryByTitle(/^Handled by/)).not.toBeInTheDocument()
   })
 
   it('no longer shows a "No one yet" or "No number" chip', () => {
@@ -367,5 +374,26 @@ describe('ConversationList WhatsApp pictures (2026-10-23)', () => {
     const pictures = document.querySelectorAll('img[src="https://wa.example/rails/active_storage/aminah.jpg"]')
     expect(pictures).toHaveLength(1)
     expect(screen.getByText('MT')).toBeInTheDocument()
+  })
+})
+
+describe('ConversationList lead stage', () => {
+  it("shows the lead's stage under the name and filters by stage", async () => {
+    const onStage = vi.fn()
+    renderList([chat(1, 'Mei Ling', 60), chat(2, 'Aisha', 120)], 0, {
+      stageOf: (conversation) => (conversation.id === 1 ? { label: '已联系', badge: 'bg-sky-50 text-sky-700' } : null),
+      stages: [
+        { key: 'new', label: '新名单' },
+        { key: 'contacted', label: '已联系' },
+      ],
+      onStage,
+    })
+
+    expect(screen.getByTitle('Lead stage')).toHaveTextContent('已联系')
+    expect(screen.getAllByTitle('Lead stage')).toHaveLength(1)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Filters' }))
+    await userEvent.selectOptions(screen.getByLabelText('Filter by lead stage'), 'contacted')
+    expect(onStage).toHaveBeenCalledWith('contacted')
   })
 })

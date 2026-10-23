@@ -82,6 +82,7 @@ import { useMessageEvents } from '../../hooks/useMessageEvents'
 import { useTyping } from '../../hooks/useTyping'
 import { makeStudentResolver } from '../../lib/studentLink'
 import { studentGroupOptions, studentGroups, studentLabels, useStudentLabelContext } from '../../lib/studentLabel'
+import { getLeadStages, STAGE_COLORS, stageLabel } from '../../lib/leadStages'
 import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
 import { AutomationQueueDialog } from './AutomationQueueDialog'
@@ -214,6 +215,7 @@ export function WhatsAppInbox({
   const [tagId, setTagId] = useState<number | null>(null)
   const [sourceId, setSourceId] = useState<number | null>(null)
   const [kind, setKind] = useState<string | null>(null)
+  const [stageFilter, setStageFilter] = useState<string | null>(null)
   const [ownerId, setOwnerId] = useState<number | 'none' | null>(null)
   const [inboxFilter, setInboxFilter] = useState<number | null>(null)
   // WhatsApp, Messenger and Instagram chats are kept apart; WhatsApp is the one that opens first.
@@ -635,14 +637,47 @@ export function WhatsAppInbox({
       resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number)),
     [resolveLead],
   )
+  // The lead stage on each chat of a lead, from the leads already loaded (no extra read): the school's own stage
+  // names and colours. A family whose child has joined (a regular student) shows the student label instead; an HOA
+  // family keeps its stage beside the HOA label. A chat with no lead shows nothing.
+  const schoolStages = getLeadStages()
+  const stageKeyOfChat = useCallback(
+    (conversation: ChatwootConversation) => {
+      const lead = leadOfChat(conversation)
+      if (!lead || lead.status === 'converted' || studentsOf(conversation).some((student) => student.studentType === 'regular')) {
+        return null
+      }
+      return lead.status
+    },
+    [leadOfChat, studentsOf],
+  )
+  const stageOfChat = useCallback(
+    (conversation: ChatwootConversation) => {
+      const key = stageKeyOfChat(conversation)
+      if (!key) {
+        return null
+      }
+      const found = schoolStages.find((entry) => entry.key === key)
+      return { label: found?.label ?? stageLabel(key), badge: STAGE_COLORS[found?.color ?? 'slate'].badge }
+    },
+    [stageKeyOfChat, schoolStages],
+  )
+  // The stages to filter by: the ones on, and one that is off but some chat's lead still has; never Converted.
+  const stageChoices = useMemo(() => {
+    const used = new Set(crm.leads.map((lead) => lead.status))
+    return schoolStages
+      .filter((entry) => entry.key !== 'converted' && (entry.isActive || used.has(entry.key)))
+      .map((entry) => ({ key: entry.key, label: entry.label }))
+  }, [schoolStages, crm.leads])
   const searching = search.trim() !== ''
   const visible = useMemo(() => {
     const found = filterConversations(
       inbox.conversations,
-      { tab, search, tagId, sourceId, matchedIds, kind, ownerId, inboxId: inboxFilter, category },
+      { tab, search, tagId, sourceId, matchedIds, kind, stage: stageFilter, ownerId, inboxId: inboxFilter, category },
       leadOfChat,
       studentKindsOf,
       searchNamesOf,
+      stageKeyOfChat,
     )
     // While searching, the order is the search's own: people first, then the words said in chats.
     if (searching) {
@@ -653,7 +688,7 @@ export function WhatsAppInbox({
       draftsFirst(found, (id) => id !== inbox.selectedId && drafts.has(id)),
       (id) => pinnedIds.has(id),
     )
-  }, [inbox.conversations, inbox.selectedId, pinnedIds, drafts, tab, search, searching, tagId, sourceId, matchedIds, kind, ownerId, inboxFilter, category, leadOfChat, studentKindsOf, searchNamesOf])
+  }, [inbox.conversations, inbox.selectedId, pinnedIds, drafts, tab, search, searching, tagId, sourceId, matchedIds, kind, stageFilter, ownerId, inboxFilter, category, leadOfChat, studentKindsOf, searchNamesOf, stageKeyOfChat])
   // The chats found by name or number while searching; the others were found by the words in their messages.
   const peopleIds = useMemo(
     () =>
@@ -908,6 +943,7 @@ export function WhatsAppInbox({
       setTagId(null)
       setSourceId(null)
       setKind(null)
+      setStageFilter(null)
       setOwnerId(null)
       setDetailsOpen(false)
       setTab(getTab(chat))
@@ -923,6 +959,7 @@ export function WhatsAppInbox({
       setTagId(null)
       setSourceId(null)
       setKind(null)
+      setStageFilter(null)
       setOwnerId(null)
       setDetailsOpen(false)
       if (conversation) {
@@ -1576,6 +1613,7 @@ export function WhatsAppInbox({
         draftOf={draftOf}
         reactionPreviews={reactionPreviews}
         studentLabelsOf={studentLabelsOf}
+        stageOf={stageOfChat}
         isOlderDuplicate={isOlderDuplicate}
         isEmptyDuplicate={isEmptyDuplicate}
         isStudentSelf={(conversation) => getChatRole(conversation) === 'student'}
@@ -1584,6 +1622,9 @@ export function WhatsAppInbox({
         kind={kind}
         kindChoices={studentGroupChoices}
         onKind={setKind}
+        stage={stageFilter}
+        stages={stageChoices}
+        onStage={setStageFilter}
         ownerId={ownerId}
         owners={ownerOptions}
         onOwner={setOwnerId}

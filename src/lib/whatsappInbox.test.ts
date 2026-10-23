@@ -366,6 +366,15 @@ describe('filterConversations', () => {
     expect(ids(null)).toEqual([2, 3, 1])
   })
 
+  it('filters by the lead stage shown on the chat', () => {
+    const stageOf = (c: ChatwootConversation) => (c.id === 1 ? 'contacted' : c.id === 2 ? 'trial_scheduled' : null)
+    const ids = (stage: string | null) =>
+      filterConversations(list, { ...base, stage }, () => null, () => [], () => [], stageOf).map((c) => c.id)
+    expect(ids('contacted')).toEqual([1])
+    expect(ids('trial_scheduled')).toEqual([2])
+    expect(ids(null)).toEqual([2, 3, 1])
+  })
+
   it('filters by the tag or source of the lead the chat belongs to', () => {
     const leads: Record<number, { tagIds: number[]; sourceId: number | null }> = {
       1: { tagIds: [10, 11], sourceId: 5 },
