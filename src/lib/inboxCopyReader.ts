@@ -443,16 +443,29 @@ export async function fillMissingCopyChats(
 }
 
 // The chats someone wrote in during the last `seconds` (from the copy), for Facebook's 24-hour rule.
-export async function fetchRecentInboundChats(seconds: number) {
+// Read 1000 rows a page (the most the database hands over at once): one page used to be all, and with more than
+// 1000 parent messages in a day (EduHero, 2026-10-23: 1534) some chats were left out and wrongly refused a forward.
+export async function fetchRecentInboundChats(seconds: number, maxPages = 20) {
   const since = new Date(Date.now() - seconds * 1000).toISOString()
-  const { data, error } = await requireSupabase()
-    .from('inbox_messages')
-    .select('conversation_id')
-    .eq('message_type', 0)
-    .gte('created_at', since)
-    .limit(10000)
-  if (error) {
-    throw error
+  const found = new Set<number>()
+  for (let page = 0; page < maxPages; page += 1) {
+    const { data, error } = await requireSupabase()
+      .from('inbox_messages')
+      .select('conversation_id')
+      .eq('message_type', 0)
+      .gte('created_at', since)
+      .order('id', { ascending: true })
+      .range(page * 1000, page * 1000 + 999)
+    if (error) {
+      throw error
+    }
+    const rows = data ?? []
+    for (const row of rows) {
+      found.add(row.conversation_id)
+    }
+    if (rows.length < 1000) {
+      break
+    }
   }
-  return new Set((data ?? []).map((row) => row.conversation_id))
+  return found
 }
