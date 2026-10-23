@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react'
 import { Trash } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
+import { publicUrl } from '../../lib/galleries'
+import { GalleryPicker } from '../galleries/GalleryPicker'
 import {
   MAX_REPLY_WORDS,
   PLACEHOLDERS,
@@ -130,6 +132,8 @@ function PictureField({
 }) {
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
+  // Media > Galleries: one of the school's shared pictures (its address is used as it is, no copy).
+  const [fromGallery, setFromGallery] = useState(false)
 
   async function pick(file: File | undefined) {
     if (!file) {
@@ -181,6 +185,26 @@ function PictureField({
             event.target.value = ''
           }}
           className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border file:border-slate-200 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-semibold"
+        />
+      )}
+      {!url && !readOnly && (
+        <button
+          type="button"
+          onClick={() => setFromGallery(true)}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          From Galleries
+        </button>
+      )}
+      {fromGallery && (
+        <GalleryPicker
+          use="automation"
+          onClose={() => setFromGallery(false)}
+          onPick={(file) => {
+            onChange(publicUrl(file.path))
+            setProblem(null)
+            setFromGallery(false)
+          }}
         />
       )}
       {busy && <p className="text-xs text-slate-500">Uploading…</p>}

@@ -15,7 +15,9 @@ export type DayListLesson = AgendaItem & {
 // A task, meeting, event or follow-up reminder on the day list (Calendar > Add Task / Meeting / Event, Inbox > Follow up).
 export type DayListItem = {
   id: number
-  kind: 'task' | 'meeting' | 'event' | 'follow_up'
+  // 'orphan' = a trial booking on a day its slot no longer runs (opens the bookings of that slot and day).
+  kind: 'task' | 'meeting' | 'event' | 'follow_up' | 'orphan'
+  scheduleId?: number
   title: string
   date: string
   // HH:MM, or null for all day.

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { brand } from './lib/brand'
 import type { Session } from '@supabase/supabase-js'
 import type {
@@ -25,6 +25,7 @@ import {
   CaretDoubleLeft,
   CaretDoubleRight,
   ClipboardText,
+  Browsers,
   Funnel,
   GraduationCap,
   IdentificationBadge,
@@ -39,6 +40,7 @@ import {
   Brain,
   Megaphone,
   Images,
+  FolderOpen,
   Lightning,
   WarningCircle,
   WhatsappLogo,
@@ -184,7 +186,8 @@ import { CalendarFilterBar } from './components/calendar/CalendarFilterBar'
 import { CalendarDayList, type CalendarView } from './components/calendar/CalendarDayList'
 import { LessonWindow } from './components/calendar/LessonWindow'
 import { SpecialMonthCard } from './components/calendar/SpecialMonthCard'
-import { bookedTrialEvents, linkReplacements, monthSpecialEvents, type SpecialCard } from './lib/calendarSpecial'
+import { bookedTrialEvents, linkReplacements, monthSpecialEvents, orphanBookingEvents, type SpecialCard } from './lib/calendarSpecial'
+import { bookingsLeftBehind, leftBehindMessage, orphanBookings } from './lib/trialOrphans'
 import {
   MAX_LEAD_FOLLOW_UPS,
   ageGroupOptions,
@@ -246,6 +249,7 @@ import { FeeCalculatorSection } from './components/feeCalculator/FeeCalculatorSe
 import { useFeeCalculatorEnabled } from './hooks/useFeeCalculatorEnabled'
 import { useQuotationsEnabled } from './hooks/useQuotationsEnabled'
 import { ContentLibrarySection } from './components/contentStudio/ContentLibrarySection'
+import { GalleriesSection } from './components/galleries/GalleriesSection'
 import { fetchThread } from './lib/aiLearning'
 import { ProgrammesSection } from './components/sections/ProgrammesSection'
 import { AppLoginsSection } from './components/sections/AppLoginsSection'
@@ -374,7 +378,12 @@ import {
 } from './lib/makeup'
 
 // The menu's order (AppNav groups them).
-const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'content-studio', 'content-library', 'calendar', 'planner', 'classrooms', 'videos', 'questions', 'students', 'student-inbox', 'student-chat', 'fee-calculator', 'app-logins', 'programmes', 'teachers', 'teacher-quality', 'team-replies', 'class-settings', 'activity', 'ai-knowledge', 'packages']
+const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'landing-pages', 'content-studio', 'content-library', 'galleries', 'calendar', 'planner', 'classrooms', 'videos', 'questions', 'students', 'student-inbox', 'student-chat', 'fee-calculator', 'app-logins', 'programmes', 'teachers', 'teacher-quality', 'team-replies', 'class-settings', 'activity', 'ai-knowledge', 'packages']
+
+// Marketing > Landing Page, downloaded only when opened (its editor even later, when a page is opened).
+const LandingPagesSection = lazy(() =>
+  import('./landing/LandingPagesSection').then((module) => ({ default: module.LandingPagesSection })),
+)
 
 // The shared WhatsApp inbox only shows up once its address is set.
 const chatwootUrl = getChatwootUrl(import.meta.env.VITE_CHATWOOT_URL)
@@ -941,7 +950,10 @@ function App() {
     // Briefs → AI plan → review; approved posts are claimed in the Content Library.
     if (can('content_studio')) sections.push('content-studio')
     if (can('content_library')) sections.push('content-library')
+    // The school's shared files (photos, PDFs, videos), picked from the Inbox, Automations and quick replies.
+    if (can('galleries')) sections.push('galleries')
     if (can('forms')) sections.push('forms')
+    if (can('landing_pages')) sections.push('landing-pages')
     if (isTeacherAccount || can('calendar')) sections.push('calendar')
     // The Planner: the tasks, Zoom meetings, events, follow-ups and trials (and the classes, when switched on).
     if (isTeacherAccount || can('calendar') || can('leads')) sections.push('planner')
@@ -2148,6 +2160,25 @@ function App() {
     return classrooms.filter((classroom) => teachesClassroom(classroom, currentSession.teacherId))
   }, [classrooms, currentSession, seesAllClasses])
 
+  // Trial bookings on a day their slot no longer runs (an edit after the booking): shown in red, never dropped.
+  const orphanTrialBookings = useMemo(
+    () => orphanBookings(trialBookings, schedules, (scheduleId, date) => latestLessonLogMap.has(`${scheduleId}:${date}`)),
+    [trialBookings, schedules, latestLessonLogMap],
+  )
+  const orphanTrialEvents = useMemo(() => {
+    const shown = new Set(
+      visibleSchedules
+        .filter((schedule) => scheduleShown(schedule, classroomMap, calendarFilter, calendarPeople))
+        .map((schedule) => schedule.id),
+    )
+    return orphanBookingEvents(
+      orphanTrialBookings.filter((booking) => shown.has(booking.scheduleId)),
+      visibleSchedules,
+      classroomMap,
+      (id) => teacherMap.get(id)?.fullName ?? '',
+    )
+  }, [orphanTrialBookings, visibleSchedules, classroomMap, calendarFilter, calendarPeople, teacherMap])
+
   const calendarEvents = useMemo(
     () => [
       // A make-up day of a weekly class is a make-up; the rest go by the class's kind.
@@ -2166,6 +2197,7 @@ function App() {
         return calendarFilter.kinds.includes(kind)
       }),
       ...coveredScheduleEvents,
+      ...orphanTrialEvents,
       ...(calendarPage === 'timetable' ? malaysiaHolidayEvents : []),
       ...buildCalendarItemEvents(
         itemsVisibleTo(calendarItems.items, {
@@ -2181,6 +2213,7 @@ function App() {
       calendarPeople,
       calendarItems.items,
       canEditCalendar,
+      orphanTrialEvents,
       classroomMap,
       classroomStudentMap,
       coveredScheduleEvents,
@@ -2259,8 +2292,10 @@ function App() {
         getScheduleClassKind(schedule, classroomMap) === 'trial' &&
         scheduleShown(schedule, classroomMap, calendarFilter, calendarPeople),
     )
-    const itemEvents = calendarEvents.filter((event) => event.extendedProps?.calendarItemId !== undefined)
-    const classEvents = calendarEvents.filter((event) => event.extendedProps?.calendarItemId === undefined)
+    const keepsAsIs = (event: (typeof calendarEvents)[number]) =>
+      event.extendedProps?.calendarItemId !== undefined || event.extendedProps?.isOrphanBooking === true
+    const itemEvents = calendarEvents.filter(keepsAsIs)
+    const classEvents = calendarEvents.filter((event) => !keepsAsIs(event))
     return [
       ...itemEvents,
       ...monthSpecialEvents(classEvents, {
@@ -2271,7 +2306,13 @@ function App() {
         makeupPlans,
         weekly: monthWeekly,
       }),
-      ...bookedTrialEvents(trialBookings, trialSlots, scheduleExceptions, classroomMap, (id) => teacherMap.get(id)?.fullName ?? ''),
+      ...bookedTrialEvents(
+        trialBookings.filter((booking) => !orphanTrialBookings.some((orphan) => orphan.id === booking.id)),
+        trialSlots,
+        scheduleExceptions,
+        classroomMap,
+        (id) => teacherMap.get(id)?.fullName ?? '',
+      ),
     ]
   }, [
     calendarViewType,
@@ -2287,6 +2328,7 @@ function App() {
     replacementLinks,
     makeupPlans,
     trialBookings,
+    orphanTrialBookings,
     scheduleExceptions,
     teacherMap,
   ])
@@ -2419,7 +2461,7 @@ function App() {
       sees: canEditCalendar ? 'all' : 'own',
     })
       .filter((item) => item.date >= from && item.date <= to && itemShown(item, calendarFilter, calendarPeople))
-      .map((item) => ({
+      .map((item): DayListItem => ({
         id: item.id,
         kind: itemKind(item) as DayListItem['kind'],
         title: item.title,
@@ -2429,7 +2471,26 @@ function App() {
         assigneeName: item.assigneeId === null ? null : teacherMap.get(item.assigneeId)?.fullName ?? null,
         isDone: item.isDone,
       }))
+      .concat(
+        orphanTrialEvents
+          .filter((event) => {
+            const date = String(event.extendedProps?.occurrenceDate ?? '')
+            return date >= from && date <= to
+          })
+          .map((event): DayListItem => ({
+            id: Number(event.extendedProps?.scheduleId),
+            scheduleId: Number(event.extendedProps?.scheduleId),
+            kind: 'orphan',
+            title: String(event.title ?? ''),
+            date: String(event.extendedProps?.occurrenceDate ?? ''),
+            startTime: String(event.extendedProps?.startTime ?? '').slice(0, 5) || null,
+            endTime: String(event.extendedProps?.endTime ?? '').slice(0, 5) || null,
+            assigneeName: String(event.extendedProps?.teacherName ?? '') || null,
+            isDone: false,
+          })),
+      )
   }, [
+    orphanTrialEvents,
     isCalendarPage,
     showDayList,
     shownDayListMonth,
@@ -2512,10 +2573,12 @@ function App() {
         { key: 'whatsapp', label: 'Inbox', icon: WhatsappLogo, group: 'marketing' },
         { key: 'automations', label: 'Automation', icon: Lightning, group: 'marketing' },
         { key: 'forms', label: 'Form', icon: ClipboardText, group: 'marketing' },
+        { key: 'landing-pages', label: 'Landing Page', icon: Browsers, group: 'marketing' },
         { key: 'planner', label: 'Planner', icon: CalendarCheck, group: plannerGroup },
         { key: 'ai-knowledge', label: 'AI Knowledge', icon: Brain, group: 'admin' },
         { key: 'content-studio', label: 'Content Studio', icon: Megaphone, group: 'media' },
         { key: 'content-library', label: 'Content Library', icon: Images, group: 'media' },
+        { key: 'galleries', label: 'Galleries', icon: FolderOpen, group: 'media' },
         { key: 'calendar', label: 'Timetable', icon: CalendarBlank, group: 'course' },
         { key: 'classrooms', label: 'My Classroom', icon: Chalkboard, group: 'course' },
         { key: 'videos', label: 'Class Videos', icon: FilmStrip, group: 'course' },
@@ -5198,6 +5261,8 @@ function App() {
     leadOptions,
     canEditLeads: can('leads', 'edit'),
     canEditStudents: can('students', 'edit'),
+    canStartFlows: can('automations', 'edit'),
+    canUseGalleries: can('galleries'),
     quotations: { enabled: quotationsOn, canUse: can('quotations', 'edit'), canApprove: can('quotations', 'delete') },
     canBookMakeup: canEditCalendar,
     onCreateLead: createLeadFromChat,
@@ -5929,6 +5994,32 @@ function App() {
       status: 'active',
     }
 
+    // A weekly trial slot with children booked keeps the days they are booked on: the edit is refused until they are
+    // moved or cancelled, and the bookings open to do it.
+    if (!isCreatingSchedule && editingSchedule) {
+      const leftBehind = bookingsLeftBehind(
+        trialBookings,
+        editingSchedule.id,
+        editingSchedule,
+        {
+          eventType: payload.event_type ?? editingSchedule.eventType,
+          dayOfWeek: payload.day_of_week ?? null,
+          startRecur: payload.start_recur ?? null,
+          endRecur: payload.end_recur ?? null,
+          status: 'active',
+        },
+        todayString,
+        (scheduleId, date) => latestLessonLogMap.has(`${scheduleId}:${date}`),
+      )
+      if (leftBehind.length > 0) {
+        const message = leftBehindMessage(leftBehind.length, leftBehind[0].bookingDate)
+        closeScheduleModal()
+        showToast(message)
+        openTrialBooking(editingSchedule.id, leftBehind[0].bookingDate)
+        return
+      }
+    }
+
     try {
       setIsSavingSchedule(true)
       setScheduleSaveError(null)
@@ -6257,6 +6348,22 @@ function App() {
 
   async function handleCancelSchedule() {
     if (!editingSchedule || !supabase) {
+      return
+    }
+
+    const leftBehind = bookingsLeftBehind(
+      trialBookings,
+      editingSchedule.id,
+      editingSchedule,
+      { ...editingSchedule, status: 'cancelled' },
+      todayString,
+      (scheduleId, date) => latestLessonLogMap.has(`${scheduleId}:${date}`),
+    )
+    if (leftBehind.length > 0) {
+      const message = leftBehindMessage(leftBehind.length, leftBehind[0].bookingDate)
+      closeScheduleModal()
+      showToast(message)
+      openTrialBooking(editingSchedule.id, leftBehind[0].bookingDate)
       return
     }
 
@@ -6663,6 +6770,22 @@ function App() {
       )
     }
 
+    // A trial booking on a day its slot no longer runs: red, with who is booked, so nobody is forgotten.
+    if (eventInfo.event.extendedProps.isOrphanBooking) {
+      return (
+        <div className="rounded-lg border border-red-300 bg-red-100 px-2 py-1.5 text-red-900 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-white">
+              No class on this day
+            </span>
+            {eventInfo.timeText && <span className="text-[10px] font-medium">{eventInfo.timeText}</span>}
+          </div>
+          <div className="mt-1 text-[11px] font-semibold leading-snug">{String(eventInfo.event.extendedProps.special?.line ?? eventInfo.event.title)}</div>
+          <div className="mt-0.5 text-[10px] leading-snug">{String(eventInfo.event.extendedProps.className ?? '')}. Move or cancel the booking.</div>
+        </div>
+      )
+    }
+
     // A task, Zoom meeting or event is not a class: it says what it is, not "Replacement".
     if (eventInfo.event.extendedProps.calendarItemId !== undefined) {
       const itemKind = eventInfo.event.extendedProps.calendarItemKind as CalendarItem['kind']
@@ -7009,8 +7132,8 @@ function App() {
           teachers={activeTeachers.map((teacher) => ({ id: teacher.id, fullName: teacher.fullName }))}
           canEdit={canEditCalendar}
           onClose={() => setCalendarItemEditor(null)}
-          onSave={(draft) => calendarItems.save(calendarItemEditor.item, draft)}
-          onDelete={calendarItemEditor.item ? () => calendarItems.remove(calendarItemEditor.item!.id) : undefined}
+          onSave={(draft, options) => calendarItems.save(calendarItemEditor.item, draft, options)}
+          onDelete={calendarItemEditor.item ? (scope) => calendarItems.removeItem(calendarItemEditor.item!, scope) : undefined}
           onToggleDone={
             calendarItemEditor.item
               ? async (isDone) => {
@@ -7241,8 +7364,12 @@ function App() {
                             ? 'Content Studio'
                             : activeSection === 'content-library'
                             ? 'Content Library'
+                            : activeSection === 'galleries'
+                            ? 'Galleries'
                             : activeSection === 'forms'
                           ? 'Form'
+                          : activeSection === 'landing-pages'
+                          ? 'Landing Page'
                           : activeSection === 'activity'
                             ? 'Activity Log'
                             : 'Students'}
@@ -7405,6 +7532,10 @@ function App() {
                         items={dayListItems}
                         filteredOutside={isFiltered(calendarFilter, calendarKinds)}
                         onOpenItem={(entry) => {
+                          if (entry.kind === 'orphan' && entry.scheduleId !== undefined) {
+                            if (canEditCalendar) openTrialBooking(entry.scheduleId, entry.date)
+                            return
+                          }
                           const picked = calendarItems.items.find((item) => item.id === entry.id)
                           if (picked) setCalendarItemEditor({ item: picked, date: picked.date })
                         }}
@@ -7869,6 +8000,9 @@ function App() {
               <ContentStudioSection canEdit={can('content_studio', 'edit')} isAdmin={isAdmin} teacherNames={teacherNames} />
             )}
             {visibleSection === 'content-library' && <ContentLibrarySection />}
+            {visibleSection === 'galleries' && (
+              <GalleriesSection canEdit={can('galleries', 'edit')} canDelete={can('galleries', 'delete')} />
+            )}
             {visibleSection === 'fee-calculator' && <FeeCalculatorSection canEdit={can('fee_calculator', 'edit')} isAdmin={isAdmin} />}
 
             {visibleSection === 'ai-knowledge' && (
@@ -7913,6 +8047,11 @@ function App() {
               <AppLoginsSection students={students} canManage={can('students', 'edit')} onOpenStudent={openStudentDetail} />
             )}
 
+            {visibleSection === 'landing-pages' && (
+              <Suspense fallback={<p className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading…</p>}>
+                <LandingPagesSection canEdit={can('landing_pages', 'edit')} canDelete={can('landing_pages', 'delete')} />
+              </Suspense>
+            )}
             {visibleSection === 'forms' && (
               <FormsSection
                 teacherMap={teacherMap}

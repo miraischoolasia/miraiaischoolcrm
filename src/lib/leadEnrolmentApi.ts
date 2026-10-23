@@ -19,7 +19,13 @@ export type LeadZoomMeeting = {
   startsAt: string
   link: string
   addedBy: string | null
+  // scheduled = still to come (or happening), completed = it took place, cancelled = it will not happen.
+  status: ZoomMeetingStatus
+  // The calendar entry it sits on: a shared slot picked from the calendar, or one made for this parent alone.
+  calendarItemId: number | null
 }
+
+export type ZoomMeetingStatus = 'scheduled' | 'completed' | 'cancelled'
 
 function requireSupabase() {
   if (!supabase) {
@@ -50,7 +56,7 @@ export async function fetchLeadEnrolment(leadId: number): Promise<{ receipts: Le
       .order('created_at', { ascending: false }),
     client
       .from('lead_zoom_meetings')
-      .select('id, lead_id, starts_at, link, added_by')
+      .select('id, lead_id, starts_at, link, added_by, status, calendar_item_id')
       .eq('lead_id', leadId)
       .order('starts_at', { ascending: true }),
   ])
@@ -76,6 +82,8 @@ export async function fetchLeadEnrolment(leadId: number): Promise<{ receipts: Le
       startsAt: row.starts_at,
       link: row.link,
       addedBy: row.added_by,
+      status: (row.status ?? 'scheduled') as ZoomMeetingStatus,
+      calendarItemId: row.calendar_item_id ?? null,
     })),
   }
 }
@@ -119,13 +127,39 @@ export async function receiptLink(receipt: LeadReceipt) {
   return data.signedUrl
 }
 
-export async function addLeadZoomMeeting(leadId: number, startsAt: Date, link: string, addedBy: string | null) {
+export async function addLeadZoomMeeting(
+  leadId: number,
+  startsAt: Date,
+  link: string,
+  addedBy: string | null,
+  calendarItemId: number | null = null,
+) {
   const { error } = await requireSupabase().from('lead_zoom_meetings').insert({
     lead_id: leadId,
     starts_at: startsAt.toISOString(),
     link: link.trim(),
     added_by: addedBy,
+    calendar_item_id: calendarItemId,
   })
+  if (error) {
+    throw error
+  }
+}
+
+// Changes a meeting: a new time/link/calendar entry (reschedule), or its status (complete, cancel).
+export async function updateLeadZoomMeeting(
+  id: number,
+  patch: { startsAt?: Date; link?: string; status?: ZoomMeetingStatus; calendarItemId?: number | null },
+) {
+  const { error } = await requireSupabase()
+    .from('lead_zoom_meetings')
+    .update({
+      ...(patch.startsAt ? { starts_at: patch.startsAt.toISOString() } : {}),
+      ...(patch.link !== undefined ? { link: patch.link.trim() } : {}),
+      ...(patch.status ? { status: patch.status } : {}),
+      ...(patch.calendarItemId !== undefined ? { calendar_item_id: patch.calendarItemId } : {}),
+    })
+    .eq('id', id)
   if (error) {
     throw error
   }

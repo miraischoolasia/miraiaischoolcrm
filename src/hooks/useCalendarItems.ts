@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   deleteCalendarItem,
+  deleteCalendarSeriesItem,
   fetchCalendarItems,
   itemDraftError,
+  repeatError,
   saveCalendarItem,
   setCalendarItemDone,
+  topUpCalendarSeries,
   type CalendarItem,
   type CalendarItemDraft,
+  type CalendarSaveOptions,
+  type SeriesScope,
 } from '../lib/calendarItems'
 
 const REFRESH_MS = 60_000
@@ -54,15 +59,25 @@ export function useCalendarItems(enabled: boolean, teacherId: number | null) {
     }
   }, [enabled, reload])
 
+  // The weekly rules that have run short are written once when the calendar opens (the database also does it nightly).
+  useEffect(() => {
+    if (!enabled) {
+      return
+    }
+    topUpCalendarSeries()
+      .catch(() => undefined)
+      .then(() => reload())
+  }, [enabled, reload])
+
   // Each resolves to an error message, or null when it worked.
   const save = useCallback(
-    async (existing: CalendarItem | null, draft: CalendarItemDraft) => {
-      const problem = itemDraftError(draft)
+    async (existing: CalendarItem | null, draft: CalendarItemDraft, options: CalendarSaveOptions = {}) => {
+      const problem = itemDraftError(draft) ?? (options.repeat && !existing ? repeatError(draft, options.repeat) : null)
       if (problem) {
         return problem
       }
       try {
-        await saveCalendarItem(existing, draft, teacherId)
+        await saveCalendarItem(existing, draft, teacherId, options)
         await reload()
         return null
       } catch (failure) {
@@ -98,5 +113,19 @@ export function useCalendarItems(enabled: boolean, teacherId: number | null) {
     [reload],
   )
 
-  return { items, reload, save, setDone, remove }
+  // An item of a weekly rule: this day only, or this day and every one after it.
+  const removeItem = useCallback(
+    async (item: CalendarItem, scope: SeriesScope) => {
+      try {
+        await deleteCalendarSeriesItem(item, scope)
+        await reload()
+        return null
+      } catch (failure) {
+        return failureText(failure)
+      }
+    },
+    [reload],
+  )
+
+  return { items, reload, save, setDone, remove, removeItem }
 }

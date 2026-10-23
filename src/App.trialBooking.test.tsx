@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   latestLessonLog: vi.fn(),
   lessonLogs: [] as unknown[],
   converted: false,
+  extraBookings: [] as unknown[],
 }))
 
 vi.mock('./lib/supabase', () => ({
@@ -56,6 +57,7 @@ vi.mock('@fullcalendar/react', () => ({
               >
                 {props.eventContent({
                   event: calendarEvent,
+                  view: { type: 'timeGridWeek' },
                   timeText: String(event.extendedProps?.startTime),
                 })}
               </button>
@@ -179,6 +181,7 @@ vi.mock('./lib/api', async (importOriginal) => ({
       phone: '+60 12-222 2222',
       notes: null,
     },
+    ...mocks.extraBookings,
   ],
   fetchLessonLogSummariesFromSupabase: async () => mocks.lessonLogs,
   fetchLessonLogStudentReviewsFromSupabase: async () => [],
@@ -206,6 +209,7 @@ describe('trial slots on the calendar', () => {
     mocks.latestLessonLog.mockResolvedValue({ summary: null, students: [], reviews: [] })
     mocks.lessonLogs = []
     mocks.converted = false
+    mocks.extraBookings = []
   })
 
   it('shows a slot with nobody booked as Available and one with children as booked', async () => {
@@ -489,5 +493,55 @@ describe('trial slots on the calendar', () => {
     await openMenu('Student List')
 
     expect(within(await screen.findByRole('table')).getAllByText('Aiden')).toHaveLength(1)
+  })
+})
+
+describe('a trial booking on a day its slot does not run', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.rpc.mockResolvedValue({ data: 1, error: null })
+    mocks.latestLessonLog.mockResolvedValue({ summary: null, students: [], reviews: [] })
+    mocks.lessonLogs = []
+    mocks.converted = false
+    // Slot 300 runs on Saturdays; 2026-09-27 is a Sunday.
+    mocks.extraBookings = [
+      { id: 6, scheduleId: 300, bookingDate: '2026-09-27', leadId: 7, studentId: null, childName: 'Mia', childAge: 8, phone: null, notes: null },
+    ]
+  })
+
+  it('stays on the calendar as a red card that opens its bookings, never disappears', async () => {
+    await signIn()
+
+    // The slot's own booked day and the red card are two cards.
+    expect(screen.getAllByRole('button', { name: 'slot 10:00' })).toHaveLength(2)
+    expect(screen.getByText('No class on this day')).toBeInTheDocument()
+    expect(screen.getByText(/Mia · no class on this day/)).toBeInTheDocument()
+    // The slot's normal day still shows as booked, without the orphan counted in.
+    expect(screen.getByText('1 booked')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByText('No class on this day').closest('button')!)
+    expect(await screen.findByText('Trial slot')).toBeInTheDocument()
+  })
+
+  it('refuses to save the slot on other days while children are still booked, and opens their bookings', async () => {
+    // Only Date is faked: 2026-09-26 is still to come.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 20, 12))
+    mocks.extraBookings = []
+
+    try {
+      await signIn()
+      await userEvent.click(slot('10:00'))
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Slot / Cancel This Day' }))
+      await userEvent.selectOptions(await screen.findByRole('combobox', { name: 'Repeat Every' }), '0')
+      await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+
+      expect(await screen.findByText(/1 trial booking would be left without a class \(first: 2026-09-26\)/)).toBeInTheDocument()
+      // The bookings of that day open to be moved or removed; nothing was saved.
+      expect(await screen.findByText('Trial slot')).toBeInTheDocument()
+      expect(mocks.rpc).not.toHaveBeenCalledWith('update_schedule', expect.anything())
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

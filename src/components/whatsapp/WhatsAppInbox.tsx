@@ -14,6 +14,9 @@ import { StickerSourceContext } from '../../lib/inboxStickers'
 import { useChatSchedules } from '../../hooks/useChatSchedules'
 import { cancelSchedule, scheduleError, type ChatSchedule, type ScheduleTarget } from '../../lib/chatSchedules'
 import { ScheduleDialog } from './ScheduleDialog'
+import { StartFlowDialog } from './StartFlowDialog'
+import { GalleryPicker } from '../galleries/GalleryPicker'
+import { fileFromGallery } from '../../lib/galleries'
 import { ScheduledList } from './ScheduledList'
 import { useFillToBottom } from '../../hooks/useFillToBottom'
 import { useInboxColumns } from '../../hooks/useInboxColumns'
@@ -1515,6 +1518,10 @@ export function WhatsAppInbox({
   // "+" > Automation: a message or a flow for this chat's person at a chosen time, and what is scheduled.
   const chatSchedules = useChatSchedules(inbox.selected?.id ?? null)
   const [scheduling, setScheduling] = useState<{ editing: ChatSchedule | null } | null>(null)
+  // "+" > Start automation: a flow started for this chat now.
+  const [startingFlow, setStartingFlow] = useState(false)
+  // "+" > From Galleries: a school file attached to this chat's message.
+  const [pickingGallery, setPickingGallery] = useState(false)
   const scheduleTarget: ScheduleTarget | null = inbox.selected
     ? {
         conversationId: inbox.selected.id,
@@ -1703,6 +1710,8 @@ export function WhatsAppInbox({
             messageEvents={messageEvents.events}
             onSendSpecial={messageEvents.sendSpecial}
             onSchedule={() => setScheduling({ editing: null })}
+            onStartFlow={crm.canStartFlows && crm.canEditLeads ? () => setStartingFlow(true) : undefined}
+            onPickFromGallery={crm.canUseGalleries ? () => setPickingGallery(true) : undefined}
             scheduledSlot={
               <ScheduledList
                 schedules={chatSchedules.schedules}
@@ -1937,6 +1946,20 @@ export function WhatsAppInbox({
           onSaved={chatSchedules.reload}
         />
       )}
+      {pickingGallery && (
+        <GalleryPicker
+          use="inbox"
+          onClose={() => setPickingGallery(false)}
+          onPick={async (picked) => {
+            const file = await fileFromGallery(picked)
+            setFileRequest({ id: Date.now(), files: [file] })
+            setPickingGallery(false)
+          }}
+        />
+      )}
+      {startingFlow && scheduleTarget && (
+        <StartFlowDialog target={scheduleTarget} onClose={() => setStartingFlow(false)} onStarted={chatSchedules.reload} />
+      )}
       {forwarding && (
         <ForwardDialog
           targets={forwardTargets.filter((target) => target.id !== inbox.selectedId)}
@@ -1955,6 +1978,7 @@ export function WhatsAppInbox({
           isLoading={quickReplies.isLoading}
           loadError={quickReplies.error}
           canEditTeam={crm.canEditLeads}
+          canUseGalleries={crm.canUseGalleries}
           start={quickReplyStart}
           onClose={() => {
             setManagingReplies(false)

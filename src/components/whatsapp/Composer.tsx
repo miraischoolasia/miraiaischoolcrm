@@ -105,6 +105,10 @@ type ComposerProps = {
   onSwitchChat?: (option: ChatSwitchOption) => void
   // The "+" menu's Automation row: a message or a flow for this person at a chosen time.
   onSchedule?: () => void
+  // The "+" menu's Start automation row: start one of the school's flows for this person now (Automations edit only).
+  onStartFlow?: () => void
+  // The "+" menu's From Galleries row: one of the school's shared files, attached like a file from the computer.
+  onPickFromGallery?: () => void
   // Messenger and Instagram chats: the voice message is made as a WAV, which their apps can play.
   voiceAsWav?: boolean
 }
@@ -201,6 +205,8 @@ export function Composer({
   chatChoices = [],
   onSwitchChat,
   onSchedule,
+  onStartFlow,
+  onPickFromGallery,
   voiceAsWav = false,
 }: ComposerProps) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -631,8 +637,14 @@ ${draftRequest.text}` : draftRequest.text))
               >
                 {[
                   { label: 'Photo, video or file', icon: Paperclip, run: () => fileInput.current?.click(), aria: 'Attach a photo, video or file' },
+                  ...(onPickFromGallery
+                    ? [{ label: 'From Galleries', icon: ImageIcon, run: onPickFromGallery, aria: "From Galleries: one of the school's shared files" }]
+                    : []),
                   ...(onSchedule && mode === 'reply'
                     ? [{ label: 'Automation', icon: Clock, run: onSchedule, aria: 'Automation: a message or a flow at a time' }]
+                    : []),
+                  ...(onStartFlow && mode === 'reply'
+                    ? [{ label: 'Start automation', icon: Lightning, run: onStartFlow, aria: 'Start automation: start a flow for this person now' }]
                     : []),
                   ...(onSendSpecial && mode === 'reply'
                     ? SPECIAL_CHOICES.map((choice) => ({

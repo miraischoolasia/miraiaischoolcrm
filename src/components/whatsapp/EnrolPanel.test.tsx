@@ -12,9 +12,11 @@ const api = vi.hoisted(() => ({
   deleteLeadReceipt: vi.fn(),
   receiptLink: vi.fn(),
   addLeadZoomMeeting: vi.fn(),
+  updateLeadZoomMeeting: vi.fn(),
   deleteLeadZoomMeeting: vi.fn(),
   fetchForms: vi.fn(),
 }))
+const cal = vi.hoisted(() => ({ create: vi.fn(), move: vi.fn(), remove: vi.fn() }))
 
 vi.mock('../../lib/leadEnrolmentApi', async (original) => ({
   ...(await original<typeof import('../../lib/leadEnrolmentApi')>()),
@@ -23,7 +25,14 @@ vi.mock('../../lib/leadEnrolmentApi', async (original) => ({
   deleteLeadReceipt: api.deleteLeadReceipt,
   receiptLink: api.receiptLink,
   addLeadZoomMeeting: api.addLeadZoomMeeting,
+  updateLeadZoomMeeting: api.updateLeadZoomMeeting,
   deleteLeadZoomMeeting: api.deleteLeadZoomMeeting,
+}))
+vi.mock('../../lib/calendarItems', async (original) => ({
+  ...(await original<typeof import('../../lib/calendarItems')>()),
+  createLeadMeetingItem: cal.create,
+  moveLeadMeetingItem: cal.move,
+  deleteLeadMeetingItem: cal.remove,
 }))
 vi.mock('../../lib/api', () => ({ fetchFormsFromSupabase: api.fetchForms }))
 
@@ -63,6 +72,19 @@ function makeCrm(patch: Partial<WhatsAppCrm> = {}): WhatsAppCrm {
   } as unknown as WhatsAppCrm
 }
 
+function meeting(patch: Record<string, unknown> = {}) {
+  return {
+    id: 2,
+    leadId: 11,
+    startsAt: new Date(2099, 9, 16, 20, 30).toISOString(),
+    link: 'https://zoom.us/j/9',
+    addedBy: 'Amy',
+    status: 'scheduled',
+    calendarItemId: null,
+    ...patch,
+  }
+}
+
 function renderPanel(crm = makeCrm()) {
   const onWriteMessage = vi.fn()
   render(<EnrolPanel lead={lead} crm={crm} userName="Amy" onWriteMessage={onWriteMessage} />)
@@ -76,6 +98,11 @@ describe('EnrolPanel', () => {
     api.fetchForms.mockResolvedValue([hoaForm])
     api.addLeadReceipt.mockResolvedValue(undefined)
     api.addLeadZoomMeeting.mockResolvedValue(undefined)
+    api.updateLeadZoomMeeting.mockResolvedValue(undefined)
+    Object.values(cal).forEach((mock) => mock.mockReset())
+    cal.create.mockResolvedValue(55)
+    cal.move.mockResolvedValue(undefined)
+    cal.remove.mockResolvedValue(undefined)
   })
 
   it('starts with nothing done and says the form is not in yet', async () => {
@@ -164,6 +191,9 @@ describe('EnrolPanel', () => {
     await waitFor(() => expect(api.addLeadZoomMeeting).toHaveBeenCalledTimes(1))
     expect(api.addLeadZoomMeeting.mock.calls[0][0]).toBe(11)
     expect(api.addLeadZoomMeeting.mock.calls[0][2]).toBe('https://zoom.us/j/123')
+    // A time typed by hand also goes on the calendar, for this parent alone.
+    expect(cal.create).toHaveBeenCalledTimes(1)
+    expect(api.addLeadZoomMeeting.mock.calls[0][4]).toBe(55)
   })
 
   it('lets the team pick a Zoom time from the calendar, like an HOA class', async () => {
@@ -189,6 +219,9 @@ describe('EnrolPanel', () => {
     expect(api.addLeadZoomMeeting.mock.calls[0][0]).toBe(11)
     expect((api.addLeadZoomMeeting.mock.calls[0][1] as Date).getTime()).toBe(startsAt.getTime())
     expect(api.addLeadZoomMeeting.mock.calls[0][2]).toBe('https://zoom.us/j/777')
+    // The shared calendar slot is linked, not copied.
+    expect(cal.create).not.toHaveBeenCalled()
+    expect(api.addLeadZoomMeeting.mock.calls[0][4]).toBe(7)
   })
 
   it('can still type a time and a link when the calendar has no suitable one', async () => {
@@ -202,10 +235,69 @@ describe('EnrolPanel', () => {
     expect(screen.getByRole('button', { name: 'Pick from the calendar instead' })).toBeInTheDocument()
   })
 
+  it('shows the Zoom step grey until a meeting is scheduled, then coloured with Reschedule, Complete and Cancel', async () => {
+    const { container } = render(<EnrolPanel lead={lead} crm={makeCrm()} userName="Amy" onWriteMessage={vi.fn()} />)
+    expect(await screen.findByText('No Zoom meeting scheduled yet.')).toBeInTheDocument()
+    expect(container.querySelector('.bg-slate-50.text-slate-500')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Reschedule' })).not.toBeInTheDocument()
+  })
+
+  it('completes a scheduled Zoom meeting', async () => {
+    api.fetchLeadEnrolment.mockResolvedValue({ receipts: [], meetings: [meeting()] })
+    renderPanel()
+
+    expect(await screen.findByText('Scheduled')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Complete' }))
+
+    await waitFor(() => expect(api.updateLeadZoomMeeting).toHaveBeenCalledWith(2, { status: 'completed' }))
+    expect(cal.remove).not.toHaveBeenCalled()
+  })
+
+  it('asks before cancelling, and takes away the calendar entry made for this parent', async () => {
+    api.fetchLeadEnrolment.mockResolvedValue({ receipts: [], meetings: [meeting({ calendarItemId: 55 })] })
+    renderPanel()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+    expect(api.updateLeadZoomMeeting).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Yes, cancel it' }))
+
+    await waitFor(() => expect(api.updateLeadZoomMeeting).toHaveBeenCalledWith(2, { status: 'cancelled' }))
+    expect(cal.remove).toHaveBeenCalledWith(55, 11)
+  })
+
+  it('reschedules to a time picked from the calendar', async () => {
+    api.fetchLeadEnrolment.mockResolvedValue({ receipts: [], meetings: [meeting({ calendarItemId: 55 })] })
+    const startsAt = new Date('2099-11-02T15:30:00')
+    renderPanel(makeCrm({ zoomSlots: [{ id: 9, startsAt, link: 'https://zoom.us/j/999', title: 'Parent Zoom' }] }))
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Reschedule' }))
+    await userEvent.click(screen.getByRole('button', { name: /Parent Zoom/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save the new time' }))
+
+    await waitFor(() => expect(api.updateLeadZoomMeeting).toHaveBeenCalledTimes(1))
+    const [id, patch] = api.updateLeadZoomMeeting.mock.calls[0] as [number, { startsAt: Date; link: string; calendarItemId: number }]
+    expect(id).toBe(2)
+    expect(patch.startsAt.getTime()).toBe(startsAt.getTime())
+    expect(patch.calendarItemId).toBe(9)
+    // The entry made for this parent alone is replaced by the shared slot.
+    expect(cal.remove).toHaveBeenCalledWith(55, 11)
+  })
+
+  it('does not put a cancelled meeting in the message or count it as done', async () => {
+    api.fetchLeadEnrolment.mockResolvedValue({ receipts: [], meetings: [meeting({ status: 'cancelled' })] })
+    const { onWriteMessage } = renderPanel()
+    expect(await screen.findByText('Cancelled')).toBeInTheDocument()
+    // Nothing is scheduled any more, so a new time can be set.
+    expect(screen.getByRole('button', { name: 'Save the Zoom meeting' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Write the message to the parent' }))
+    expect(onWriteMessage.mock.calls[0][0] as string).not.toContain('https://zoom.us/j/9')
+  })
+
   it('writes the message from what is saved', async () => {
     api.fetchLeadEnrolment.mockResolvedValue({
       receipts: [{ id: 1, leadId: 11, path: 'p', name: 'slip.pdf', size: 10, addedBy: 'Amy', createdAt: '2026-10-09T01:00:00Z' }],
-      meetings: [{ id: 2, leadId: 11, startsAt: new Date(2026, 9, 16, 20, 30).toISOString(), link: 'https://zoom.us/j/9', addedBy: 'Amy' }],
+      meetings: [meeting({ id: 2, startsAt: new Date(2026, 9, 16, 20, 30).toISOString(), link: 'https://zoom.us/j/9' })],
     })
     const booked = { id: 5, leadId: 11, childName: 'Ethan', bookingDate: '2099-10-17', scheduleId: 3 } as TrialBooking
     const { onWriteMessage } = renderPanel(makeCrm({ trialBookings: [booked], leadIdsWithForms: new Set([11]) }))

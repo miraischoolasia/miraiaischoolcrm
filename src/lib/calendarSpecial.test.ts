@@ -6,6 +6,7 @@ import {
   linkReplacements,
   madeUpText,
   monthSpecialEvents,
+  orphanBookingEvents,
   timeRange,
   type SpecialCard,
 } from './calendarSpecial'
@@ -215,5 +216,42 @@ describe('bookedTrialEvents', () => {
     expect(events).toHaveLength(1)
     expect(events[0]).toMatchObject({ id: 'trial-booked-50-2026-10-12', start: '2026-10-12T10:00' })
     expect(events[0].extendedProps?.special).toMatchObject({ kind: 'trial', line: 'Trial Coding · 2 booked', teacher: 'Ms Lee' })
+  })
+})
+
+describe('orphanBookingEvents', () => {
+  const trialClass = classroom(7, 'HOA 12-14', { category: 'trial' })
+  const slot = weekly(39, 7, { dayOfWeek: 4, startTime: '17:00:00', endTime: '19:00:00' })
+  const booking = (id: number, childName: string, bookingDate: string) => ({
+    id,
+    scheduleId: 39,
+    bookingDate,
+    leadId: null,
+    studentId: null,
+    childName,
+    childAge: 9,
+    phone: null,
+    notes: null,
+  })
+
+  it('draws one red card per slot and day, naming who is booked, so the children are not forgotten', () => {
+    const events = orphanBookingEvents(
+      [booking(1, 'Amy', '2026-10-22'), booking(2, 'Ben', '2026-10-22'), booking(3, 'Cy', '2026-10-29')],
+      [slot],
+      new Map([[7, trialClass]]),
+      () => 'Teacher T',
+    )
+
+    expect(events.map((event) => event.id)).toEqual(['trial-orphan-39-2026-10-22', 'trial-orphan-39-2026-10-29'])
+    const first = events[0]
+    expect(first.start).toBe('2026-10-22T17:00:00')
+    expect(first.extendedProps).toMatchObject({ scheduleId: 39, classKind: 'trial', isOrphanBooking: true, orphanCount: 2, occurrenceDate: '2026-10-22' })
+    const special = first.extendedProps?.special as SpecialCard
+    expect(special.kind).toBe('orphan')
+    expect(special.line).toBe('Amy, Ben · no class on this day')
+  })
+
+  it('skips a booking whose slot is gone', () => {
+    expect(orphanBookingEvents([booking(1, 'Amy', '2026-10-22')], [], new Map(), () => '')).toEqual([])
   })
 })

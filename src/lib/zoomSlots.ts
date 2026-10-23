@@ -14,7 +14,8 @@ export type ZoomSlot = {
 export function upcomingZoomSlots(items: CalendarItem[], now: Date): ZoomSlot[] {
   return items
     .flatMap((item) => {
-      if (item.kind !== 'meeting' || !item.startTime) {
+      // A meeting made for one parent (it has a lead) is theirs, not a time to offer to another.
+      if (item.kind !== 'meeting' || !item.startTime || item.leadId !== null) {
         return []
       }
       const startsAt = new Date(`${item.date}T${item.startTime}:00`)

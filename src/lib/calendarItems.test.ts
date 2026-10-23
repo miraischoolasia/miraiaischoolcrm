@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCalendarItemEvents,
   emptyItemDraft,
+  isoWeekdayOf,
   itemDraftError,
   itemsVisibleTo,
+  repeatError,
   type CalendarItem,
 } from './calendarItems'
 
@@ -72,6 +74,23 @@ describe('buildCalendarItemEvents', () => {
     expect(open.title).toBe('☐ Call Mrs Tan (Mei)')
     expect(done.title).toBe('✓ Call Mrs Tan')
     expect(done.classNames).toContain('line-through')
+  })
+})
+
+describe('weekly repeat', () => {
+  const draft = { ...emptyItemDraft('2026-10-26', 'meeting'), title: 'Cyrus Zoom', startTime: '20:00' }
+
+  it('needs at least one day, and an end that is not before the start', () => {
+    expect(repeatError(draft, { weekdays: [], until: '' })).toMatch(/at least one day/)
+    expect(repeatError(draft, { weekdays: [1], until: '2026-10-01' })).toMatch(/on or after/)
+    expect(repeatError(draft, { weekdays: [1, 2], until: '' })).toBeNull()
+    expect(repeatError(draft, { weekdays: [1], until: '2026-12-01' })).toBeNull()
+  })
+
+  it('counts Sunday as day 7 and Monday as day 1', () => {
+    expect(isoWeekdayOf('2026-10-26')).toBe(1)
+    expect(isoWeekdayOf('2026-10-25')).toBe(7)
+    expect(isoWeekdayOf('2026-10-17')).toBe(6)
   })
 })
 

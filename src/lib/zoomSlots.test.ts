@@ -31,6 +31,8 @@ describe('upcomingZoomSlots', () => {
         item({ id: 4, startTime: null }),
         item({ id: 5, zoomLink: null }),
         item({ id: 6, kind: 'task' }),
+        // Made for one parent: not a time to offer to another.
+        item({ id: 7, leadId: 11 }),
       ],
       now,
     )

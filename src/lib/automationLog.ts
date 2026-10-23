@@ -51,7 +51,8 @@ export type FlowQueueRow = {
   sentByAutomation: boolean
 }
 
-export type FlowActivity = { queue: FlowQueueRow[]; log: FlowLogRow[] }
+// startedBy: runs a person started by hand from the Inbox ("+" > Start automation): event key ('manual:<id>') -> who.
+export type FlowActivity = { queue: FlowQueueRow[]; log: FlowLogRow[]; startedBy?: Record<string, string> }
 
 const QUEUE_COLUMNS =
   'id, dedupe_key, phone, parent_name, child_name, message, status, due_at, expires_at, created_at, decided_at, sent_at, error, auto_blocked, sent_by_automation'
@@ -68,7 +69,7 @@ export async function fetchFlowActivity(flowId: number): Promise<FlowActivity> {
   if (!supabase) {
     throw new Error('Not connected to the database.')
   }
-  const [queue, log] = await Promise.all([
+  const [queue, log, starts] = await Promise.all([
     supabase
       .from('automation_queue')
       .select(QUEUE_COLUMNS)
@@ -81,6 +82,13 @@ export async function fetchFlowActivity(flowId: number): Promise<FlowActivity> {
       .eq('flow_id', flowId)
       .order('created_at', { ascending: false })
       .limit(LIMIT),
+    supabase
+      .from('chat_schedules')
+      .select('id, created_by_name')
+      .eq('kind', 'flow')
+      .eq('flow_id', flowId)
+      .order('created_at', { ascending: false })
+      .limit(LIMIT),
   ])
   if (queue.error) {
     throw queue.error
@@ -88,7 +96,13 @@ export async function fetchFlowActivity(flowId: number): Promise<FlowActivity> {
   if (log.error) {
     throw log.error
   }
+  // Who started a run by hand; left out (not an error) where the chat schedules cannot be read.
+  const startedBy: Record<string, string> = {}
+  for (const row of starts.error ? [] : (starts.data ?? [])) {
+    startedBy[`manual:${row.id}`] = row.created_by_name || 'a team member'
+  }
   return {
+    startedBy,
     queue: (queue.data ?? []).map((row) => ({
       id: row.id,
       ...parseDedupeKey(row.dedupe_key),
@@ -311,6 +325,8 @@ export type Enrollment = {
   reason: string | null
   messages: number
   steps: TimelineEntry[]
+  // A person started this run by hand from the Inbox: their name.
+  startedBy?: string | null
 }
 
 const STATUS_LABELS: Record<EnrollmentStatus, string> = {
@@ -399,6 +415,7 @@ export function buildEnrollments(activity: FlowActivity, now = Date.now()): Enro
       reason,
       messages: queue.length,
       steps: chronological,
+      startedBy: activity.startedBy?.[eventKey] ?? null,
     })
   }
 

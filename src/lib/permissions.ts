@@ -23,11 +23,15 @@ export const permissionModules: {
   { key: 'inbox', label: 'Inbox', canEdit: true, deleteHint: 'Delete messages', scopes: ['all', 'own_unassigned', 'own'], group: 'Marketing' },
   { key: 'automations', label: 'Automations', canEdit: true, deleteHint: 'Delete flows and contacts', scopes: [], group: 'Marketing' },
   { key: 'forms', label: 'Forms', canEdit: true, deleteHint: 'Delete forms and responses', scopes: [], group: 'Marketing' },
+  // Marketing > Landing Page: view = see the pages and their drafts, edit = make, change, publish, take down.
+  { key: 'landing_pages', label: 'Landing Pages', canEdit: true, deleteHint: 'Delete pages', scopes: [], group: 'Marketing' },
   { key: 'ai_knowledge', label: 'AI Knowledge', canEdit: true, deleteHint: 'Delete notes', scopes: [], group: 'Marketing' },
   // Briefs, the AI plan and review (edit); look only (view).
   { key: 'content_studio', label: 'Content Studio', canEdit: true, scopes: [], group: 'Marketing' },
   // See approved posts and claim them to share.
   { key: 'content_library', label: 'Content Library', canEdit: false, scopes: [], group: 'Marketing' },
+  // The school's shared files (Media > Galleries): view = see and pick, edit = upload / folders / rename / move.
+  { key: 'galleries', label: 'Galleries', canEdit: true, deleteHint: 'Move files to the Bin and delete them forever', scopes: [], group: 'Marketing' },
   // Quotations in the Inbox (view = see, edit = make and send); delete = approve a discount over the cap.
   { key: 'quotations', label: 'Quotations', canEdit: true, deleteHint: 'Approve big discounts, cancel others’ quotations', scopes: [], group: 'Marketing' },
   {

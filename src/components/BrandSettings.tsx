@@ -189,6 +189,22 @@ export function BrandSettings({ api = databaseApi }: { api?: BrandSettingsApi })
             />
           </label>
 
+          <label className="block space-y-1.5">
+            <span className="text-sm font-semibold text-slate-900">Public WhatsApp number</span>
+            <input
+              type="tel"
+              inputMode="tel"
+              value={draft.whatsapp}
+              maxLength={16}
+              placeholder="60123456789"
+              onChange={(event) => change({ ...draft, whatsapp: event.target.value.replace(/[^\d+]/g, '') })}
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+            />
+            <span className="block text-xs text-slate-500">
+              With the country code, digits only. The WhatsApp buttons on Landing Pages open a chat with this number.
+            </span>
+          </label>
+
           <div className="grid gap-4 @lg:grid-cols-2">
             <PictureField
               label="Logo"

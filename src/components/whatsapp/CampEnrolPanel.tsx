@@ -11,6 +11,7 @@ import type { Form, Lead, LeadFormSubmission } from '../../types/domain'
 import type { WhatsAppCrm } from './crm'
 import { PanelSection } from './PanelSection'
 import { buttonClass, fieldClass, Problem, ReceiptStep, Step, ZoomStep } from './enrolSteps'
+import { hasZoomMeeting, nextScheduledMeeting } from '../../lib/zoomMeetingStatus'
 import { getStudentClassIds } from '../../lib/roster'
 
 type CampEnrolPanelProps = {
@@ -153,10 +154,7 @@ export function CampEnrolPanel({ lead, crm, userName, onWriteMessage, forStudent
   function writeMessage() {
     const latest = enrolled[enrolled.length - 1] ?? null
     const classroom = latest?.classroomId ? crm.classrooms.find((entry) => entry.id === latest.classroomId) : null
-    const nextMeeting =
-      enrolment.meetings.find((meeting) => new Date(meeting.startsAt).getTime() >= Date.now()) ??
-      enrolment.meetings[enrolment.meetings.length - 1] ??
-      null
+    const nextMeeting = nextScheduledMeeting(enrolment.meetings, new Date())
     onWriteMessage(
       buildCampMessage({
         childName: latest?.name ?? child?.name ?? '',
@@ -177,7 +175,7 @@ export function CampEnrolPanel({ lead, crm, userName, onWriteMessage, forStudent
     )
   }
 
-  const doneCount = [submitted, enrolled.length > 0, enrolment.receipts.length > 0, enrolment.meetings.length > 0].filter(Boolean).length
+  const doneCount = [submitted, enrolled.length > 0, enrolment.receipts.length > 0, hasZoomMeeting(enrolment.meetings)].filter(Boolean).length
 
   if (!campPackage) {
     return (

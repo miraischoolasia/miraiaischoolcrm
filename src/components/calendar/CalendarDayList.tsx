@@ -53,6 +53,7 @@ const ITEM_KIND: Record<DayListItem['kind'], { label: string; tag: string }> = {
   meeting: { label: 'Meeting', tag: 'bg-sky-100 text-sky-800' },
   event: { label: 'Event', tag: 'bg-amber-100 text-amber-800' },
   follow_up: { label: 'Follow-up', tag: 'bg-pink-100 text-pink-800' },
+  orphan: { label: 'No class', tag: 'bg-red-100 text-red-800' },
 }
 
 const plural = (count: number, word: string) => `${count.toLocaleString()} ${word}${count === 1 ? '' : word.endsWith('s') ? 'es' : 's'}`

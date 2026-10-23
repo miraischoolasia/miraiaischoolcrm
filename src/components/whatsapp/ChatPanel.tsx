@@ -80,6 +80,10 @@ type ChatPanelProps = {
   onSendSpecial?: (message: SpecialMessage) => Promise<string | null>
   // The "+" menu's Automation row, and what is scheduled for this chat (shown above the message box).
   onSchedule?: () => void
+  // "+" > Start automation: a flow started for this chat now.
+  onStartFlow?: () => void
+  // "+" > From Galleries: one of the school's shared files, attached.
+  onPickFromGallery?: () => void
   scheduledSlot?: React.ReactNode
   // The Follow up button for the message box, and a line under the header with the next follow-up.
   followUpControl?: React.ReactNode
@@ -174,6 +178,8 @@ export function ChatPanel({
   onDeleteMessage,
   onSendSpecial,
   onSchedule,
+  onStartFlow,
+  onPickFromGallery,
   scheduledSlot,
   followUpControl,
   followUpChip,
@@ -987,6 +993,8 @@ export function ChatPanel({
         onSendSpecial={isSocialChat ? undefined : onSendSpecial}
         voiceAsWav={isSocialChat}
         onSchedule={onSchedule}
+        onStartFlow={onStartFlow}
+        onPickFromGallery={onPickFromGallery}
         followUpControl={followUpControl}
         onTyping={onTyping}
         aiSuggestion={ai.suggestion ? { text: ai.suggestion.text, note: ai.suggestion.note } : null}

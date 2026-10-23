@@ -147,6 +147,18 @@ describe('the enrollment history', () => {
     expect(row).toMatchObject({ status: 'not_sent', reason: 'Lead stage is "lost".' })
   })
 
+  it('says who started a run by hand from the Inbox', () => {
+    const rows = buildEnrollments(
+      {
+        ...activity([queueRow({ id: 1, eventKey: 'manual:12' }), queueRow({ id: 2, eventKey: 'lead:8' })]),
+        startedBy: { 'manual:12': 'Mei' },
+      },
+      NOW,
+    )
+    expect(rows.find((row) => row.eventKey === 'manual:12')?.startedBy).toBe('Mei')
+    expect(rows.find((row) => row.eventKey === 'lead:8')?.startedBy).toBeNull()
+  })
+
   it('shows a failure above everything else', () => {
     const [row] = buildEnrollments(
       activity([

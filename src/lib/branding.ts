@@ -21,6 +21,9 @@ export type CrmBranding = {
   mascot_url: string
   // The student app takes this name and colour.
   student_app_follows: boolean
+  // The school's public WhatsApp number (digits with the country code, e.g. 60123456789), for the Landing Page
+  // WhatsApp buttons; '' = not set.
+  whatsapp: string
 }
 
 export const emptyBranding: CrmBranding = {
@@ -32,6 +35,7 @@ export const emptyBranding: CrmBranding = {
   mascot_on: true,
   mascot_url: '',
   student_app_follows: true,
+  whatsapp: '',
 }
 
 const HEX = /^#[0-9a-fA-F]{6}$/
@@ -53,6 +57,7 @@ export function parseBranding(raw: unknown): CrmBranding {
     mascot_on: value.mascot_on !== false,
     mascot_url: text(value.mascot_url),
     student_app_follows: value.student_app_follows !== false,
+    whatsapp: text(value.whatsapp).replace(/[^\d+]/g, '').slice(0, 16),
   }
 }
 
@@ -119,6 +124,7 @@ function setFavicon(href: string | null | 'deployment') {
 
 // Puts a look on the page: the brand fields everyone reads, the colours, the tab's title and icon.
 export function applyBranding(settings: CrmBranding) {
+  appliedWhatsapp = settings.whatsapp
   brand.name = settings.name || deploymentBrand.name
   brand.logo = settings.logo_url || deploymentBrand.logo
   brand.mascot = !settings.mascot_on ? null : settings.mascot_url || deploymentBrand.mascot
@@ -134,6 +140,12 @@ export function applyBranding(settings: CrmBranding) {
     setFavicon(settings.favicon_url || settings.logo_url || 'deployment')
   }
   notify()
+}
+
+// The school's public WhatsApp number from Class Settings > Brand (digits only), '' when not set.
+let appliedWhatsapp = ''
+export function brandWhatsapp() {
+  return appliedWhatsapp.replace(/\D/g, '')
 }
 
 // The mascot picture for a place that shows one (Mirai's Eggy or Gordo there), or null for none.

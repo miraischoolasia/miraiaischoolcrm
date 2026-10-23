@@ -27,11 +27,29 @@ function Card({ title, slots }: { title: string; slots: ZoomSlot[] }) {
   const [meetings, setMeetings] = useState<LeadZoomMeeting[]>([])
   const enrolment = {
     meetings,
-    addMeeting: async (startsAt: Date, link: string) => {
+    addMeeting: async (startsAt: Date, link: string, slotItemId?: number | null) => {
       setMeetings((current) => [
         ...current,
-        { id: current.length + 1, leadId: 1, startsAt: startsAt.toISOString(), link, addedBy: 'Demo' },
+        {
+          id: current.length + 1,
+          leadId: 1,
+          startsAt: startsAt.toISOString(),
+          link,
+          addedBy: 'Demo',
+          status: 'scheduled' as const,
+          calendarItemId: slotItemId ?? null,
+        },
       ])
+      return null
+    },
+    rescheduleMeeting: async (meeting: LeadZoomMeeting, startsAt: Date, link: string) => {
+      setMeetings((current) =>
+        current.map((entry) => (entry.id === meeting.id ? { ...entry, startsAt: startsAt.toISOString(), link } : entry)),
+      )
+      return null
+    },
+    setMeetingStatus: async (meeting: LeadZoomMeeting, status: LeadZoomMeeting['status']) => {
+      setMeetings((current) => current.map((entry) => (entry.id === meeting.id ? { ...entry, status } : entry)))
       return null
     },
     removeMeeting: async (meeting: LeadZoomMeeting) => {

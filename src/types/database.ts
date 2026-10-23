@@ -407,6 +407,8 @@ export type Database = {
           teacher_id?: number | null
           // The school's own order (20261101250000); null until moved.
           sort_order?: number | null
+          // A source's Data Center bucket key (20261101400000); null = the default bucket.
+          report_bucket?: string | null
         }
         Insert: {
           id?: number
@@ -442,6 +444,8 @@ export type Database = {
           lead_id: number | null
           is_done: boolean
           created_by: number | null
+          series_id: number | null
+          series_date: string | null
           created_at: string
           updated_at: string
         }
@@ -458,6 +462,8 @@ export type Database = {
           lead_id?: number | null
           is_done?: boolean
           created_by?: number | null
+          series_id?: number | null
+          series_date?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -474,6 +480,8 @@ export type Database = {
           lead_id?: number | null
           is_done?: boolean
           created_by?: number | null
+          series_id?: number | null
+          series_date?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -706,6 +714,10 @@ export type Database = {
           starts_at: string
           link: string
           added_by: string | null
+          status: 'scheduled' | 'completed' | 'cancelled'
+          completed_at: string | null
+          cancelled_at: string | null
+          calendar_item_id: number | null
           created_at: string
         }
         Insert: {
@@ -714,6 +726,10 @@ export type Database = {
           starts_at: string
           link: string
           added_by?: string | null
+          status?: 'scheduled' | 'completed' | 'cancelled'
+          completed_at?: string | null
+          cancelled_at?: string | null
+          calendar_item_id?: number | null
           created_at?: string
         }
         Update: {
@@ -722,6 +738,10 @@ export type Database = {
           starts_at?: string
           link?: string
           added_by?: string | null
+          status?: 'scheduled' | 'completed' | 'cancelled'
+          completed_at?: string | null
+          cancelled_at?: string | null
+          calendar_item_id?: number | null
           created_at?: string
         }
         Relationships: []
@@ -3106,6 +3126,40 @@ export type Database = {
         Update: never
         Relationships: []
       }
+      gallery_folders: {
+        Row: {
+          id: number
+          parent_id: number | null
+          name: string
+          created_by: number | null
+          created_at: string
+          deleted_at: string | null
+          deleted_batch: string | null
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      gallery_files: {
+        Row: {
+          id: number
+          folder_id: number | null
+          name: string
+          path: string
+          mime: string
+          kind: 'image' | 'video' | 'audio' | 'document'
+          size_bytes: number
+          uploaded_by: number | null
+          uploaded_by_name: string | null
+          created_at: string
+          deleted_at: string | null
+          deleted_batch: string | null
+          deleted_by_name: string | null
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
       staff_shifts: {
         Row: {
           id: number
@@ -3402,6 +3456,34 @@ export type Database = {
         Args: { p_account: number | null; p_chat: Json; p_messages: Json; p_done?: boolean }
         Returns: number
       }
+      // Weekly repeat on the calendar (20261031700000).
+      calendar_series_extend: {
+        Args: { p_series_id?: number | null }
+        Returns: number
+      }
+      calendar_series_create: {
+        Args: {
+          p_kind: string
+          p_title: string
+          p_notes: string | null
+          p_start_date: string
+          p_weekdays: number[]
+          p_start_time: string | null
+          p_end_time: string | null
+          p_zoom_link: string | null
+          p_assignee_id: number | null
+          p_until_date?: string | null
+        }
+        Returns: number
+      }
+      calendar_series_update: {
+        Args: { p_series_id: number; p_patch: Record<string, unknown>; p_from_date?: string | null }
+        Returns: undefined
+      }
+      calendar_series_delete: {
+        Args: { p_series_id: number; p_from_date?: string | null }
+        Returns: undefined
+      }
       chat_schedule_message: {
         Args: {
           p_conversation_id: number
@@ -3432,6 +3514,34 @@ export type Database = {
           p_cancel_on_reply?: boolean
         }
         Returns: number
+      }
+      chat_flow_state: {
+        Args: { p_conversation_id: number; p_inbox_id: number | null; p_phone: string | null; p_lead_id: number | null; p_flow_id: number }
+        Returns: Json
+      }
+      gallery_settings: { Args: Record<PropertyKey, never>; Returns: Json }
+      set_gallery_settings: { Args: { p_value: Json }; Returns: Json }
+      gallery_usage: { Args: Record<PropertyKey, never>; Returns: Json }
+      gallery_add_file: { Args: { p_path: string; p_name: string; p_folder_id?: number | null }; Returns: number }
+      gallery_add_folder: { Args: { p_name: string; p_parent_id?: number | null }; Returns: number }
+      gallery_rename: { Args: { p_kind: string; p_id: number; p_name: string }; Returns: undefined }
+      gallery_move: { Args: { p_file_ids: number[]; p_folder_ids: number[]; p_to: number | null }; Returns: undefined }
+      gallery_trash: { Args: { p_file_ids: number[]; p_folder_ids: number[] }; Returns: string }
+      gallery_restore: { Args: { p_file_ids: number[]; p_folder_ids: number[] }; Returns: undefined }
+      gallery_forget: { Args: { p_file_ids: number[]; p_folder_ids: number[] }; Returns: undefined }
+      chat_start_flow: {
+        Args: {
+          p_conversation_id: number
+          p_contact_id: number | null
+          p_inbox_id: number | null
+          p_channel: string
+          p_phone: string | null
+          p_lead_id: number | null
+          p_parent_name: string | null
+          p_flow_id: number
+          p_restart?: boolean
+        }
+        Returns: Json
       }
       chat_schedule_change: {
         Args: { p_id: number; p_message: string | null; p_media_url: string | null; p_run_at: string; p_cancel_on_reply: boolean }

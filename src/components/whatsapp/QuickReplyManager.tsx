@@ -16,6 +16,8 @@ import {
 import { ModalShell } from '../ModalShell'
 import { cn } from '../../lib/cn'
 import { useConfirm } from '../../hooks/useConfirm'
+import { fileFromGallery } from '../../lib/galleries'
+import { GalleryPicker } from '../galleries/GalleryPicker'
 import {
   checkQuickReplyFile,
   MAX_QUICK_REPLY_STEPS,
@@ -48,6 +50,8 @@ type QuickReplyManagerProps = {
   onReorder: (ids: number[]) => Promise<string | null>
   // Saves a copy (its files copied too) and gives it back; without it there is no Duplicate button.
   onDuplicate?: (reply: QuickReply) => Promise<{ copy: QuickReply } | { error: string }>
+  // Media > Galleries can be read: a file row can be picked from the school's shared files (a copy is kept).
+  canUseGalleries?: boolean
 }
 
 const fieldClass =
@@ -80,6 +84,7 @@ function ReplyForm({
   start,
   onCancel,
   onSave,
+  canUseGalleries = false,
 }: {
   existing: QuickReply | null
   start?: QuickReplyStart | null
@@ -87,6 +92,7 @@ function ReplyForm({
   personal: boolean
   onCancel: () => void
   onSave: QuickReplyManagerProps['onSave']
+  canUseGalleries?: boolean
 }) {
   const isMine = existing ? Boolean(existing.ownerId) : personal
   const [title, setTitle] = useState(existing?.title ?? '')
@@ -96,6 +102,8 @@ function ReplyForm({
       : rowsOf(existing),
   )
   const [isActive, setIsActive] = useState(existing?.isActive ?? true)
+  // The file row that is picking from Galleries.
+  const [galleryFor, setGalleryFor] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const noteBox = useRef<HTMLParagraphElement>(null)
@@ -288,11 +296,36 @@ function ReplyForm({
                     >
                       {row.file || row.media ? 'Change file' : 'Choose file'}
                     </button>
+                    {canUseGalleries && (
+                      <button
+                        type="button"
+                        onClick={() => setGalleryFor(row.key)}
+                        className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        From Galleries
+                      </button>
+                    )}
                   </div>
                 )}
               </li>
             ))}
           </ol>
+          {galleryFor !== null && (
+            <GalleryPicker
+              use="quick_reply"
+              onClose={() => setGalleryFor(null)}
+              onPick={async (picked) => {
+                const file = normalizeQuickReplyFile(await fileFromGallery(picked))
+                const problem = checkQuickReplyFile(file)
+                if (problem) {
+                  throw new Error(problem)
+                }
+                setError(null)
+                change(galleryFor, { file, media: null })
+                setGalleryFor(null)
+              }}
+            />
+          )}
           <input
             ref={fileInput}
             type="file"
@@ -380,6 +413,7 @@ export function QuickReplyManager({
   onRemove,
   onReorder,
   onDuplicate,
+  canUseGalleries = false,
 }: QuickReplyManagerProps) {
   // Whoever may change the team's list starts there; everyone else starts on their own.
   const [tab, setTab] = useState<'mine' | 'team'>(start || !canEditTeam ? 'mine' : 'team')
@@ -462,6 +496,7 @@ export function QuickReplyManager({
         <ReplyForm
           existing={editing === 'new' ? null : editing}
           personal={tab === 'mine'}
+          canUseGalleries={canUseGalleries}
           start={editing === 'new' ? startRows : null}
           onCancel={() => {
             setEditing(null)

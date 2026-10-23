@@ -9,6 +9,7 @@ const TONE: Record<SpecialKind, string> = {
   extra: 'border-l-blue-600 bg-blue-50 hover:bg-blue-100',
   trial: 'border-l-teal-500 bg-teal-50 hover:bg-teal-100',
   weekly: 'border-l-slate-300 bg-slate-50/70 hover:bg-slate-100',
+  orphan: 'border-l-red-600 bg-red-100 hover:bg-red-200',
 }
 
 // One special class day on the month calendar: the time, then the grade, subject and teacher. A cancelled day

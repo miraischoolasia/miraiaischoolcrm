@@ -6,9 +6,13 @@ import {
   CALENDAR_ITEM_KINDS,
   draftOfItem,
   emptyItemDraft,
+  isoWeekdayOf,
+  WEEKDAY_LABELS,
   type CalendarItem,
   type CalendarItemDraft,
   type CalendarItemKind,
+  type CalendarSaveOptions,
+  type SeriesScope,
 } from '../../lib/calendarItems'
 
 type CalendarItemModalProps = {
@@ -21,8 +25,8 @@ type CalendarItemModalProps = {
   canEdit: boolean
   onClose: () => void
   // Each resolves to an error message, or null when it worked.
-  onSave: (draft: CalendarItemDraft) => Promise<string | null>
-  onDelete?: () => Promise<string | null>
+  onSave: (draft: CalendarItemDraft, options: CalendarSaveOptions) => Promise<string | null>
+  onDelete?: (scope: SeriesScope) => Promise<string | null>
   onToggleDone?: (isDone: boolean) => Promise<string | null>
 }
 
@@ -43,6 +47,14 @@ export function CalendarItemModal({
   const [draft, setDraft] = useState<CalendarItemDraft>(() => (item ? draftOfItem(item) : emptyItemDraft(defaultDate)))
   const [error, setError] = useState<string | null>(null)
   const [isBusy, setIsBusy] = useState(false)
+  // A new item can repeat every week; an item of a weekly rule asks whether a change/delete is for this day or the rest.
+  const [repeatOn, setRepeatOn] = useState(false)
+  const [weekdays, setWeekdays] = useState<number[]>([])
+  const [until, setUntil] = useState('')
+  const [scope, setScope] = useState<SeriesScope>('one')
+  const inSeries = item?.seriesId != null
+  // "This and all upcoming" changes the rule, so what belongs to one day alone is locked.
+  const wholeRule = inSeries && scope === 'upcoming'
   const set = <K extends keyof CalendarItemDraft>(key: K, value: CalendarItemDraft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }))
   const allDay = draft.startTime === ''
@@ -83,7 +95,7 @@ export function CalendarItemModal({
             <button
               key={entry.key}
               type="button"
-              disabled={!canEdit}
+              disabled={!canEdit || inSeries}
               aria-pressed={draft.kind === entry.key}
               onClick={() =>
                 setDraft((current) => ({
@@ -124,7 +136,7 @@ export function CalendarItemModal({
             <input
               type="date"
               value={draft.date}
-              disabled={!canEdit}
+              disabled={!canEdit || wholeRule}
               onChange={(event) => set('date', event.target.value)}
               className={cn(FIELD, 'mt-1')}
             />
@@ -201,6 +213,76 @@ export function CalendarItemModal({
           </label>
         )}
 
+        {!item && canEdit && (
+          <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                checked={repeatOn}
+                onChange={(event) => {
+                  setRepeatOn(event.target.checked)
+                  if (event.target.checked && weekdays.length === 0 && draft.date) {
+                    setWeekdays([isoWeekdayOf(draft.date)])
+                  }
+                }}
+                className="h-4 w-4 accent-[#fc0c97]"
+              />
+              Repeat every week
+            </label>
+            {repeatOn && (
+              <>
+                <div role="group" aria-label="Repeat on" className="flex flex-wrap gap-1">
+                  {WEEKDAY_LABELS.map((label, index) => {
+                    const day = index + 1
+                    const on = weekdays.includes(day)
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => setWeekdays((current) => (on ? current.filter((entry) => entry !== day) : [...current, day]))}
+                        className={cn(
+                          'rounded-lg border px-2.5 py-1 text-xs font-semibold',
+                          on ? 'border-[#fc0c97] bg-[#fff0f8] text-[#be185d]' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+                        )}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+                <label className="block text-sm font-medium text-slate-700">
+                  Last day (leave empty to repeat with no end)
+                  <input type="date" value={until} onChange={(event) => setUntil(event.target.value)} className={cn(FIELD, 'mt-1')} />
+                </label>
+                <p className="text-xs text-slate-500">
+                  Starts on the day above. The next 12 weeks are put on the calendar now, and more are added every night.
+                </p>
+              </>
+            )}
+          </div>
+        )}
+
+        {inSeries && canEdit && (
+          <div role="group" aria-label="Which days" className="space-y-1 rounded-xl border border-slate-200 p-3 text-sm text-slate-700">
+            <p className="font-medium">This item repeats every week. Save or delete:</p>
+            <label className="flex items-center gap-2">
+              <input type="radio" name="series-scope" checked={scope === 'one'} onChange={() => setScope('one')} className="accent-[#fc0c97]" />
+              This day only
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="series-scope"
+                checked={scope === 'upcoming'}
+                onChange={() => setScope('upcoming')}
+                className="accent-[#fc0c97]"
+              />
+              This day and all the ones after
+            </label>
+          </div>
+        )}
+
         <label className="block text-sm font-medium text-slate-700">
           Notes
           <textarea
@@ -250,7 +332,7 @@ export function CalendarItemModal({
             <button
               type="button"
               disabled={isBusy}
-              onClick={() => void run(onDelete)}
+              onClick={() => void run(() => onDelete(scope))}
               className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
             >
               Delete
@@ -269,7 +351,14 @@ export function CalendarItemModal({
             <button
               type="button"
               disabled={isBusy}
-              onClick={() => void run(() => onSave(draft))}
+              onClick={() =>
+                void run(() =>
+                  onSave(draft, {
+                    repeat: !item && repeatOn ? { weekdays, until } : null,
+                    scope: inSeries ? scope : undefined,
+                  }),
+                )
+              }
               className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white hover:bg-[#de0a84] disabled:opacity-60"
             >
               {isBusy ? 'Saving...' : item ? 'Save' : 'Add'}

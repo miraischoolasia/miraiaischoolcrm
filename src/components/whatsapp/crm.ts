@@ -52,6 +52,10 @@ export type WhatsAppCrm = {
   leadOptions: LeadOption[]
   canEditLeads: boolean
   canEditStudents: boolean
+  // May start a flow for a chat by hand ("+" > Start automation): the Automations edit tick.
+  canStartFlows?: boolean
+  // May read Media > Galleries: "From Galleries" in the "+" menu and the quick reply editor.
+  canUseGalleries?: boolean
   // The HOA classes still open for booking, as the calendar shows them.
   listHoaSlots: () => HoaSlot[]
   // The same for one programme the school made: the open classes that belong to it (only this class

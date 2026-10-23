@@ -62,6 +62,18 @@ async function start() {
   const { startBranding } = await import('./lib/branding.ts')
   await startBranding()
 
+  // /p/<page address>: a published landing page (Marketing > Landing Page), without the CRM; ?preview=1 = the draft.
+  const landingSlug = /^\/p\/([^/]+)\/?$/.exec(window.location.pathname)?.[1]
+  if (landingSlug) {
+    const { PublicLandingPage } = await import('./landing/PublicLandingPage.tsx')
+    root.render(
+      <StrictMode>
+        <PublicLandingPage slug={landingSlug.toLowerCase()} preview={isPreview} />
+      </StrictMode>,
+    )
+    return
+  }
+
   if (publicFormKey) {
     const { PublicFormPage } = await import('./components/PublicFormPage.tsx')
     root.render(

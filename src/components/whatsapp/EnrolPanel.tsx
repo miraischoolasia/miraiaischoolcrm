@@ -9,6 +9,7 @@ import type { Form, Lead } from '../../types/domain'
 import type { WhatsAppCrm } from './crm'
 import { PanelSection } from './PanelSection'
 import { buttonClass, fieldClass, Problem, ReceiptStep, Step, ZoomStep } from './enrolSteps'
+import { hasZoomMeeting, nextScheduledMeeting } from '../../lib/zoomMeetingStatus'
 
 type EnrolPanelProps = {
   lead: Lead
@@ -105,10 +106,7 @@ export function EnrolPanel({ lead, crm, userName, onWriteMessage, forStudent = f
   function writeMessage() {
     const today = new Date().toISOString().slice(0, 10)
     const nextBooking = bookings.find((entry) => entry.bookingDate >= today) ?? bookings[bookings.length - 1] ?? null
-    const nextMeeting =
-      enrolment.meetings.find((meeting) => new Date(meeting.startsAt).getTime() >= Date.now()) ??
-      enrolment.meetings[enrolment.meetings.length - 1] ??
-      null
+    const nextMeeting = nextScheduledMeeting(enrolment.meetings, new Date())
     onWriteMessage(
       buildEnrolMessage({
         childName: nextBooking?.childName ?? child?.name ?? '',
@@ -122,7 +120,7 @@ export function EnrolPanel({ lead, crm, userName, onWriteMessage, forStudent = f
     )
   }
 
-  const doneCount = [submitted, bookings.length > 0, enrolment.receipts.length > 0, enrolment.meetings.length > 0].filter(Boolean).length
+  const doneCount = [submitted, bookings.length > 0, enrolment.receipts.length > 0, hasZoomMeeting(enrolment.meetings)].filter(Boolean).length
   const visibleSlots = showAllSlots ? slots : slots.slice(0, 6)
 
   return (

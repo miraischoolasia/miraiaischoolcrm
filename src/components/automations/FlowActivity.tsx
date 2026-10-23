@@ -192,6 +192,7 @@ function EnrollmentRow({ item, isOpen, onToggle }: { item: Enrollment; isOpen: b
         <span className="min-w-[140px] flex-1 text-sm font-semibold text-slate-900">{item.person}</span>
         <span className="text-xs text-slate-500">{formatWhen(item.enteredAt)}</span>
         <span className={cn('rounded px-2 py-0.5 text-xs font-bold', STATUS_CHIP[item.status])}>{item.label}</span>
+        {item.startedBy && <span className="w-full pl-[22px] text-xs font-medium text-slate-700">Started by {item.startedBy} (by hand)</span>}
         {item.reason && <span className="w-full pl-[22px] text-xs text-slate-600">{item.reason}</span>}
       </button>
       {isOpen && (

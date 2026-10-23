@@ -7,7 +7,7 @@ import type { Classroom, MakeupPlan, Schedule, ScheduleException, TrialBooking }
 // a booked trial. A school that wants them (Class Settings > Calendar) also sees each weekly class there, faded;
 // otherwise the weekly classes are in the day list and the week view.
 
-export type SpecialKind = 'cancel' | 'replacement' | 'extra' | 'trial' | 'weekly'
+export type SpecialKind = 'cancel' | 'replacement' | 'extra' | 'trial' | 'weekly' | 'orphan'
 
 export type SpecialCard = {
   kind: SpecialKind
@@ -27,6 +27,7 @@ export const SPECIAL_LABEL: Record<SpecialKind, string> = {
   extra: 'Extra class',
   trial: 'Trial class',
   weekly: 'Weekly class',
+  orphan: 'Booking without a class',
 }
 
 const clock = (time: string) => {
@@ -223,6 +224,61 @@ export function bookedTrialEvents(
         scheduleId,
         classroomId: schedule.classroomId,
         classKind: 'trial',
+        teacherName: special.teacher,
+        eventType: schedule.eventType,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        occurrenceDate: bookingDate,
+        special,
+      },
+    }
+  })
+}
+
+// A trial booking on a day its slot no longer runs (the slot was edited after the booking): drawn in red so the
+// children are not forgotten. One card per slot and day; it opens the bookings like a booked slot does.
+export function orphanBookingEvents(
+  bookings: TrialBooking[],
+  schedules: Schedule[],
+  classroomMap: Map<number, Classroom>,
+  teacherName: (teacherId: number) => string,
+): EventInput[] {
+  const slots = new Map(schedules.map((schedule) => [schedule.id, schedule]))
+  const byDay = new Map<string, TrialBooking[]>()
+  for (const booking of bookings) {
+    if (!slots.has(booking.scheduleId)) continue
+    const key = dayKey(booking.scheduleId, booking.bookingDate)
+    byDay.set(key, [...(byDay.get(key) ?? []), booking])
+  }
+
+  return [...byDay.values()].map((dayBookings) => {
+    const { scheduleId, bookingDate } = dayBookings[0]
+    const schedule = slots.get(scheduleId)!
+    const classroom = classroomOf(schedule, classroomMap)
+    const names = dayBookings.map((booking) => booking.childName).join(', ')
+    const special: SpecialCard = {
+      kind: 'orphan',
+      time: timeRange(schedule.startTime, schedule.endTime),
+      line: `${names} · no class on this day`,
+      teacher: teacherName(schedule.teacherId),
+      madeUp: null,
+    }
+    return {
+      id: `trial-orphan-${scheduleId}-${bookingDate}`,
+      title: `No class: ${names}`,
+      start: `${bookingDate}T${schedule.startTime}`,
+      end: `${bookingDate}T${schedule.endTime}`,
+      startEditable: false,
+      backgroundColor: '#fee2e2',
+      borderColor: '#dc2626',
+      textColor: '#991b1b',
+      extendedProps: {
+        scheduleId,
+        classroomId: schedule.classroomId,
+        classKind: 'trial',
+        isOrphanBooking: true,
+        orphanCount: dayBookings.length,
+        className: classroom?.name ?? schedule.title,
         teacherName: special.teacher,
         eventType: schedule.eventType,
         startTime: schedule.startTime,

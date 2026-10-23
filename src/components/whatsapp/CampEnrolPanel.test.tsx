@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   fetchLeadEnrolment: vi.fn(),
   addLeadReceipt: vi.fn(),
   addLeadZoomMeeting: vi.fn(),
+  updateLeadZoomMeeting: vi.fn(),
   fetchForms: vi.fn(),
 }))
 
@@ -17,6 +18,7 @@ vi.mock('../../lib/leadEnrolmentApi', async (original) => ({
   fetchLeadEnrolment: api.fetchLeadEnrolment,
   addLeadReceipt: api.addLeadReceipt,
   addLeadZoomMeeting: api.addLeadZoomMeeting,
+  updateLeadZoomMeeting: api.updateLeadZoomMeeting,
 }))
 vi.mock('../../lib/api', () => ({ fetchFormsFromSupabase: api.fetchForms }))
 

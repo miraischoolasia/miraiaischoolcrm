@@ -17,6 +17,7 @@ import type { Form, Lead, Student } from '../../types/domain'
 import type { WhatsAppCrm } from './crm'
 import { PanelSection } from './PanelSection'
 import { buttonClass, fieldClass, Problem, ReceiptStep, Step, ZoomStep } from './enrolSteps'
+import { hasZoomMeeting, nextScheduledMeeting } from '../../lib/zoomMeetingStatus'
 
 type ProgrammePanelProps = {
   lead: Lead
@@ -105,7 +106,7 @@ export function ProgrammePanel({ lead, crm, programme, userName, onWriteMessage,
       case 'receipt':
         return enrolment.receipts.length > 0
       case 'zoom':
-        return enrolment.meetings.length > 0
+        return hasZoomMeeting(enrolment.meetings)
       default:
         return own.steps.get(step.id)?.done ?? false
     }
@@ -114,10 +115,7 @@ export function ProgrammePanel({ lead, crm, programme, userName, onWriteMessage,
   function writeMessage() {
     const today = new Date().toISOString().slice(0, 10)
     const nextBooking = bookings.find((entry) => entry.bookingDate >= today) ?? bookings[bookings.length - 1] ?? null
-    const nextMeeting =
-      enrolment.meetings.find((meeting) => new Date(meeting.startsAt).getTime() >= Date.now()) ??
-      enrolment.meetings[enrolment.meetings.length - 1] ??
-      null
+    const nextMeeting = nextScheduledMeeting(enrolment.meetings, new Date())
     const child = lead.children[0]
     const template = programme.messageTemplate.trim() === '' ? DEFAULT_MESSAGE_TEMPLATE : programme.messageTemplate
     onWriteMessage(
