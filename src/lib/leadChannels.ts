@@ -1,3 +1,4 @@
+import { readAllRows } from './readAllRows'
 import { supabase } from './supabase'
 
 // The chats a lead has, one row for each (person in the inbox, inbox): WhatsApp on number A, WhatsApp on
@@ -61,13 +62,18 @@ export async function fetchLeadChannels(): Promise<LeadChannel[]> {
   if (!supabase) {
     return []
   }
-  const { data, error } = await supabase
-    .from('lead_channels')
-    .select(
-      'id, lead_id, channel, chatwoot_contact_id, inbox_id, inbox_name, conversation_id, display_name, page_name, first_seen_at',
-    )
-    .order('first_seen_at', { ascending: true })
-    .limit(20000)
+  // In pages: the API answers at most 1000 rows at a time, and a school can have several thousand chats.
+  const { data, error } = await readAllRows((from, to, withCount) =>
+    supabase!
+      .from('lead_channels')
+      .select(
+        'id, lead_id, channel, chatwoot_contact_id, inbox_id, inbox_name, conversation_id, display_name, page_name, first_seen_at',
+        withCount ? { count: 'exact' } : undefined,
+      )
+      .order('first_seen_at', { ascending: true })
+      .order('id')
+      .range(from, to),
+  )
   if (error) {
     throw error
   }

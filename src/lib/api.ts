@@ -39,11 +39,11 @@ import type {
   TeacherRow,
 } from '../types/domain'
 
+import { readAllRows } from './readAllRows'
+
 function isMissingTableError(error: { code?: string }) {
   return error.code === 'PGRST205' || error.code === '42P01'
 }
-
-const STUDENT_PAGE_SIZE = 1000
 
 export async function fetchStudentsFromSupabase() {
   if (!supabase) {
@@ -57,26 +57,17 @@ export async function fetchStudentsFromSupabase() {
     package_id?: number | null
     student_classroom_periods?: ClassroomPeriodRow[]
   }
-  // Supabase answers at most 1000 rows at a time, so a big school is read
-  // page by page.
-  const select = async (selected: string) => {
-    const rows: Row[] = []
-    for (let from = 0; ; from += STUDENT_PAGE_SIZE) {
-      const result = (await supabase!
-        .from('students')
-        .select(selected)
-        .order('full_name')
-        .order('id')
-        .range(from, from + STUDENT_PAGE_SIZE - 1)) as unknown as { data: Row[] | null; error: { code?: string } | null }
-      if (result.error) {
-        return { data: null, error: result.error }
-      }
-      rows.push(...(result.data ?? []))
-      if ((result.data ?? []).length < STUDENT_PAGE_SIZE) {
-        return { data: rows, error: null }
-      }
-    }
-  }
+  // Supabase answers at most 1000 rows at a time, so a big school is read in pages (the pages after the first together).
+  const select = (selected: string) =>
+    readAllRows<Row>(
+      (from, to, withCount) =>
+        supabase!
+          .from('students')
+          .select(selected, withCount ? { count: 'exact' } : undefined)
+          .order('full_name')
+          .order('id')
+          .range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: { code?: string } | null; count?: number | null }>,
+    )
   const history = 'student_classroom_periods(classroom_id, start_date, end_date)'
   const load = async (base: string) => {
     let result = await select(`${base}, package_id, ${history}`)
@@ -265,14 +256,18 @@ export async function fetchLeadsFromSupabase() {
     return []
   }
 
-  const select = async (columns: string) => {
-    const result = await supabase!
-      .from('leads')
-      .select(columns)
-      .order('added_date', { ascending: false })
-      .order('created_at', { ascending: false })
-    return { data: result.data as unknown as LeadRow[] | null, error: result.error }
-  }
+  // Read in pages: 1000 rows is the most the API answers at a time, and a school can have several thousand leads.
+  const select = (columns: string) =>
+    readAllRows<LeadRow>(
+      (from, to, withCount) =>
+        supabase!
+          .from('leads')
+          .select(columns, withCount ? { count: 'exact' } : undefined)
+          .order('added_date', { ascending: false })
+          .order('created_at', { ascending: false })
+          .order('id')
+          .range(from, to) as unknown as PromiseLike<{ data: LeadRow[] | null; error: { code?: string } | null; count?: number | null }>,
+    )
 
   const columns =
     'id, full_name, phone, status, children, notes, follow_ups, tasks, converted_student_id, added_date, created_at, updated_at'
@@ -388,10 +383,14 @@ export async function fetchScheduleParticipantsFromSupabase() {
     return []
   }
 
-  const { data, error } = await supabase
-    .from('schedule_students')
-    .select('id, schedule_id, student_id, is_active')
-    .order('schedule_id')
+  const { data, error } = await readAllRows((from, to, withCount) =>
+    supabase!
+      .from('schedule_students')
+      .select('id, schedule_id, student_id, is_active', withCount ? { count: 'exact' } : undefined)
+      .order('schedule_id')
+      .order('id')
+      .range(from, to),
+  )
 
   if (error) {
     throw error
@@ -449,10 +448,14 @@ export async function fetchTrialBookingsFromSupabase() {
     return []
   }
 
-  const { data, error } = await supabase
-    .from('trial_bookings')
-    .select('id, schedule_id, booking_date, lead_id, student_id, child_name, child_age, phone, notes')
-    .order('booking_date')
+  const { data, error } = await readAllRows((from, to, withCount) =>
+    supabase!
+      .from('trial_bookings')
+      .select('id, schedule_id, booking_date, lead_id, student_id, child_name, child_age, phone, notes', withCount ? { count: 'exact' } : undefined)
+      .order('booking_date')
+      .order('id')
+      .range(from, to),
+  )
 
   if (error) {
     // Same reasoning as skipped days: bookings are an overlay on the calendar,
@@ -519,14 +522,19 @@ export async function fetchLessonLogSummariesFromSupabase() {
     return []
   }
 
-  const { data, error } = await supabase
-    .from('lesson_logs')
-    .select(
-      'id, schedule_id, teacher_id, lesson_date, lesson_remark, submitted_at, revision_number, parent_log_id',
-    )
-    .order('schedule_id')
-    .order('lesson_date')
-    .order('revision_number', { ascending: false })
+  const { data, error } = await readAllRows((from, to, withCount) =>
+    supabase!
+      .from('lesson_logs')
+      .select(
+        'id, schedule_id, teacher_id, lesson_date, lesson_remark, submitted_at, revision_number, parent_log_id',
+        withCount ? { count: 'exact' } : undefined,
+      )
+      .order('schedule_id')
+      .order('lesson_date')
+      .order('revision_number', { ascending: false })
+      .order('id')
+      .range(from, to),
+  )
 
   if (error) {
     throw error
@@ -536,8 +544,6 @@ export async function fetchLessonLogSummariesFromSupabase() {
 }
 
 const REVIEW_SCORE_COLUMNS = 'lesson_log_id, student_id, criterion_id, score, remark'
-const SCORE_PAGE_SIZE = 1000
-
 // Every review score, read in pages (one row per criterion per review, so it
 // passes the API's 1000-row cap quickly).
 async function fetchAllLessonReviewScores() {
@@ -545,23 +551,18 @@ async function fetchAllLessonReviewScores() {
     return []
   }
 
-  const rows: LessonReviewScoreRow[] = []
-  for (let from = 0; ; from += SCORE_PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from('lesson_review_scores')
-      .select(REVIEW_SCORE_COLUMNS)
-      .order('id')
-      .range(from, from + SCORE_PAGE_SIZE - 1)
-
-    if (error) {
-      throw error
-    }
-
-    rows.push(...data)
-    if (data.length < SCORE_PAGE_SIZE) {
-      return rows
-    }
+  const { data, error } = await readAllRows<LessonReviewScoreRow>(
+    (from, to, withCount) =>
+      supabase!
+        .from('lesson_review_scores')
+        .select(REVIEW_SCORE_COLUMNS, withCount ? { count: 'exact' } : undefined)
+        .order('id')
+        .range(from, to) as unknown as PromiseLike<{ data: LessonReviewScoreRow[] | null; error: { code?: string } | null; count?: number | null }>,
+  )
+  if (error) {
+    throw error
   }
+  return data
 }
 
 export async function fetchLessonLogStudentReviewsFromSupabase() {
@@ -570,11 +571,14 @@ export async function fetchLessonLogStudentReviewsFromSupabase() {
   }
 
   const [{ data, error }, scoreRows] = await Promise.all([
-    supabase
-      .from('lesson_log_student_reviews')
-      .select('id, lesson_log_id, student_id, lesson_remark')
-      .order('lesson_log_id')
-      .order('student_id'),
+    readAllRows((from, to, withCount) =>
+      supabase!
+        .from('lesson_log_student_reviews')
+        .select('id, lesson_log_id, student_id, lesson_remark', withCount ? { count: 'exact' } : undefined)
+        .order('lesson_log_id')
+        .order('student_id')
+        .range(from, to),
+    ),
     fetchAllLessonReviewScores(),
   ])
 
