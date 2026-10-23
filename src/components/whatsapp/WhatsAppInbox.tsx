@@ -92,6 +92,7 @@ import { listedInboxIds, zoneFilter } from '../../lib/inboxZones'
 import { QuickReplyManager, type QuickReplyStart } from './QuickReplyManager'
 import { quickReplyStartFrom } from '../../lib/quickReplyFromMessages'
 import { ownMediaUrl } from '../../lib/chatwoot'
+import { contactPictureUrl } from '../../lib/contactPicture'
 import { SourceRuleManager } from './SourceRuleManager'
 
 type WhatsAppInboxProps = {
@@ -645,6 +646,18 @@ export function WhatsAppInbox({
     (conversationId: number) =>
       inbox.conversations.find((conversation) => conversation.id === conversationId)?.meta.sender.id ?? null,
     [inbox.conversations],
+  )
+  // WhatsApp pictures (Chatwoot keeps them, see contactPicture.ts): the chat list, the chat's header, the Family card.
+  const pictureOf = useCallback(
+    (conversation: ChatwootConversation) => contactPictureUrl(conversation.meta.sender.thumbnail, apiUrl),
+    [apiUrl],
+  )
+  const pictureOfContact = useCallback(
+    (contactId: number) => {
+      const chat = inbox.conversations.find((conversation) => conversation.meta.sender.id === contactId)
+      return chat ? pictureOf(chat) : null
+    },
+    [inbox.conversations, pictureOf],
   )
   const chatOfContact = useCallback(
     (contactId: number) =>
@@ -1498,6 +1511,7 @@ export function WhatsAppInbox({
       <ColumnHandle handle={columns.list} className="left-[var(--inbox-list)] lg:block" />
       {columns.withDetails && <ColumnHandle handle={columns.details} className="left-[calc(100%-var(--inbox-details))] xl:block" />}
       <ConversationList
+        pictureOf={pictureOf}
         className={cn(hasChat && 'hidden lg:flex')}
         conversations={visible}
         counts={counts}
@@ -1564,6 +1578,7 @@ export function WhatsAppInbox({
       {inbox.selected ? (
         <>
           <ChatPanel
+            picture={pictureOf(inbox.selected)}
             className={cn(!hasChat && 'hidden lg:flex', detailsOpen && 'hidden xl:flex')}
             conversation={inbox.selected}
             focusMessageId={inbox.focusMessageId}
@@ -1686,6 +1701,7 @@ export function WhatsAppInbox({
             }}
             people={people}
             chatOfContact={chatOfContact}
+            pictureOfContact={pictureOfContact}
             onPeopleChanged={() => refreshPeople()}
             studentZone={isStudentInbox}
             userName={currentUser.name}
@@ -1852,6 +1868,7 @@ export function WhatsAppInbox({
           onSave={quickReplies.save}
           onRemove={quickReplies.remove}
           onReorder={quickReplies.reorder}
+          onDuplicate={quickReplies.duplicate}
         />
       )}
     </div>

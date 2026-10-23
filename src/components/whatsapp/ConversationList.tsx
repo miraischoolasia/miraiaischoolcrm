@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
+import { PictureOrText } from './Avatar'
 import { Bell, BellSlash, CaretDown, ChatCircleDots, CheckCircle, EnvelopeSimple, FunnelSimple, ImageSquare, Lightning, X, MagnifyingGlass, Phone, Plus, SpeakerHigh, SpeakerSlash, PushPin } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
@@ -113,6 +114,8 @@ type ConversationListProps = {
   tagsOf?: (conversation: ChatwootConversation) => Pick<LeadOption, 'id' | 'label' | 'color' | 'isActive'>[]
   // Who is in charge of the parent: the lead's person in charge, else whoever handles the chat.
   picOf?: (conversation: ChatwootConversation) => { name: string; initials: string } | null
+  // The parent's WhatsApp picture, shown in place of the initials when there is one.
+  pictureOf?: (conversation: ChatwootConversation) => string | null
   // How long a parent has waited (the red banner, the red row, "Waiting 45 min"). Hidden for now.
   showWaiting?: boolean
   // What the reactions at the end of chats were put on, by the reaction's WhatsApp id.
@@ -226,6 +229,7 @@ export function ConversationList({
   studentLabelsOf,
   tagsOf,
   picOf,
+  pictureOf,
   showWaiting = false,
   draftOf,
   reactionPreviews,
@@ -648,7 +652,7 @@ export function ConversationList({
                   aria-hidden="true"
                   className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700"
                 >
-                  {identity.initials}
+                  <PictureOrText src={pictureOf?.(conversation)} text={identity.initials} />
                 </span>
                 {channel && <ChannelBadge info={channel} className="absolute -bottom-1 -right-1" />}
               </span>

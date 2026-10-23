@@ -1,4 +1,7 @@
 import { FormAnswersChip } from './FormAnswersChip'
+import { PictureOrText } from './whatsapp/Avatar'
+import { useContactPictures } from '../hooks/useContactPictures'
+import { pictureForPhone } from '../lib/contactPicture'
 import { useRef, useState } from 'react'
 import { CaretLeft, CaretRight, PencilSimple, Phone } from '@phosphor-icons/react'
 import { cn } from '../lib/cn'
@@ -68,6 +71,8 @@ export function LeadKanbanBoard({
   onOpenFormAnswers,
 }: LeadKanbanBoardProps) {
   const todayString = getTodayString()
+  // The parent's WhatsApp picture beside the name, when the inbox has one for the lead's number.
+  const pictures = useContactPictures()
   const [dragOverStage, setDragOverStage] = useState<LeadStatus | null>(null)
   const [draggingLeadId, setDraggingLeadId] = useState<number | null>(null)
   const [pageByStage, setPageByStage] = useState<Partial<Record<LeadStatus, number>>>({})
@@ -193,8 +198,15 @@ export function LeadKanbanBoard({
                     )}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <span className="text-sm font-semibold text-slate-900">
-                        {lead.phone || lead.fullName || 'No phone'}
+                      <span className="flex min-w-0 items-center gap-2">
+                        {pictureForPhone(pictures, lead.phone) && (
+                          <span aria-hidden="true" className="flex size-7 shrink-0 overflow-hidden rounded-full bg-slate-100">
+                            <PictureOrText src={pictureForPhone(pictures, lead.phone)} text="" />
+                          </span>
+                        )}
+                        <span className="text-sm font-semibold text-slate-900">
+                          {lead.phone || lead.fullName || 'No phone'}
+                        </span>
                       </span>
                       {reminder && (
                         <span

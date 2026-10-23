@@ -73,6 +73,8 @@ type DetailsPanelProps = {
   // The family table, and the way from a WhatsApp contact to its chat, for the family card.
   people?: Person[]
   chatOfContact?: (contactId: number) => number | null
+  // A WhatsApp contact's picture (Family card), or null.
+  pictureOfContact?: (contactId: number) => string | null
   // The family table is read again (after the team changed the tags of a parent or child).
   onPeopleChanged?: () => Promise<void> | void
   // A chat of the Student Inbox: it belongs to a student's family, so the lead form is not offered by itself
@@ -125,6 +127,7 @@ export function DetailsPanel({
   onBack,
   people = [],
   chatOfContact = () => null,
+  pictureOfContact,
   onPeopleChanged,
   studentZone = false,
 }: DetailsPanelProps) {
@@ -464,6 +467,7 @@ export function DetailsPanel({
             family={family}
             childDetail={childDetail}
             chatOf={chatOfContact}
+            pictureOf={pictureOfContact ? (person) => (person.contactId ? pictureOfContact(person.contactId) : null) : undefined}
             onOpenChat={onOpenChat}
             onOpenStudent={crm.onOpenStudent}
             codeOf={(person) => (person.studentId !== null ? (crm.studentCodes?.get(person.studentId) ?? null) : null)}

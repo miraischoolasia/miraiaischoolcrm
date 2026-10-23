@@ -356,3 +356,16 @@ describe('ConversationList while searching', () => {
     expect(screen.queryByRole('heading', { level: 3 })).not.toBeInTheDocument()
   })
 })
+
+describe('ConversationList WhatsApp pictures (2026-10-23)', () => {
+  it('shows the parent picture where there is one, the initials elsewhere', () => {
+    const withPicture = chat(1, 'Puan Aminah', 60)
+    const without = chat(2, 'Mr Tan', 60)
+    renderList([withPicture, without], 0, {
+      pictureOf: (conversation) => (conversation.id === 1 ? 'https://wa.example/rails/active_storage/aminah.jpg' : null),
+    })
+    const pictures = document.querySelectorAll('img[src="https://wa.example/rails/active_storage/aminah.jpg"]')
+    expect(pictures).toHaveLength(1)
+    expect(screen.getByText('MT')).toBeInTheDocument()
+  })
+})

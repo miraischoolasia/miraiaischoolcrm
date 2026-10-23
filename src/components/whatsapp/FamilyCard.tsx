@@ -1,3 +1,4 @@
+import { PictureOrText } from './Avatar'
 import { useState } from 'react'
 import { UsersThree } from '@phosphor-icons/react'
 import type { Family } from '../../lib/family'
@@ -23,6 +24,8 @@ type FamilyCardProps = {
   onOpenStudent?: (studentId: number) => void
   // The school's student code of an enrolled child, shown in front of the name (the parent shows their children's).
   codeOf?: (person: Person) => string | null
+  // A person's WhatsApp picture (by their chat contact), in place of the initials when there is one.
+  pictureOf?: (person: Person) => string | null
   // The tags of the parent and of each child (the same tags the leads use). Left out where tags are not offered.
   tags?: {
     options: LeadOption[]
@@ -74,7 +77,7 @@ const linkClass = 'font-medium text-[#be185d] hover:underline'
 
 // The family around the open chat: the parent, their children, and the way to the other chats of the
 // family. It is what the family table says, so the team sees one place instead of several boxes.
-export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStudent, codeOf, tags }: FamilyCardProps) {
+export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStudent, codeOf, tags, pictureOf }: FamilyCardProps) {
   // The tags just chosen show at once, until they are saved and the family is read again.
   const [chosen, setChosen] = useState<Map<number, number[]>>(new Map())
 
@@ -141,7 +144,7 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
         <div>
           <div className={`${rowClass} ${parent.id === me.id ? thisChatClass : ''}`}>
             <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-600">
-              {initialsOf(parent, parentNameOf(parent, family.children))}
+              <PictureOrText src={pictureOf?.(parent)} text={initialsOf(parent, parentNameOf(parent, family.children))} />
             </span>
             <span className="min-w-0 flex-1">
               <span

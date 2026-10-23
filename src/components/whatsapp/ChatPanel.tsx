@@ -65,6 +65,8 @@ type ChatPanelProps = {
   draftRequest?: { id: number; text: string } | null
   // Opens the lead's full page; only for a chat that belongs to a lead.
   onOpenLead?: () => void
+  // The parent's WhatsApp picture, in place of the initials when there is one.
+  picture?: string | null
   // What is left unsent in this chat's message box, and where changes to it are reported.
   draft?: Draft | null
   onDraftChange?: (draft: Draft | null) => void
@@ -160,6 +162,7 @@ export function ChatPanel({
   onManageQuickReplies,
   draftRequest,
   onOpenLead,
+  picture = null,
   draft,
   onDraftChange,
   messageEvents = NO_EVENTS,
@@ -560,7 +563,7 @@ export function ChatPanel({
             onOpenLead ? '-m-1 cursor-pointer p-1 hover:bg-pink-100' : 'cursor-default',
           )}
         >
-          <Avatar initials={identity.initials} tone={parentTone} />
+          <Avatar initials={identity.initials} tone={parentTone} src={picture} />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold text-slate-900" title={identity.title}>{identity.title}</span>
             <span className={cn('block truncate text-xs', identity.hasRealPhone ? 'text-slate-500' : 'text-amber-700')}>
