@@ -238,6 +238,162 @@ export async function fetchCopyOpenChats(max = 5000) {
   return found
 }
 
+// Just enough of every open chat for the menu badges and the new-message bell (2026-10-23, EduHero was slow: every
+// tab read every open chat whole, raw JSON and all, at start and every minute). The database picks the few fields
+// out of the JSON, so a chat is about a tenth of a kilobyte here instead of several.
+const BADGE_FIELDS = [
+  'conversation_id',
+  'inbox_id',
+  'status',
+  'unread:raw->unread_count',
+  'waiting:raw->waiting_since',
+  'activity:raw->last_activity_at',
+  'channel:raw->meta->>channel',
+  'sender_id:raw->meta->sender->id',
+  'sender_name:raw->meta->sender->>name',
+  'sender_phone:raw->meta->sender->>phone_number',
+  'sender_identifier:raw->meta->sender->>identifier',
+  'ghl_channel:raw->meta->sender->additional_attributes->>ghl_channel',
+  'last_id:last_message_raw->id',
+  'last_type:last_message_raw->message_type',
+  'last_at:last_message_raw->created_at',
+  'last_private:last_message_raw->private',
+  'last_content:last_message_raw->>content',
+].join(', ')
+
+type BadgeRow = {
+  conversation_id: number
+  inbox_id: number | null
+  status: string | null
+  unread: unknown
+  waiting: unknown
+  activity: unknown
+  channel: string | null
+  sender_id: unknown
+  sender_name: string | null
+  sender_phone: string | null
+  sender_identifier: string | null
+  ghl_channel: string | null
+  last_id: unknown
+  last_type: unknown
+  last_at: unknown
+  last_private: unknown
+  last_content: string | null
+}
+
+const asNumber = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0)
+
+// A badge row in Chatwoot's shape (what the counting and the bell read), or null when the chat has no shape yet.
+export function conversationFromBadgeRow(row: BadgeRow): ChatwootConversation | null {
+  const senderId = asNumber(row.sender_id)
+  if (!senderId) {
+    return null
+  }
+  const lastType = row.last_type === null || row.last_type === undefined ? null : asNumber(row.last_type)
+  return {
+    id: row.conversation_id,
+    inbox_id: row.inbox_id ?? undefined,
+    status: row.status ?? 'open',
+    unread_count: asNumber(row.unread),
+    waiting_since: asNumber(row.waiting),
+    timestamp: asNumber(row.activity),
+    last_activity_at: asNumber(row.activity),
+    meta: {
+      channel: row.channel ?? undefined,
+      sender: {
+        id: senderId,
+        name: row.sender_name,
+        phone_number: row.sender_phone,
+        identifier: row.sender_identifier,
+        additional_attributes: row.ghl_channel ? { ghl_channel: row.ghl_channel } : null,
+      },
+    },
+    last_non_activity_message:
+      lastType === null
+        ? null
+        : {
+            id: asNumber(row.last_id),
+            content: row.last_content,
+            message_type: lastType,
+            created_at: asNumber(row.last_at),
+            private: row.last_private === true,
+            status: 'sent',
+          },
+  }
+}
+
+// Every open chat this person may see, light (see BADGE_FIELDS), newest first.
+export async function fetchBadgeChats(max = 5000) {
+  const db = requireSupabase()
+  const found: ChatwootConversation[] = []
+  for (let from = 0; from < max; from += 1000) {
+    const { data, error } = await db
+      .from('inbox_chats')
+      .select(BADGE_FIELDS)
+      .eq('status', 'open')
+      .not('raw', 'is', null)
+      .order('last_activity_at', { ascending: false, nullsFirst: false })
+      .order('conversation_id', { ascending: false })
+      .range(from, from + 999)
+    if (error) {
+      throw error
+    }
+    const rows = (data ?? []) as unknown as BadgeRow[]
+    for (const row of rows) {
+      const conversation = conversationFromBadgeRow(row)
+      if (conversation) {
+        found.push(conversation)
+      }
+    }
+    if (rows.length < 1000) {
+      break
+    }
+  }
+  return found
+}
+
+// The chats that changed since `sinceIso` (open or not), light: the badges catch up with these between whole reads.
+export async function fetchBadgeChatsChangedSince(sinceIso: string, max = 1000) {
+  const { data, error } = await requireSupabase()
+    .from('inbox_chats')
+    .select(BADGE_FIELDS)
+    .gt('updated_at', sinceIso)
+    .not('raw', 'is', null)
+    .order('updated_at', { ascending: false })
+    .limit(max)
+  if (error) {
+    throw error
+  }
+  const rows = (data ?? []) as unknown as BadgeRow[]
+  return {
+    changed: rows.map(conversationFromBadgeRow).filter((conversation): conversation is ChatwootConversation => conversation !== null),
+    complete: rows.length < max,
+  }
+}
+
+// The chats that changed since `sinceIso` (open or not), whole: the Inbox page catches up with these when it is
+// looked at again, instead of reading every open chat again.
+export async function fetchCopyChatsChangedSince(sinceIso: string, max = 1000) {
+  const { data, error } = await requireSupabase()
+    .from('inbox_chats')
+    .select('conversation_id, status, raw, last_message_raw')
+    .gt('updated_at', sinceIso)
+    .not('raw', 'is', null)
+    .order('updated_at', { ascending: false })
+    .limit(max)
+  if (error) {
+    throw error
+  }
+  const rows = data ?? []
+  return {
+    changed: rows
+      .map((row) => conversationFromCopy(row.raw, row.last_message_raw))
+      .filter((conversation): conversation is ChatwootConversation => conversation !== null),
+    // So many changed that some may be missing: read everything again instead.
+    complete: rows.length < max,
+  }
+}
+
 // Chats the copy has without Chatwoot's own shape (they were last active before the copy kept it). Until they have
 // it, the copy cannot stand in for Chatwoot's list.
 export async function fetchCopyChatsMissingShape(max = 5000) {

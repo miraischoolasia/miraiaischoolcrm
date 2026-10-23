@@ -55,6 +55,7 @@ import { fullLabelOf, shortLabelOf } from '../../lib/channelLabels'
 import { channelKeyOf, facebookPictureUrl, mainPageOf } from '../../lib/channelAvatars'
 import { useQuickReplies } from '../../hooks/useQuickReplies'
 import { useAutomationQueue } from '../../hooks/useAutomationQueue'
+import { useCopyOpenChats } from '../../hooks/useCopyOpenChats'
 import { needsApproval, type QueueItem } from '../../lib/automationQueue'
 import { useSourceRules } from '../../hooks/useSourceRules'
 import { useAutoLeads } from '../../hooks/useAutoLeads'
@@ -181,9 +182,11 @@ export function WhatsAppInbox({
   // One person who writes from a phone number and from a hidden ID is one chat once they are one lead.
   const siblings = useMemo(() => contactSiblings(crm.leadChannels), [crm.leadChannels])
   const leadOfContact = useMemo(() => leadOfContacts(crm.leadChannels), [crm.leadChannels])
+  // Every open chat, whole, read once this page is opened (the menu badge only reads a light list now).
+  const copyOpenChats = useCopyOpenChats(inboxCopy, active)
   const copyLink = useMemo(
-    () => (inboxCopy ? { link: inboxCopy, everyOpen: everyOpenChat } : null),
-    [inboxCopy, everyOpenChat],
+    () => (inboxCopy ? { link: inboxCopy, everyOpen: copyOpenChats.length > 0 ? copyOpenChats : undefined } : null),
+    [inboxCopy, copyOpenChats],
   )
   const inbox = useWhatsAppInbox(
     client,
@@ -239,8 +242,15 @@ export function WhatsAppInbox({
     [inbox.conversations, category],
   )
   const categoryUnread = useMemo(
-    () => countUnreadAcross(everyOpenChat ?? [], inbox.conversations, allowedInboxIds, siblings, excludedInboxIds).byCategory,
-    [everyOpenChat, inbox.conversations, allowedInboxIds, siblings, excludedInboxIds],
+    () =>
+      countUnreadAcross(
+        copyOpenChats.length > 0 ? copyOpenChats : (everyOpenChat ?? []),
+        inbox.conversations,
+        allowedInboxIds,
+        siblings,
+        excludedInboxIds,
+      ).byCategory,
+    [copyOpenChats, everyOpenChat, inbox.conversations, allowedInboxIds, siblings, excludedInboxIds],
   )
   useEffect(() => {
     if (categoryDecided.current || inbox.conversations.length === 0) {

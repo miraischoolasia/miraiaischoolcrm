@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChatwootClient } from '../lib/chatwootClient'
 import { isSoundOn, playAlertSound, showDesktopAlert } from '../lib/inboxAlerts'
-import { fetchCopyOpenChats, fillCopy } from '../lib/inboxCopyReader'
+import { fetchBadgeChats, fetchBadgeChatsChangedSince, fillCopy } from '../lib/inboxCopyReader'
 import type { InboxCopyLive } from './useInboxCopyLive'
 import {
   countUnreadAcross,
@@ -25,11 +25,16 @@ const MAX_PAGES = 80
 const PARALLEL_PAGES = 3
 
 // With the CRM's copy of the inbox (2026-10-20: reading every page of Chatwoot's list from every tab took 96% of
-// Chatwoot's time): the open chats come from the copy, and each change arrives by itself. The copy is read whole
-// again now and then in case a change was missed, and Chatwoot's first page is looked at once a minute by one tab
-// of the browser, for what Chatwoot does not report (a chat read in Chatwoot itself).
-const COPY_REREAD_LIVE_MS = 10 * 60_000
-const COPY_REREAD_MS = 60_000
+// Chatwoot's time): the open chats come from the copy. Only a few fields of each are read (fetchBadgeChats, 2026-10-23:
+// reading them whole, raw JSON and all, from every tab was the heaviest read of EduHero's database). While the Inbox
+// page is open its live line brings each change by itself and the list is read again rarely; elsewhere the live line
+// is closed and only the chats changed since the last look are read, every half minute (the whole light list again
+// every 10 minutes, in case). Chatwoot's first page is looked at once a minute by one tab of the browser, for what
+// Chatwoot does not report (a chat read in Chatwoot itself).
+const COPY_REREAD_MS = 10 * 60_000
+const COPY_TICK_MS = 30_000
+// The database clock and this computer's may differ a little: catch up from a bit earlier.
+const CLOCK_SLACK_MS = 2 * 60_000
 const CHATWOOT_CHECK_MS = 60_000
 const CHATWOOT_CHECK_KEY = 'crm-chatwoot-open-check'
 // At most this many chats a check puts right in the copy (their unread count, owner, status).
@@ -112,10 +117,6 @@ export function useWhatsAppUnread(
   useEffect(() => {
     siblingsRef.current = siblings
   }, [siblings])
-  const liveRef = useRef(copy?.live ?? false)
-  useEffect(() => {
-    liveRef.current = copy?.live ?? false
-  }, [copy?.live])
   const [counts, setCounts] = useState<UnreadCounts>({ total: 0, byCategory: NO_UNREAD })
   // Every open chat as last read, for the Inbox's list and buttons.
   const [openChats, setOpenChats] = useState<ChatwootConversation[]>([])
@@ -183,9 +184,11 @@ export function useWhatsAppUnread(
       }
     }
 
+    let readAt = 0
     async function readCopy() {
+      const startedAt = Date.now()
       try {
-        const found = await fetchCopyOpenChats()
+        const found = await fetchBadgeChats()
         if (cancelled) {
           return
         }
@@ -193,10 +196,43 @@ export function useWhatsAppUnread(
         for (const conversation of found) {
           chats.set(conversation.id, conversation)
         }
+        readAt = startedAt
         ready = true
         publish()
       } catch {
         // Keep what was counted last time; the next read tries again.
+      }
+    }
+
+    // Only the chats changed since the last read (a few, light); too many: the whole light list again.
+    async function catchUp() {
+      if (!ready) {
+        return readCopy()
+      }
+      const startedAt = Date.now()
+      try {
+        const { changed, complete } = await fetchBadgeChatsChangedSince(new Date(readAt - CLOCK_SLACK_MS).toISOString())
+        if (cancelled) {
+          return
+        }
+        if (!complete) {
+          return readCopy()
+        }
+        for (const conversation of changed) {
+          if (conversation.status !== 'open') {
+            chats.delete(conversation.id)
+          } else {
+            // A chat the live line brought whole keeps its whole shape; the counted fields come from the light row.
+            const known = chats.get(conversation.id)
+            chats.set(conversation.id, known ? { ...known, ...conversation, meta: known.meta } : conversation)
+          }
+        }
+        readAt = startedAt
+        if (changed.length > 0) {
+          publish()
+        }
+      } catch {
+        // The next tick tries again.
       }
     }
 
@@ -244,12 +280,16 @@ export function useWhatsAppUnread(
       if (document.hidden) {
         return
       }
-      if (Date.now() - lastRead >= (liveRef.current ? COPY_REREAD_LIVE_MS : COPY_REREAD_MS)) {
+      if (Date.now() - lastRead >= COPY_REREAD_MS) {
         lastRead = Date.now()
         void readCopy()
+      } else {
+        // What changed since (a few light rows). Also while an Inbox page is on screen: its live line hears only
+        // that page's numbers, and the other Inbox's badge must move too.
+        void catchUp()
       }
       void checkChatwoot()
-    }, CHATWOOT_CHECK_MS)
+    }, COPY_TICK_MS)
     return () => {
       cancelled = true
       stop()

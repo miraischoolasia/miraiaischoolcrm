@@ -976,8 +976,6 @@ function App() {
   // Channels that stopped working (a WhatsApp number logged out, restricted, silent): the red bar on Today and the Inbox.
   const channelAlerts = useChannelAlerts(Boolean(whatsAppApiUrl) && canUseWhatsApp, whatsAppNumbers.allowedInboxIds, isAdmin)
   const whatsAppSiblings = useMemo(() => contactSiblings(leadChannels.rows), [leadChannels.rows])
-  // The CRM's copy of the inbox, live: the Inbox reads from it and hears of new messages by itself.
-  const inboxCopy = useInboxCopyLive(Boolean(whatsAppClient), whatsAppClient)
   // The Inbox and the Student Inbox count their own numbers (each has its own red dot).
   const marketingNumbers = useMemo(
     () => zoneFilter('marketing', whatsAppNumbers.allowedInboxIds, whatsAppNumbers.studentInboxIds),
@@ -987,6 +985,14 @@ function App() {
     () => zoneFilter('students', whatsAppNumbers.allowedInboxIds, whatsAppNumbers.studentInboxIds),
     [whatsAppNumbers.allowedInboxIds, whatsAppNumbers.studentInboxIds],
   )
+  // The CRM's copy of the inbox. Its live line is open only while an Inbox page is on screen, for that page's
+  // numbers (2026-10-23: every tab listening to every chat was EduHero's heaviest database load); the badges read a
+  // light list every half minute instead.
+  const inboxPageNumbers = visibleSection === 'student-inbox' ? studentNumbers : visibleSection === 'whatsapp' ? marketingNumbers : undefined
+  const inboxCopy = useInboxCopyLive(Boolean(whatsAppClient), whatsAppClient, {
+    listen: inboxPageNumbers !== undefined,
+    inboxIds: inboxPageNumbers?.allowed ?? null,
+  })
   const {
     unread: unreadWhatsApp,
     waiting: waitingWhatsApp,

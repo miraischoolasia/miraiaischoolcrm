@@ -243,18 +243,28 @@ export function useWhatsAppInbox(
   )
   const lastReadAhead = useRef(0)
   useEffect(() => {
-    if (!copyAvailable || topKey === '') {
+    if (!copyAvailable || !active || topKey === '') {
+      return
+    }
+    // Only chats not read ahead yet (2026-10-23: the 40 top chats were all read again whenever one moved up, 2,000
+    // times a day on EduHero); a chat read ahead gets its new messages from the live line.
+    const missing = topKey
+      .split(',')
+      .map(Number)
+      .filter((id) => !readAhead.current.has(id))
+    if (missing.length === 0) {
       return
     }
     let cancelled = false
     const wait = Math.max(0, lastReadAhead.current + PREFETCH_EVERY_MS - Date.now())
     const timer = window.setTimeout(() => {
       lastReadAhead.current = Date.now()
-      fetchRecentMessages(topKey.split(',').map(Number))
+      fetchRecentMessages(missing)
         .then((byChat) => {
           if (!cancelled) {
-            for (const [id, list] of byChat) {
-              readAhead.current.set(id, list)
+            // A chat with no copied message yet is noted too, so it is not asked for again and again.
+            for (const id of missing) {
+              readAhead.current.set(id, byChat.get(id) ?? [])
             }
           }
         })
@@ -264,7 +274,7 @@ export function useWhatsAppInbox(
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [copyAvailable, topKey])
+  }, [copyAvailable, active, topKey])
 
   const hasOlder = ownHasOlder || olderChatCount > 0
   const selectedRaw = selectedId === null ? null : (conversationMap.get(selectedId) ?? null)

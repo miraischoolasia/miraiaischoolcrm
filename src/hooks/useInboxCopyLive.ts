@@ -51,7 +51,14 @@ let channelCount = 0
 
 // client: with it, chats the copy has without Chatwoot's shape are filled from Chatwoot's list once (2026-10-20: most
 // chats lacked it, so the copy was never used and every tab kept reading every page of Chatwoot's list).
-export function useInboxCopyLive(enabled: boolean, client: ChatwootClient | null = null): InboxCopyLive {
+// listen: the live line to the chats is open only while this is true (2026-10-23: every tab of every page listened
+// to every chat change, the biggest load on EduHero's database; now only an open Inbox / Student Inbox page does).
+// inboxIds: only changes of these channels are sent (null: every channel the person may see).
+export function useInboxCopyLive(
+  enabled: boolean,
+  client: ChatwootClient | null = null,
+  { listen = true, inboxIds = null }: { listen?: boolean; inboxIds?: readonly number[] | null } = {},
+): InboxCopyLive {
   const [available, setAvailable] = useState(false)
   const [checks, setChecks] = useState(0)
   const [connected, setConnected] = useState(false)
@@ -122,8 +129,10 @@ export function useInboxCopyLive(enabled: boolean, client: ChatwootClient | null
     }
   }, [])
 
+  const filterKey = inboxIds === null ? '' : [...inboxIds].sort((a, b) => a - b).join(',')
   useEffect(() => {
-    if (!enabled || !available || !visible || !supabase) {
+    // A person given no channel at all hears nothing (an empty filter would mean every channel).
+    if (!enabled || !available || !visible || !listen || inboxIds?.length === 0 || !supabase) {
       setConnected(false)
       return
     }
@@ -131,13 +140,17 @@ export function useInboxCopyLive(enabled: boolean, client: ChatwootClient | null
     channelCount += 1
     const channel: Channel = client
       .channel(`inbox-copy-chats-${channelCount}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inbox_chats' }, (change) => {
-        const row = change.new as { raw?: unknown; last_message_raw?: unknown } | null
-        const conversation = row ? conversationFromCopy(row.raw, row.last_message_raw) : null
-        if (conversation) {
-          chatListeners.current.forEach((listener) => listener(conversation))
-        }
-      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'inbox_chats', ...(filterKey ? { filter: `inbox_id=in.(${filterKey})` } : {}) },
+        (change) => {
+          const row = change.new as { raw?: unknown; last_message_raw?: unknown } | null
+          const conversation = row ? conversationFromCopy(row.raw, row.last_message_raw) : null
+          if (conversation) {
+            chatListeners.current.forEach((listener) => listener(conversation))
+          }
+        },
+      )
       .subscribe((status) => {
         setConnected(status === 'SUBSCRIBED')
       })
@@ -145,7 +158,8 @@ export function useInboxCopyLive(enabled: boolean, client: ChatwootClient | null
       setConnected(false)
       void client.removeChannel(channel)
     }
-  }, [enabled, available, visible])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the channels are compared by filterKey
+  }, [enabled, available, visible, listen, filterKey])
 
   const subscribeChats = useCallback((listener: ChatListener) => {
     chatListeners.current.add(listener)

@@ -6,10 +6,12 @@ import type { ChatwootConversation } from '../lib/whatsappInbox'
 import type { InboxCopyLive } from './useInboxCopyLive'
 
 vi.mock('../lib/inboxAlerts', () => ({ isSoundOn: () => false, playAlertSound: vi.fn(), showDesktopAlert: vi.fn() }))
-const fetchCopyOpenChats = vi.fn()
+const fetchBadgeChats = vi.fn()
+const fetchBadgeChatsChangedSince = vi.fn(async (_since: string) => ({ changed: [] as ChatwootConversation[], complete: true }))
 const fillCopy = vi.fn(async () => undefined)
 vi.mock('../lib/inboxCopyReader', () => ({
-  fetchCopyOpenChats: () => fetchCopyOpenChats(),
+  fetchBadgeChats: () => fetchBadgeChats(),
+  fetchBadgeChatsChangedSince: (since: string) => fetchBadgeChatsChangedSince(since),
   fillCopy: (...args: unknown[]) => fillCopy(...(args as [])),
 }))
 
@@ -51,7 +53,7 @@ describe('useWhatsAppUnread', () => {
 
   it('reads the open chats from the copy, not from Chatwoot, and follows its changes (2026-10-20)', async () => {
     const all = Array.from({ length: 892 }, (_, index) => chat(index + 1))
-    fetchCopyOpenChats.mockResolvedValue(all)
+    fetchBadgeChats.mockResolvedValue(all)
     const listConversations = vi.fn(async () => ({ conversations: [], totalCount: 0 }))
     const client = { listConversations } as unknown as ChatwootClient
     let listener: ((conversation: ChatwootConversation) => void) | null = null
@@ -80,6 +82,36 @@ describe('useWhatsAppUnread', () => {
     act(() => listener!({ ...all[1], status: 'resolved' }))
     await waitFor(() => expect(result.current.unread).toBe(expected - 2))
     expect(result.current.openChats).toHaveLength(891)
+  })
+
+  it('then reads only the chats changed since, every half minute (2026-10-23)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const all = Array.from({ length: 892 }, (_, index) => chat(index + 1))
+      fetchBadgeChats.mockClear()
+      fetchBadgeChats.mockResolvedValue(all)
+      fetchBadgeChatsChangedSince.mockResolvedValue({
+        changed: [{ ...all[0], unread_count: 0 }, { ...all[1], status: 'resolved' }],
+        complete: true,
+      })
+      const client = { listConversations: vi.fn(async () => ({ conversations: [], totalCount: 0 })) } as unknown as ChatwootClient
+      const copy: InboxCopyLive = { available: true, live: false, subscribeChats: () => () => undefined, watchMessages: () => () => undefined }
+
+      const { result } = renderHook(() => useWhatsAppUnread(client, null, undefined, copy))
+      const expected = all.filter((entry) => entry.unread_count > 0).length
+      await waitFor(() => expect(result.current.unread).toBe(expected))
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000)
+      })
+      await waitFor(() => expect(result.current.unread).toBe(expected - 2))
+      expect(result.current.openChats).toHaveLength(891)
+      // The whole light list was read once; after that only what changed.
+      expect(fetchBadgeChats).toHaveBeenCalledTimes(1)
+      expect(fetchBadgeChatsChangedSince).toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('keeps the pages that came when one page of a busy Chatwoot does not (EduHero, 2026-10-20)', async () => {
