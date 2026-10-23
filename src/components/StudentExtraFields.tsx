@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { ROSTER_LIST_FIELDS, sortFieldOptions, type FieldOption } from '../lib/studentRoster'
 import {
   NOT_SET,
@@ -156,6 +157,13 @@ export function StudentExtraInputs({
 }
 
 // The same fields on the student's profile (only the ones the school shows and the student has).
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+type SummaryEntry = { label: string; value: string | null }
+
+// The student's extra fields on the profile (only the ones the school keeps), as in design B: one line with the four
+// most used (Learning Consultant, Membership, how they pay, fee month) and "All details" for every field in three
+// groups. A field the school keeps but nobody filled in shows "-".
 export function StudentExtraSummary({
   setting,
   extras,
@@ -167,29 +175,86 @@ export function StudentExtraSummary({
   consultantName: string | null
   salesPersonName?: string | null
 }) {
-  const rows: [string, string][] = []
-  if (setting.name_zh && extras?.nameZh) rows.push(['Chinese name', extras.nameZh])
-  if (setting.student_kind && extras?.kind) rows.push(['Kind of student', extras.kind])
-  if (setting.consultant && extras?.consultantId) rows.push([setting.sales_person ? 'Learning Consultant' : 'Consultant', consultantName ?? 'Former staff member'])
-  if (setting.sales_person && extras?.salesPersonId) rows.push(['Sales person', salesPersonName ?? 'Former staff member'])
-  if (setting.second_parent_phone && extras?.secondParentPhone) rows.push(['Second parent phone', extras.secondParentPhone])
-  for (const entry of ROSTER_LIST_FIELDS) {
-    const value = extras?.[entry.formKey]
-    if (setting[entry.field] && value) rows.push([entry.label, value])
+  const [open, setOpen] = useState(false)
+  const listValue = (field: (typeof ROSTER_LIST_FIELDS)[number]['formKey']) => extras?.[field] || null
+  const label = (field: (typeof ROSTER_LIST_FIELDS)[number]['field']) => ROSTER_LIST_FIELDS.find((entry) => entry.field === field)!.label
+  const consultantLabel = setting.sales_person ? 'Learning Consultant' : 'Consultant'
+  const consultant: SummaryEntry = {
+    label: consultantLabel,
+    value: extras?.consultantId ? (consultantName ?? 'Former staff member') : null,
   }
-  if (setting.fb_name && extras?.fbName) rows.push(['Facebook name', extras.fbName])
-  if (setting.fee_month && extras?.feeMonth) rows.push(['Fee payment month', String(extras.feeMonth)])
-  if (rows.length === 0) return null
+  const feeMonth: SummaryEntry = {
+    label: 'Fee payment month',
+    value: extras?.feeMonth ? (MONTH_NAMES[extras.feeMonth - 1] ?? String(extras.feeMonth)) : null,
+  }
+
+  const identity: SummaryEntry[] = []
+  if (setting.name_zh) identity.push({ label: 'Chinese name', value: extras?.nameZh || null })
+  if (setting.student_kind) identity.push({ label: 'Kind of student', value: extras?.kind || null })
+  if (setting.enrol_method) identity.push({ label: label('enrol_method'), value: listValue('enrolMethod') })
+  if (setting.region) identity.push({ label: label('region'), value: listValue('region') })
+  if (setting.fb_name) identity.push({ label: 'Facebook name', value: extras?.fbName || null })
+
+  const people: SummaryEntry[] = []
+  if (setting.consultant) people.push(consultant)
+  if (setting.sales_person) people.push({ label: 'Sales person', value: extras?.salesPersonId ? (salesPersonName ?? 'Former staff member') : null })
+  if (setting.second_parent_phone) people.push({ label: 'Second parent phone', value: extras?.secondParentPhone || null })
+
+  const payment: SummaryEntry[] = []
+  if (setting.membership) payment.push({ label: label('membership'), value: listValue('membership') })
+  if (setting.hero_member) payment.push({ label: label('hero_member'), value: listValue('heroMember') })
+  if (setting.payment_mode) payment.push({ label: label('payment_mode'), value: listValue('paymentMode') })
+  if (setting.fee_month) payment.push(feeMonth)
+
+  const groups = [
+    { title: 'Identity', entries: identity },
+    { title: 'People', entries: people },
+    { title: 'Payment', entries: payment },
+  ].filter((group) => group.entries.length > 0)
+  if (groups.length === 0) return null
+
+  const summary: { label: string; value: string | null }[] = []
+  if (setting.consultant) summary.push({ label: setting.sales_person ? 'LC' : 'Consultant', value: consultant.value })
+  if (setting.membership) summary.push({ label: 'Membership', value: listValue('membership') })
+  if (setting.payment_mode) summary.push({ label: 'Pays', value: listValue('paymentMode') })
+  if (setting.fee_month) summary.push({ label: 'Fee month', value: feeMonth.value })
 
   return (
-    <dl aria-label="Student fields" className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
-      {rows.map(([label, value]) => (
-        <div key={label} className="flex gap-2">
-          <dt className="text-slate-500">{label}:</dt>
-          <dd className="font-medium text-slate-800">{value}</dd>
+    <div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+        {summary.map((entry) => (
+          <span key={entry.label} className="flex items-baseline gap-1.5">
+            <span className="text-[11px] font-semibold text-slate-500">{entry.label}</span>
+            <span className={entry.value ? 'font-bold text-slate-900' : 'text-slate-400'}>{entry.value ?? '-'}</span>
+          </span>
+        ))}
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+          className="ml-auto text-sm font-semibold text-[#be185d] hover:underline"
+        >
+          All details {open ? '\u25B4' : '\u25BE'}
+        </button>
+      </div>
+      {open && (
+        <div aria-label="Student fields" className="mt-2 grid gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-3">
+          {groups.map((group) => (
+            <div key={group.title}>
+              <h4 className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{group.title}</h4>
+              <dl className="mt-1.5 space-y-1.5 text-sm">
+                {group.entries.map((entry) => (
+                  <div key={entry.label}>
+                    <dt className="text-xs text-slate-500">{entry.label}</dt>
+                    <dd className={entry.value ? 'font-semibold text-slate-900' : 'text-slate-400'}>{entry.value ?? '-'}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ))}
         </div>
-      ))}
-    </dl>
+      )}
+    </div>
   )
 }
 

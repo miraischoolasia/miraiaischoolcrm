@@ -6,6 +6,9 @@ import {
   isFiltered,
   itemKind,
   itemShown,
+  kindsWithClasses,
+  pageFilter,
+  pageKinds,
   readCalendarFilter,
   scheduleKind,
   scheduleShown,
@@ -95,5 +98,53 @@ describe('calendar filter', () => {
     })
     expect(isFiltered(defaultCalendarFilter())).toBe(false)
     expect(isFiltered({ ...defaultCalendarFilter(), kinds: ALL_KINDS.slice(1) })).toBe(true)
+  })
+})
+
+describe('the Timetable and the Planner', () => {
+  it('gives the Timetable the classes and make-ups, and the Planner the rest', () => {
+    expect(pageKinds('timetable', false)).toEqual(['class', 'makeup'])
+    expect(pageKinds('timetable', true)).toEqual(['class', 'makeup'])
+    expect(pageKinds('planner', false)).toEqual(['trial', 'task', 'meeting', 'event', 'follow_up'])
+    expect(pageKinds('planner', true)).toEqual(ALL_KINDS)
+  })
+
+  it('cuts a saved filter down to the kinds the page has, and starts again when none is left', () => {
+    const timetable = pageKinds('timetable', false)
+    expect(pageFilter(defaultCalendarFilter(), timetable).kinds).toEqual(['class', 'makeup'])
+    expect(pageFilter({ ...defaultCalendarFilter(), kinds: ['class', 'task'] }, timetable).kinds).toEqual(['class'])
+    expect(pageFilter({ ...defaultCalendarFilter(), kinds: ['task'] }, timetable).kinds).toEqual(['class', 'makeup'])
+    expect(pageFilter({ ...defaultCalendarFilter(), mine: true }, timetable).mine).toBe(true)
+  })
+
+  it('is not "filtered" just because the page has fewer kinds', () => {
+    const timetable = pageKinds('timetable', false)
+    expect(isFiltered(pageFilter(defaultCalendarFilter(), timetable), timetable)).toBe(false)
+    expect(isFiltered({ ...defaultCalendarFilter(), kinds: ['class'] }, timetable)).toBe(true)
+  })
+
+  it('hides a task on the Timetable and a class on the Planner (until classes are switched on)', () => {
+    const timetable = pageFilter(defaultCalendarFilter(), pageKinds('timetable', false))
+    const planner = pageFilter(defaultCalendarFilter(), pageKinds('planner', false))
+    const plannerWithClasses = pageFilter(defaultCalendarFilter(), pageKinds('planner', true))
+    const task = { kind: 'task' as const, leadId: null, assigneeId: null }
+    const followUp = { kind: 'task' as const, leadId: 5, assigneeId: null }
+    expect(itemShown(task, timetable, null)).toBe(false)
+    expect(itemShown(followUp, timetable, null)).toBe(false)
+    expect(itemShown(task, planner, null)).toBe(true)
+    expect(itemShown(followUp, planner, null)).toBe(true)
+    expect(scheduleShown(schedule(1), new Map([[1, classroom(1)]]), timetable, null)).toBe(true)
+    expect(scheduleShown(schedule(1), new Map([[1, classroom(1)]]), planner, null)).toBe(false)
+    expect(scheduleShown(schedule(1), new Map([[1, classroom(1)]]), plannerWithClasses, null)).toBe(true)
+  })
+
+  it('adds the class kinds when "Show classes" goes on, and takes them away when it goes off', () => {
+    const everything = defaultCalendarFilter()
+    expect(kindsWithClasses(everything, pageKinds('planner', false), true)).toEqual(ALL_KINDS)
+    const onlyTasks = { ...defaultCalendarFilter(), kinds: ['task' as const] }
+    expect(kindsWithClasses(onlyTasks, pageKinds('planner', false), true)).toEqual(['task', 'class', 'makeup'])
+    const withClasses = { ...defaultCalendarFilter(), kinds: ['task' as const, 'class' as const, 'makeup' as const] }
+    expect(kindsWithClasses(withClasses, pageKinds('planner', true), false)).toEqual(['task'])
+    expect(kindsWithClasses({ ...defaultCalendarFilter(), kinds: ['class' as const] }, pageKinds('planner', true), false)).toEqual(ALL_KINDS)
   })
 })

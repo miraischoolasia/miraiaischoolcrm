@@ -12,6 +12,7 @@ export function PersonTags({
   onCreate,
   compact = false,
   showLabel = true,
+  inline = false,
 }: {
   // Every tag of the school, hidden ones too (a hidden tag already on the person still shows).
   tags: LeadOption[]
@@ -21,11 +22,13 @@ export function PersonTags({
   onCreate: (label: string, color: string) => Promise<LeadOption | null>
   compact?: boolean
   showLabel?: boolean
+  // Pills with a small "+" on one line (the student profile's header).
+  inline?: boolean
 }) {
   if (canEdit) {
-    return <LeadTagPicker tags={tags} selectedIds={selectedIds} onChange={onChange} onCreate={onCreate} compact={compact} showLabel={showLabel} />
+    return <LeadTagPicker tags={tags} selectedIds={selectedIds} onChange={onChange} onCreate={onCreate} compact={compact} showLabel={showLabel} inline={inline} />
   }
-  const shown = selectedIds.flatMap((id) => tags.find((tag) => tag.id === id) ?? [])
+  const shown = tags.filter((tag) => selectedIds.includes(tag.id))
   return (
     <div className="space-y-2">
       {showLabel && <div className="text-sm font-semibold text-slate-700">Tags</div>}

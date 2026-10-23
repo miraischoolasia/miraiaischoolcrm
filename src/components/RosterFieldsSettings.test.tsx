@@ -114,7 +114,7 @@ describe('roster fields in the student form and profile', () => {
     expect(within(consultant).queryByRole('option', { name: 'Mr Jack' })).not.toBeInTheDocument()
   })
 
-  it('lists the roster values on the profile', () => {
+  it('lists the roster values on the profile', async () => {
     render(
       <StudentExtraSummary
         setting={setting}
@@ -123,11 +123,16 @@ describe('roster fields in the student form and profile', () => {
         salesPersonName="Sam"
       />,
     )
+    // The one-line summary: Learning Consultant, Membership, how they pay (not set: a dash), fee month.
+    expect(screen.getByText('Lee')).toBeInTheDocument()
+    expect(screen.getByText('26001')).toBeInTheDocument()
+    expect(screen.getByText('Jul')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /All details/ }))
     const list = screen.getByLabelText('Student fields')
-    expect(list).toHaveTextContent('Learning Consultant:Lee')
-    expect(list).toHaveTextContent('Sales person:Sam')
-    expect(list).toHaveTextContent('Membership:26001')
-    expect(list).toHaveTextContent('Facebook name:Mum')
-    expect(list).toHaveTextContent('Fee payment month:7')
+    expect(list).toHaveTextContent('Learning ConsultantLee')
+    expect(list).toHaveTextContent('Sales personSam')
+    expect(list).toHaveTextContent('Membership26001')
+    expect(list).toHaveTextContent('Facebook nameMum')
+    expect(list).toHaveTextContent('Fee payment monthJul')
   })
 })

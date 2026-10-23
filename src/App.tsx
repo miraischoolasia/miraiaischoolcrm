@@ -18,6 +18,7 @@ import { BrandMascot } from './components/BrandMascot'
 import { malaysiaHolidayEvents } from './lib/holidays'
 import {
   CalendarBlank,
+  CalendarCheck,
   Chalkboard,
   House,
   ClockCounterClockwise,
@@ -72,7 +73,6 @@ import type {
   LeadFormState,
   LeadOption,
   LeadBulkAction,
-  LeadCheckSlot,
   LeadOptionKind,
   Package,
   StudentEnrollment,
@@ -107,6 +107,7 @@ import {
   mapScheduleRow,
 } from './lib/mappers'
 import { buildAttendanceSubmission } from './lib/attendance'
+import { orderLeadOptions } from './lib/leadTags'
 import { defaultReviewCriteria, getReviewMetrics, type ReviewMetric } from './lib/reviewCriteria'
 import { defaultAttendanceStatuses, getStatusOption, isAttendedStatus } from './lib/attendanceStatuses'
 import {
@@ -126,6 +127,7 @@ import {
   fetchLatestLessonLogStudents,
   fetchLeadFormSubmissions,
   fetchLeadOptionsFromSupabase,
+  saveLeadOptionOrder,
   fetchPackagesFromSupabase,
   fetchLateFeedbackEdit,
   fetchStudentEnrollments,
@@ -166,13 +168,18 @@ import {
   isFiltered,
   itemKind,
   itemShown,
+  kindsWithClasses,
   loadCalendarFilter,
+  pageFilter,
+  pageKinds,
   saveCalendarFilter,
   scheduleKind,
   scheduleShown,
   type CalendarFilter,
+  type CalendarPage,
   type CalendarTeam,
 } from './lib/calendarFilter'
+import { useUserPreference } from './lib/useUserPreference'
 import { CalendarFilterBar } from './components/calendar/CalendarFilterBar'
 import { CalendarDayList, type CalendarView } from './components/calendar/CalendarDayList'
 import { LessonWindow } from './components/calendar/LessonWindow'
@@ -287,7 +294,7 @@ import { PackagesModal, type PackageDraft } from './components/modals/PackagesMo
 import { QuestionBankSection } from './components/sections/QuestionBankSection'
 import { ClassVideosSection } from './components/sections/ClassVideosSection'
 import { EnrolFlowsSettings } from './components/EnrolFlowsSettings'
-import { MobileNav, SideNav, type NavEntry, type NavGroupKey } from './components/AppNav'
+import { MobileNav, PageTabs, SideNav, type NavEntry, type NavGroupKey } from './components/AppNav'
 import { fetchSubjects, saveSubject, type Subject } from './lib/subjects'
 import {
   AgeGroupsContext,
@@ -367,7 +374,7 @@ import {
 } from './lib/makeup'
 
 // The menu's order (AppNav groups them).
-const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'ai-knowledge', 'content-studio', 'content-library', 'calendar', 'classrooms', 'videos', 'questions', 'students', 'student-inbox', 'student-chat', 'fee-calculator', 'app-logins', 'programmes', 'packages', 'teachers', 'teacher-quality', 'team-replies', 'class-settings', 'activity']
+const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'content-studio', 'content-library', 'calendar', 'planner', 'classrooms', 'videos', 'questions', 'students', 'student-inbox', 'student-chat', 'fee-calculator', 'app-logins', 'programmes', 'teachers', 'teacher-quality', 'team-replies', 'class-settings', 'activity', 'ai-knowledge', 'packages']
 
 // The shared WhatsApp inbox only shows up once its address is set.
 const chatwootUrl = getChatwootUrl(import.meta.env.VITE_CHATWOOT_URL)
@@ -602,8 +609,12 @@ function App() {
   const [authBlockedMessage, setAuthBlockedMessage] = useState<string | null>(null)
   const [viewAsTeacherId, setViewAsTeacherId] = useState<number | null>(null)
   const [selectedAgeGroup, setSelectedAgeGroup] = useState<AgeGroup>(ageGroupOptions[0])
-  // The Calendar's filters (only mine, team, people, kinds), kept in the browser per login.
-  const [calendarFilter, setCalendarFilterState] = useState<CalendarFilter>(() => defaultCalendarFilter())
+  // The calendar pages' filters (only mine, team, people, kinds), kept in the browser per login: the Timetable's and
+  // the Planner's each on their own. `calendarFilter` (below) is the open page's, cut down to the kinds it has.
+  const [timetableFilterRaw, setTimetableFilterRaw] = useState<CalendarFilter>(() => defaultCalendarFilter())
+  const [plannerFilterRaw, setPlannerFilterRaw] = useState<CalendarFilter>(() => defaultCalendarFilter())
+  // The Planner puts the classes on it only when the person switches them on (kept on their account).
+  const [plannerShowClasses, savePlannerShowClasses] = useUserPreference<boolean>('calendar.planner.showClasses', false, (raw) => raw === true)
   const [calendarTeams, setCalendarTeams] = useState<CalendarTeam[]>([])
 
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null)
@@ -932,6 +943,8 @@ function App() {
     if (can('content_library')) sections.push('content-library')
     if (can('forms')) sections.push('forms')
     if (isTeacherAccount || can('calendar')) sections.push('calendar')
+    // The Planner: the tasks, Zoom meetings, events, follow-ups and trials (and the classes, when switched on).
+    if (isTeacherAccount || can('calendar') || can('leads')) sections.push('planner')
     if (isTeacherAccount || can('classrooms')) sections.push('classrooms')
     // Every teacher keeps questions for class; an admin sees all of them.
     if (isTeacherAccount || can('questions')) sections.push('questions')
@@ -956,6 +969,12 @@ function App() {
     return sections
   }, [can, isAdmin, isTeacherAccount, appChat.on, hasStudentInbox, feeCalculatorOn])
   const visibleSection = allowedSections.includes(activeSection) ? activeSection : null
+  // The Timetable ('calendar') and the Planner share one calendar: the Timetable shows the classes, the Planner the rest.
+  const isCalendarPage = visibleSection === 'calendar' || visibleSection === 'planner'
+  const calendarPage: CalendarPage = activeSection === 'planner' ? 'planner' : 'timetable'
+  const calendarKinds = useMemo(() => pageKinds(calendarPage, plannerShowClasses), [calendarPage, plannerShowClasses])
+  const calendarFilterRaw = calendarPage === 'planner' ? plannerFilterRaw : timetableFilterRaw
+  const calendarFilter = useMemo(() => pageFilter(calendarFilterRaw, calendarKinds), [calendarFilterRaw, calendarKinds])
   useEffect(() => {
     if (!currentSession) return
     let cancelled = false
@@ -1053,6 +1072,14 @@ function App() {
     () =>
       teachers
         .filter((teacher) => teacher.isActive && teacher.role !== 'admin')
+        .map((teacher) => ({ id: teacher.id, name: teacher.fullName, role: teacher.role })),
+    [teachers],
+  )
+  // My Team > Teams > PIC names: an admin has a PIC name too (made from the staff list, 20261101300000).
+  const picPeople = useMemo(
+    () =>
+      teachers
+        .filter((teacher) => teacher.isActive)
         .map((teacher) => ({ id: teacher.id, name: teacher.fullName, role: teacher.role })),
     [teachers],
   )
@@ -2139,7 +2166,7 @@ function App() {
         return calendarFilter.kinds.includes(kind)
       }),
       ...coveredScheduleEvents,
-      ...malaysiaHolidayEvents,
+      ...(calendarPage === 'timetable' ? malaysiaHolidayEvents : []),
       ...buildCalendarItemEvents(
         itemsVisibleTo(calendarItems.items, {
           teacherId: currentSession?.teacherId ?? null,
@@ -2150,6 +2177,7 @@ function App() {
     ],
     [
       calendarFilter,
+      calendarPage,
       calendarPeople,
       calendarItems.items,
       canEditCalendar,
@@ -2188,14 +2216,27 @@ function App() {
   // The filters this login used last time (a teacher starts on their own things).
   useEffect(() => {
     if (!currentSession) return
-    setCalendarFilterState(
-      loadCalendarFilter(String(currentSession.teacherId), defaultCalendarFilter(currentSession.role === 'teacher')),
-    )
+    const fallback = defaultCalendarFilter(currentSession.role === 'teacher')
+    setTimetableFilterRaw(loadCalendarFilter(String(currentSession.teacherId), fallback))
+    setPlannerFilterRaw(loadCalendarFilter(`${currentSession.teacherId}.planner`, fallback))
     void fetchCalendarTeams().then(setCalendarTeams)
   }, [currentSession])
   function setCalendarFilter(next: CalendarFilter) {
-    setCalendarFilterState(next)
-    if (currentSession) saveCalendarFilter(String(currentSession.teacherId), next)
+    if (calendarPage === 'planner') {
+      setPlannerFilterRaw(next)
+      if (currentSession) saveCalendarFilter(`${currentSession.teacherId}.planner`, next)
+    } else {
+      setTimetableFilterRaw(next)
+      if (currentSession) saveCalendarFilter(String(currentSession.teacherId), next)
+    }
+  }
+  // "Show classes" on the Planner: the classes join the kinds shown (or leave them).
+  function setPlannerClasses(on: boolean) {
+    const nextKinds = kindsWithClasses(plannerFilterRaw, pageKinds('planner', plannerShowClasses), on)
+    savePlannerShowClasses(on)
+    const next = { ...plannerFilterRaw, kinds: nextKinds }
+    setPlannerFilterRaw(next)
+    if (currentSession) saveCalendarFilter(`${currentSession.teacherId}.planner`, next)
   }
   useEffect(() => {
     if (!currentSession) return
@@ -2218,8 +2259,11 @@ function App() {
         getScheduleClassKind(schedule, classroomMap) === 'trial' &&
         scheduleShown(schedule, classroomMap, calendarFilter, calendarPeople),
     )
+    const itemEvents = calendarEvents.filter((event) => event.extendedProps?.calendarItemId !== undefined)
+    const classEvents = calendarEvents.filter((event) => event.extendedProps?.calendarItemId === undefined)
     return [
-      ...monthSpecialEvents(calendarEvents, {
+      ...itemEvents,
+      ...monthSpecialEvents(classEvents, {
         schedules,
         classroomMap,
         subjectName: (id) => subjectName.get(id) ?? null,
@@ -2250,12 +2294,12 @@ function App() {
   const shownDayListDate = dayListDate ?? todayString
   const shownDayListMonth = dayListMonth ?? shownDayListDate.slice(0, 7)
   useEffect(() => {
-    if (visibleSection !== 'calendar' || !showDayList) return undefined
+    if (!isCalendarPage || !showDayList) return undefined
     const timer = window.setInterval(() => setDayListNow(new Date()), 60_000)
     return () => window.clearInterval(timer)
-  }, [visibleSection, showDayList])
+  }, [isCalendarPage, showDayList])
   const dayListLessons = useMemo(() => {
-    if (visibleSection !== 'calendar' || !showDayList) return []
+    if (!isCalendarPage || !showDayList) return []
     const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]))
     const subjectName = new Map(subjects.map((subject) => [subject.id, subject.name]))
     // The people shown: the classes each of them takes attendance for that day (their own, the ones they
@@ -2306,7 +2350,7 @@ function App() {
     // getScheduleRosterStudentIds reads students, the maps and the bookings (see teacherAgenda above).
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    visibleSection,
+    isCalendarPage,
     showDayList,
     schedules,
     visibleSchedules,
@@ -2365,7 +2409,7 @@ function App() {
   }
   // The tasks, meetings, events and follow-ups on the days the day list shows.
   const dayListItems = useMemo((): DayListItem[] => {
-    if (visibleSection !== 'calendar' || !showDayList) return []
+    if (!isCalendarPage || !showDayList) return []
     const weeks = monthWeeks(shownDayListMonth)
     const week = getWeekRange(shownDayListDate)
     const from = [weeks[0][0], week.start].sort()[0]
@@ -2386,7 +2430,7 @@ function App() {
         isDone: item.isDone,
       }))
   }, [
-    visibleSection,
+    isCalendarPage,
     showDayList,
     shownDayListMonth,
     shownDayListDate,
@@ -2453,22 +2497,29 @@ function App() {
     }
   }, [activeVisibleClassrooms, selectedAgeGroup, selectedClassroomId])
 
-  // The menu: Today, then Marketing, Teaching, Students and Admin (see AppNav).
+  // The menu: Today, then Marketing, Media, My Course, Students and Admin (see AppNav); a category's pages are the
+  // tabs at the top of the page. The page keys stay the same (Timetable is still 'calendar').
+  // The Planner sits in Marketing (with Leads and Inbox); an account with none of those pages (a teacher) finds it
+  // next to the Timetable in My Course instead of getting a Marketing category for one page.
+  const plannerGroup: NavGroupKey = allowedSections.some((section) => ['leads', 'whatsapp', 'automations', 'forms'].includes(section))
+    ? 'marketing'
+    : 'course'
   const navEntries: NavEntry[] = [
     ...(
       [
         { key: 'home', label: 'Today', icon: House },
         { key: 'leads', label: 'Leads', icon: Funnel, group: 'marketing' },
         { key: 'whatsapp', label: 'Inbox', icon: WhatsappLogo, group: 'marketing' },
-        { key: 'automations', label: 'Automations', icon: Lightning, group: 'marketing' },
-        { key: 'forms', label: 'Forms', icon: ClipboardText, group: 'marketing' },
-        { key: 'ai-knowledge', label: 'AI Knowledge', icon: Brain, group: 'marketing' },
-        { key: 'content-studio', label: 'Content Studio', icon: Megaphone, group: 'marketing' },
-        { key: 'content-library', label: 'Content Library', icon: Images, group: 'marketing' },
-        { key: 'calendar', label: 'Calendar', icon: CalendarBlank, group: 'teaching' },
-        { key: 'classrooms', label: 'My Classroom', icon: Chalkboard, group: 'teaching' },
-        { key: 'videos', label: 'Class Videos', icon: FilmStrip, group: 'teaching' },
-        { key: 'questions', label: 'Question Bank', icon: Exam, group: 'teaching' },
+        { key: 'automations', label: 'Automation', icon: Lightning, group: 'marketing' },
+        { key: 'forms', label: 'Form', icon: ClipboardText, group: 'marketing' },
+        { key: 'planner', label: 'Planner', icon: CalendarCheck, group: plannerGroup },
+        { key: 'ai-knowledge', label: 'AI Knowledge', icon: Brain, group: 'admin' },
+        { key: 'content-studio', label: 'Content Studio', icon: Megaphone, group: 'media' },
+        { key: 'content-library', label: 'Content Library', icon: Images, group: 'media' },
+        { key: 'calendar', label: 'Timetable', icon: CalendarBlank, group: 'course' },
+        { key: 'classrooms', label: 'My Classroom', icon: Chalkboard, group: 'course' },
+        { key: 'videos', label: 'Class Videos', icon: FilmStrip, group: 'course' },
+        { key: 'questions', label: 'Question Bank', icon: Exam, group: 'course' },
         { key: 'students', label: 'Student List', icon: GraduationCap, group: 'students' },
         { key: 'app-logins', label: 'App Logins', icon: DeviceMobile, group: 'students' },
         { key: 'student-inbox', label: 'Student Inbox', icon: ChatCircleDots, group: 'students' },
@@ -2500,13 +2551,13 @@ function App() {
       })),
     // Windows that used to sit behind a button on a page.
     ...(can('packages')
-      ? [{ id: 'packages', label: 'Packages', icon: PackageIcon, group: 'students' as const, onSelect: () => setIsPackagesOpen(true) }]
+      ? [{ id: 'packages', label: 'Package', icon: PackageIcon, group: 'admin' as const, onSelect: () => setIsPackagesOpen(true) }]
       : []),
     ...(can('class_settings')
       ? [{ id: 'class-settings', label: 'Class Settings', icon: GearSix, group: 'admin' as const, onSelect: openClassSettings }]
       : []),
   ]
-  // Students sit before Programmes and Packages; My Team before Class Settings and the log.
+  // Each category's pages in their tab order (NAV_ORDER); Package and AI Knowledge sit last in Admin.
   navEntries.sort(
     (a, b) => NAV_ORDER.indexOf(a.id) - NAV_ORDER.indexOf(b.id),
   )
@@ -3109,7 +3160,7 @@ function App() {
     }
 
     const option = mapLeadOptionRow(data)
-    setLeadOptions((current) => [...current, option])
+    setLeadOptions((current) => orderLeadOptions([...current, option]))
     return option
   }
 
@@ -3172,9 +3223,24 @@ function App() {
       return
     }
 
+    // A hidden name moves under the shown ones (and back up when shown again).
     setLeadOptions((current) =>
-      current.map((entry) => (entry.id === option.id ? { ...entry, isActive } : entry)),
+      orderLeadOptions(current.map((entry) => (entry.id === option.id ? { ...entry, isActive } : entry))),
     )
+  }
+
+  // Leads settings: the school's own order of names (dragged in Sources, PIC & Tags). Shown at once, saved after.
+  async function handleReorderLeadOptions(ids: number[]) {
+    const before = leadOptions
+    const position = new Map(ids.map((id, index) => [id, index + 1]))
+    setLeadOptions((current) =>
+      orderLeadOptions(current.map((entry) => (position.has(entry.id) ? { ...entry, sortOrder: position.get(entry.id) } : entry))),
+    )
+    const problem = await saveLeadOptionOrder(ids)
+    if (problem) {
+      setLeadOptions(before)
+      showToast(problem)
+    }
   }
 
   function toPackageRow(draft: PackageDraft) {
@@ -4518,47 +4584,6 @@ function App() {
       { status },
     )
     await refreshAdminActivities()
-  }
-
-  // Ticks or unticks one of the three boxes. It shows at once and is put back
-  // if the database says no.
-  async function handleToggleLeadCheck(leadId: number, slot: LeadCheckSlot, checked: boolean) {
-    if (!supabase) {
-      return
-    }
-
-    const previousLeads = leads
-    setLeads((current) =>
-      current.map((entry) => {
-        if (entry.id !== leadId) {
-          return entry
-        }
-        const checks = { ...entry.checks }
-        if (checked) {
-          checks[slot] = { at: new Date().toISOString(), by: currentTeacher?.id ?? null }
-        } else {
-          delete checks[slot]
-        }
-        return { ...entry, checks }
-      }),
-    )
-
-    const { data, error } = await supabase.rpc('set_lead_check', {
-      p_lead_id: leadId,
-      p_slot: slot,
-      p_checked: checked,
-    })
-
-    if (error || data === false) {
-      setLeads(previousLeads)
-      showToast(
-        error ? getErrorMessage(error, 'Failed to update the tick.') : 'This lead could not be changed.',
-      )
-      return
-    }
-
-    // The database stamps the time and the person; load them back.
-    await refreshLeads()
   }
 
   // Does one action to the ticked leads of the list, after asking. Only the
@@ -7059,86 +7084,9 @@ function App() {
 
         <section className="min-w-0 flex-1">
           <div className="border-b border-slate-200 bg-white">
-            <div className="mx-auto flex max-w-[1600px] flex-col gap-3 px-4 py-3 lg:px-5 xl:flex-row xl:items-center xl:justify-between">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#be185d]">
-                  {activeSection === 'home'
-                    ? isTeacherAccount
-                      ? 'Teacher Home'
-                      : 'Admin Home'
-                    : activeSection === 'calendar'
-                    ? 'Calendar Board'
-                    : activeSection === 'classrooms'
-                      ? 'Classroom Board'
-                      : activeSection === 'questions' || activeSection === 'videos'
-                      ? 'Classroom Board'
-                      : activeSection === 'programmes'
-                        ? 'Settings'
-                      : activeSection === 'teacher-quality'
-                        ? 'Team Board'
-                      : activeSection === 'teachers' || activeSection === 'team-replies'
-                        ? 'Team Board'
-                        : activeSection === 'leads'
-                          ? 'Sales Pipeline'
-                          : activeSection === 'whatsapp' ||
-                          activeSection === 'automations' ||
-                          activeSection === 'ai-knowledge' ||
-                          activeSection === 'content-studio' ||
-                          activeSection === 'content-library'
-                            ? 'Marketing'
-                            : activeSection === 'forms'
-                            ? 'Marketing'
-                            : activeSection === 'activity'
-                              ? 'Admin Audit'
-                              : 'Student Board'}
-                </div>
-                <h1 className="mt-0.5 text-2xl font-semibold tracking-tight text-slate-900">
-                  {activeSection === 'home'
-                    ? 'Today'
-                    : activeSection === 'calendar'
-                    ? 'Classes, Attendance & Timetable'
-                    : activeSection === 'classrooms'
-                      ? 'My Classroom'
-                      : activeSection === 'questions'
-                      ? 'Question Bank'
-                      : activeSection === 'videos'
-                      ? 'Class Videos'
-                      : activeSection === 'programmes'
-                        ? 'Programmes'
-                      : activeSection === 'app-logins'
-                        ? 'App Logins'
-                      : activeSection === 'teacher-quality'
-                        ? 'Teacher Quality'
-                      : activeSection === 'student-chat'
-                        ? 'Student Chat'
-                      : activeSection === 'fee-calculator'
-                        ? 'Fee Calculator'
-                      : activeSection === 'student-inbox'
-                        ? 'Student Inbox'
-                      : activeSection === 'teachers'
-                        ? 'My Team'
-                        : activeSection === 'team-replies'
-                        ? 'Team Replies'
-                        : activeSection === 'leads'
-                          ? 'Leads'
-                          : activeSection === 'whatsapp'
-                            ? 'Inbox'
-                            : activeSection === 'automations'
-                              ? 'Automations'
-                              : activeSection === 'ai-knowledge'
-                              ? 'AI Knowledge'
-                              : activeSection === 'content-studio'
-                              ? 'Content Studio'
-                              : activeSection === 'content-library'
-                              ? 'Content Library'
-                              : activeSection === 'forms'
-                            ? 'Forms'
-                            : activeSection === 'activity'
-                              ? 'Activity Log'
-                              : 'Students'}
-                </h1>
-              </div>
-
+            {/* The account's controls on a thin row of their own; under it the page's title with its category's other
+                pages as tabs on the same row (no category name above the title). */}
+            <div className="mx-auto flex max-w-[1600px] justify-end px-4 pt-3 lg:px-5">
               <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:gap-3">
                 {/* On a phone the Inbox needs the room: the date and the past-feedback switch are not about chats. */}
                 <div
@@ -7251,6 +7199,56 @@ function App() {
                 )}
               </div>
             </div>
+            <div className="mx-auto flex max-w-[1600px] flex-col px-4 md:flex-row md:items-stretch md:gap-14 lg:px-5">
+              <h1 className="shrink-0 py-2.5 text-2xl font-semibold tracking-tight text-slate-900">
+                {activeSection === 'home'
+                  ? 'Today'
+                  : activeSection === 'calendar'
+                  ? 'Timetable'
+                  : activeSection === 'planner'
+                  ? 'Planner'
+                  : activeSection === 'classrooms'
+                    ? 'My Classroom'
+                    : activeSection === 'questions'
+                    ? 'Question Bank'
+                    : activeSection === 'videos'
+                    ? 'Class Videos'
+                    : activeSection === 'programmes'
+                      ? 'Programmes'
+                    : activeSection === 'app-logins'
+                      ? 'App Logins'
+                    : activeSection === 'teacher-quality'
+                      ? 'Teacher Quality'
+                    : activeSection === 'student-chat'
+                      ? 'Student Chat'
+                    : activeSection === 'fee-calculator'
+                      ? 'Fee Calculator'
+                    : activeSection === 'student-inbox'
+                      ? 'Student Inbox'
+                    : activeSection === 'teachers'
+                      ? 'My Team'
+                      : activeSection === 'team-replies'
+                      ? 'Team Replies'
+                      : activeSection === 'leads'
+                        ? 'Leads'
+                        : activeSection === 'whatsapp'
+                          ? 'Inbox'
+                          : activeSection === 'automations'
+                            ? 'Automation'
+                            : activeSection === 'ai-knowledge'
+                            ? 'AI Knowledge'
+                            : activeSection === 'content-studio'
+                            ? 'Content Studio'
+                            : activeSection === 'content-library'
+                            ? 'Content Library'
+                            : activeSection === 'forms'
+                          ? 'Form'
+                          : activeSection === 'activity'
+                            ? 'Activity Log'
+                            : 'Students'}
+              </h1>
+              <PageTabs entries={navEntries} activeSection={activeSection} onSelect={selectNav} />
+            </div>
           </div>
 
           <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-4 lg:px-5">
@@ -7349,7 +7347,7 @@ function App() {
               />
             )}
 
-            {visibleSection === 'calendar' && (
+            {isCalendarPage && (
               <>
                 {/* Not overflow-hidden: FullCalendar's "+more" box has to be able to
                     reach past the edge of this card instead of being cut off. */}
@@ -7363,24 +7361,29 @@ function App() {
                         people={calendarFilterPeople}
                         teams={calendarTeams}
                         canPickPeople={seesAllClasses}
+                        kinds={calendarKinds}
+                        showClasses={calendarPage === 'planner' ? { on: plannerShowClasses, onChange: setPlannerClasses } : undefined}
                       />
                     </div>
                     {canEditCalendar && (
                       <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setCalendarItemEditor({ item: null, date: todayString })}
-                          className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                        >
-                          Add Task / Meeting / Event
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openCreateSchedule()}
-                          className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
-                        >
-                          Add Class
-                        </button>
+                        {calendarPage === 'planner' ? (
+                          <button
+                            type="button"
+                            onClick={() => setCalendarItemEditor({ item: null, date: todayString })}
+                            className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
+                          >
+                            Add Task / Meeting / Event
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => openCreateSchedule()}
+                            className="rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
+                          >
+                            Add Class
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -7400,7 +7403,7 @@ function App() {
                         lessons={dayListLessons}
                         grades={schoolAgeGroupNames}
                         items={dayListItems}
-                        filteredOutside={isFiltered(calendarFilter)}
+                        filteredOutside={isFiltered(calendarFilter, calendarKinds)}
                         onOpenItem={(entry) => {
                           const picked = calendarItems.items.find((item) => item.id === entry.id)
                           if (picked) setCalendarItemEditor({ item: picked, date: picked.date })
@@ -7422,7 +7425,7 @@ function App() {
                       </button>
                     )}
                     <FullCalendar
-                      key={`calendar-${isMobile ? 'mobile' : 'desktop'}-${currentSession?.key ?? 'anon'}-${calendarMode ?? 'first'}`}
+                      key={`calendar-${calendarPage}-${isMobile ? 'mobile' : 'desktop'}-${currentSession?.key ?? 'anon'}-${calendarMode ?? 'first'}`}
                       plugins={[
                         dayGridPlugin,
                         timeGridPlugin,
@@ -7464,7 +7467,9 @@ function App() {
                         arg.view.type === 'dayGridMonth' && !arg.isOther && !classicMonth ? (
                           <>
                             <span>{arg.dayNumberText}</span>
-                            <span className="fc-day-empty-note">No class event scheduled.</span>
+                            <span className="fc-day-empty-note">
+                              {calendarPage === 'planner' ? 'Nothing planned.' : 'No class event scheduled.'}
+                            </span>
                           </>
                         ) : (
                           arg.dayNumberText
@@ -7507,7 +7512,9 @@ function App() {
                       }}
                       dateClick={(arg: DateClickArg) => {
                         if (canEditCalendar) {
-                          openCreateSchedule(arg.dateStr)
+                          // The Planner adds a task, meeting or event on the day; the Timetable adds a class.
+                          if (calendarPage === 'planner') setCalendarItemEditor({ item: null, date: arg.dateStr })
+                          else openCreateSchedule(arg.dateStr)
                         }
                       }}
                       eventClick={(arg: EventClickArg) => {
@@ -7771,6 +7778,7 @@ function App() {
                       missing={staffTeams.missing}
                       loadError={staffTeams.error}
                       people={teamPeople}
+                      picPeople={picPeople}
                       onChanged={async () => {
                         // A team's ticks change its members' totals.
                         await Promise.all([staffTeams.refresh(), refreshTeachers()])
@@ -7812,8 +7820,6 @@ function App() {
                 onOpenStages={isAdmin ? () => setIsLeadStagesOpen(true) : undefined}
                 leadIdsWithForms={leadIdsWithForms}
                 onOpenFormAnswers={openLeadFormAnswers}
-                onToggleCheck={handleToggleLeadCheck}
-                teacherNames={teacherNames}
                 onBulkAction={handleBulkLeadAction}
                 leadChannels={isMockMode ? [...MOCK_SOCIAL_CHANNELS, ...leadChannels.rows] : leadChannels.rows}
               />
@@ -8213,6 +8219,7 @@ function App() {
           onRename={handleRenameLeadOption}
           onSetActive={(option, isActive) => void handleSetLeadOptionActive(option, isActive)}
           onSetColor={(option, color) => void handleSetLeadOptionColor(option, color)}
+          onReorder={(ids) => void handleReorderLeadOptions(ids)}
         />
       )}
 
@@ -8266,6 +8273,8 @@ function App() {
                 tags={tagOptions}
                 selectedIds={studentTags.tags.get(selectedStudentDetail.id) ?? []}
                 canEdit={can('students', 'edit')}
+                inline
+                showLabel={false}
                 onChange={(ids) =>
                   void studentTags.save(selectedStudentDetail.id, ids).then((problem) => {
                     if (problem) {

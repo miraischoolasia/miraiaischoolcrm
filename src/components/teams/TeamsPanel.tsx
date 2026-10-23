@@ -27,6 +27,8 @@ type TeamsPanelProps = {
   missing: boolean
   loadError: string | null
   people: TeamPerson[]
+  // Who a PIC name can stand for: the people above and the admins (they have a PIC name too). Defaults to people.
+  picPeople?: TeamPerson[]
   onChanged: () => Promise<void> | void
   // The Chatwoot inboxes (names and kinds), when the Inbox is connected.
   listInboxes?: () => Promise<InboxOption[]>
@@ -46,7 +48,7 @@ function draftOf(team: Team): TeamDraft {
 }
 
 // My Team > Teams: make teams, put people in them, tick what each team may use and which inbox channels.
-export function TeamsPanel({ teams, members, missing, loadError, people, onChanged, listInboxes }: TeamsPanelProps) {
+export function TeamsPanel({ teams, members, missing, loadError, people, picPeople, onChanged, listInboxes }: TeamsPanelProps) {
   const [selectedId, setSelectedId] = useState<number | 'new' | null>(null)
   const [draft, setDraft] = useState<TeamDraft>(emptyDraft)
   const [memberIds, setMemberIds] = useState<number[]>([])
@@ -295,7 +297,7 @@ export function TeamsPanel({ teams, members, missing, loadError, people, onChang
       </section>
 
       <ChannelAccessSection teams={teams} people={pickable} nameOf={nameOf} listInboxes={listInboxes} />
-      <PicLinksSection people={pickable} />
+      <PicLinksSection people={picPeople ?? people} />
       <TagPicLinksSection />
     </div>
   )

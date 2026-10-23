@@ -6,7 +6,10 @@ import { formatDate, getWorstFee, type StudentIssue } from '../../domain/student
 import { studentFilterOptions } from '../../lib/constants'
 import { sortClassCategories, useClassCategories } from '../../lib/classCategories'
 import { DEFAULT_ROSTER_COUNTS, type RosterCounts } from '../../lib/studentRoster'
-import { StudentRosterTable } from './StudentRosterTable'
+import { schoolRosterColumns, StudentRosterTable } from './StudentRosterTable'
+import { ManageColumnsDrawer } from './ManageColumnsDrawer'
+import { arrangeAll, EMPTY_COLUMN_PREF, readColumnPref, ROSTER_COLUMNS_PREF_KEY } from '../../lib/rosterColumnPrefs'
+import { useUserPreference } from '../../lib/useUserPreference'
 import type { Programme } from '../../lib/programmes'
 import type { Subject } from '../../lib/subjects'
 import { useAgeGroups } from '../../lib/ageGroups'
@@ -163,9 +166,11 @@ export function StudentDashboardSection({
   const [extrasFilter, setExtrasFilter] = useState(NO_EXTRAS_FILTER)
   const [tagFilter, setTagFilter] = useState('')
   // The roster table (the master list's columns) is the school's own view of the list, shown first when it is on.
-  const rosterAvailable = Boolean(studentFields?.setting.roster_table)
-  const [listView, setListView] = useState<'roster' | 'list'>('roster')
-  const rosterView = rosterAvailable && listView === 'roster'
+  // A school that keeps it sees only the roster (the plain list stays for a school that does not).
+  const rosterView = Boolean(studentFields?.setting.roster_table)
+  // Which columns this person shows, and in what order: kept on their account.
+  const [columnPref, saveColumnPref] = useUserPreference(ROSTER_COLUMNS_PREF_KEY, EMPTY_COLUMN_PREF, readColumnPref)
+  const [managingColumns, setManagingColumns] = useState(false)
 
   const rows = useMemo(
     () =>
@@ -563,20 +568,14 @@ export function StudentDashboardSection({
               </option>
             ))}
           </select>
-          {rosterAvailable && (
-            <div role="group" aria-label="List view" className="inline-flex overflow-hidden rounded-xl border border-slate-200 text-sm font-semibold">
-              {(['roster', 'list'] as const).map((view) => (
-                <button
-                  key={view}
-                  type="button"
-                  aria-pressed={listView === view}
-                  onClick={() => setListView(view)}
-                  className={cn('px-3 py-2 transition', listView === view ? 'bg-[#fff0f9] text-[#be185d]' : 'bg-white text-slate-600 hover:bg-slate-50')}
-                >
-                  {view === 'roster' ? 'Roster' : 'List'}
-                </button>
-              ))}
-            </div>
+          {rosterView && (
+            <button
+              type="button"
+              onClick={() => setManagingColumns(true)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Manage columns
+            </button>
           )}
           <span className="ml-auto text-sm text-slate-500">
             {visibleRows.length > PAGE_SIZE
@@ -614,7 +613,16 @@ export function StudentDashboardSection({
                 categories={classCategories}
                 counts={studentFields.rosterCounts ?? DEFAULT_ROSTER_COUNTS}
                 todayString={todayString}
+                columnPref={columnPref}
                 onOpenStudent={onOpenStudentDetail}
+              />
+            )}
+            {managingColumns && rosterView && studentFields && (
+              <ManageColumnsDrawer
+                columns={arrangeAll(schoolRosterColumns(studentFields.setting), columnPref)}
+                hidden={columnPref.hidden}
+                onApply={saveColumnPref}
+                onClose={() => setManagingColumns(false)}
               />
             )}
             <ul className={cn('divide-y divide-slate-200 border-t border-slate-200 md:hidden', rosterView && 'hidden')}>

@@ -3,6 +3,7 @@ import type { Database } from './database'
 export type AppSection =
   | 'home'
   | 'calendar'
+  | 'planner'
   | 'classrooms'
   | 'questions'
   | 'videos'
@@ -69,6 +70,10 @@ export type LeadOption = {
   legacyKey: string | null
   // Only tags have one: a #rrggbb colour.
   color: string | null
+  // The school's own order (Sources, PIC & Tags, dragged); null or missing: never moved.
+  sortOrder?: number | null
+  // Only PIC names: the staff account it stands for (made from the staff list, 20261101300000).
+  teacherId?: number | null
 }
 
 // The three tick columns of the Leads list, by position.
@@ -743,7 +748,7 @@ export type StudentEnrollmentRow = Pick<
 
 export type LeadOptionRow = Pick<
   Database['public']['Tables']['lead_options']['Row'],
-  'id' | 'kind' | 'label' | 'is_active' | 'legacy_key' | 'color'
+  'id' | 'kind' | 'label' | 'is_active' | 'legacy_key' | 'color' | 'sort_order' | 'teacher_id'
 >
 
 export type FormFieldType =

@@ -175,6 +175,8 @@ export function mapLeadOptionRow(row: LeadOptionRow): LeadOption {
     isActive: row.is_active,
     legacyKey: row.legacy_key,
     color: row.color ?? null,
+    sortOrder: row.sort_order ?? null,
+    teacherId: row.teacher_id ?? null,
   }
 }
 

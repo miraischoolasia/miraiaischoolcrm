@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { TAG_COLORS, getCheckColumns, isTagColor, nextTagColor } from './leadTags'
+import { TAG_COLORS, isTagColor, moveLeadOption, nextTagColor, orderLeadOptions } from './leadTags'
 import type { LeadOption } from '../types/domain'
 
 function option(patch: Partial<LeadOption>): LeadOption {
@@ -40,26 +40,17 @@ describe('isTagColor', () => {
   })
 })
 
-describe('getCheckColumns', () => {
-  const check = (slot: number, label: string) =>
-    option({ id: 100 + slot, kind: 'check', label, legacyKey: `check_${slot}` })
+describe('the school order of names', () => {
+  const option = (id: number, isActive: boolean, sortOrder: number | null) => ({ id, isActive, sortOrder })
 
-  it('gives the three columns in order with the names the admin chose', () => {
-    const columns = getCheckColumns([
-      check(3, 'Paid deposit'),
-      option({ id: 5, kind: 'source', label: 'Walk-in' }),
-      check(1, 'RM99 pack'),
-      check(2, 'Joined event'),
-    ])
-
-    expect(columns.map((column) => [column.slot, column.label])).toEqual([
-      [1, 'RM99 pack'],
-      [2, 'Joined event'],
-      [3, 'Paid deposit'],
-    ])
+  it('puts shown names first, then hidden ones; dragged order first, never-moved ones by id', () => {
+    const ordered = orderLeadOptions([option(1, true, null), option(2, false, 1), option(3, true, 2), option(4, true, 1), option(5, true, null)])
+    expect(ordered.map((entry) => entry.id)).toEqual([4, 3, 1, 5, 2])
   })
 
-  it('shows no columns before the database has them', () => {
-    expect(getCheckColumns([option({ kind: 'source' })])).toEqual([])
+  it('moves one name onto another place', () => {
+    expect(moveLeadOption([1, 2, 3], 3, 1)).toEqual([3, 1, 2])
+    expect(moveLeadOption([1, 2, 3], 1, 3)).toEqual([2, 3, 1])
+    expect(moveLeadOption([1, 2, 3], 9, 1)).toEqual([1, 2, 3])
   })
 })

@@ -83,21 +83,24 @@ async function signInAs(role: TeacherRole, permissions: AccountPermissions) {
 }
 
 // The menu's top level: Today and the group headings (not the pages inside a group).
+// Today and the categories in the side menu (a category's count of what waits is left off).
 const navLabels = () =>
-  Array.from(document.querySelectorAll('aside nav > button, aside nav > div > button[aria-expanded]')).map(
-    (button) => button.textContent,
-  )
+  Array.from(document.querySelectorAll('aside nav > button')).map((button) => button.textContent?.replace(/\d+$/, ''))
 
-// Every page in the side menu, with each group opened.
+// Every page this login has: Today, then each category's tabs (a category is opened to show its tabs).
 async function menuPages() {
   const nav = within(document.querySelector('aside nav') as HTMLElement)
-  for (const group of nav.queryAllByRole('button', { expanded: false })) {
-    await userEvent.click(group)
+  const pages: (string | null)[] = []
+  for (const button of nav.getAllByRole('button')) {
+    if (button.textContent === 'Today') {
+      pages.push('Today')
+      continue
+    }
+    await userEvent.click(button)
+    const tabs = document.querySelector('nav[aria-label$=" pages"]')
+    pages.push(...(tabs ? within(tabs as HTMLElement).getAllByRole('button').map((tab) => tab.textContent) : [button.textContent]))
   }
-  return nav
-    .getAllByRole('button')
-    .filter((button) => !button.hasAttribute('aria-expanded'))
-    .map((button) => button.textContent)
+  return pages
 }
 
 describe('account permissions', () => {
@@ -140,13 +143,13 @@ describe('account permissions', () => {
     expect(screen.queryByRole('button', { name: /Convert/ })).not.toBeInTheDocument()
   })
 
-  it('keeps a plain teacher on Today and Teaching (Calendar, My Classroom, Class Videos, Question Bank), starting on Today', async () => {
+  it('keeps a plain teacher on Today and My Course (Timetable, Planner, My Classroom, Class Videos, Question Bank), starting on Today', async () => {
     await signInAs('teacher', {})
 
     expect(await screen.findByText(/^Good (morning|afternoon|evening),/)).toBeInTheDocument()
     expect(screen.queryByText('Calendar ready')).not.toBeInTheDocument()
-    expect(navLabels()).toEqual(['Today', 'Teaching'])
-    expect(await menuPages()).toEqual(['Today', 'Calendar', 'My Classroom', 'Class Videos', 'Question Bank'])
+    expect(navLabels()).toEqual(['Today', 'My Course'])
+    expect(await menuPages()).toEqual(['Today', 'Timetable', 'Planner', 'My Classroom', 'Class Videos', 'Question Bank'])
   })
 
   it('shows a teacher their own day first, with a way on to the full calendar', async () => {
@@ -181,7 +184,8 @@ describe('account permissions', () => {
   it('adds the ticked modules to a teacher account', async () => {
     await signInAs('teacher', { leads: { level: 'edit', delete: true } })
 
-    expect(navLabels()).toEqual(['Today', 'Marketing', 'Teaching'])
+    // Leads edit also opens AI Knowledge, which sits in Admin.
+    expect(navLabels()).toEqual(['Today', 'Marketing', 'My Course', 'Admin'])
   })
 
   it('loads the activity log only when it is opened, one day at a time', async () => {

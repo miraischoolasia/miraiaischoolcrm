@@ -107,7 +107,7 @@ async function signInAndOpenCalendar() {
   render(<App />)
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'admin-1' } }))
-  await openMenu('Calendar')
+  await openMenu('Timetable')
 }
 
 describe('the Calendar day list', () => {
@@ -161,7 +161,7 @@ describe('the Calendar day list', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Only mine' }))
     expect(screen.getByText('12 classes')).toBeInTheDocument()
 
-    await userEvent.click(within(screen.getByRole('group', { name: 'Kinds shown' })).getByRole('button', { name: 'Tasks' }))
+    await userEvent.click(within(screen.getByRole('group', { name: 'Kinds shown' })).getByRole('button', { name: 'Make-ups' }))
     expect(screen.getByText('0 classes')).toBeInTheDocument()
     expect(screen.getByText('Nothing on this day with these filters.')).toBeInTheDocument()
   })

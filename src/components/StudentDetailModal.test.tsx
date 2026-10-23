@@ -84,7 +84,7 @@ describe('StudentDetailModal', () => {
 
   it('shows the student code instead of the internal number, and the number only without a code', () => {
     const { unmount } = renderModal({ studentCode: 'S1100784' })
-    expect(screen.getByText('Student code S1100784')).toBeInTheDocument()
+    expect(screen.getByText('S1100784')).toBeInTheDocument()
     expect(screen.queryByText('#001')).not.toBeInTheDocument()
     unmount()
     renderModal()
@@ -97,7 +97,7 @@ describe('StudentDetailModal', () => {
     renderModal({ student: { ...student, phone: '60123456789' }, parentName: 'Mrs Tan' })
 
     expect(screen.getByText('Mrs Tan · 60123456789')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Copy' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Copy phone number' }))
     expect(writeText).toHaveBeenCalledWith('60123456789')
     expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument()
   })

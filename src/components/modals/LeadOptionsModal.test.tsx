@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { LeadOptionsModal } from './LeadOptionsModal'
@@ -31,18 +31,36 @@ describe('LeadOptionsModal', () => {
     expect(props.onRename).toHaveBeenCalledWith(other, 'Others')
   })
 
-  it('hides a name and adds a new PIC', async () => {
+  it('hides a name and adds a new source', async () => {
     const props = renderModal()
 
     await userEvent.click(screen.getByRole('button', { name: 'Hide Other' }))
     expect(props.onSetActive).toHaveBeenCalledWith(other, false)
 
-    await userEvent.type(screen.getByRole('textbox', { name: 'New PIC name' }), 'Mei{Enter}')
-    expect(props.onAdd).toHaveBeenCalledWith('pic', 'Mei')
+    await userEvent.type(screen.getByRole('textbox', { name: 'New Sources name' }), 'Fair{Enter}')
+    expect(props.onAdd).toHaveBeenCalledWith('source', 'Fair')
+  })
+
+  it('shows the PIC names made from the staff list, read only, and marks an old name not linked yet', () => {
+    renderModal({
+      options: [
+        other,
+        { id: 8, kind: 'pic', label: 'Xue Ling', isActive: true, legacyKey: null, color: null, teacherId: 4 },
+        { id: 9, kind: 'pic', label: '喵喵小老师', isActive: true, legacyKey: null, color: null, teacherId: null },
+        { id: 10, kind: 'pic', label: 'Gone', isActive: false, legacyKey: null, color: null, teacherId: 5 },
+      ],
+    })
+
+    const pics = screen.getByRole('region', { name: 'PIC' })
+    expect(pics).toHaveTextContent('Xue Ling')
+    expect(pics).toHaveTextContent('喵喵小老师Not linked')
+    expect(pics).not.toHaveTextContent('Gone')
+    expect(screen.queryByRole('textbox', { name: 'New PIC name' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Rename Xue Ling' })).not.toBeInTheDocument()
   })
 })
 
-describe('LeadOptionsModal tags and tick columns', () => {
+describe('LeadOptionsModal tags', () => {
   const tag: LeadOption = {
     id: 7,
     kind: 'tag',
@@ -102,24 +120,42 @@ describe('LeadOptionsModal tags and tick columns', () => {
     expect(props.onRename).toHaveBeenCalledWith(tag, 'Very hot')
   })
 
-  it('lets the three tick columns be renamed but not added or hidden', async () => {
-    const props = renderModal({
-      options: [other, check(1, 'Follow up 1'), check(2, 'Follow up 2'), check(3, 'Follow up 3')],
-    })
-
-    const section = screen.getByRole('region', { name: 'Tick columns' })
-    expect(within(section).getAllByRole('textbox')).toHaveLength(3)
-    expect(within(section).queryByRole('button')).not.toBeInTheDocument()
-
-    const first = within(section).getByRole('textbox', { name: 'Rename Follow up 1' })
-    await userEvent.clear(first)
-    await userEvent.type(first, 'RM99 pack{Enter}')
-    expect(props.onRename).toHaveBeenCalledWith(expect.objectContaining({ id: 101 }), 'RM99 pack')
-  })
-
-  it('leaves out the tick columns until the database has them', () => {
-    renderModal({ options: [other] })
+  it('no longer offers the Follow up tick columns, even when the database still has them', () => {
+    renderModal({ options: [other, check(1, 'Follow up 1'), check(2, 'Follow up 2'), check(3, 'Follow up 3')] })
 
     expect(screen.queryByRole('region', { name: 'Tick columns' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Rename Follow up 1' })).not.toBeInTheDocument()
+  })
+})
+
+describe('LeadOptionsModal tag order', () => {
+  const tag = (id: number, label: string, isActive = true): LeadOption => ({
+    id, kind: 'tag', label, isActive, legacyKey: null, color: '#22c55e',
+  })
+  const tags = [tag(1, 'Hot'), tag(2, 'Warm'), tag(3, 'Cold'), tag(4, 'Old', false)]
+
+  it('moves a tag with the arrows and keeps the hidden ones after the shown ones', async () => {
+    const props = renderModal({ options: tags, onReorder: vi.fn() })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Move Cold up' }))
+    expect(props.onReorder).toHaveBeenCalledWith([1, 3, 2, 4])
+    expect(screen.getByRole('button', { name: 'Move Hot up' })).toBeDisabled()
+  })
+
+  it('moves a tag dropped on another one', () => {
+    const props = renderModal({ options: tags, onReorder: vi.fn() })
+
+    const handle = screen.getByRole('textbox', { name: 'Rename Hot' }).closest('li')!.querySelector('[draggable="true"]')!
+    fireEvent.dragStart(handle)
+    fireEvent.dragOver(screen.getByRole('textbox', { name: 'Rename Cold' }).closest('li')!)
+    fireEvent.drop(screen.getByRole('textbox', { name: 'Rename Cold' }).closest('li')!)
+    expect(props.onReorder).toHaveBeenCalledWith([2, 3, 1, 4])
+  })
+
+  it('shows the hidden tags in their own grey group, without arrows', () => {
+    renderModal({ options: tags, onReorder: vi.fn() })
+
+    expect(screen.getByLabelText('Hidden Tags')).toHaveTextContent('Hidden')
+    expect(screen.queryByRole('button', { name: 'Move Old up' })).not.toBeInTheDocument()
   })
 })

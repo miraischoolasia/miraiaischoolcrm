@@ -182,7 +182,7 @@ async function signInAsAdmin() {
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'admin-1' } }))
   // Everybody starts on Today.
-  await openMenu('Calendar')
+  await openMenu('Timetable')
   await screen.findByRole('list', { name: 'calendar events' })
 }
 
@@ -194,29 +194,50 @@ describe('calendar kinds filter', () => {
     mocks.rpc.mockResolvedValue({ data: null, error: null })
   })
 
-  it('shows everything, then only classes, trials or make-ups', async () => {
+  it('on the Timetable shows the classes and make-ups, then only one of them', async () => {
     await signInAsAdmin()
     const events = () => within(screen.getByRole('list', { name: 'calendar events' }))
     const kinds = () => within(screen.getByRole('group', { name: 'Kinds shown' }))
 
+    expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual(['Regular Coding', 'Makeup Session'])
+    expect(kinds().getAllByRole('button').map((button) => button.textContent)).toEqual(['Classes', 'Make-ups'])
+
+    await userEvent.click(kinds().getByRole('button', { name: 'Make-ups' }))
+    expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual(['Makeup Session'])
+
+    await userEvent.click(kinds().getByRole('button', { name: 'All kinds' }))
+    await userEvent.click(kinds().getByRole('button', { name: 'Classes' }))
+    expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual(['Regular Coding'])
+
+    await userEvent.click(kinds().getByRole('button', { name: 'All kinds' }))
+    expect(events().getAllByRole('button')).toHaveLength(2)
+  })
+
+  it('on the Planner shows the trials, with the classes only after Show classes is switched on', async () => {
+    await signInAsAdmin()
+    await openMenu('Planner')
+    const events = () => within(screen.getByRole('list', { name: 'calendar events' }))
+    const kinds = () => within(screen.getByRole('group', { name: 'Kinds shown' }))
+
+    expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual(['Trial Coding'])
+    expect(kinds().getAllByRole('button').map((button) => button.textContent)).toEqual([
+      'Trials',
+      'Tasks',
+      'Meetings',
+      'Events',
+      'Follow-ups',
+      'Show classes',
+    ])
+
+    await userEvent.click(kinds().getByRole('button', { name: 'Show classes' }))
     expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual([
       'Regular Coding',
       'Trial Coding',
       'Makeup Session',
     ])
 
-    await userEvent.click(kinds().getByRole('button', { name: 'Trials' }))
+    await userEvent.click(kinds().getByRole('button', { name: 'Show classes' }))
     expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual(['Trial Coding'])
-
-    await userEvent.click(kinds().getByRole('button', { name: 'Classes' }))
-    expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual(['Regular Coding', 'Trial Coding'])
-
-    await userEvent.click(kinds().getByRole('button', { name: 'All kinds' }))
-    await userEvent.click(kinds().getByRole('button', { name: 'Make-ups' }))
-    expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual(['Makeup Session'])
-
-    await userEvent.click(kinds().getByRole('button', { name: 'All kinds' }))
-    expect(events().getAllByRole('button')).toHaveLength(3)
   })
 })
 
@@ -232,10 +253,18 @@ describe('the top of the Calendar page', () => {
     await signInAsAdmin()
     expect(screen.getByRole('group', { name: 'Calendar filters' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add Class' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Add Task / Meeting / Event' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add Task / Meeting / Event' })).not.toBeInTheDocument()
     for (const gone of ['Active Schedule Cards', 'Visible Teachers', 'Full Calendar Timetable Board', 'Trial - Available', 'Public Holiday']) {
       expect(screen.queryByText(gone)).not.toBeInTheDocument()
     }
+  })
+
+  it('has Add Task / Meeting / Event, not Add Class, on the Planner', async () => {
+    await signInAsAdmin()
+    await openMenu('Planner')
+    expect(screen.getByRole('group', { name: 'Calendar filters' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add Task / Meeting / Event' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add Class' })).not.toBeInTheDocument()
   })
 })
 
@@ -331,7 +360,7 @@ describe('cancelling a single class day', () => {
     await userEvent.click(dialogCancel)
 
     // Nothing written (the page's own reads, such as each table's change number, do not count).
-    const reads = ['crm_table_versions', 'automation_snapshot', 'app_chat_enabled', 'app_chat_staff_threads']
+    const reads = ['crm_table_versions', 'automation_snapshot', 'app_chat_enabled', 'app_chat_staff_threads', 'calendar_series_extend']
     expect(mocks.rpc.mock.calls.filter(([name]) => !reads.includes(name))).toEqual([])
   })
 
@@ -429,6 +458,8 @@ describe('cancelling a single class day', () => {
       { id: 1, scheduleId: 11, exceptionDate: '2026-09-08', reason: null },
     ])
     await signInAsAdmin()
+    // Trial slots are on the Planner.
+    await openMenu('Planner')
 
     await userEvent.click(screen.getByRole('button', { name: 'Trial Coding (cancelled)' }))
 

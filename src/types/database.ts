@@ -405,6 +405,8 @@ export type Database = {
           created_at: string
           // A PIC name linked to an account (20261026010000).
           teacher_id?: number | null
+          // The school's own order (20261101250000); null until moved.
+          sort_order?: number | null
         }
         Insert: {
           id?: number
@@ -672,6 +674,28 @@ export type Database = {
           size_bytes?: number
           added_by?: string | null
           created_at?: string
+        }
+        Relationships: []
+      }
+      // Each staff member's own screen settings (20261031950000).
+      user_ui_preferences: {
+        Row: {
+          teacher_id: number
+          key: string
+          value: Json
+          updated_at: string
+        }
+        Insert: {
+          teacher_id?: number
+          key: string
+          value: Json
+          updated_at?: string
+        }
+        Update: {
+          teacher_id?: number
+          key?: string
+          value?: Json
+          updated_at?: string
         }
         Relationships: []
       }
@@ -3506,6 +3530,19 @@ export type Database = {
       reorder_lead_stages: {
         Args: {
           p_keys: string[]
+        }
+        Returns: undefined
+      }
+      set_lead_option_order: {
+        Args: {
+          p_ids: number[]
+        }
+        Returns: undefined
+      }
+      link_pic_to_staff: {
+        Args: {
+          p_pic_id: number
+          p_teacher_id: number | null
         }
         Returns: undefined
       }

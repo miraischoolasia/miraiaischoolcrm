@@ -124,7 +124,7 @@ async function signIn(role: 'admin' | 'teacher' = 'admin') {
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: userId } }))
   // Everybody starts on Today.
-  await openMenu('Calendar')
+  await openMenu('Timetable')
   await screen.findByRole('list', { name: 'calendar events' })
 }
 
@@ -190,7 +190,7 @@ async function signInAndKeep() {
   const view = render(<App />)
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'admin-1' } }))
-  await openMenu('Calendar')
+  await openMenu('Timetable')
   await screen.findByRole('list', { name: 'calendar events' })
   return view
 }
@@ -201,31 +201,33 @@ describe('sidebar navigation order', () => {
     mocks.rpc.mockResolvedValue({ data: null, error: null })
   })
 
-  it('lists Today, then the Marketing, Teaching, Students and Admin groups for an admin', async () => {
+  it('lists Today, then the Marketing, Media, My Course, Students and Admin categories for an admin', async () => {
     await signIn()
 
-    const topLevel = document.querySelectorAll('aside nav > button, aside nav > div > button[aria-expanded]')
-    expect(Array.from(topLevel).map((button) => button.textContent)).toEqual([
+    const topLevel = document.querySelectorAll('aside nav > button')
+    expect(Array.from(topLevel).map((button) => button.textContent?.replace(/\d+$/, ''))).toEqual([
       'Today',
       'Marketing',
-      'Teaching',
+      'Media',
+      'My Course',
       'Students',
       'Admin',
     ])
   })
 
-  it('starts the Marketing group collapsed, opening only once clicked', async () => {
+  it('keeps the pages out of the side menu: a category opens its first page, with its pages as tabs on top', async () => {
     // Scoped to the desktop sidebar - the phone's bottom bar is a second
     // menu (hidden only by a CSS media query jsdom does not apply).
     await signIn()
     const nav = within(document.querySelector('aside nav')!)
 
     expect(nav.queryByRole('button', { name: 'Leads' })).not.toBeInTheDocument()
-    expect(nav.queryByRole('button', { name: 'Forms' })).not.toBeInTheDocument()
+    expect(nav.queryByRole('button', { name: 'Form' })).not.toBeInTheDocument()
 
     await userEvent.click(nav.getByRole('button', { name: /Marketing/ }))
 
-    expect(nav.getByRole('button', { name: 'Leads' })).toBeInTheDocument()
-    expect(nav.getByRole('button', { name: 'Forms' })).toBeInTheDocument()
+    const tabs = within(screen.getByRole('navigation', { name: 'Marketing pages' }))
+    expect(tabs.getByRole('button', { name: 'Leads' })).toHaveAttribute('aria-current', 'page')
+    expect(tabs.getByRole('button', { name: /Form/ })).toBeInTheDocument()
   })
 })

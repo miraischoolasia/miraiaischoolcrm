@@ -153,3 +153,41 @@ describe('LeadTagPicker', () => {
     expect(screen.getByTitle('eduhero-experience-class-october')).toHaveTextContent('eduhero-experience-class-october')
   })
 })
+
+describe('LeadTagPicker inline (student profile header)', () => {
+  function renderInline(selectedIds: number[] = [1], onCreate = vi.fn()) {
+    const onChange = vi.fn()
+    render(<LeadTagPicker tags={tags} selectedIds={selectedIds} onChange={onChange} onCreate={onCreate} inline showLabel={false} />)
+    return { onChange, onCreate }
+  }
+
+  it('shows the pills with a small + that opens a short list, not a big drop-down', async () => {
+    const { onChange } = renderInline()
+    expect(screen.getByText('Hot')).toBeInTheDocument()
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add a tag' }))
+    // Only tags that are on and not yet on the student are offered; the search narrows them.
+    expect(screen.getByRole('button', { name: 'Warm' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Old campaign' })).not.toBeInTheDocument()
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search tags' }), 'zzz')
+    expect(screen.getByText('No tag matches.')).toBeInTheDocument()
+    await userEvent.clear(screen.getByRole('searchbox', { name: 'Search tags' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Warm' }))
+
+    expect(onChange).toHaveBeenCalledWith([1, 2])
+  })
+
+  it('takes a tag off with its x, and makes a new tag from the list', async () => {
+    const created = tag(9, 'Fresh')
+    const { onChange } = renderInline([1], vi.fn().mockResolvedValue(created))
+    await userEvent.click(screen.getByRole('button', { name: 'Remove tag Hot' }))
+    expect(onChange).toHaveBeenCalledWith([])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add a tag' }))
+    await userEvent.click(screen.getByRole('button', { name: '+ Create new tag...' }))
+    await userEvent.type(screen.getByLabelText('New tag name'), 'Fresh')
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }))
+    expect(onChange).toHaveBeenLastCalledWith([1, 9])
+  })
+})

@@ -38,8 +38,38 @@ export function defaultCalendarFilter(mine = false): CalendarFilter {
   return { mine, teamId: null, personIds: [], kinds: ALL_KINDS }
 }
 
-export function isFiltered(filter: CalendarFilter) {
-  return filter.mine || filter.teamId !== null || filter.personIds.length > 0 || filter.kinds.length < ALL_KINDS.length
+// `kinds` = the kinds the page can show at all (a page that shows fewer is not "filtered" by that).
+export function isFiltered(filter: CalendarFilter, kinds: CalendarKind[] = ALL_KINDS) {
+  return filter.mine || filter.teamId !== null || filter.personIds.length > 0 || filter.kinds.length < kinds.length
+}
+
+// The two calendar pages: the Timetable shows the classes (and make-ups); the Planner shows the rest (trials, tasks,
+// meetings, events, follow-ups) and the classes only when the person switches "Show classes" on.
+export type CalendarPage = 'timetable' | 'planner'
+
+export function pageKinds(page: CalendarPage, showClasses: boolean): CalendarKind[] {
+  const keep: CalendarKind[] =
+    page === 'timetable'
+      ? ['class', 'makeup']
+      : showClasses
+        ? ALL_KINDS
+        : ['trial', 'task', 'meeting', 'event', 'follow_up']
+  return ALL_KINDS.filter((kind) => keep.includes(kind))
+}
+
+// The saved filter as the page shows it: only the kinds the page has (all of them when none of the saved ones is here).
+export function pageFilter(filter: CalendarFilter, kinds: CalendarKind[]): CalendarFilter {
+  const shown = filter.kinds.filter((kind) => kinds.includes(kind))
+  return { ...filter, kinds: shown.length > 0 ? shown : kinds }
+}
+
+// The saved kinds after "Show classes" is switched on or off: from "everything" it stays everything.
+export function kindsWithClasses(filter: CalendarFilter, before: CalendarKind[], on: boolean): CalendarKind[] {
+  const classKinds: CalendarKind[] = ['class', 'makeup']
+  const everything = before.every((kind) => filter.kinds.includes(kind))
+  if (on) return everything ? ALL_KINDS : [...new Set([...filter.kinds, ...classKinds])]
+  const rest = filter.kinds.filter((kind) => !classKinds.includes(kind))
+  return rest.length > 0 ? rest : ALL_KINDS
 }
 
 // A weekly class (and a camp) is a class, a trial slot a trial, a one-off replacement day a make-up.

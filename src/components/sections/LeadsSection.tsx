@@ -17,7 +17,6 @@ import { codesLabel, withCodes } from '../../lib/studentCodeLabel'
 import { formatDate, getTodayString, parseLocalDate } from '../../domain/studentStatus'
 import { leadStatusOptions } from '../../lib/constants'
 import { stageLabel, stageStyle } from '../../lib/leadStages'
-import { getCheckColumns, type CheckFilter } from '../../lib/leadTags'
 import { SummaryBar } from '../SummaryBar'
 import { LeadTrendChart } from '../LeadTrendChart'
 import { LeadKanbanBoard } from '../LeadKanbanBoard'
@@ -45,7 +44,6 @@ import {
 import type {
   Lead,
   LeadBulkAction,
-  LeadCheckSlot,
   LeadChild,
   LeadOption,
   LeadStatus,
@@ -107,10 +105,6 @@ type LeadsSectionProps = {
   // The leads that came with form answers get a small "Form" tag that opens them.
   leadIdsWithForms?: Set<number>
   onOpenFormAnswers?: (leadId: number) => void
-  // Ticks or unticks one of the three columns of boxes on a lead.
-  onToggleCheck?: (leadId: number, slot: LeadCheckSlot, checked: boolean) => void
-  // Who ticked a box, shown when the pointer rests on it.
-  teacherNames?: Map<number, string>
   // Does one action to the selected leads (the page asks to confirm first) and
   // says whether it went through.
   onBulkAction?: (action: LeadBulkAction, leadIds: number[]) => Promise<boolean>
@@ -143,8 +137,6 @@ export function LeadsSection({
   onOpenStages,
   leadIdsWithForms,
   onOpenFormAnswers,
-  onToggleCheck,
-  teacherNames,
   onBulkAction,
   leadChannels = [],
   studentNameOf,
@@ -169,11 +161,6 @@ export function LeadsSection({
   const [picFilter, setPicFilter] = useState('all')
   // 'all', 'none' (no tag) or a tag option id.
   const [tagFilter, setTagFilter] = useState('all')
-  const [checkFilters, setCheckFilters] = useState<Record<LeadCheckSlot, CheckFilter>>({
-    1: 'all',
-    2: 'all',
-    3: 'all',
-  })
   const [page, setPage] = useState(1)
   // The ticked leads. A selection belongs to the filters it was made with: once
   // they change it is gone, so nothing hidden is ever acted on.
@@ -186,9 +173,8 @@ export function LeadsSection({
   const sourceOptions = leadOptions.filter((option) => option.kind === 'source')
   const picOptions = leadOptions.filter((option) => option.kind === 'pic')
   const tagOptions = leadOptions.filter((option) => option.kind === 'tag')
-  const checkColumns = getCheckColumns(leadOptions)
-  const tagById = new Map(tagOptions.map((option) => [option.id, option]))
-  const tagsOf = (lead: Lead) => lead.tagIds.flatMap((id) => tagById.get(id) ?? [])
+  // In the school's tag order (Sources, PIC & Tags), not the order they were put on.
+  const tagsOf = (lead: Lead) => tagOptions.filter((option) => lead.tagIds.includes(option.id))
   const sourceLabel = (lead: Lead) =>
     (lead.sourceId !== null && optionLabelById.get(lead.sourceId)) || '-'
   const picLabel = (lead: Lead) =>
@@ -242,15 +228,7 @@ export function LeadsSection({
   const datedLeads = searchedLeads.filter(
     (lead) => (!dateFrom || lead.addedDate >= dateFrom) && (!dateTo || lead.addedDate <= dateTo),
   )
-  // The tick columns' filters, like the stage filter, belong to the list.
-  const filteredLeads = datedLeads
-    .filter((lead) => (stageFilter === 'all' ? true : lead.status === stageFilter))
-    .filter((lead) =>
-      checkColumns.every(({ slot }) => {
-        const wanted = checkFilters[slot]
-        return wanted === 'all' || (wanted === 'on') === Boolean(lead.checks[slot])
-      }),
-    )
+  const filteredLeads = datedLeads.filter((lead) => (stageFilter === 'all' ? true : lead.status === stageFilter))
 
   // The Children view: the same stage, PIC, tag and date filters, then the search and age on each child.
   const leadsForChildren = leads
@@ -277,7 +255,6 @@ export function LeadsSection({
     stageFilter,
     dateFrom,
     dateTo,
-    checkFilters,
   ])
   // Only leads still in the list count (one just deleted, say, no longer does).
   const selectedLeads =
@@ -316,7 +293,7 @@ export function LeadsSection({
 
   function exportSelected() {
     const day = getTodayString()
-    downloadCsv(`leads-${day}.csv`, buildLeadsExportCsv(selectedLeads, leadOptions, checkColumns))
+    downloadCsv(`leads-${day}.csv`, buildLeadsExportCsv(selectedLeads, leadOptions))
   }
 
   // Any filter change starts again from page 1.
@@ -929,21 +906,6 @@ export function LeadsSection({
                       <dt className="text-xs font-medium text-slate-500">PIC</dt>
                       <dd className="text-slate-700">{picLabel(lead)}</dd>
                     </div>
-                    {checkColumns.map((column) => (
-                      <div key={column.slot} className="flex items-center justify-between gap-3">
-                        <dt className="text-xs font-medium text-slate-500">{column.label}</dt>
-                        <dd>
-                          <CheckBox
-                            lead={lead}
-                            slot={column.slot}
-                            label={column.label}
-                            disabled={!canEdit || !onToggleCheck}
-                            teacherNames={teacherNames}
-                            onToggle={onToggleCheck}
-                          />
-                        </dd>
-                      </div>
-                    ))}
                   </dl>
 
                   <select
@@ -1014,36 +976,6 @@ export function LeadsSection({
                       PIC
                     </th>
                     <th className="px-6 py-4">Stage</th>
-                    {checkColumns.map((column) => (
-                      <th
-                        key={column.slot}
-                        className="w-20 text-center align-top"
-                        style={{ padding: '0.5rem 0.25rem' }}
-                      >
-                        <div className="whitespace-nowrap text-[11px] tracking-normal">{column.label}</div>
-                        <select
-                          value={checkFilters[column.slot]}
-                          aria-label={`Filter ${column.label}`}
-                          onChange={(event) => {
-                            const value = event.target.value as CheckFilter
-                            setCheckFilters((current) => ({ ...current, [column.slot]: value }))
-                            setPage(1)
-                          }}
-                          style={{
-                            minHeight: 0,
-                            padding: '1px 2px',
-                            fontSize: '10px',
-                            lineHeight: '14px',
-                            borderRadius: '6px',
-                          }}
-                          className="mt-1 w-full border border-slate-200 bg-white font-medium normal-case tracking-normal text-slate-500 outline-none focus:border-[#fc0c97]"
-                        >
-                          <option value="all">All</option>
-                          <option value="on">Ticked</option>
-                          <option value="off">Not ticked</option>
-                        </select>
-                      </th>
-                    ))}
                     {canDelete && <th className="px-6 py-4 text-right">Action</th>}
                   </tr>
                 </thead>
@@ -1156,22 +1088,6 @@ export function LeadsSection({
                           ))}
                         </select>
                       </td>
-                      {checkColumns.map((column) => (
-                        <td
-                          key={column.slot}
-                          className="text-center"
-                          style={{ padding: '1.25rem 0.25rem' }}
-                        >
-                          <CheckBox
-                            lead={lead}
-                            slot={column.slot}
-                            label={column.label}
-                            disabled={!canEdit || !onToggleCheck}
-                            teacherNames={teacherNames}
-                            onToggle={onToggleCheck}
-                          />
-                        </td>
-                      ))}
                       {canDelete && (
                         <td className="px-6 py-5 text-right">
                           <button
@@ -1257,42 +1173,6 @@ function LeadTags({ tags, align = 'start' }: { tags: LeadOption[]; align?: 'star
         <LeadTagChip key={tag.id} tag={tag} />
       ))}
     </div>
-  )
-}
-
-// One of the three boxes on a lead. Resting on a ticked one says who ticked it
-// and when.
-function CheckBox({
-  lead,
-  slot,
-  label,
-  disabled,
-  teacherNames,
-  onToggle,
-}: {
-  lead: Lead
-  slot: LeadCheckSlot
-  label: string
-  disabled: boolean
-  teacherNames?: Map<number, string>
-  onToggle?: (leadId: number, slot: LeadCheckSlot, checked: boolean) => void
-}) {
-  const stamp = lead.checks[slot]
-  const who = stamp?.by != null ? teacherNames?.get(stamp.by) : undefined
-  const when = stamp?.at ? formatDate(stamp.at.slice(0, 10)) : ''
-  const title = stamp ? ['Ticked', who && `by ${who}`, when && `on ${when}`].filter(Boolean).join(' ') : undefined
-
-  return (
-    <input
-      type="checkbox"
-      checked={Boolean(stamp)}
-      disabled={disabled}
-      title={title}
-      aria-label={`${label} for ${lead.fullName || lead.phone || 'this lead'}`}
-      onChange={(event) => onToggle?.(lead.id, slot, event.target.checked)}
-      style={{ width: 16, height: 16, minHeight: 0, padding: 0 }}
-      className="cursor-pointer rounded accent-[#fc0c97] disabled:cursor-not-allowed"
-    />
   )
 }
 

@@ -8,7 +8,7 @@ vi.mock('../../lib/downloadFile', () => ({
   downloadCsv: (filename: string, content: string) => downloads.push({ filename, content }),
 }))
 import { getTodayString } from '../../domain/studentStatus'
-import type { Lead, LeadCheckSlot, LeadOption } from '../../types/domain'
+import type { Lead, LeadOption } from '../../types/domain'
 
 const options: LeadOption[] = [
   { id: 1, kind: 'source', label: 'Walk-in', isActive: true, legacyKey: 'walk_in', color: null },
@@ -205,23 +205,20 @@ describe('LeadsSection', () => {
     expect(onEditLead).toHaveBeenCalledWith(1)
   })
 
-  it('does not open the lead when a tick, the stage, WhatsApp or the source is used', async () => {
+  it('does not open the lead when the stage, WhatsApp or the source is used', async () => {
     const onEditLead = vi.fn()
-    const onToggleCheck = vi.fn()
     const onChangeStatus = vi.fn()
     const onOpenFormAnswers = vi.fn()
     renderSection(
       [{ ...makeLead(1, null), fullName: 'Mrs Lim', phone: '60123456789' }],
-      { onEditLead, onToggleCheck, onChangeStatus, leadIdsWithForms: new Set([1]), onOpenFormAnswers },
+      { onEditLead, onChangeStatus, leadIdsWithForms: new Set([1]), onOpenFormAnswers },
       allOptions,
     )
     const row = within(tableRows()[0])
 
-    await userEvent.click(row.getByRole('checkbox', { name: /RM99 pack/ }))
     await userEvent.selectOptions(row.getByRole('combobox', { name: '' }), 'contacted')
     await userEvent.click(row.getByRole('button', { name: /View form answers/ }))
 
-    expect(onToggleCheck).toHaveBeenCalledTimes(1)
     expect(onChangeStatus).toHaveBeenCalledTimes(1)
     expect(onOpenFormAnswers).toHaveBeenCalledWith(1)
     expect(onEditLead).not.toHaveBeenCalled()
@@ -342,9 +339,6 @@ const tagOptions: LeadOption[] = [
 ]
 const allOptions = [...options, ...checkOptions, ...tagOptions]
 
-const header = (name: RegExp | string) =>
-  within(screen.getByRole('table')).getByRole('columnheader', { name })
-
 describe('LeadsSection list columns', () => {
   it('has no Follow Up, Convert, Source or follow-up count in the list', () => {
     renderSection([{ ...makeLead(1, null), fullName: 'Mrs Lim' }], {}, allOptions)
@@ -387,90 +381,13 @@ describe('LeadsSection list columns', () => {
   })
 })
 
-describe('LeadsSection tick columns', () => {
-  const ticked = (slots: LeadCheckSlot[]) =>
-    Object.fromEntries(slots.map((slot) => [slot, { at: '2026-10-05T03:00:00Z', by: 7 }]))
+describe('LeadsSection has no Follow up tick columns', () => {
+  it('shows no tick column, filter or box even when the database still has the three options', () => {
+    renderSection([{ ...makeLead(1, null), fullName: 'Mrs Lim', checks: { 1: { at: '2026-10-05T03:00:00Z', by: 7 } } }], {}, allOptions)
 
-  it('shows the three columns with the names the admin chose', () => {
-    renderSection([makeLead(1, null)], {}, allOptions)
-
-    expect(header(/RM99 pack/)).toBeInTheDocument()
-    expect(header(/Joined event/)).toBeInTheDocument()
-    expect(header(/Paid deposit/)).toBeInTheDocument()
-  })
-
-  it('shows no tick columns before the database has them', () => {
-    renderSection([makeLead(1, null)])
-
+    expect(screen.queryByRole('columnheader', { name: /RM99 pack|Joined event|Paid deposit/ })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^Filter (RM99 pack|Joined event|Paid deposit)/)).not.toBeInTheDocument()
     expect(screen.queryByRole('checkbox', { name: / for / })).not.toBeInTheDocument()
-  })
-
-  it('shows which boxes are ticked, and says who ticked and when', () => {
-    renderSection(
-      [{ ...makeLead(1, null), fullName: 'Mrs Lim', checks: ticked([1, 3]) }],
-      { teacherNames: new Map([[7, 'Alex']]) },
-      allOptions,
-    )
-
-    const row = within(tableRows()[0])
-    const first = row.getByRole('checkbox', { name: 'RM99 pack for Mrs Lim' })
-    expect(first).toBeChecked()
-    expect(first).toHaveAttribute('title', expect.stringMatching(/Ticked by Alex on /))
-    expect(row.getByRole('checkbox', { name: 'Joined event for Mrs Lim' })).not.toBeChecked()
-    expect(row.getByRole('checkbox', { name: 'Paid deposit for Mrs Lim' })).toBeChecked()
-  })
-
-  it('ticks and unticks a box', async () => {
-    const onToggleCheck = vi.fn()
-    renderSection(
-      [{ ...makeLead(1, null), fullName: 'Mrs Lim', checks: ticked([2]) }],
-      { onToggleCheck },
-      allOptions,
-    )
-    const row = within(tableRows()[0])
-
-    await userEvent.click(row.getByRole('checkbox', { name: 'RM99 pack for Mrs Lim' }))
-    expect(onToggleCheck).toHaveBeenLastCalledWith(1, 1, true)
-
-    await userEvent.click(row.getByRole('checkbox', { name: 'Joined event for Mrs Lim' }))
-    expect(onToggleCheck).toHaveBeenLastCalledWith(1, 2, false)
-  })
-
-  it('cannot be changed without edit access', () => {
-    renderSection([makeLead(1, null)], { canEdit: false, onToggleCheck: vi.fn() }, allOptions)
-
-    const ticks = within(tableRows()[0]).getAllByRole('checkbox', { name: / for / })
-    expect(ticks).toHaveLength(3)
-    ticks.forEach((box) => expect(box).toBeDisabled())
-  })
-
-  it('filters by ticked, not ticked or all, one column at a time', async () => {
-    renderSection(
-      [
-        { ...makeLead(1, null), fullName: 'Mrs Lim', checks: ticked([1]) },
-        { ...makeLead(2, null), fullName: 'Mr Tan', checks: ticked([1, 2]) },
-        { ...makeLead(3, null), fullName: 'Ms Goh', checks: {} },
-      ],
-      {},
-      allOptions,
-    )
-    expect(tableRows()).toHaveLength(3)
-
-    await userEvent.selectOptions(screen.getByLabelText('Filter RM99 pack'), 'on')
-    expect(tableRows()).toHaveLength(2)
-
-    await userEvent.selectOptions(screen.getByLabelText('Filter Joined event'), 'off')
-    expect(tableRows()).toHaveLength(1)
-    expect(within(tableRows()[0]).getByText('Mrs Lim')).toBeInTheDocument()
-
-    await userEvent.selectOptions(screen.getByLabelText('Filter RM99 pack'), 'all')
-    await userEvent.selectOptions(screen.getByLabelText('Filter Joined event'), 'all')
-    expect(tableRows()).toHaveLength(3)
-
-    await userEvent.selectOptions(screen.getByLabelText('Filter Paid deposit'), 'off')
-    expect(tableRows()).toHaveLength(3)
-    await userEvent.selectOptions(screen.getByLabelText('Filter Paid deposit'), 'on')
-    expect(screen.getByText('No leads match this search or stage.')).toBeInTheDocument()
   })
 })
 

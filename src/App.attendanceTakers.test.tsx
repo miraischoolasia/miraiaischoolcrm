@@ -144,7 +144,7 @@ async function openClassAs(userId: string) {
   render(<App />)
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: userId } }))
-  await openMenu('Calendar')
+  await openMenu('Timetable')
   const events = await screen.findByRole('list', { name: 'calendar events' })
   return within(events)
 }

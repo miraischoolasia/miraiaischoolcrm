@@ -1,16 +1,10 @@
 import { leadStatusOptions } from './constants'
 import { csvCell } from './leadCsv'
-import type { CheckColumn } from './leadTags'
 import type { Lead, LeadOption } from '../types/domain'
 
-// The selected leads as a spreadsheet: who they are, where they came from,
-// how far they were followed up. Names and notes come from people, so every
+// The selected leads as a spreadsheet: who they are, where they came from. Names and notes come from people, so every
 // cell is guarded against being run as a formula.
-export function buildLeadsExportCsv(
-  leads: Lead[],
-  options: LeadOption[],
-  checkColumns: CheckColumn[],
-) {
+export function buildLeadsExportCsv(leads: Lead[], options: LeadOption[]) {
   const label = new Map(options.map((option) => [option.id, option.label]))
   const header = [
     'Added',
@@ -22,7 +16,6 @@ export function buildLeadsExportCsv(
     'PIC',
     'Stage',
     'Tags',
-    ...checkColumns.map((column) => column.label),
     'Notes',
   ]
 
@@ -38,7 +31,6 @@ export function buildLeadsExportCsv(
     (lead.picId !== null && label.get(lead.picId)) || '',
     leadStatusOptions.find((option) => option.key === lead.status)?.label ?? lead.status,
     lead.tagIds.flatMap((id) => label.get(id) ?? []).join('; '),
-    ...checkColumns.map((column) => (lead.checks[column.slot] ? 'Yes' : '')),
     lead.notes ?? '',
   ])
 

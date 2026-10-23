@@ -1,4 +1,4 @@
-import type { LeadCheckSlot, LeadOption } from '../types/domain'
+import type { LeadOption } from '../types/domain'
 
 // Colours a tag can have. A new tag takes the first one no tag uses yet.
 export const TAG_COLORS = [
@@ -20,22 +20,26 @@ export function nextTagColor(tags: LeadOption[]) {
   return TAG_COLORS.find((color) => !used.has(color)) ?? TAG_COLORS[tags.length % TAG_COLORS.length]
 }
 
+// The school's own order (Leads settings > Sources, PIC & Tags): shown names first, then hidden ones; within each,
+// the dragged order, then the never-moved ones by id (how they were made). Every tag list follows it.
+export function orderLeadOptions<T extends Pick<LeadOption, 'id' | 'isActive' | 'sortOrder'>>(options: T[]) {
+  const rank = (option: T) => option.sortOrder ?? Number.MAX_SAFE_INTEGER
+  return [...options].sort(
+    (left, right) => Number(right.isActive) - Number(left.isActive) || rank(left) - rank(right) || left.id - right.id,
+  )
+}
+
+// The new order after moving one name onto another's place (dragging) or one step (the arrows).
+export function moveLeadOption(ids: number[], movedId: number, targetId: number) {
+  const from = ids.indexOf(movedId)
+  const to = ids.indexOf(targetId)
+  if (from < 0 || to < 0 || from === to) return ids
+  const next = [...ids]
+  next.splice(from, 1)
+  next.splice(to, 0, movedId)
+  return next
+}
+
 export function isTagColor(value: string) {
   return /^#[0-9a-fA-F]{6}$/.test(value)
 }
-
-export const CHECK_SLOTS: LeadCheckSlot[] = [1, 2, 3]
-
-export type CheckColumn = { slot: LeadCheckSlot; label: string; option: LeadOption }
-
-// The three tick columns, in order, named as the admin named them. Empty before
-// the database has them, so the list shows no columns that could not be saved.
-export function getCheckColumns(options: LeadOption[]): CheckColumn[] {
-  return CHECK_SLOTS.flatMap((slot) => {
-    const option = options.find((entry) => entry.kind === 'check' && entry.legacyKey === `check_${slot}`)
-    return option ? [{ slot, label: option.label, option }] : []
-  })
-}
-
-// 'on' = ticked, 'off' = not ticked, 'all' = no filter.
-export type CheckFilter = 'all' | 'on' | 'off'

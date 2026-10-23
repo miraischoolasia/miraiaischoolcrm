@@ -1,8 +1,8 @@
-import { useState } from 'react'
-import { Eye, EyeSlash, Plus, X } from '@phosphor-icons/react'
+import { useState, type DragEvent } from 'react'
+import { ArrowDown, ArrowUp, DotsSixVertical, Eye, EyeSlash, Plus, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { cn } from '../../lib/cn'
-import { DEFAULT_TAG_COLOR, isTagColor, nextTagColor } from '../../lib/leadTags'
+import { DEFAULT_TAG_COLOR, isTagColor, moveLeadOption, nextTagColor } from '../../lib/leadTags'
 import type { LeadOption, LeadOptionKind } from '../../types/domain'
 
 type LeadOptionsModalProps = {
@@ -14,6 +14,8 @@ type LeadOptionsModalProps = {
   onSetActive: (option: LeadOption, isActive: boolean) => void
   // Changes a tag's colour.
   onSetColor?: (option: LeadOption, color: string) => void
+  // Saves the school's order of one kind of name: its ids, shown ones in the order wanted, then the hidden ones.
+  onReorder?: (ids: number[]) => void
 }
 
 type Section = {
@@ -24,25 +26,26 @@ type Section = {
   colorful?: boolean
   // The tick columns are always three: they can be renamed, not added or hidden.
   fixed?: boolean
+  // PIC names are made from the staff list (20261101300000): shown here, changed in My Team.
+  fromStaff?: boolean
   singular: string
 }
 
 const sections: Section[] = [
   { kind: 'source', title: 'Sources', hint: 'Where a lead heard about us.', singular: 'a source' },
-  { kind: 'pic', title: 'PIC', hint: 'The person in charge of following up.', singular: 'a PIC' },
+  {
+    kind: 'pic',
+    title: 'PIC',
+    hint: 'Made from the staff list: every staff member has one. Link an old name to a staff member in My Team › Teams › PIC names.',
+    fromStaff: true,
+    singular: 'a PIC',
+  },
   {
     kind: 'tag',
     title: 'Tags',
     hint: 'Labels to put on a lead, each with a colour.',
     colorful: true,
     singular: 'a tag',
-  },
-  {
-    kind: 'check',
-    title: 'Tick columns',
-    hint: 'The three columns of boxes in the Leads list, to see how far each lead was followed up.',
-    fixed: true,
-    singular: 'a column',
   },
 ]
 
@@ -57,6 +60,7 @@ export function LeadOptionsModal({
   onRename,
   onSetActive,
   onSetColor,
+  onReorder,
 }: LeadOptionsModalProps) {
   return (
     <ModalShell maxWidth="2xl" onClose={onClose}>
@@ -95,7 +99,15 @@ export function LeadOptionsModal({
             (section) =>
               !section.fixed || options.some((option) => option.kind === section.kind),
           )
-          .map((section) => (
+          .map((section) =>
+            section.fromStaff ? (
+              <StaffPicList
+                key={section.kind}
+                title={section.title}
+                hint={section.hint}
+                options={options.filter((option) => option.kind === section.kind && option.isActive)}
+              />
+            ) : (
             <OptionList
               key={section.kind}
               title={section.title}
@@ -110,8 +122,10 @@ export function LeadOptionsModal({
               onRename={onRename}
               onSetActive={onSetActive}
               onSetColor={onSetColor}
+              onReorder={section.fixed ? undefined : onReorder}
             />
-          ))}
+            ),
+          )}
       </div>
     </ModalShell>
   )
@@ -128,6 +142,7 @@ function OptionList({
   onRename,
   onSetActive,
   onSetColor,
+  onReorder,
 }: {
   title: string
   hint: string
@@ -139,8 +154,48 @@ function OptionList({
   onRename: (option: LeadOption, label: string) => Promise<boolean>
   onSetActive: (option: LeadOption, isActive: boolean) => void
   onSetColor?: (option: LeadOption, color: string) => void
+  onReorder?: (ids: number[]) => void
 }) {
   const [newLabel, setNewLabel] = useState('')
+  const [dragId, setDragId] = useState<number | null>(null)
+  // Shown names in the school's order (drag them, or the arrows on a phone); hidden ones after, greyed.
+  const shown = options.filter((option) => option.isActive)
+  const hidden = options.filter((option) => !option.isActive)
+  const move = (movedId: number, targetId: number) => {
+    const ids = moveLeadOption(shown.map((option) => option.id), movedId, targetId)
+    if (onReorder && ids.some((id, index) => id !== shown[index].id)) {
+      onReorder([...ids, ...hidden.map((option) => option.id)])
+    }
+  }
+  const row = (option: LeadOption, index: number, list: LeadOption[]) => (
+    <OptionRow
+      key={`${option.id}-${option.label}`}
+      option={option}
+      colorful={colorful}
+      fixed={fixed}
+      onRename={onRename}
+      onSetActive={onSetActive}
+      onSetColor={onSetColor}
+      order={
+        onReorder && option.isActive && list.length > 1
+          ? {
+              dragging: dragId === option.id,
+              onDragStart: () => setDragId(option.id),
+              onDragEnd: () => setDragId(null),
+              onDragOver: (event) => {
+                if (dragId !== null) event.preventDefault()
+              },
+              onDrop: () => {
+                if (dragId !== null) move(dragId, option.id)
+                setDragId(null)
+              },
+              onUp: index > 0 ? () => move(option.id, list[index - 1].id) : undefined,
+              onDown: index < list.length - 1 ? () => move(option.id, list[index + 1].id) : undefined,
+            }
+          : undefined
+      }
+    />
+  )
   const [newColor, setNewColor] = useState<string>(() => nextTagColor(options))
 
   async function add() {
@@ -158,19 +213,15 @@ function OptionList({
         <p className="text-xs text-slate-500">{hint}</p>
       </div>
       <ul className="space-y-2">
-        {options.map((option) => (
-          <OptionRow
-            key={`${option.id}-${option.label}`}
-            option={option}
-            colorful={colorful}
-            fixed={fixed}
-            onRename={onRename}
-            onSetActive={onSetActive}
-            onSetColor={onSetColor}
-          />
-        ))}
+        {(onReorder ? shown : options).map((option, index, list) => row(option, index, list))}
         {options.length === 0 && <li className="text-sm text-slate-400">None yet.</li>}
       </ul>
+      {onReorder && hidden.length > 0 && (
+        <div className="space-y-2 rounded-xl bg-slate-50 p-2" aria-label={`Hidden ${title}`}>
+          <p className="px-1 text-xs font-medium text-slate-400">Hidden</p>
+          <ul className="space-y-2">{hidden.map((option, index, list) => row(option, index, list))}</ul>
+        </div>
+      )}
       {!fixed && (
         <div className="flex gap-2">
           {colorful && (
@@ -212,6 +263,29 @@ function OptionList({
   )
 }
 
+// The PIC names, read only: each one is a staff member's (or an old name not linked to anyone yet).
+function StaffPicList({ title, hint, options }: { title: string; hint: string; options: LeadOption[] }) {
+  return (
+    <section className="space-y-3" aria-label={title}>
+      <div>
+        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+        <p className="text-xs text-slate-500">{hint}</p>
+      </div>
+      <ul className="space-y-2">
+        {options.map((option) => (
+          <li key={option.id} className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
+            <span className="truncate">{option.label}</span>
+            {option.teacherId == null && (
+              <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">Not linked</span>
+            )}
+          </li>
+        ))}
+        {options.length === 0 && <li className="text-sm text-slate-400">None yet.</li>}
+      </ul>
+    </section>
+  )
+}
+
 function OptionRow({
   option,
   colorful,
@@ -219,6 +293,7 @@ function OptionRow({
   onRename,
   onSetActive,
   onSetColor,
+  order,
 }: {
   option: LeadOption
   colorful?: boolean
@@ -226,6 +301,16 @@ function OptionRow({
   onRename: (option: LeadOption, label: string) => Promise<boolean>
   onSetActive: (option: LeadOption, isActive: boolean) => void
   onSetColor?: (option: LeadOption, color: string) => void
+  // Moving the name: dragged by its handle (onto another name), or one step with the arrows.
+  order?: {
+    dragging: boolean
+    onDragStart: () => void
+    onDragEnd: () => void
+    onDragOver: (event: DragEvent<HTMLLIElement>) => void
+    onDrop: () => void
+    onUp?: () => void
+    onDown?: () => void
+  }
 }) {
   const [draft, setDraft] = useState(option.label)
   const savedColor = option.color && isTagColor(option.color) ? option.color : DEFAULT_TAG_COLOR
@@ -243,7 +328,23 @@ function OptionRow({
   }
 
   return (
-    <li className="flex items-center gap-2">
+    <li
+      className={cn('flex items-center gap-2', order?.dragging && 'opacity-50')}
+      onDragOver={order?.onDragOver}
+      onDrop={order?.onDrop}
+    >
+      {order && (
+        <span
+          draggable
+          onDragStart={order.onDragStart}
+          onDragEnd={order.onDragEnd}
+          title="Drag to move"
+          aria-hidden="true"
+          className="hidden shrink-0 cursor-grab text-slate-400 sm:block"
+        >
+          <DotsSixVertical size={16} />
+        </span>
+      )}
       {colorful && (
         <input
           type="color"
@@ -273,6 +374,28 @@ function OptionRow({
           !option.isActive && 'bg-slate-50 text-slate-400',
         )}
       />
+      {order && (
+        <span className="flex shrink-0 flex-col">
+          <button
+            type="button"
+            disabled={!order.onUp}
+            onClick={order.onUp}
+            aria-label={`Move ${option.label} up`}
+            className="rounded p-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30"
+          >
+            <ArrowUp size={12} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            disabled={!order.onDown}
+            onClick={order.onDown}
+            aria-label={`Move ${option.label} down`}
+            className="rounded p-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30"
+          >
+            <ArrowDown size={12} aria-hidden="true" />
+          </button>
+        </span>
+      )}
       {!fixed && (
         <button
           type="button"

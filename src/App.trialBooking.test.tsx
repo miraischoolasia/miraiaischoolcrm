@@ -192,7 +192,8 @@ async function signIn(role: 'admin' | 'teacher' = 'admin') {
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'user-1' } }))
   // Everybody starts on Today.
-  await openMenu('Calendar')
+  // The trial slots are on the Planner.
+  await openMenu('Planner')
   await screen.findByRole('list', { name: 'calendar events' })
 }
 

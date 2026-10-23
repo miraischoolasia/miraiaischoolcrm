@@ -87,3 +87,42 @@ describe('CalendarFilterBar', () => {
     expect(screen.queryByRole('button', { name: /People:/ })).not.toBeInTheDocument()
   })
 })
+
+describe('CalendarFilterBar on the Timetable and the Planner', () => {
+  it('shows only the kinds of the page', () => {
+    render(
+      <CalendarFilterBar
+        filter={{ ...defaultCalendarFilter(), kinds: ['class', 'makeup'] }}
+        onChange={vi.fn()}
+        people={people}
+        teams={[]}
+        canPickPeople={false}
+        kinds={['class', 'makeup']}
+      />,
+    )
+    const kinds = within(screen.getByRole('group', { name: 'Kinds shown' }))
+    expect(kinds.getAllByRole('button').map((button) => button.textContent)).toEqual(['Classes', 'Make-ups'])
+    expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show classes' })).not.toBeInTheDocument()
+  })
+
+  it('offers "Show classes" on the Planner and tells the page when it is switched', async () => {
+    const onChange = vi.fn()
+    render(
+      <CalendarFilterBar
+        filter={{ ...defaultCalendarFilter(), kinds: ['trial', 'task', 'meeting', 'event', 'follow_up'] }}
+        onChange={vi.fn()}
+        people={people}
+        teams={[]}
+        canPickPeople={false}
+        kinds={['trial', 'task', 'meeting', 'event', 'follow_up']}
+        showClasses={{ on: false, onChange }}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Classes' })).not.toBeInTheDocument()
+    const toggle = screen.getByRole('button', { name: 'Show classes' })
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    await userEvent.click(toggle)
+    expect(onChange).toHaveBeenCalledWith(true)
+  })
+})

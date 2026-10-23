@@ -59,7 +59,7 @@ async function openBulkImportAndPickFile() {
   render(<App />)
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'admin-1' } }))
-  await openMenu('Calendar')
+  await openMenu('Timetable')
   await screen.findByText('Calendar ready')
 
   await openMenu(/^Leads$/)
@@ -114,7 +114,7 @@ describe('bulk lead import', () => {
     expect(await screen.findByText('insert denied')).toBeInTheDocument()
     expect(screen.getByText('Bulk Import Leads')).toBeInTheDocument()
     // Nothing written (the page's own reads, such as each table's change number, do not count).
-    const reads = ['crm_table_versions', 'automation_snapshot', 'app_chat_enabled', 'app_chat_staff_threads']
+    const reads = ['crm_table_versions', 'automation_snapshot', 'app_chat_enabled', 'app_chat_staff_threads', 'calendar_series_extend']
     expect(mocks.rpc.mock.calls.filter(([name]) => !reads.includes(name))).toEqual([])
   })
 })

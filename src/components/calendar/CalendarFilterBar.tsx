@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CaretDown, MagnifyingGlass, User } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
-import { CALENDAR_KINDS, defaultCalendarFilter, isFiltered, type CalendarFilter, type CalendarTeam } from '../../lib/calendarFilter'
+import { CALENDAR_KINDS, defaultCalendarFilter, isFiltered, type CalendarFilter, type CalendarKind, type CalendarTeam } from '../../lib/calendarFilter'
 
 type CalendarFilterBarProps = {
   filter: CalendarFilter
@@ -11,6 +11,10 @@ type CalendarFilterBarProps = {
   teams: CalendarTeam[]
   // Off for an account that only sees its own things anyway (no team or people to pick).
   canPickPeople: boolean
+  // The kinds this page can show (all of them by default); the Timetable and the Planner each have their own.
+  kinds?: CalendarKind[]
+  // The Planner's switch for putting the classes on it too.
+  showClasses?: { on: boolean; onChange: (on: boolean) => void }
 }
 
 // Each kind's colour on the calendar cards, so the kind buttons also say what the colours mean.
@@ -29,9 +33,10 @@ const chipOn = 'border-[#fc0c97] bg-[#fff1f8] text-[#be185d]'
 const chipOff = 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
 
 // The Calendar's filters, the same for the day list and the month / week / agenda calendar.
-export function CalendarFilterBar({ filter, onChange, people, teams, canPickPeople }: CalendarFilterBarProps) {
+export function CalendarFilterBar({ filter, onChange, people, teams, canPickPeople, kinds, showClasses }: CalendarFilterBarProps) {
   const set = (change: Partial<CalendarFilter>) => onChange({ ...filter, ...change })
-  const allKinds = filter.kinds.length === CALENDAR_KINDS.length
+  const available = kinds ? CALENDAR_KINDS.filter((kind) => kinds.includes(kind.key)) : CALENDAR_KINDS
+  const allKinds = filter.kinds.length === available.length
 
   return (
     <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Calendar filters">
@@ -70,7 +75,7 @@ export function CalendarFilterBar({ filter, onChange, people, teams, canPickPeop
 
       {/* A phone keeps the kinds on one line that scrolls sideways. */}
       <div className="-mx-1 flex max-w-full gap-1.5 overflow-x-auto px-1 pb-0.5 max-sm:w-full sm:flex-wrap" role="group" aria-label="Kinds shown">
-        {CALENDAR_KINDS.map((kind) => {
+        {available.map((kind) => {
           const on = filter.kinds.includes(kind.key)
           return (
             <button
@@ -91,13 +96,24 @@ export function CalendarFilterBar({ filter, onChange, people, teams, canPickPeop
           )
         })}
         {!allKinds && (
-          <button type="button" onClick={() => set({ kinds: defaultCalendarFilter().kinds })} className={cn(chip, chipOff)}>
+          <button type="button" onClick={() => set({ kinds: available.map((kind) => kind.key) })} className={cn(chip, chipOff)}>
             All kinds
+          </button>
+        )}
+        {showClasses && (
+          <button
+            type="button"
+            aria-pressed={showClasses.on}
+            onClick={() => showClasses.onChange(!showClasses.on)}
+            className={cn(chip, showClasses.on ? chipOn : chipOff)}
+          >
+            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-sky-500" />
+            Show classes
           </button>
         )}
       </div>
 
-      {isFiltered(filter) && (
+      {isFiltered(filter, available.map((kind) => kind.key)) && (
         <button type="button" onClick={() => onChange(defaultCalendarFilter())} className="text-xs font-semibold text-[#be185d] hover:underline">
           Clear filters
         </button>

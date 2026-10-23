@@ -46,7 +46,8 @@ export function PicLinksSection({ people }: PicLinksSectionProps) {
       <div className="border-b border-slate-200 px-5 py-4 sm:px-6">
         <h2 className="text-lg font-semibold text-slate-900">PIC names and accounts</h2>
         <p className="mt-1 text-sm text-slate-500">
-          A lead belongs to the person its PIC is linked to. Someone who may see only their own leads sees only these.
+          Every staff member gets a PIC name by itself. Pick the staff member an old name stands for: the old name
+          keeps its leads and takes the place of theirs. A lead belongs to the person its PIC is linked to.
         </p>
       </div>
       <div className="space-y-3 p-5 sm:p-6">
@@ -57,7 +58,7 @@ export function PicLinksSection({ people }: PicLinksSectionProps) {
         )}
         {error && <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
         {pics.length === 0 ? (
-          <p className="text-sm text-slate-500">No PIC names yet (Leads page, Manage PIC).</p>
+          <p className="text-sm text-slate-500">No PIC names yet. They are made from the staff list.</p>
         ) : (
           <ul className="divide-y divide-slate-200">
             {pics.map((pic) => (

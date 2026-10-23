@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { brand } from '../lib/brand'
-import { PencilSimple, X } from '@phosphor-icons/react'
+import { Copy, PencilSimple, X } from '@phosphor-icons/react'
 import {
   formatDate,
   getStudentIssues,
@@ -18,6 +18,7 @@ import {
 } from '../lib/attendanceStatuses'
 import { buildPathway } from '../lib/pathway'
 import { getCurrentClassPeriod, getStudentClassIds } from '../lib/roster'
+import { studentLabels, useStudentLabelContext } from '../lib/studentLabel'
 import { weekdayLabels } from '../lib/schedule'
 import { buildStudentLessons, type StudentLesson } from '../lib/studentLessons'
 import { ExpiryCell } from './ExpiryCell'
@@ -179,6 +180,7 @@ export function StudentDetailModal({
 }: StudentDetailModalProps) {
   const [tab, setTab] = useState<TabKey>('overview')
   const [copied, setCopied] = useState(false)
+  const labelContext = useStudentLabelContext(classrooms, packages)
   const isPreview = student.studentType === 'preview'
   const isBilled = student.studentType === 'regular'
   const todayString = getTodayString()
@@ -304,50 +306,33 @@ export function StudentDetailModal({
     }
   }
 
-  const typeLabel = isPreview
-    ? 'Preview'
-    : student.studentType === 'trial'
-      ? 'HOA'
-      : currentPackage?.name ?? 'Regular'
+  // What the student is called: the category of the class they are in (the school's own name), else their identity.
+  const typeLabels = studentLabels(student, labelContext)
 
   return (
     <ModalShell placement="right" onClose={onClose} layer={layer}>
-      <header className="shrink-0 border-b border-slate-200 bg-white px-5 pt-5 sm:px-6">
-        <div className="relative flex flex-wrap items-start gap-x-4 gap-y-3">
+      <header className="shrink-0 border-b border-slate-200 bg-white px-5 pt-4 sm:px-6">
+        <div className="relative flex flex-wrap items-start gap-x-3 gap-y-2">
           <span
             aria-hidden="true"
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#fbcfe8] bg-[#fff1f8] text-base font-bold text-[#be185d]"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#fbcfe8] bg-[#fff1f8] text-sm font-bold text-[#be185d]"
           >
             {initials(student.name)}
           </span>
-          <div className="min-w-0 flex-1 basis-48 pr-10 sm:pr-0">
-            <h2 className="text-xl font-semibold text-slate-900">{student.name}</h2>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
-              <span className="rounded-full bg-[#fff1f8] px-2.5 py-0.5 text-xs font-semibold text-[#be185d]">
-                {typeLabel}
+          <div className="min-w-0 flex-1 basis-40 pr-10 sm:pr-0">
+            <h2 className="text-xl font-semibold leading-tight text-slate-900">{student.name}</h2>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-slate-500">
+              {typeLabels.map((typeLabel) => (
+                <span key={typeLabel} className="rounded-full bg-[#fff1f8] px-2.5 py-0.5 text-xs font-semibold text-[#be185d]">
+                  {typeLabel}
+                </span>
+              ))}
+              {studentCode ? <span>{studentCode}</span> : <span>#{String(student.id).padStart(3, '0')}</span>}
+              <span className="inline-flex items-center gap-1">
+                <span aria-hidden="true" className={cn('h-1.5 w-1.5 rounded-full', student.isActive ? 'bg-emerald-500' : 'bg-slate-400')} />
+                {student.isActive ? 'Active' : 'Deactivated'}
               </span>
-              {studentCode ? <span>Student code {studentCode}</span> : <span>#{String(student.id).padStart(3, '0')}</span>}
-              <span>{student.isActive ? 'Active' : 'Deactivated'}</span>
             </div>
-            {(parentName || student.phone) && (
-              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-600">
-                <span>{[parentName, student.phone].filter(Boolean).join(' · ')}</span>
-                {student.phone && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => void copyPhone()}
-                      className="rounded-lg border border-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-                    >
-                      {copied ? 'Copied' : 'Copy'}
-                    </button>
-                    <WhatsAppLink phone={student.phone} name={student.name} onOpened={onClose} />
-                  </>
-                )}
-              </div>
-            )}
-            {extraSummary && <div className="mt-2">{extraSummary}</div>}
-            {tagsSlot && <div className="mt-2">{tagsSlot}</div>}
           </div>
           <div className="flex shrink-0 items-center justify-end gap-2 max-sm:w-full max-sm:justify-start">
             {renew && !isPreview && (
@@ -363,10 +348,11 @@ export function StudentDetailModal({
               <button
                 type="button"
                 onClick={onEdit}
+                aria-label="Edit"
                 className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               >
                 <PencilSimple size={16} aria-hidden="true" />
-                Edit
+                <span className="max-sm:hidden">Edit</span>
               </button>
             )}
             <button
@@ -380,7 +366,30 @@ export function StudentDetailModal({
           </div>
         </div>
 
-        <div role="tablist" aria-label="Student sections" className="mt-4 flex gap-6 overflow-x-auto">
+        {(parentName || student.phone || tagsSlot) && (
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-2 text-sm text-slate-600">
+            {(parentName || student.phone) && <span>{[parentName, student.phone].filter(Boolean).join(' \u00B7 ')}</span>}
+            {student.phone && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void copyPhone()}
+                  aria-label={copied ? 'Copied' : 'Copy phone number'}
+                  title={copied ? 'Copied' : 'Copy phone number'}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:bg-slate-50"
+                >
+                  <Copy size={16} aria-hidden="true" />
+                </button>
+                <WhatsAppLink phone={student.phone} name={student.name} onOpened={onClose} />
+              </>
+            )}
+            {student.phone && tagsSlot && <span aria-hidden="true" className="mx-1 h-5 w-px bg-slate-200 max-sm:hidden" />}
+            {tagsSlot}
+          </div>
+        )}
+        {extraSummary && <div className="mt-2">{extraSummary}</div>}
+
+        <div role="tablist" aria-label="Student sections" className="mt-3 flex gap-6 overflow-x-auto">
           {tabs.map((entry) => (
             <button
               key={entry.key}

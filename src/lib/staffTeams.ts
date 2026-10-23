@@ -246,8 +246,15 @@ export async function fetchPicLinks(): Promise<PicLink[]> {
   }))
 }
 
+// Links an old PIC name to the account it stands for (or unlinks it). When the account already has its own name
+// (made from the staff list), the old name takes its place and keeps its leads (20261101300000).
 export async function linkPic(optionId: number, teacherId: number | null) {
-  const { error } = await requireSupabase().from('lead_options').update({ teacher_id: teacherId } as never).eq('id', optionId)
+  const db = requireSupabase()
+  let { error } = await db.rpc('link_pic_to_staff', { p_pic_id: optionId, p_teacher_id: teacherId })
+  if (error && (error.code === 'PGRST202' || error.code === '42883')) {
+    // Before the migration: the plain link, as before.
+    ;({ error } = await db.from('lead_options').update({ teacher_id: teacherId } as never).eq('id', optionId))
+  }
   if (error) {
     throw error
   }

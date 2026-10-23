@@ -176,7 +176,7 @@ async function signInAndOpenCalendar() {
   render(<App />)
   await screen.findByText('Sign in to continue.')
   await act(async () => mocks.listener?.('SIGNED_IN', { user: { id: 'admin-1' } }))
-  await openMenu('Calendar')
+  await openMenu('Timetable')
 }
 
 const card = (id: string) => document.querySelector(`[data-event-id="${id}"]`) as HTMLElement | null

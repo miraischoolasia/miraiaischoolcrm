@@ -32,6 +32,7 @@ import type {
   LessonLogStudent,
   LessonLogStudentReview,
   LessonReviewScoreRow,
+  LeadOptionRow,
   LeadRow,
   LessonLogSummary,
   ScheduleExceptionRow,
@@ -40,6 +41,7 @@ import type {
 } from '../types/domain'
 
 import { readAllRows } from './readAllRows'
+import { orderLeadOptions } from './leadTags'
 
 function isMissingTableError(error: { code?: string }) {
   return error.code === 'PGRST205' || error.code === '42P01'
@@ -306,19 +308,22 @@ export async function fetchLeadOptionsFromSupabase() {
     return []
   }
 
-  let { data, error } = await supabase
-    .from('lead_options')
-    .select('id, kind, label, is_active, legacy_key, color')
-    .order('id')
+  const read = (columns: string) =>
+    supabase!.from('lead_options').select(columns).order('id') as unknown as PromiseLike<{
+      data: Partial<LeadOptionRow>[] | null
+      error: { code?: string; message?: string } | null
+    }>
+  let { data, error } = await read('id, kind, label, is_active, legacy_key, color, sort_order, teacher_id')
 
-  // Before the tags migration there is no colour column.
+  // Before the order migration (20261101250000) there is no sort_order; before the tags one, no colour either.
   if (error?.code === '42703') {
-    const fallback = await supabase
-      .from('lead_options')
-      .select('id, kind, label, is_active, legacy_key')
-      .order('id')
-    data = fallback.data?.map((row) => ({ ...row, color: null })) ?? null
-    error = fallback.error
+    ;({ data, error } = await read('id, kind, label, is_active, legacy_key, color, teacher_id'))
+  }
+  if (error?.code === '42703') {
+    ;({ data, error } = await read('id, kind, label, is_active, legacy_key, color'))
+  }
+  if (error?.code === '42703') {
+    ;({ data, error } = await read('id, kind, label, is_active, legacy_key'))
   }
 
   if (error) {
@@ -330,7 +335,23 @@ export async function fetchLeadOptionsFromSupabase() {
     throw error
   }
 
-  return (data ?? []).map(mapLeadOptionRow)
+  return orderLeadOptions(
+    (data ?? []).map((row) => mapLeadOptionRow({ color: null, sort_order: null, teacher_id: null, ...row } as LeadOptionRow)),
+  )
+}
+
+// Saves the school's order of names (the ids in the order wanted). Resolves to an error message, or null.
+export async function saveLeadOptionOrder(ids: number[]) {
+  if (!supabase) {
+    return 'Supabase is not configured.'
+  }
+  const { error } = await supabase.rpc('set_lead_option_order', { p_ids: ids })
+  if (!error) {
+    return null
+  }
+  return error.code === 'PGRST202' || error.code === '42883'
+    ? 'Ordering needs the database update first.'
+    : error.message || 'Failed to save the order.'
 }
 
 // One day of the activity log (the viewer's local day), newest first.

@@ -82,6 +82,7 @@ import { useMessageEvents } from '../../hooks/useMessageEvents'
 import { useTyping } from '../../hooks/useTyping'
 import { makeStudentResolver } from '../../lib/studentLink'
 import { studentGroupOptions, studentGroups, studentLabels, useStudentLabelContext } from '../../lib/studentLabel'
+import { picOfStaff, staffOfPic as staffOfPicName } from '../../lib/picStaff'
 import { getLeadStages, STAGE_COLORS, stageLabel } from '../../lib/leadStages'
 import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
@@ -404,16 +405,15 @@ export function WhatsAppInbox({
   const tagsOf = useCallback(
     (conversation: ChatwootConversation) => {
       const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
-      return (lead?.tagIds ?? []).flatMap((id) => {
-        const option = optionsById.get(id)
-        return option && option.kind === 'tag' ? [option] : []
-      })
+      // In the school's tag order (Sources, PIC & Tags), not the order they were put on.
+      const ids = new Set(lead?.tagIds ?? [])
+      return crm.leadOptions.filter((option) => option.kind === 'tag' && ids.has(option.id))
     },
-    [resolveLead, optionsById],
+    [resolveLead, crm.leadOptions],
   )
-  // "Handled by" and the lead's person in charge are one thing for the team. They are two lists (the PIC
-  // names end in 小老师, the staff names in 老师), so a person is matched to a PIC by the name without 小.
-  const sameName = (a: string, b: string) => a.replace(/[小\s]/g, '').toLowerCase() === b.replace(/[小\s]/g, '').toLowerCase()
+  // "Handled by" and the lead's person in charge are one thing for the team: each PIC name stands for a staff
+  // account (made from the staff list, 20261101300000), so they are matched by the account, never by the name.
+  const staffOfPic = useCallback((pic: { teacherId?: number | null } | undefined) => staffOfPicName(pic, staff), [staff])
   // The person in charge of the family of a chat that has no lead of its own (read from what the database holds).
   const familyStaffOf = useCallback(
     (conversation: ChatwootConversation) => {
@@ -424,10 +424,9 @@ export function WhatsAppInbox({
       if ('teacherId' in found) {
         return staff.find((person) => person.id === found.teacherId) ?? null
       }
-      const pic = optionsById.get(found.picOptionId)
-      return (pic ? staff.find((person) => sameName(person.name, pic.label)) : undefined) ?? null
+      return staffOfPic(optionsById.get(found.picOptionId))
     },
-    [people, handlerSources, staff, optionsById],
+    [people, handlerSources, staff, optionsById, staffOfPic],
   )
   // Once a lead has become a student, the family is looked after by the student's consultant (the Learning Consultant);
   // the lead's PIC (the Education Consultant who closed the sale) stays on the student as the sales person.
@@ -444,7 +443,8 @@ export function WhatsAppInbox({
   const picOf = useCallback(
     (conversation: ChatwootConversation) => {
       const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
-      const leadPic = lead?.picId != null ? optionsById.get(lead.picId)?.label : undefined
+      const leadPicOption = lead?.picId != null ? optionsById.get(lead.picId) : undefined
+      const leadPic = staffOfPic(leadPicOption)?.name ?? leadPicOption?.label
       const owner = getOwner(conversation)
       const name =
         (owner ? (staff.find((person) => person.id === owner.id)?.name ?? owner.name) : undefined) ??
@@ -453,7 +453,7 @@ export function WhatsAppInbox({
         familyStaffOf(conversation)?.name
       return name ? { name, initials: getInitials(name) } : null
     },
-    [resolveLead, optionsById, staff, familyStaffOf, learningConsultantOf],
+    [resolveLead, optionsById, staff, familyStaffOf, learningConsultantOf, staffOfPic],
   )
   const picOptions = useMemo(() => crm.leadOptions.filter((option) => option.kind === 'pic'), [crm.leadOptions])
   const handlerOf = useCallback(
@@ -468,9 +468,9 @@ export function WhatsAppInbox({
         return learning
       }
       const pic = lead?.picId != null ? picOptions.find((option) => option.id === lead.picId) : undefined
-      return (pic ? staff.find((person) => sameName(person.name, pic.label)) : undefined) ?? familyStaffOf(conversation)
+      return staffOfPic(pic) ?? familyStaffOf(conversation)
     },
-    [picOptions, resolveLead, staff, familyStaffOf, learningConsultantOf],
+    [picOptions, resolveLead, staff, familyStaffOf, learningConsultantOf, staffOfPic],
   )
   // Choosing who handles a chat also sets the lead's person in charge, when that person is one.
   const setHandler = useCallback(
@@ -484,7 +484,8 @@ export function WhatsAppInbox({
       if (learningConsultantOf(conversation, lead)) {
         return
       }
-      const pic = person ? picOptions.find((option) => option.isActive && sameName(option.label, person.name)) : undefined
+      // The person's own PIC name (every staff account has one); a teacher without one leaves the PIC as it is.
+      const pic = person ? picOfStaff(person.id, picOptions) : undefined
       const picId = person ? (pic?.id ?? lead.picId) : null
       if (picId === lead.picId) {
         return

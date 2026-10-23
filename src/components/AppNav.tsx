@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { AppWindow, CaretDown, ChalkboardTeacher, GearSix, Megaphone, UsersThree, type Icon } from '@phosphor-icons/react'
+import { AppWindow, ChalkboardTeacher, GearSix, ImagesSquare, Megaphone, SquaresFour, UsersThree, type Icon } from '@phosphor-icons/react'
 import { cn } from '../lib/cn'
 import type { AppSection } from '../types/domain'
 
-// The menu: Today on its own, then four groups (Marketing, Teaching, Students,
-// Admin). The side bar on a computer, the bar at the bottom on a phone.
+// The menu: Today on its own, then the categories (Marketing, Media, My Course, Students, Admin). The side bar
+// lists only the categories; a category's pages are tabs along the top of the page (PageTabs). On a phone the
+// bar at the bottom has Today, the busiest categories and "More".
 
-export type NavGroupKey = 'marketing' | 'teaching' | 'students' | 'admin'
+export type NavGroupKey = 'marketing' | 'media' | 'course' | 'students' | 'admin'
 
 export type NavEntry = {
   id: string
@@ -21,12 +22,17 @@ export type NavEntry = {
 
 export const NAV_GROUPS: { key: NavGroupKey; label: string; icon: Icon }[] = [
   { key: 'marketing', label: 'Marketing', icon: Megaphone },
-  { key: 'teaching', label: 'Teaching', icon: ChalkboardTeacher },
+  { key: 'media', label: 'Media', icon: ImagesSquare },
+  { key: 'course', label: 'My Course', icon: ChalkboardTeacher },
   { key: 'students', label: 'Students', icon: UsersThree },
   { key: 'admin', label: 'Admin', icon: GearSix },
 ]
 
-// Entries without a group first, then each group that has something this login may use.
+// On a phone these categories sit in the bottom bar; the others are under "More".
+const PHONE_BAR: NavGroupKey[] = ['marketing', 'course', 'students']
+
+// Entries without a group first, then each group that has something this login may use (a category with no
+// page this login may use is not shown).
 export function groupNav(entries: NavEntry[]) {
   return {
     top: entries.filter((entry) => !entry.group),
@@ -34,6 +40,16 @@ export function groupNav(entries: NavEntry[]) {
       (group) => group.entries.length > 0,
     ),
   }
+}
+
+// Where a category goes when it is chosen: its first page (not a window such as Package), else its first entry.
+export function firstEntry(entries: NavEntry[]) {
+  return entries.find((entry) => entry.section !== undefined) ?? entries[0]
+}
+
+// The category the open page belongs to.
+export function groupOf(entries: NavEntry[], activeSection: AppSection) {
+  return entries.find((entry) => entry.section === activeSection)?.group ?? null
 }
 
 // An entry that opens a window over the page (Packages, Class Settings) instead of going to a page.
@@ -79,80 +95,85 @@ export function SideNav({
   onSelect: (entry: NavEntry) => void
 }) {
   const { top, groups } = groupNav(entries)
-  // One group is open at a time: opening one folds the other. The group of the page that is open is the one
-  // open, and it follows the page (a page opened from somewhere else, or the first page settling after the
-  // menu loads, moves the open group with it; Today folds them all).
-  const groupOfPage = groups.find((group) => group.entries.some((entry) => entry.section === activeSection))?.key ?? null
-  const [menu, setMenu] = useState<{ section: AppSection; open: NavGroupKey | null }>({ section: activeSection, open: groupOfPage })
-  if (menu.section !== activeSection) {
-    setMenu({ section: activeSection, open: groupOfPage })
-  }
-  const openGroup = menu.section === activeSection ? menu.open : groupOfPage
+  const openGroup = groupOf(entries, activeSection)
 
-  function item(entry: NavEntry) {
-    const active = entry.section !== undefined && entry.section === activeSection
-    return (
-      <button
-        key={entry.id}
-        type="button"
-        onClick={() => onSelect(entry)}
-        title={collapsed ? entry.label : undefined}
-        aria-label={collapsed ? entry.label : undefined}
-        aria-current={active ? 'page' : undefined}
-        className={cn(
-          'relative flex w-full items-center rounded-lg py-2 text-left text-sm font-medium transition',
-          collapsed ? 'justify-center px-0' : 'px-3',
-          active ? 'bg-white text-[#be185d]' : 'text-white/70 hover:bg-white/5 hover:text-white',
-        )}
-      >
-        <entry.icon size={collapsed ? 22 : 18} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
-        {!collapsed && <span className="ml-3 flex-1">{entry.label}</span>}
-        {!collapsed && opensWindow(entry) && <WindowMark className="ml-2 opacity-60" />}
-        {entry.badge && <Badge count={entry.badge.count} noun={entry.badge.noun} corner={collapsed} />}
-      </button>
-    )
-  }
+  const row = (key: string, label: string, Glyph: Icon, active: boolean, count: number, onClick: () => void, windowMark = false) => (
+    <button
+      key={key}
+      type="button"
+      onClick={onClick}
+      title={collapsed ? label : undefined}
+      aria-label={collapsed ? label : undefined}
+      aria-current={active ? 'page' : undefined}
+      className={cn(
+        'relative flex w-full items-center rounded-lg py-2 text-left text-sm font-medium transition',
+        collapsed ? 'justify-center px-0' : 'px-3',
+        active ? 'bg-white text-[#be185d]' : 'text-white/70 hover:bg-white/5 hover:text-white',
+      )}
+    >
+      <Glyph size={collapsed ? 22 : 18} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
+      {!collapsed && <span className="ml-3 flex-1">{label}</span>}
+      {!collapsed && windowMark && <WindowMark className="ml-2 opacity-60" />}
+      <Badge count={count} noun="waiting" corner={collapsed} />
+    </button>
+  )
 
   return (
     <nav aria-label="Menu" className={cn('flex-1 space-y-1', collapsed ? 'px-2 pt-3' : 'px-3')}>
-      {top.map(item)}
-      {groups.map((group) => {
-        // A menu of icons only: each group's pages one after another, a line between groups.
-        if (collapsed) {
-          return (
-            <div key={group.key} className="space-y-1 border-t border-white/10 pt-1">
-              {group.entries.map(item)}
-            </div>
-          )
-        }
-        const isOpen = openGroup === group.key
-        const holdsActive = group.entries.some((entry) => entry.section === activeSection)
-        return (
-          <div key={group.key}>
-            <button
-              type="button"
-              aria-expanded={isOpen}
-              onClick={() => setMenu((current) => ({ section: activeSection, open: current.open === group.key ? null : group.key }))}
-              className={cn(
-                'flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium transition',
-                !isOpen && holdsActive ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white',
-              )}
-            >
-              <group.icon size={18} aria-hidden="true" />
-              <span className="ml-3 flex-1">{group.label}</span>
-              {!isOpen && <Badge count={badgeTotal(group.entries)} noun="waiting" />}
-              <CaretDown size={14} aria-hidden="true" className={cn('ml-2 transition', isOpen && 'rotate-180')} />
-            </button>
-            {isOpen && <div className="ml-5 mt-1 space-y-1 border-l border-white/10 pl-3">{group.entries.map(item)}</div>}
-          </div>
-        )
-      })}
+      {top.map((entry) =>
+        row(entry.id, entry.label, entry.icon, entry.section !== undefined && entry.section === activeSection, entry.badge?.count ?? 0, () => onSelect(entry), opensWindow(entry)),
+      )}
+      {groups.map((group) =>
+        row(group.key, group.label, group.icon, openGroup === group.key, badgeTotal(group.entries), () => onSelect(firstEntry(group.entries))),
+      )}
     </nav>
   )
 }
 
-// On a phone: Today and the four groups along the bottom; a group opens a
-// small list of its pages above the bar.
+// The open category's pages as tabs, on the same row as the page's title (Today and a category with one page
+// have none). The tabs sit on the header's bottom line; on a phone they go under the title and scroll sideways.
+export function PageTabs({
+  entries,
+  activeSection,
+  onSelect,
+}: {
+  entries: NavEntry[]
+  activeSection: AppSection
+  onSelect: (entry: NavEntry) => void
+}) {
+  const key = groupOf(entries, activeSection)
+  const group = groupNav(entries).groups.find((entry) => entry.key === key)
+  if (!group || group.entries.length < 2) return null
+  return (
+    <nav aria-label={`${group.label} pages`} className="-mx-4 -mb-px flex min-w-0 px-4 md:mx-0 md:px-0">
+      <div className="flex min-w-0 gap-1 overflow-x-auto [scrollbar-width:none]">
+        {group.entries.map((entry) => {
+          const active = entry.section !== undefined && entry.section === activeSection
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={() => onSelect(entry)}
+              aria-current={active ? 'page' : undefined}
+              className={cn(
+                'inline-flex min-h-11 shrink-0 items-center gap-2 border-b-[3px] px-3 text-sm font-semibold whitespace-nowrap transition',
+                active ? 'border-[#fc0c97] text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-900',
+              )}
+            >
+              <entry.icon size={17} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
+              {entry.label}
+              {opensWindow(entry) && <WindowMark className="opacity-60" />}
+              {entry.badge && <Badge count={entry.badge.count} noun={entry.badge.noun} />}
+            </button>
+          )
+        })}
+      </div>
+    </nav>
+  )
+}
+
+// On a phone: Today and the busiest categories along the bottom, the others under "More" (a small list above the
+// bar). A category goes to its first page; its other pages are the tabs at the top of the page.
 export function MobileNav({
   entries,
   activeSection,
@@ -163,11 +184,13 @@ export function MobileNav({
   onSelect: (entry: NavEntry) => void
 }) {
   const { top, groups } = groupNav(entries)
-  const [openGroup, setOpenGroup] = useState<NavGroupKey | null>(null)
-  const shownGroup = groups.find((group) => group.key === openGroup) ?? null
+  const [moreOpen, setMoreOpen] = useState(false)
+  const pageGroup = groupOf(entries, activeSection)
+  const inBar = groups.filter((group) => PHONE_BAR.includes(group.key))
+  const inMore = groups.filter((group) => !PHONE_BAR.includes(group.key))
 
   function choose(entry: NavEntry) {
-    setOpenGroup(null)
+    setMoreOpen(false)
     onSelect(entry)
   }
 
@@ -192,27 +215,29 @@ export function MobileNav({
 
   return (
     <>
-      {shownGroup && (
+      {moreOpen && (
         <>
-          <button type="button" aria-label="Close menu" onClick={() => setOpenGroup(null)} className="fixed inset-0 z-30 bg-slate-900/20 lg:hidden" />
-          <div role="menu" aria-label={shownGroup.label} className="fixed inset-x-2 bottom-[4.75rem] z-40 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl lg:hidden">
-            {shownGroup.entries.map((entry) => {
-              const active = entry.section !== undefined && entry.section === activeSection
+          <button type="button" aria-label="Close menu" onClick={() => setMoreOpen(false)} className="fixed inset-0 z-30 bg-slate-900/20 lg:hidden" />
+          <div role="menu" aria-label="More" className="fixed inset-x-2 bottom-[4.75rem] z-40 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl lg:hidden">
+            {inMore.map((group) => {
+              const active = pageGroup === group.key
               return (
                 <button
-                  key={entry.id}
+                  key={group.key}
                   type="button"
                   role="menuitem"
-                  onClick={() => choose(entry)}
+                  onClick={() => choose(firstEntry(group.entries))}
                   className={cn(
                     'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold',
                     active ? 'bg-[#fff1f8] text-[#be185d]' : 'text-slate-700 hover:bg-slate-50',
                   )}
                 >
-                  <entry.icon size={20} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
-                  <span className="flex-1">{entry.label}</span>
-                  {opensWindow(entry) && <WindowMark className="text-slate-400" />}
-                  {entry.badge && <Badge count={entry.badge.count} noun={entry.badge.noun} />}
+                  <group.icon size={20} weight={active ? 'fill' : 'regular'} aria-hidden="true" />
+                  <span>{group.label}</span>
+                  <span className="min-w-0 flex-1 truncate text-right text-xs font-medium text-slate-400">
+                    {group.entries.map((entry) => entry.label).join(' · ')}
+                  </span>
+                  <Badge count={badgeTotal(group.entries)} noun="waiting" />
                 </button>
               )
             })}
@@ -224,18 +249,19 @@ export function MobileNav({
           {top.map((entry) =>
             button(entry.id, entry.label, entry.icon, entry.section === activeSection, entry.badge?.count ?? 0, () => choose(entry)),
           )}
-          {groups.map((group) =>
-            button(
-              group.key,
-              group.label,
-              group.icon,
-              openGroup === group.key || group.entries.some((entry) => entry.section === activeSection),
-              badgeTotal(group.entries),
-              // A group with one page goes straight there.
-              () => (group.entries.length === 1 ? choose(group.entries[0]) : setOpenGroup(openGroup === group.key ? null : group.key)),
-              group.entries.length > 1 ? openGroup === group.key : undefined,
-            ),
+          {inBar.map((group) =>
+            button(group.key, group.label, group.icon, pageGroup === group.key, badgeTotal(group.entries), () => choose(firstEntry(group.entries))),
           )}
+          {inMore.length > 0 &&
+            button(
+              'more',
+              'More',
+              SquaresFour,
+              moreOpen || inMore.some((group) => group.key === pageGroup),
+              inMore.reduce((sum, group) => sum + badgeTotal(group.entries), 0),
+              () => setMoreOpen((open) => !open),
+              moreOpen,
+            )}
         </div>
       </nav>
     </>

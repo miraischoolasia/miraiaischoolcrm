@@ -670,7 +670,7 @@ export function LeadForm({
           />
         ) : (
           <p className="text-slate-500">
-            {form.tagIds.flatMap((id) => tags.find((tag) => tag.id === id)?.label ?? []).join(', ') || 'None'}
+            {tags.filter((tag) => form.tagIds.includes(tag.id)).map((tag) => tag.label).join(', ') || 'None'}
           </p>
         )}
 

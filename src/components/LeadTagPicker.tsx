@@ -20,17 +20,23 @@ type LeadTagPickerProps = {
   showLabel?: boolean
   // The Inbox's small tag pills.
   compact?: boolean
+  // The student profile's header: the pills on a line with a small "+" that opens a short list (search, pick, or make a
+  // new tag), instead of a big drop-down.
+  inline?: boolean
 }
 
 // The lead's tags as pills, a list to add one that exists, and a way to make a
 // new one on the spot (name and colour) that is picked right away.
-export function LeadTagPicker({ tags, selectedIds, onChange, onCreate, showLabel = true, compact = false }: LeadTagPickerProps) {
+export function LeadTagPicker({ tags, selectedIds, onChange, onCreate, showLabel = true, compact = false, inline = false }: LeadTagPickerProps) {
   const [isCreating, setIsCreating] = useState(false)
   const [name, setName] = useState('')
   const [color, setColor] = useState<string>(() => nextTagColor(tags))
   const [isSaving, setIsSaving] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [search, setSearch] = useState('')
 
-  const selected = selectedIds.flatMap((id) => tags.find((tag) => tag.id === id) ?? [])
+  // In the school's tag order (Sources, PIC & Tags), not the order they were put on.
+  const selected = tags.filter((tag) => selectedIds.includes(tag.id))
   const available = tags.filter((tag) => tag.isActive && !selectedIds.includes(tag.id))
 
   async function create() {
@@ -46,6 +52,134 @@ export function LeadTagPicker({ tags, selectedIds, onChange, onCreate, showLabel
       setName('')
       setIsCreating(false)
     }
+  }
+
+  if (inline) {
+    const needle = search.trim().toLowerCase()
+    const matches = available.filter((tag) => !needle || tag.label.toLowerCase().includes(needle))
+    return (
+      <div className="relative flex flex-wrap items-center gap-1.5">
+        {selected.map((tag) => (
+          <LeadTagChip key={tag.id} tag={tag} onRemove={() => onChange(selectedIds.filter((id) => id !== tag.id))} />
+        ))}
+        <button
+          type="button"
+          aria-label="Add a tag"
+          aria-expanded={menuOpen}
+          onClick={() => {
+            setMenuOpen((current) => !current)
+            setIsCreating(false)
+            setSearch('')
+          }}
+          className="flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-slate-300 text-base leading-none text-slate-500 transition hover:bg-slate-50"
+        >
+          +
+        </button>
+        {menuOpen && (
+          <div className="absolute left-0 top-9 z-30 w-64 space-y-2 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+            {isCreating ? (
+              <>
+                <input
+                  type="text"
+                  autoFocus
+                  value={name}
+                  maxLength={60}
+                  aria-label="New tag name"
+                  placeholder="New tag name"
+                  onChange={(event) => setName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      void create().then(() => setMenuOpen(false))
+                    } else if (event.key === 'Escape') {
+                      event.stopPropagation()
+                      setIsCreating(false)
+                    }
+                  }}
+                  className={inputClass}
+                />
+                <div role="radiogroup" aria-label="Tag colour" className="grid grid-cols-9 gap-1">
+                  {TAG_COLORS.map((swatch) => (
+                    <button
+                      key={swatch}
+                      type="button"
+                      role="radio"
+                      aria-checked={color === swatch}
+                      aria-label={swatch}
+                      onClick={() => setColor(swatch)}
+                      className={cn(
+                        'aspect-square w-full max-w-6 justify-self-center rounded-full border-2 transition min-h-0!',
+                        color === swatch ? 'border-slate-800' : 'border-white ring-1 ring-slate-200',
+                      )}
+                      style={{ backgroundColor: swatch }}
+                    />
+                  ))}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button type="button" onClick={() => setIsCreating(false)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSaving || !name.trim()}
+                    onClick={() => void create().then(() => setMenuOpen(false))}
+                    className="rounded-lg bg-[#fc0c97] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#de0a84] disabled:opacity-50"
+                  >
+                    {isSaving ? 'Adding...' : 'Add'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <input
+                  type="search"
+                  autoFocus
+                  value={search}
+                  aria-label="Search tags"
+                  placeholder="Search tags"
+                  onChange={(event) => setSearch(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      event.stopPropagation()
+                      setMenuOpen(false)
+                    }
+                  }}
+                  className={inputClass}
+                />
+                <ul className="max-h-48 overflow-y-auto">
+                  {matches.map((tag) => (
+                    <li key={tag.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onChange([...selectedIds, tag.id])
+                          setMenuOpen(false)
+                        }}
+                        className="w-full rounded-lg px-2 py-1.5 text-left text-sm text-slate-800 hover:bg-slate-50"
+                      >
+                        {tag.label}
+                      </button>
+                    </li>
+                  ))}
+                  {matches.length === 0 && <li className="px-2 py-1.5 text-sm text-slate-500">No tag matches.</li>}
+                </ul>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setName(search.trim())
+                    setColor(nextTagColor(tags))
+                    setIsCreating(true)
+                  }}
+                  className="w-full rounded-lg px-2 py-1.5 text-left text-sm font-semibold text-[#be185d] hover:bg-slate-50"
+                >
+                  + Create new tag...
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    )
   }
 
   return (

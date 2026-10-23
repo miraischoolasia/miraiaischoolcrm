@@ -96,12 +96,24 @@ describe('the fields on a student', () => {
     expect(screen.getByLabelText('Kind of student')).toHaveValue('Old')
   })
 
-  it('shows them on the profile, and nothing when the school has them off', () => {
+  it('shows them on the profile, and nothing when the school has them off', async () => {
     const extras = { nameZh: '小明', kind: '新生', consultantId: 2, secondParentPhone: '0123456789' }
     const { rerender } = render(<StudentExtraSummary setting={{ ...NO_STUDENT_FIELDS, name_zh: true, consultant: true }} extras={extras} consultantName="Crystal" />)
-    expect(screen.getByLabelText('Student fields')).toHaveTextContent('Chinese name:小明Consultant:Crystal')
+    // One line with the consultant; "All details" opens every field the school keeps.
+    expect(screen.getByText('Crystal')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /All details/ }))
+    expect(screen.getByLabelText('Student fields')).toHaveTextContent('Chinese name小明')
+    expect(screen.getByLabelText('Student fields')).toHaveTextContent('ConsultantCrystal')
     rerender(<StudentExtraSummary setting={NO_STUDENT_FIELDS} extras={extras} consultantName="Crystal" />)
-    expect(screen.queryByLabelText('Student fields')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /All details/ })).not.toBeInTheDocument()
+  })
+
+  it('writes a dash for a field the school keeps but nobody filled in', async () => {
+    render(<StudentExtraSummary setting={{ ...NO_STUDENT_FIELDS, consultant: true, membership: true, fee_month: true }} extras={undefined} consultantName={null} />)
+    // LC, Membership and Fee month are on the line; none has a value yet.
+    expect(screen.getAllByText('-')).toHaveLength(3)
+    await userEvent.click(screen.getByRole('button', { name: /All details/ }))
+    expect(within(screen.getByLabelText('Student fields')).getAllByText('-').length).toBeGreaterThanOrEqual(3)
   })
 
   it('offers list filters for kind and consultant only when shown', async () => {
