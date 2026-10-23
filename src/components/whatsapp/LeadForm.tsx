@@ -9,7 +9,9 @@ import {
 } from '../../lib/constants'
 import { canonicalPhone, findLeadsByPhone, sameNumberMessage, type SourceGuess } from '../../lib/chatLink'
 import { leadPhoneFor, parentPhoneOf, studentPhoneOf } from '../../lib/studentContact'
-import type { ChatRole } from '../../lib/whatsappInbox'
+import type { ChatRole, ChatwootConversation } from '../../lib/whatsappInbox'
+import { findChildPhoneMatches } from '../../lib/childPhone'
+import { ChildPhoneMatches } from './ChildPhoneMatches'
 import type { Lead, LeadOption, LeadStatus } from '../../types/domain'
 import type { LeadFormValues, WhatsAppCrm } from './crm'
 import { LeadChannelLines } from '../LeadChannelLines'
@@ -43,6 +45,11 @@ type LeadFormProps = {
   // The team found the lead this person already is: ties the chat to that lead (after the two leads were
   // joined, when this person already had one of their own).
   onFindLead?: (leadId: number) => Promise<void>
+  // The chats the Inbox has, so a child's phone number finds the chat from it; and the ways to tie that chat to the
+  // lead and to open it.
+  conversations?: ChatwootConversation[]
+  onLinkChat?: (conversationId: number, leadId: number) => Promise<boolean>
+  onOpenChat?: (conversationId: number) => void
 }
 
 type ChildRow = { name: string; age: string; phone: string | null }
@@ -101,6 +108,9 @@ export function LeadForm({
   childPhone = null,
   onCreated,
   onFindLead,
+  conversations = [],
+  onLinkChat,
+  onOpenChat,
 }: LeadFormProps) {
   // A child's own chat with the family's lead: the family part is shown, not typed over (Lucas, 2026-10-20: his name and
   // number were typed into the parent's boxes and his row removed, and every change saved itself).
@@ -294,7 +304,7 @@ export function LeadForm({
       picId: sent.picId ? Number(sent.picId) : null,
       tagIds: sent.tagIds,
       status: sent.status,
-      children: children.map((child) => ({ name: child.name, age: Number(child.age), phone: child.phone })),
+      children: children.map((child) => ({ name: child.name, age: Number(child.age), phone: child.phone?.trim() || null })),
       notes: sent.notes,
       ...(lead ? {} : { sourceRuleId: guess.ruleId ?? null }),
     }
@@ -512,7 +522,8 @@ export function LeadForm({
         <div className="space-y-1.5">
           <span className="block text-slate-600">Children</span>
           {form.children.map((child, index) => (
-            <div key={index} className="grid grid-cols-[1fr_64px_28px] items-center gap-1.5">
+            <div key={index} className="space-y-1">
+            <div className="grid grid-cols-[1fr_64px_28px] items-center gap-1.5">
               <input
                 value={child.name}
                 disabled={!canEdit}
@@ -545,6 +556,49 @@ export function LeadForm({
                   <X size={14} />
                 </button>
               )}
+            </div>
+            {/* The child's own number (optional): what the school already has with it shows as it is typed. */}
+            <input
+              type="tel"
+              value={child.phone ?? ''}
+              disabled={!canEdit}
+              onChange={(event) => setChild(index, { phone: event.target.value || null }, true)}
+              placeholder="Child's phone (optional)"
+              aria-label={`Child ${index + 1} phone`}
+              className={fieldClass}
+            />
+            {canEdit && (child.phone ?? '').trim() !== '' && (
+              <ChildPhoneMatches
+                matches={findChildPhoneMatches({
+                  phone: child.phone ?? '',
+                  parentPhone: form.phone,
+                  currentLeadId: lead?.id ?? null,
+                  leads: crm.leads,
+                  students: crm.students,
+                  conversations,
+                })}
+                lead={lead}
+                onLinkLead={async (other) => {
+                  if (!lead) {
+                    if (!onFindLead) return 'Save the lead first.'
+                    await onFindLead(other.id)
+                    return null
+                  }
+                  const merged = await crm.onMergeLeads(lead.id, other.id)
+                  if (merged.error || merged.leadId === null) {
+                    return merged.error ?? 'Could not join the leads.'
+                  }
+                  if (onFindLead) await onFindLead(merged.leadId)
+                  return null
+                }}
+                onLinkChat={
+                  lead && onLinkChat
+                    ? async (conversationId) => ((await onLinkChat(conversationId, lead.id)) ? null : 'Could not link the chat.')
+                    : undefined
+                }
+                onOpenChat={onOpenChat}
+              />
+            )}
             </div>
           ))}
           {canEdit && form.children.length < MAX_LEAD_CHILDREN && (

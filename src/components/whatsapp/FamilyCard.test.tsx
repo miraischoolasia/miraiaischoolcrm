@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { familyOf } from '../../lib/family'
 import type { Person } from '../../lib/peopleApi'
 import { FamilyCard } from './FamilyCard'
+import { WhatsAppOpenProvider } from '../WhatsAppLink'
 
 const person = (id: number, patch: Partial<Person>): Person => ({
   id,
@@ -229,5 +230,31 @@ describe('FamilyCard student codes', () => {
     expect(screen.getByText('S1000056 · KEW KAYDEN')).toBeInTheDocument()
     expect(screen.getByText('S1000057 · KEW KAYVEN')).toBeInTheDocument()
     expect(screen.getByText('NO CODE')).toBeInTheDocument()
+  })
+})
+
+describe('FamilyCard child phone', () => {
+  it("opens a child's chat by their own number when there is no chat yet, never for the parent's number", async () => {
+    const withPhones = [
+      person(1, { kind: 'parent', name: 'Mum', phone: '60164655564', contactId: 482, leadId: 174 }),
+      person(2, { kind: 'student', name: 'Kid With Phone', parentId: 1, studentId: 56, phone: '016-555 0001' }),
+      person(3, { kind: 'student', name: 'Kid On Mum Phone', parentId: 1, studentId: 57, phone: '60164655564' }),
+    ]
+    const openChat = vi.fn()
+    render(
+      <WhatsAppOpenProvider value={openChat}>
+        <FamilyCard
+          family={{ ...familyOf(482, withPhones)!, leadId: 174 }}
+          childDetail={() => ({ age: null, label: null })}
+          chatOf={() => null}
+          onOpenChat={vi.fn()}
+        />
+      </WhatsAppOpenProvider>,
+    )
+
+    const buttons = screen.getAllByRole('button', { name: 'Open chat' })
+    expect(buttons).toHaveLength(1)
+    await userEvent.click(buttons[0])
+    expect(openChat).toHaveBeenCalledWith({ phone: '60165550001', name: 'Kid With Phone', leadId: null, ownNumberOnly: true })
   })
 })

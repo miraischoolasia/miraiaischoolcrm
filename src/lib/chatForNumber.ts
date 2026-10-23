@@ -59,3 +59,25 @@ export function findChatForNumber({ conversations, phone, leadId, leads, student
     )[0] ?? null
   )
 }
+
+// A child's own number (the Family card's Open chat): the chat from that number, or one tied to a student who has it.
+// A chat of the family's lead is never it, even when the lead lists the child's number: that is the parent's chat.
+export function findOwnChatForNumber({ conversations, phone, students }: Pick<Input, 'conversations' | 'phone' | 'students'>) {
+  const wanted = canonicalPhone(phone)
+  if (wanted === null) {
+    return null
+  }
+  const studentsById = new Map(students.map((student) => [student.id, student]))
+  const matches = conversations.filter(
+    (conversation) =>
+      canonicalPhone(getRealPhone(conversation.meta.sender.phone_number)) === wanted ||
+      getLinkedStudentIds(conversation).some((id) => canonicalPhone(studentsById.get(id)?.phone) === wanted),
+  )
+  return (
+    [...matches].sort(
+      (a, b) =>
+        Number(Boolean(b.last_non_activity_message)) - Number(Boolean(a.last_non_activity_message)) ||
+        b.last_activity_at - a.last_activity_at,
+    )[0] ?? null
+  )
+}

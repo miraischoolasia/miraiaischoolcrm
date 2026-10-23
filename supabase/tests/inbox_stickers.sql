@@ -38,7 +38,7 @@ values ('00000000-0000-0000-0000-0000000000c1', 'test_sticker_admin@example.test
 insert into public.teachers (id, full_name, username, role, auth_user_id, is_active, permissions)
 overriding system value
 values (991001, 'Sticker Admin', 'test_sticker_admin', 'admin', '00000000-0000-0000-0000-0000000000c1', true, '{}'),
-       (991002, 'Front Desk', 'test_sticker_staff', 'staff', '00000000-0000-0000-0000-0000000000c2', true, '{"leads":{"level":"edit","delete":false}}');
+       (991002, 'Front Desk', 'test_sticker_staff', 'staff', '00000000-0000-0000-0000-0000000000c2', true, '{"inbox":{"level":"view"}}');
 
 -- The library: the admin adds, the team reads, only the admin hides.
 select pg_temp.login('00000000-0000-0000-0000-0000000000c1');

@@ -1,3 +1,4 @@
+-- needs: fake-data  (local-test/seed: its students, classes, attendance and leads; "node local-test/run.mjs dbtests" loads them first)
 -- Checks for 20261027200000_convert_hoa_student.sql (with 20261026400000 for months), on a
 -- database that has them. It rolls back. Every check prints PASS; the first failure stops the run.
 --   psql -d <db> -v ON_ERROR_STOP=1 -f supabase/tests/convert_hoa_student.sql

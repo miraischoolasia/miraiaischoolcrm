@@ -1,3 +1,4 @@
+-- needs: fake-data  (local-test/seed: its students, classes, attendance and leads; "node local-test/run.mjs dbtests" loads them first)
 -- Checks for 20261029700000_automation_phase1.sql. Runs on the local test database (it uses its fake data:
 -- students, attendance, leads); it rolls back.
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/automation_phase1.sql

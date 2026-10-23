@@ -65,6 +65,9 @@ type DetailsPanelProps = {
   // Other chats of the same parent (an old one under a hidden ID, say), to jump to.
   otherChats?: { id: number; title: string; lastActivity: number; isDone: boolean; role?: ChatRole | null }[]
   onOpenChat?: (id: number) => void
+  // The Inbox's chats (a child's number typed in the lead form finds the chat from it) and tying one to a lead.
+  conversations?: ChatwootConversation[]
+  onLinkChat?: (conversationId: number, leadId: number) => Promise<boolean>
   // Labels put on this chat on the phone; shown for reading, they are not changed from here.
   whatsappLabels?: WaLabel[]
   // Messages the team starred in this chat, and a way to take the star off.
@@ -127,6 +130,8 @@ export function DetailsPanel({
   numbersContacted = [],
   otherChats = [],
   onOpenChat,
+  conversations,
+  onLinkChat,
   whatsappLabels = [],
   starredMessages = [],
   onUnstar,
@@ -614,6 +619,9 @@ export function DetailsPanel({
               await onLinkLead(leadId)
             }}
             onFindLead={linkLead}
+            conversations={conversations}
+            onLinkChat={onLinkChat}
+            onOpenChat={onOpenChat}
           />
         ) : (
           <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">

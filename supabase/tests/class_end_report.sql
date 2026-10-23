@@ -4,6 +4,10 @@
 
 begin;
 
+-- 20261101300000_staff_pic_sync gives every new admin / staff account its own PIC name (same as the account name).
+-- This test makes its own PIC names, so the sync is off for it (the change is rolled back with the rest).
+alter table public.teachers disable trigger teachers_sync_pic;
+
 create function pg_temp.login(p_uid uuid) returns void language sql as $$
   select set_config('request.jwt.claim.sub', coalesce(p_uid::text, ''), true);
 $$;

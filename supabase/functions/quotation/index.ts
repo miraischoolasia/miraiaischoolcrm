@@ -10,7 +10,9 @@
 
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import {
+  afterPayUrlFor,
   bankReady,
+  contactUrlFor,
   checkBankPayment,
   discountNeedsApproval,
   newPublicToken,
@@ -99,6 +101,13 @@ async function makeQuotation(admin: SupabaseClient, draft: QuotationDraft, setti
   const status = needsApproval ? 'needs_approval' : 'sent'
 
   const id = crypto.randomUUID()
+  // §15: where the parent goes after paying and where '资料不对' goes, as they are now (kept on the quotation).
+  const [{ data: ecLink }, { data: chatNumber }] = await Promise.all([
+    admin.from('quotation_staff_links').select('after_pay_url, contact_url').eq('teacher_id', teacherId).maybeSingle(),
+    draft.inboxId
+      ? admin.from('whatsapp_numbers').select('phone').eq('chatwoot_inbox_id', draft.inboxId).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ])
   const { data: row, error } = await admin
     .from('quotations')
     .insert({
@@ -140,6 +149,8 @@ async function makeQuotation(admin: SupabaseClient, draft: QuotationDraft, setti
       sales_person_id: teacherId,
       consultant_id: draft.consultantId,
       created_by: teacherId,
+      after_pay_url: afterPayUrlFor(ecLink?.after_pay_url, settings),
+      contact_url: contactUrlFor({ ecContact: ecLink?.contact_url, chatNumber: chatNumber?.phone, reference: referenceFor(id) }, settings),
     })
     .select('id, public_token, status, total')
     .single()

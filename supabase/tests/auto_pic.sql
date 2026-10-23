@@ -4,6 +4,10 @@
 
 begin;
 
+-- 20261101300000_staff_pic_sync gives every new admin / staff account its own PIC name (same as the account name).
+-- This test makes its own PIC names, so the sync is off for it (the change is rolled back with the rest).
+alter table public.teachers disable trigger teachers_sync_pic;
+
 create function pg_temp.ok(p_cond boolean, p_name text) returns void language plpgsql as $$
 begin
   if p_cond is not true then
@@ -81,6 +85,9 @@ select pg_temp.ok((select pic_id from public.leads where id = 99905) is null, 'a
 update public.lead_options set is_active = true where id = 99821;
 
 -- The consultant of the student: the lead that became the student gets that account's PIC (made when missing).
+-- This file is about the PIC, so every student with the lead's number counts here (20261101900000 made the school's default
+-- "only a student in a regular class"; supabase/tests/converted_needs_regular_class.sql tests that).
+update public.lead_stage_rules set options = '{"students": "all"}' where key = 'converted_on_student_phone';
 insert into public.leads (id, full_name, phone, status, tag_ids) overriding system value
 values (99906, 'Lead Six', '60123450906', 'new', '{}');
 insert into public.students (id, full_name, phone, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date)

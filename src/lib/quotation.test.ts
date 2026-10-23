@@ -319,3 +319,35 @@ describe('Plan B: bank transfer', () => {
     expect(checkBankPayment({ ...good, amount: 255.001 }, 255, '2026-10-23').amountDiffers).toBe(false)
   })
 })
+
+describe('§15: links and the QR', () => {
+  it('only https links without spaces are kept', async () => {
+    const { safeHttpsUrl, readQuotationSettings } = await import('../../supabase/functions/_shared/quotation/logic.ts')
+    expect(safeHttpsUrl(' https://wa.me/60123 ')).toBe('https://wa.me/60123')
+    expect(safeHttpsUrl('http://x.example')).toBeNull()
+    expect(safeHttpsUrl('javascript:alert(1)')).toBeNull()
+    expect(safeHttpsUrl('https://a b')).toBeNull()
+    expect(safeHttpsUrl(`https://${'x'.repeat(500)}`)).toBeNull()
+    const s = readQuotationSettings({ afterPayUrl: 'http://bad', contactUrl: 'https://wa.me/60111', paymentQr: { bank_transfer: 'qr/bank-1.png' } })
+    expect(s).toMatchObject({ afterPayUrl: '', contactUrl: 'https://wa.me/60111', paymentQr: { bank_transfer: 'qr/bank-1.png' } })
+    expect(readQuotationSettings({ paymentQr: { bank_transfer: '../secret.png' } }).paymentQr.bank_transfer).toBeNull()
+  })
+
+  it('after paying: the EC’s link, else the school’s, else none', async () => {
+    const { afterPayUrlFor } = await import('../../supabase/functions/_shared/quotation/logic.ts')
+    expect(afterPayUrlFor('https://wa.me/601', { afterPayUrl: 'https://school.example/thanks' })).toBe('https://wa.me/601')
+    expect(afterPayUrlFor(null, { afterPayUrl: 'https://school.example/thanks' })).toBe('https://school.example/thanks')
+    expect(afterPayUrlFor('http://bad', { afterPayUrl: '' })).toBeNull()
+  })
+
+  it('资料不对: the EC’s link, else the chat’s number, else the school’s; WhatsApp links get the message', async () => {
+    const { contactUrlFor } = await import('../../supabase/functions/_shared/quotation/logic.ts')
+    const text = encodeURIComponent('报价单 Q-ABC 资料不对：')
+    expect(contactUrlFor({ ecContact: 'https://wa.me/60177', chatNumber: '60123', reference: 'Q-ABC' }, { contactUrl: '' })).toBe(`https://wa.me/60177?text=${text}`)
+    expect(contactUrlFor({ ecContact: 'https://wa.me/60177?text=Hi', chatNumber: null, reference: 'Q-ABC' }, { contactUrl: '' })).toBe('https://wa.me/60177?text=Hi')
+    expect(contactUrlFor({ ecContact: 'https://ec.example/me', chatNumber: null, reference: 'Q-ABC' }, { contactUrl: '' })).toBe('https://ec.example/me')
+    expect(contactUrlFor({ ecContact: null, chatNumber: '+60 12-345 6789', reference: 'Q-ABC' }, { contactUrl: '' })).toBe(`https://wa.me/60123456789?text=${text}`)
+    expect(contactUrlFor({ ecContact: null, chatNumber: null, reference: 'Q-ABC' }, { contactUrl: 'https://wa.me/60100' })).toBe(`https://wa.me/60100?text=${text}`)
+    expect(contactUrlFor({ ecContact: null, chatNumber: '12', reference: 'Q-ABC' }, { contactUrl: '' })).toBeNull()
+  })
+})

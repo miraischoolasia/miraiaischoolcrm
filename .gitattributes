@@ -1,0 +1,3 @@
+# Migrations and their SQL tests are always LF, also on Windows (a CRLF copy breaks migrations that do text replacement).
+supabase/migrations/** text eol=lf
+supabase/tests/** text eol=lf

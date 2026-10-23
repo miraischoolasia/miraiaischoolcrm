@@ -14,6 +14,9 @@ import {
   fetchQuotationSettings,
   fetchStaffOptions,
   guessAgeGroup,
+  fetchMyTeacherId,
+  fetchStaffLinks,
+  saveStaffLink,
   markQuotationPaid,
   pdfPublicQuotation,
   uploadPaymentProof,
@@ -39,6 +42,7 @@ import {
 import type { Region } from '../../lib/feeCalculator/types'
 import type { FeeLevel } from '../../lib/feeCalculator/quote'
 import { MONTH_NAMES } from '../feeCalculator/labels'
+import { MyQuotationLinks } from './QuotationLinks'
 
 // The Inbox's Quotation tab (the chat's right panel): the EC makes a quotation, the price comes from the Fee
 // Calculator's maths (the quotation function works it out again and keeps it), and the parent's link goes into the
@@ -62,6 +66,8 @@ export type QuotationApi = {
   loadPdfView: typeof pdfPublicQuotation
   uploadProof: typeof uploadPaymentProof
   markPaid: typeof markQuotationPaid
+  // §15: the signed-in EC's own links (left out in demos and tests).
+  myLinks?: { loadMe: () => Promise<number | null>; loadLinks: typeof fetchStaffLinks; save: typeof saveStaffLink }
 }
 
 const databaseApi: QuotationApi = {
@@ -79,6 +85,7 @@ const databaseApi: QuotationApi = {
   loadPdfView: pdfPublicQuotation,
   uploadProof: uploadPaymentProof,
   markPaid: markQuotationPaid,
+  myLinks: { loadMe: fetchMyTeacherId, loadLinks: fetchStaffLinks, save: saveStaffLink },
 }
 
 const inputClass = 'min-h-9 w-full rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800'
@@ -732,6 +739,7 @@ export function QuotationPanel({
           {busy ? 'Sending…' : needsApproval ? 'Send for approval' : 'Send quotation'}
         </button>
         {problem && snapshot && <p className="text-xs text-slate-500">{problem}</p>}
+        {api.myLinks && <MyQuotationLinks loadMe={api.myLinks.loadMe} loadLinks={api.myLinks.loadLinks} save={api.myLinks.save} />}
       </section>
     </div>
   )

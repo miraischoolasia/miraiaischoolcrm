@@ -1,3 +1,4 @@
+-- needs: fake-data  (local-test/seed: its students, classes, attendance and leads; "node local-test/run.mjs dbtests" loads them first)
 -- Checks for 20261030700000_class_quality.sql. Runs on the local test database (its F1 Math class, schedule 1, with
 -- Demo Aiden 1, Demo Bella 2, Demo Caleb 3; Admin Test 1, Teacher Lina 2, staff 4 and 5); it rolls back.
 --   psql -v ON_ERROR_STOP=1 -f supabase/tests/class_quality.sql

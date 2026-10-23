@@ -682,7 +682,8 @@ export function ConversationList({
                 selected ? 'bg-pink-50' : redRow ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-slate-50',
               )}
             >
-              <span className="relative h-9 w-9">
+              {/* Down a little, so the name tag on its corner stays inside the row (not over the line above). */}
+              <span className="relative mt-2 h-9 w-9">
                 <span
                   aria-hidden="true"
                   className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700"
@@ -694,7 +695,7 @@ export function ConversationList({
                 {pic && (
                   <span
                     title={`Handled by ${pic.name}`}
-                    className="absolute -left-2 -top-2.5 z-10 max-w-[56px] truncate rounded-full border border-white bg-[#fc0c97] px-1.5 py-px text-[9px] font-semibold leading-tight text-white shadow-sm"
+                    className="absolute -left-2 -top-2 z-10 max-w-[56px] truncate rounded-full border border-white bg-[#fc0c97] px-1.5 py-px text-[9px] font-semibold leading-tight text-white shadow-sm"
                   >
                     {pic.name}
                   </span>

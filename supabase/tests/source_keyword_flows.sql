@@ -64,7 +64,7 @@ update public.chat_webhook_settings set webhook_key = 'skw-test-key';
 
 insert into public.lead_options (id, kind, label, is_active) values
   (9201, 'tag', 'SKW Robot', true), (9202, 'tag', 'SKW Day', true)
-on conflict (id) do nothing;
+on conflict do nothing;
 
 -- 1. The move -----------------------------------------------------------------------------------------
 select pg_temp.ok(
@@ -183,6 +183,13 @@ select coalesce(public.auto_lead_from_chat('skw-test-key', 991003, 991003, now()
 select pg_temp.ok(:'off_lead' = 'none', 'a switched-off flow makes no lead');
 
 -- 7. Only the flows write the list --------------------------------------------------------------------------
+-- A staff account with the Leads tick (made here, so the test also runs on an empty database).
+insert into auth.users (id, email, aud, role)
+values ('a0000000-0000-4000-8000-000000000001', 'test_skw_staff@example.test', 'authenticated', 'authenticated')
+on conflict do nothing;
+insert into public.teachers (id, full_name, username, role, auth_user_id, is_active, permissions) overriding system value
+values (991401, 'Keyword Staff', 'test_skw_staff', 'staff', 'a0000000-0000-4000-8000-000000000001', true, '{"leads":{"level":"view"}}')
+on conflict do nothing;
 select pg_temp.login('a0000000-0000-4000-8000-000000000001');
 set local role authenticated;
 select pg_temp.ok((select count(*) from public.lead_source_rules) > 0, 'staff still read the list');

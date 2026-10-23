@@ -1,20 +1,32 @@
-import { useEffect, useState } from 'react'
-import { Bank, CheckCircle, Clock, DownloadSimple, WarningCircle } from '@phosphor-icons/react'
+import { useEffect, useRef, useState } from 'react'
+import { ArrowSquareOut, Bank, ChatCircleText, CheckCircle, Clock, DownloadSimple, WarningCircle } from '@phosphor-icons/react'
 import { downloadFile, quotationPdf } from '../../lib/quotationPdf'
-import { confirmPublicQuotation, publicQuotationStatus, viewPublicQuotation } from '../../lib/quotationApi'
+import { confirmPublicQuotation, parentSaysPaid, parentSaysWrong, publicQuotationStatus, viewPublicQuotation } from '../../lib/quotationApi'
 import type { PublicQuotation } from '../../../supabase/functions/_shared/quotation/logic.ts'
 
 // The parent's quotation page (/?quote=<token>, no login, phone first, in Chinese): who, which classes, the price
 // lines, the total; agree to the terms and pay on Razorpay. Coming back from Razorpay (&return=1) the page waits for
-// Razorpay's own notice to our server (only that counts) and then shows that it is paid.
+// Razorpay's own notice to our server (only that counts), shows that it is paid, and after 3 seconds goes on to the
+// EC's after-payment link (§15). The page is read-only: "资料正确" pays (Razorpay) or "我已转账" tells the EC (bank
+// transfer); "资料不对，联系顾问" tells the EC and opens their WhatsApp.
 
 export type QuotePageApi = {
   view: typeof viewPublicQuotation
   confirm: typeof confirmPublicQuotation
   status: typeof publicQuotationStatus
+  parentPaid: typeof parentSaysPaid
+  parentWrong: typeof parentSaysWrong
 }
 
-const databaseApi: QuotePageApi = { view: viewPublicQuotation, confirm: confirmPublicQuotation, status: publicQuotationStatus }
+const databaseApi: QuotePageApi = {
+  view: viewPublicQuotation,
+  confirm: confirmPublicQuotation,
+  status: publicQuotationStatus,
+  parentPaid: parentSaysPaid,
+  parentWrong: parentSaysWrong,
+}
+
+const REDIRECT_SECONDS = 3
 
 const money = (n: number) => `RM${n.toFixed(2)}`
 
@@ -48,6 +60,9 @@ export function QuotePage({
   const [waitedTooLong, setWaitedTooLong] = useState(false)
   // Paid as our server says, even when that comes before the quotation itself has loaded.
   const [paidAt, setPaidAt] = useState<string | null>(null)
+  const [saidPaid, setSaidPaid] = useState(false)
+  const [wrongSent, setWrongSent] = useState(false)
+  const [countdown, setCountdown] = useState<number | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -56,6 +71,7 @@ export function QuotePage({
       if (reply.ok) {
         setQuotation(reply.quotation)
         setPaymentsReady(reply.paymentsReady)
+        setSaidPaid(reply.quotation.parentSaidPaid)
         if (reply.quotation.status === 'paid') setWaiting(false)
       } else {
         setError(reply.error)
@@ -85,6 +101,39 @@ export function QuotePage({
     }, pollMs)
     return () => window.clearInterval(timer)
   }, [api, token, waiting, pollMs])
+
+  // Just paid (back from Razorpay): on to the EC's after-payment link after a few seconds.
+  const target = quotation?.afterPayUrl ?? null
+  const goToRef = useRef(goTo)
+  goToRef.current = goTo
+  const justPaid = returned && (paidAt !== null || quotation?.status === 'paid')
+  useEffect(() => {
+    if (!justPaid || !target) return
+    setCountdown(REDIRECT_SECONDS)
+    const timer = window.setInterval(() => setCountdown((n) => (n === null || n <= 0 ? n : n - 1)), 1000)
+    return () => window.clearInterval(timer)
+  }, [justPaid, target])
+  useEffect(() => {
+    if (countdown === 0 && target) goToRef.current(target)
+  }, [countdown, target])
+
+  async function said(kind: 'paid' | 'wrong') {
+    setBusy(true)
+    setError(null)
+    const reply = kind === 'paid' ? await api.parentPaid(token) : await api.parentWrong(token)
+    setBusy(false)
+    if (!reply.ok) {
+      setError(reply.error)
+      return
+    }
+    if (kind === 'paid') {
+      setSaidPaid(true)
+      return
+    }
+    setWrongSent(true)
+    const contact = reply.contactUrl ?? quotation?.contactUrl
+    if (contact) goTo(contact)
+  }
 
   async function pay() {
     setBusy(true)
@@ -133,6 +182,15 @@ export function QuotePage({
           <CheckCircle size={36} weight="fill" className="mx-auto mb-1 text-emerald-600" aria-hidden="true" />
           <p className="text-base font-semibold text-emerald-800">已付款 {money(q.total)}</p>
           <p className="mt-1 text-sm text-emerald-800">{q.paidMessage}</p>
+          {q.afterPayUrl && (
+            <a
+              href={q.afterPayUrl}
+              className="mt-3 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+            >
+              <ArrowSquareOut size={18} aria-hidden="true" />
+              {countdown !== null && countdown > 0 ? `${countdown} 秒后前往，或现在前往` : '前往下一步'}
+            </a>
+          )}
         </section>
       )}
       {waiting && q.status !== 'paid' && (
@@ -224,8 +282,33 @@ export function QuotePage({
             <dt className="text-slate-500">报价单号</dt>
             <dd className="font-semibold text-slate-900">{q.receiptNo}</dd>
           </dl>
+          {q.qrUrl && (
+            <figure className="flex flex-col items-center gap-1 pt-1">
+              <img src={q.qrUrl} alt="银行转账 QR Code" className="h-52 w-52 rounded-xl border border-slate-200 object-contain" />
+              <figcaption className="text-xs text-slate-500">扫码转账（可长按存图）</figcaption>
+            </figure>
+          )}
           {q.bankNote && <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">{q.bankNote}</p>}
           {q.terms && <div className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs text-slate-600">{q.terms}</div>}
+          {saidPaid ? (
+            <div role="status" className="space-y-2 rounded-xl bg-emerald-50 p-3 text-center text-sm text-emerald-800">
+              <p>谢谢！顾问核对收款后会帮孩子安排上课，并用 WhatsApp 通知您。</p>
+              {q.afterPayUrl && (
+                <a href={q.afterPayUrl} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 font-semibold text-white">
+                  <ArrowSquareOut size={18} aria-hidden="true" /> 前往下一步
+                </a>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="min-h-12 w-full rounded-xl bg-[#fc0c97] px-4 py-3 text-base font-semibold text-white hover:bg-[#de0a84] disabled:opacity-50"
+              disabled={busy}
+              onClick={() => void said('paid')}
+            >
+              资料正确，我已转账
+            </button>
+          )}
         </section>
       )}
 
@@ -248,10 +331,24 @@ export function QuotePage({
             disabled={!agree || busy || !paymentsReady}
             onClick={() => void pay()}
           >
-            {busy ? '正在前往付款…' : `确认并付款 ${money(q.total)}`}
+            {busy ? '正在前往付款…' : `资料正确，前往付款 ${money(q.total)}`}
           </button>
           <p className="text-center text-xs text-slate-400">付款由 Razorpay 处理（网银 FPX、信用卡 / 扣账卡、电子钱包）</p>
         </section>
+      )}
+      {open && !waiting && (
+        wrongSent && !q.contactUrl ? (
+          <p role="status" className="text-center text-sm text-slate-600">已通知顾问，他会尽快联系您。</p>
+        ) : (
+          <button
+            type="button"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+            disabled={busy}
+            onClick={() => void said('wrong')}
+          >
+            <ChatCircleText size={18} aria-hidden="true" /> 资料不对，联系顾问
+          </button>
+        )
       )}
       <button
         type="button"

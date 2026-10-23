@@ -7,6 +7,8 @@ import { withCodes } from '../../lib/studentCodeLabel'
 import type { Person } from '../../lib/peopleApi'
 import type { LeadOption } from '../../types/domain'
 import { PersonTags } from '../PersonTags'
+import { useOpenChat } from '../WhatsAppLink'
+import { canonicalPhone } from '../../lib/chatLink'
 
 // kind says what the record is, so a child with an HOA record and a class record shows the class one.
 export type ChildDetail = { age: number | null; label: string | null; kind?: 'hoa' | 'trial' | 'regular' | 'camp' | null }
@@ -80,6 +82,8 @@ const linkClass = 'font-medium text-[#be185d] hover:underline'
 export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStudent, codeOf, tags, pictureOf }: FamilyCardProps) {
   // The tags just chosen show at once, until they are saved and the family is read again.
   const [chosen, setChosen] = useState<Map<number, number[]>>(new Map())
+  // Opens a number's chat on the school's inbox page (null where there is none, e.g. in tests).
+  const openChat = useOpenChat()
 
   // Tags belong to the family: the parent has the one bar the team edits (at the top of the card). A child keeps
   // the tags already on them, shown as small chips that cannot be changed here (the student page still edits them).
@@ -118,8 +122,26 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
 
   function openChatLink(person: Person) {
     const chat = person.contactId !== null ? chatOf(person.contactId) : null
-    if (chat === null || person.id === family.me.id) {
+    if (person.id === family.me.id) {
       return null
+    }
+    if (chat === null) {
+      // A child with a number of their own (not the parent's, not this chat's) but no chat here yet: open theirs by
+      // the number (found under a hidden ID too), or start a new one.
+      const own = canonicalPhone(person.phone)
+      const taken = [family.parent?.phone, family.me.phone].map((value) => canonicalPhone(value))
+      if (person.kind !== 'student' || !openChat || own === null || taken.includes(own)) {
+        return null
+      }
+      return (
+        <button
+          type="button"
+          onClick={() => openChat({ phone: own, name: person.name ?? null, leadId: null, ownNumberOnly: true })}
+          className={linkClass}
+        >
+          Open chat
+        </button>
+      )
     }
     return (
       <button type="button" onClick={() => onOpenChat(chat)} className={linkClass}>

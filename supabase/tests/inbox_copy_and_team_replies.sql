@@ -2,8 +2,7 @@
 -- Run on a scratch copy of the schema (never the live database); it rolls back.
 --   psql -d <scratch db> -v ON_ERROR_STOP=1 -f supabase/tests/inbox_copy_and_team_replies.sql
 -- Every check prints PASS; the first failure stops the run.
--- The settings test.admin / test.perms / test.inboxes are read by the stand-in permission functions of a
--- bare scratch database; on a full copy of the schema, sign in as a real account instead.
+-- The people and channels are real (see pg_temp.as_person / pg_temp.show_only below).
 
 begin;
 
@@ -32,6 +31,40 @@ end;
 $$;
 
 -- A message as chat-activity sends it (copy.ts).
+-- Real accounts and channels (this test runs on the full schema, where the permission functions read the
+-- signed-in teacher): pg_temp.as_person('admin' | 'inbox' | 'team_replies' | 'none') signs one in, and
+-- pg_temp.show_only('') / ('5') / ('6') makes the channels open, or leaves only that inbox open to staff.
+update public.chat_webhook_settings set webhook_key = 'right-key-0123456789';
+
+insert into auth.users (id, email, aud, role) values
+  ('00000000-0000-0000-0000-00000000e001', 'test_copy_admin@example.test', 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-00000000e002', 'test_copy_inbox@example.test', 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-00000000e003', 'test_copy_none@example.test', 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-00000000e004', 'test_copy_replies@example.test', 'authenticated', 'authenticated');
+insert into public.teachers (id, full_name, username, role, auth_user_id, is_active, permissions) overriding system value values
+  (991201, 'Copy Admin', 'test_copy_admin', 'admin', '00000000-0000-0000-0000-00000000e001', true, '{}'),
+  (991202, 'Copy Inbox', 'test_copy_inbox', 'staff', '00000000-0000-0000-0000-00000000e002', true, '{"inbox":{"level":"view"}}'),
+  (991203, 'Copy None', 'test_copy_none', 'staff', '00000000-0000-0000-0000-00000000e003', true, '{}'),
+  (991204, 'Copy Replies', 'test_copy_replies', 'staff', '00000000-0000-0000-0000-00000000e004', true, '{"team_replies":{"level":"view"}}');
+insert into public.inbox_channels (chatwoot_inbox_id, kind, label, access, is_active) values
+  (5, 'whatsapp', 'Test five', 'open', true), (6, 'whatsapp', 'Test six', 'open', true);
+
+create function pg_temp.as_person(p_who text) returns void language sql as $$
+  select set_config('request.jwt.claim.sub', u::text, true),
+         set_config('request.jwt.claims', json_build_object('sub', u, 'role', 'authenticated')::text, true)
+  from (select case p_who
+          when 'admin' then '00000000-0000-0000-0000-00000000e001'
+          when 'inbox' then '00000000-0000-0000-0000-00000000e002'
+          when 'team_replies' then '00000000-0000-0000-0000-00000000e004'
+          else '00000000-0000-0000-0000-00000000e003' end::uuid as u) x;
+$$;
+
+create function pg_temp.show_only(p_inbox text) returns void language sql security definer as $$
+  update public.inbox_channels
+  set access = case when p_inbox = '' or chatwoot_inbox_id::text = p_inbox then 'open' else 'limited' end
+  where chatwoot_inbox_id in (5, 6);
+$$;
+
 create function pg_temp.msg(
   p_id bigint, p_chat bigint, p_type int, p_at timestamptz, p_kind text, p_staff bigint default null,
   p_content text default 'hi', p_extra jsonb default '{}'::jsonb
@@ -107,11 +140,11 @@ select public.inbox_copy_from_webhook('right-key-0123456789', 1, '{"conversation
   jsonb_build_array(pg_temp.msg(210, 21, 0, '2026-10-19 11:00:00+08', 'parent') || '{"inbox_id": 9}'::jsonb));
 
 set local role authenticated;
-set local test.perms = '';
-select pg_temp.ok((select count(*) from public.inbox_messages) = 0, 'no Leads tick: nothing');
-set local test.perms = 'leads';
-select pg_temp.ok((select count(*) from public.inbox_messages where id in (100, 200, 210)) = 3, 'Leads tick: every chat');
-set local test.inboxes = '{5}';
+select pg_temp.as_person('none');
+select pg_temp.ok((select count(*) from public.inbox_messages) = 0, 'no Inbox tick: nothing');
+select pg_temp.as_person('inbox');
+select pg_temp.ok((select count(*) from public.inbox_messages where id in (100, 200, 210)) = 3, 'Inbox tick: every chat');
+select pg_temp.show_only('5');
 select pg_temp.ok(
   (select array_agg(id order by id) from public.inbox_messages where id in (100, 200, 210)) = '{100,210}',
   'kept to number 5: not number 6, but the Messenger-like inbox 9 stays');
@@ -120,7 +153,7 @@ select pg_temp.fails($$insert into public.inbox_messages (id, conversation_id, m
 select pg_temp.fails($$select public.inbox_copy_import(1, null, '[]'::jsonb)$$, 'Only an admin', 'only an admin copies old chats');
 select pg_temp.ok((select count(*) from public.team_reply_days) = 0, 'no Team Replies tick: no kept days');
 reset role;
-set local test.inboxes = '';
+select pg_temp.show_only('');
 
 -- ---------------------------------------------------------------------------------------------
 -- Team replies, worked out from the copy.
@@ -161,11 +194,11 @@ select pg_temp.ok((select count(*) from public.team_reply_days where day = '2026
 select pg_temp.fails($$select public.team_reply_compute_day((now() at time zone 'Asia/Kuala_Lumpur')::date)$$, 'finished day', 'today is never kept');
 
 set local role authenticated;
-set local test.perms = 'leads';
+select pg_temp.as_person('inbox');
 select pg_temp.fails($$select public.team_reply_compute_range('2026-10-01', '2026-10-18')$$, 'Only an admin', 'only an admin works out the days');
-set local test.perms = 'team_replies';
+select pg_temp.as_person('team_replies');
 select pg_temp.ok((select count(*) from public.team_reply_days where day = '2026-10-18') = 4, 'the Team Replies tick reads the kept days');
-set local test.admin = 'on';
+select pg_temp.as_person('admin');
 select pg_temp.ok(public.team_reply_compute_range('2026-10-17', '2026-10-18') = 2, 'an admin works out a range of days');
 select pg_temp.fails($$select public.team_reply_compute_range('2026-01-01', '2026-10-18')$$, 'At most 62', 'at most 62 days a call');
 reset role;
@@ -178,7 +211,7 @@ select public.inbox_copy_from_webhook('right-key-0123456789', 1,
   jsonb_build_object('conversation_id', 31, 'last_activity_at', now() - interval '1 hour'), '[]'::jsonb);
 select pg_temp.ok(public.inbox_copy_check() >= 1, 'a chat behind Chatwoot is found');
 select pg_temp.ok((select needs_copy from public.inbox_chats where conversation_id = 31), 'and marked to be read again');
-set local test.admin = 'on';
+select pg_temp.as_person('admin');
 select public.inbox_copy_import(1, '{"conversation_id": 31}'::jsonb, '[]'::jsonb, true);
 select pg_temp.ok((select not needs_copy and copied_at is not null from public.inbox_chats where conversation_id = 31), 'reading it again clears the mark');
 

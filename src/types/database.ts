@@ -2912,6 +2912,10 @@ export type Database = {
           payment_proof_path: string | null
           payment_note: string | null
           confirmed_by: number | null
+          after_pay_url?: string | null
+          contact_url?: string | null
+          parent_said_paid_at?: string | null
+          parent_said_wrong_at?: string | null
           payment_method: string | null
           paid_amount: number | null
           paid_at: string | null
@@ -2924,6 +2928,13 @@ export type Database = {
           created_at: string
           updated_at: string
         }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      // §15 (20261031900000_quotation_links_qr.sql): each staff member's after-payment and contact links.
+      quotation_staff_links: {
+        Row: { teacher_id: number; after_pay_url: string | null; contact_url: string | null; updated_at: string; updated_by: number | null }
         Insert: never
         Update: never
         Relationships: []
@@ -4325,6 +4336,10 @@ export type Database = {
       }
       set_fee_calculator_enabled: {
         Args: { p_enabled: boolean }
+        Returns: undefined
+      }
+      set_quotation_staff_link: {
+        Args: { p_teacher_id: number; p_after_pay_url: string | null; p_contact_url: string | null }
         Returns: undefined
       }
       set_quotation_settings: {

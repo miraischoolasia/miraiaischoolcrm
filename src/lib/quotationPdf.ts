@@ -13,6 +13,7 @@ export type PdfRow =
   | { kind: 'text'; text: string; muted?: boolean }
   | { kind: 'money'; label: string; amount: string; strong?: boolean; tone?: 'discount' }
   | { kind: 'rule' }
+  | { kind: 'image'; url: string; caption: string }
   | { kind: 'gap' }
 
 const money = (n: number) => `RM${n.toFixed(2)}`
@@ -45,6 +46,7 @@ export function quotationPdfRows(q: PublicQuotation): PdfRow[] {
       { kind: 'text', text: `户口号码：${q.bank.accountNumber}` },
       { kind: 'text', text: `金额：${money(q.total)}` },
     )
+    if (q.qrUrl) rows.push({ kind: 'image', url: q.qrUrl, caption: '扫码转账' })
     if (q.bankNote) rows.push({ kind: 'text', text: q.bankNote, muted: true })
   }
   if (q.terms) rows.push({ kind: 'gap' }, { kind: 'heading', text: '条款' }, ...q.terms.split('\n').filter(Boolean).map((t) => ({ kind: 'text' as const, text: t, muted: true })))
@@ -81,7 +83,9 @@ function wrap(context: CanvasRenderingContext2D, text: string, width: number): s
 }
 
 // Draws the rows; with no context it only measures how tall the page must be.
-function draw(context: CanvasRenderingContext2D, rows: PdfRow[], paint: boolean): number {
+const QR_SIZE = 360
+
+function draw(context: CanvasRenderingContext2D, rows: PdfRow[], paint: boolean, images: Map<string, HTMLImageElement> = new Map()): number {
   let y = PAD
   const inner = WIDTH - 2 * PAD
   const text = (value: string, x: number, size: number, weight: number, color: string, align: CanvasTextAlign = 'left') => {
@@ -99,6 +103,14 @@ function draw(context: CanvasRenderingContext2D, rows: PdfRow[], paint: boolean)
         context.fillRect(PAD, y, inner, 2)
       }
       y += 28
+    } else if (row.kind === 'image') {
+      const image = images.get(row.url)
+      if (!image) continue
+      y += 20
+      if (paint) context.drawImage(image, (WIDTH - QR_SIZE) / 2, y, QR_SIZE, QR_SIZE)
+      y += QR_SIZE + 34
+      text(row.caption, WIDTH / 2, 24, 400, '#64748b', 'center')
+      y += 10
     } else if (row.kind === 'title') {
       y += 44
       text(row.text, WIDTH / 2, 48, 700, '#0f172a', 'center')
@@ -133,12 +145,29 @@ function draw(context: CanvasRenderingContext2D, rows: PdfRow[], paint: boolean)
   return y + PAD
 }
 
+// A picture for the PDF (the school's QR, from its public address); null when it cannot be loaded.
+function loadImage(url: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const image = new Image()
+    image.crossOrigin = 'anonymous'
+    image.onload = () => resolve(image)
+    image.onerror = () => resolve(null)
+    image.src = url
+  })
+}
+
 export async function quotationPdf(q: PublicQuotation): Promise<File> {
   const rows = quotationPdfRows(q)
+  const images = new Map<string, HTMLImageElement>()
+  for (const row of rows) {
+    if (row.kind !== 'image') continue
+    const image = await loadImage(row.url)
+    if (image) images.set(row.url, image)
+  }
   const measure = document.createElement('canvas').getContext('2d')
   if (!measure) throw new Error('This browser cannot make the PDF.')
   // At least A4's shape (1240 × 1754), longer when the content is.
-  const height = Math.max(1754, Math.ceil(draw(measure, rows, false)))
+  const height = Math.max(1754, Math.ceil(draw(measure, rows, false, images)))
   const canvas = document.createElement('canvas')
   canvas.width = WIDTH
   canvas.height = height
@@ -147,7 +176,7 @@ export async function quotationPdf(q: PublicQuotation): Promise<File> {
   context.fillStyle = '#ffffff'
   context.fillRect(0, 0, WIDTH, height)
   context.textBaseline = 'alphabetic'
-  draw(context, rows, true)
+  draw(context, rows, true, images)
   const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not make the PDF.'))), 'image/jpeg', 0.85))
   const pdf = buildPdfFromJpeg(new Uint8Array(await blob.arrayBuffer()), WIDTH, height)
   return new File([pdf as BlobPart], quotationPdfName(q), { type: 'application/pdf' })

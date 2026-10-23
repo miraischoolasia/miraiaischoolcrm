@@ -146,6 +146,11 @@ const shown: PublicQuotation = {
   paymentRoute: 'razorpay',
   bank: null,
   bankNote: '',
+  qrUrl: null,
+  qrPath: null,
+  afterPayUrl: null,
+  contactUrl: null,
+  parentSaidPaid: false,
 }
 
 function pageApi(overrides: Partial<QuotePageApi> = {}): QuotePageApi {
@@ -153,6 +158,8 @@ function pageApi(overrides: Partial<QuotePageApi> = {}): QuotePageApi {
     view: vi.fn(async () => ({ ok: true as const, quotation: shown, paymentsReady: true })),
     confirm: vi.fn(async () => ({ ok: true as const, url: 'https://rzp.io/l/abc' })),
     status: vi.fn(async () => ({ ok: true as const, status: 'paid' as const, paidAt: '2026-10-23T10:00:00Z', total: 229.5 })),
+    parentPaid: vi.fn(async () => ({ ok: true as const })),
+    parentWrong: vi.fn(async () => ({ ok: true as const, contactUrl: 'https://wa.me/60177?text=x' })),
     ...overrides,
   }
 }
@@ -167,7 +174,7 @@ describe('the parent’s quotation page', () => {
     expect(screen.getByText('P4 Math · 星期六 10:00–11:00')).toBeInTheDocument()
     expect(screen.getByText('折扣（兄弟姐妹）')).toBeInTheDocument()
     expect(screen.getByTestId('quote-page-total')).toHaveTextContent('RM229.50')
-    const pay = screen.getByRole('button', { name: '确认并付款 RM229.50' })
+    const pay = screen.getByRole('button', { name: '资料正确，前往付款 RM229.50' })
     expect(pay).toBeDisabled()
     await user.click(screen.getByRole('checkbox', { name: /我已阅读并同意/ }))
     await user.click(pay)
@@ -183,13 +190,13 @@ describe('the parent’s quotation page', () => {
     render(<QuotePage token="T" returned api={pageApi({ status })} goTo={vi.fn()} pollMs={30} />)
     expect(await screen.findByText('付款处理中，请稍候…')).toBeInTheDocument()
     await waitFor(() => expect(screen.getByText('已付款 RM229.50')).toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: /确认并付款/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /前往付款/ })).not.toBeInTheDocument()
   })
 
   it('an expired or unknown link cannot be paid', async () => {
     render(<QuotePage token="T" returned={false} api={pageApi({ view: async () => ({ ok: true, quotation: { ...shown, status: 'expired' }, paymentsReady: true }) })} goTo={vi.fn()} />)
     expect(await screen.findByText('这张报价单已经过期，请联系顾问更新报价。')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /确认并付款/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /前往付款/ })).not.toBeInTheDocument()
   })
 
   it('says so when the link is not valid', async () => {
@@ -245,7 +252,7 @@ describe('Plan B: bank transfer', () => {
     render(<QuotePage token="T" returned={false} api={pageApi({ view: async () => ({ ok: true, quotation: bank, paymentsReady: false }) })} goTo={vi.fn()} />)
     expect(await screen.findByText('5140 1234 5678')).toBeInTheDocument()
     expect(screen.getByText('转账时请在备注写孩子的名字。')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /确认并付款/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /前往付款/ })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /下载报价单 PDF/ })).toBeInTheDocument()
   })
 })

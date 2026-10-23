@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Lead, Student } from '../types/domain'
 import type { ChatAttributes, ChatwootConversation, ChatwootMessage } from './whatsappInbox'
-import { findChatForNumber } from './chatForNumber'
+import { findChatForNumber, findOwnChatForNumber } from './chatForNumber'
 
 const message = { id: 1, content: 'hi', message_type: 0, created_at: 1, private: false, status: 'sent' } as ChatwootMessage
 
@@ -92,5 +92,19 @@ describe('findChatForNumber', () => {
     })
 
     expect(found).toBeNull()
+  })
+})
+
+describe('findOwnChatForNumber', () => {
+  it("finds a child's own chat, never the parent's chat of a lead that lists the child's number", () => {
+    const leads = [lead(7, '60111111111', [{ name: 'Kid', age: 9, phone: '60165550001' }])]
+    const parentChat = chat(1, '+60111111111', { crm_lead_id: 7 })
+    expect(findChatForNumber({ ...base, leads, phone: '0165550001', conversations: [parentChat] })?.id).toBe(1)
+    expect(findOwnChatForNumber({ phone: '0165550001', conversations: [parentChat], students: [] })).toBeNull()
+
+    const kidChat = chat(2, '+60165550001')
+    expect(findOwnChatForNumber({ phone: '0165550001', conversations: [parentChat, kidChat], students: [] })?.id).toBe(2)
+    const hiddenKid = chat(3, null, { crm_student_ids: [9] })
+    expect(findOwnChatForNumber({ phone: '0165550001', conversations: [hiddenKid], students: [student(9, '60165550001')] })?.id).toBe(3)
   })
 })

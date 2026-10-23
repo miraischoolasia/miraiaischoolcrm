@@ -24,6 +24,11 @@ const q: PublicQuotation = {
   paymentRoute: 'bank_transfer',
   bank: { bankName: 'Maybank', accountName: 'EduHero Sdn Bhd', accountNumber: '5140 1234 5678' },
   bankNote: '转账时请在备注写孩子的名字和报价单号。',
+  qrUrl: 'https://x.supabase.co/storage/v1/object/public/quotation-public/qr/bank.png',
+  qrPath: null,
+  afterPayUrl: null,
+  contactUrl: null,
+  parentSaidPaid: false,
 }
 
 describe('the quotation PDF', () => {
@@ -36,6 +41,7 @@ describe('the quotation PDF', () => {
     expect(rows).toContainEqual({ kind: 'money', label: '折扣（兄弟姐妹）', amount: '-RM22.50', tone: 'discount' })
     expect(rows).toContainEqual({ kind: 'money', label: '总数', amount: 'RM202.50', strong: true })
     expect(rows).toContainEqual({ kind: 'text', text: '户口号码：5140 1234 5678' })
+    expect(rows).toContainEqual({ kind: 'image', url: q.qrUrl, caption: '扫码转账' })
     expect(rows).toContainEqual({ kind: 'text', text: '转账时请在备注写孩子的名字和报价单号。', muted: true })
   })
 

@@ -1018,7 +1018,7 @@ select pg_temp.ok((select count(*) from public.student_points where student_id =
 select pg_temp.ok((select count(*) from public.student_points where student_id <> 9301) = 0, 'and nobody else''s');
 select pg_temp.ok(exists (select 1 from jsonb_array_elements(public.portal_lesson_summaries(9301)) e
   where e ->> 'date' = '2026-10-14' and (e ->> 'points')::int >= 1), 'the lesson summary has the lesson''s points');
-select pg_temp.ok(not exists (select 1 from jsonb_array_elements(public.portal_lesson_summaries(9301)) e where e ->> 'date' > '2026-10-18'),
+select pg_temp.ok(not exists (select 1 from jsonb_array_elements(public.portal_lesson_summaries(9301)) e where e ->> 'date' > ((timezone('Asia/Kuala_Lumpur', now()))::date)::text),
   'no summary for a lesson that has not happened');
 select pg_temp.fails($$select public.portal_lesson_summaries(9302)$$, 'not found', 'no summary of another child');
 select public.portal_record_zoom_check(9301, true, 'web');
@@ -1221,18 +1221,19 @@ select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
 select pg_temp.ok(jsonb_array_length(public.portal_class_videos(9301) -> 0 -> 'videos') = 0
   and jsonb_array_length(public.portal_class_videos(9301) -> 0 -> 'closed_months') = 2, 'with month access on, closed months show as closed');
 
+-- (months are opened with set_student_video_grants since 20261027500000; the class has a subject, so by its age group and subject)
 select pg_temp.login('00000000-0000-0000-0000-00000000000d');
-select public.set_student_video_access(9301, 9101, 2026, 6, true);
+select public.set_student_video_grants(array[9301]::bigint[], (select age_group from public.classrooms where id = 9101), (select subject_id from public.classrooms where id = 9101), null, '[{"year":2026,"month":6}]', true);
 select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
 select pg_temp.ok((public.portal_class_videos(9301) -> 0 -> 'videos' -> 0 ->> 'title') = 'Loops June'
   and jsonb_array_length(public.portal_class_videos(9301) -> 0 -> 'videos') = 1, 'an opened month shows its videos');
 select pg_temp.login('00000000-0000-0000-0000-00000000000d');
-select public.set_student_video_access(9301, 9101, 2026, 6, true, '2020-01-01', '2020-01-31');
+select public.set_student_video_grants(array[9301]::bigint[], (select age_group from public.classrooms where id = 9101), (select subject_id from public.classrooms where id = 9101), null, '[{"year":2026,"month":6}]', true, '2020-01-01', '2020-01-31');
 select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
 select pg_temp.ok(jsonb_array_length(public.portal_class_videos(9301) -> 0 -> 'videos') = 0, 'access that ended is closed again');
 select pg_temp.login('00000000-0000-0000-0000-00000000000d');
-select public.set_student_video_access(9301, 9101, 2026, 6, true);
-select pg_temp.fails($$select public.set_student_video_access(9301, 9101, 2026, 6, true, '2026-02-01', '2026-01-01')$$, 'end after', 'access must end after it starts');
+select public.set_student_video_grants(array[9301]::bigint[], (select age_group from public.classrooms where id = 9101), (select subject_id from public.classrooms where id = 9101), null, '[{"year":2026,"month":6}]', true);
+select pg_temp.fails($$select public.set_student_video_grants(array[9301]::bigint[], (select age_group from public.classrooms where id = 9101), (select subject_id from public.classrooms where id = 9101), null, '[{"year":2026,"month":6}]', true, '2026-02-01', '2026-01-01')$$, 'end after', 'access must end after it starts');
 
 -- Progress
 select pg_temp.login('00000000-0000-0000-0000-0000000000a1');

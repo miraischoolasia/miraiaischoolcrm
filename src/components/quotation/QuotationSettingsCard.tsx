@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { Plus, Trash } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import { fetchQuotationSettings, saveQuotationSettings } from '../../lib/quotationApi'
-import { DEFAULT_QUOTATION_SETTINGS, type EnrolMethodPlan, type PaymentRoute, type QuotationSettings } from '../../../supabase/functions/_shared/quotation/logic.ts'
+import { DEFAULT_QUOTATION_SETTINGS, safeHttpsUrl, type EnrolMethodPlan, type PaymentRoute, type QuotationSettings } from '../../../supabase/functions/_shared/quotation/logic.ts'
 import { RATE_TIERS } from '../feeCalculator/labels'
+import { SchoolQrField, StaffLinksEditor } from './QuotationLinks'
 
 // Admin: the school's quotation rules (app_settings 'quotations'). Off at Mirai; EduHero switches it on. Every list
 // and number here is the school's own (white label).
@@ -43,6 +44,10 @@ export function QuotationSettingsCard({
     }
     if (draft.enabled && draft.paymentRoutes.includes('bank_transfer') && !(draft.bank.bankName.trim() && draft.bank.accountNumber.trim())) {
       setState({ busy: false, error: 'Write the bank and the account number for bank transfers.', saved: false })
+      return
+    }
+    if ((draft.afterPayUrl && !safeHttpsUrl(draft.afterPayUrl)) || (draft.contactUrl && !safeHttpsUrl(draft.contactUrl))) {
+      setState({ busy: false, error: 'A link must start with https:// and have no spaces.', saved: false })
       return
     }
     setState({ busy: true, error: null, saved: false })
@@ -163,8 +168,28 @@ export function QuotationSettingsCard({
               <input type="checkbox" checked={draft.bankReview} onChange={(e) => set({ bankReview: e.target.checked })} />
               An admin checks each bank transfer before the child is enrolled
             </label>
+            <SchoolQrField path={draft.paymentQr.bank_transfer} onChange={(path) => set({ paymentQr: { ...draft.paymentQr, bank_transfer: path } })} />
           </>
         )}
+      </fieldset>
+
+      <fieldset className="space-y-3 rounded-xl border border-slate-200 p-3">
+        <legend className="px-1 text-xs font-semibold text-slate-600">After paying, and “资料不对”</legend>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label htmlFor="qs-after-pay" className="mb-1 block text-xs font-semibold text-slate-600">
+              School’s after-payment link (when the EC has none)
+            </label>
+            <input id="qs-after-pay" className={inputClass} placeholder="https://…" value={draft.afterPayUrl} onChange={(e) => set({ afterPayUrl: e.target.value.trim() })} />
+          </div>
+          <div>
+            <label htmlFor="qs-contact" className="mb-1 block text-xs font-semibold text-slate-600">
+              School’s contact link (when neither the EC nor the chat gives one)
+            </label>
+            <input id="qs-contact" className={inputClass} placeholder="https://wa.me/60…" value={draft.contactUrl} onChange={(e) => set({ contactUrl: e.target.value.trim() })} />
+          </div>
+        </div>
+        <StaffLinksEditor />
       </fieldset>
 
       <div className="space-y-2">

@@ -12,6 +12,8 @@ export type WhatsAppTarget = {
   chat?: { conversationId: number | null; contactId: number | null }
   // Written in the chat's message box for the team to read and send (e.g. a new app login).
   message?: string
+  // Only the number's own chat (a child's number): never the chat of a lead that lists the number.
+  ownNumberOnly?: boolean
 }
 
 // Set by the app when the school's own WhatsApp page is available; without it the

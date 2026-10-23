@@ -1,7 +1,7 @@
 -- Checks for 20261025300000_inbox_copy_live.sql (after 20261024800000 and 20261024810000).
 -- Run on a scratch copy of the schema (never the live database); it rolls back.
 --   psql -d <scratch db> -v ON_ERROR_STOP=1 -f supabase/tests/inbox_copy_live.sql
--- test.admin / test.perms / test.inboxes are read by the stand-in permission functions of a bare scratch database.
+-- The people and channels are real (see pg_temp.as_person / pg_temp.show_only below).
 
 begin;
 
@@ -27,6 +27,40 @@ begin
   end;
   raise exception 'FAIL % (no error)', p_name;
 end;
+$$;
+
+-- Real accounts and channels (this test runs on the full schema, where the permission functions read the
+-- signed-in teacher): pg_temp.as_person('admin' | 'inbox' | 'team_replies' | 'none') signs one in, and
+-- pg_temp.show_only('') / ('5') / ('6') makes the channels open, or leaves only that inbox open to staff.
+update public.chat_webhook_settings set webhook_key = 'right-key-0123456789';
+
+insert into auth.users (id, email, aud, role) values
+  ('00000000-0000-0000-0000-00000000e001', 'test_copy_admin@example.test', 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-00000000e002', 'test_copy_inbox@example.test', 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-00000000e003', 'test_copy_none@example.test', 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-00000000e004', 'test_copy_replies@example.test', 'authenticated', 'authenticated');
+insert into public.teachers (id, full_name, username, role, auth_user_id, is_active, permissions) overriding system value values
+  (991201, 'Copy Admin', 'test_copy_admin', 'admin', '00000000-0000-0000-0000-00000000e001', true, '{}'),
+  (991202, 'Copy Inbox', 'test_copy_inbox', 'staff', '00000000-0000-0000-0000-00000000e002', true, '{"inbox":{"level":"view"}}'),
+  (991203, 'Copy None', 'test_copy_none', 'staff', '00000000-0000-0000-0000-00000000e003', true, '{}'),
+  (991204, 'Copy Replies', 'test_copy_replies', 'staff', '00000000-0000-0000-0000-00000000e004', true, '{"team_replies":{"level":"view"}}');
+insert into public.inbox_channels (chatwoot_inbox_id, kind, label, access, is_active) values
+  (5, 'whatsapp', 'Test five', 'open', true), (6, 'whatsapp', 'Test six', 'open', true);
+
+create function pg_temp.as_person(p_who text) returns void language sql as $$
+  select set_config('request.jwt.claim.sub', u::text, true),
+         set_config('request.jwt.claims', json_build_object('sub', u, 'role', 'authenticated')::text, true)
+  from (select case p_who
+          when 'admin' then '00000000-0000-0000-0000-00000000e001'
+          when 'inbox' then '00000000-0000-0000-0000-00000000e002'
+          when 'team_replies' then '00000000-0000-0000-0000-00000000e004'
+          else '00000000-0000-0000-0000-00000000e003' end::uuid as u) x;
+$$;
+
+create function pg_temp.show_only(p_inbox text) returns void language sql security definer as $$
+  update public.inbox_channels
+  set access = case when p_inbox = '' or chatwoot_inbox_id::text = p_inbox then 'open' else 'limited' end
+  where chatwoot_inbox_id in (5, 6);
 $$;
 
 create function pg_temp.msg(p_id bigint, p_chat bigint, p_type int, p_at timestamptz, p_content text, p_raw jsonb default null)
@@ -69,20 +103,20 @@ select pg_temp.ok((select raw ->> 'content' = 'Boleh daftar kelas Ahad?' and edi
 -- ---------------------------------------------------------------------------------------------
 
 set local role authenticated;
-set local test.perms = 'leads';
-set local test.inboxes = '';
+select pg_temp.as_person('inbox');
+select pg_temp.show_only('');
 select public.inbox_copy_fill(1, '{"conversation_id": 50, "inbox_id": 5}'::jsonb,
   jsonb_build_array(pg_temp.msg(501, 50, 1, '2026-10-19 09:05:00+08', 'Boleh, puan', '{"id": 501, "status": "read"}'::jsonb)));
 select pg_temp.ok((select raw ->> 'status' = 'read' and source = 'copy' from public.inbox_messages where id = 501), 'a person who may read the chat fills in a missed message');
 select pg_temp.fails($$select public.inbox_copy_fill(1, '{"conversation_id": 50, "inbox_id": 5}'::jsonb,
   jsonb_build_array(pg_temp.msg(502, 51, 1, now(), 'x')))$$, 'another chat', 'only messages of that chat');
-set local test.inboxes = '{6}';
+select pg_temp.show_only('6');
 select pg_temp.fails($$select public.inbox_copy_fill(1, '{"conversation_id": 50, "inbox_id": 5}'::jsonb, '[]'::jsonb)$$,
   'Not allowed', 'not for a chat on a number the person may not see');
-set local test.perms = '';
-set local test.inboxes = '';
+select pg_temp.as_person('none');
+select pg_temp.show_only('');
 select pg_temp.fails($$select public.inbox_copy_fill(1, '{"conversation_id": 50, "inbox_id": 5}'::jsonb, '[]'::jsonb)$$,
-  'Not allowed', 'not without the Leads tick');
+  'Not allowed', 'not without the Inbox tick');
 
 -- ---------------------------------------------------------------------------------------------
 -- Search, as the person asking.
@@ -96,7 +130,7 @@ select public.inbox_copy_from_webhook('right-key-0123456789', 1,
     pg_temp.msg(601, 60, 1, '2026-10-19 10:05:00+08', 'Ada, 50% off untuk kelas pertama') || '{"inbox_id": 6}'::jsonb));
 
 set local role authenticated;
-set local test.perms = 'leads';
+select pg_temp.as_person('inbox');
 select pg_temp.ok((select array_agg(message_id order by message_id) from public.inbox_search('周六的编程') where kind = 'message') = '{600}', 'search: Chinese inside a sentence');
 select pg_temp.ok((select array_agg(message_id order by message_id) from public.inbox_search('DAFTAR') where kind = 'message') = '{500}', 'search: Malay, any case');
 select pg_temp.ok((select array_agg(conversation_id) from public.inbox_search('陈太') where kind = 'chat') = '{60}', 'search: a name');
@@ -104,11 +138,11 @@ select pg_temp.ok((select array_agg(conversation_id) from public.inbox_search('9
 select pg_temp.ok((select array_agg(message_id) from public.inbox_search('50%') where kind = 'message') = '{601}', 'search: a % is looked for as it is');
 select pg_temp.ok((select count(*) from public.inbox_search('a')) = 0, 'search: one letter finds nothing');
 select pg_temp.ok((select chat ->> 'id' = '60' from public.inbox_search('编程') limit 1), 'search: each result carries its chat');
-set local test.inboxes = '{5}';
+select pg_temp.show_only('5');
 select pg_temp.ok((select count(*) from public.inbox_search('编程')) = 0, 'search: a chat on a number the person may not see is not found');
-set local test.perms = '';
-set local test.inboxes = '';
-select pg_temp.ok((select count(*) from public.inbox_search('daftar')) = 0, 'search: nothing without the Leads tick');
+select pg_temp.as_person('none');
+select pg_temp.show_only('');
+select pg_temp.ok((select count(*) from public.inbox_search('daftar')) = 0, 'search: nothing without the Inbox tick');
 reset role;
 
 -- ---------------------------------------------------------------------------------------------
@@ -116,17 +150,17 @@ reset role;
 -- ---------------------------------------------------------------------------------------------
 
 set local role authenticated;
-set local test.perms = 'leads';
-set local test.inboxes = '';
+select pg_temp.as_person('inbox');
+select pg_temp.show_only('');
 select pg_temp.ok(
   (select array_agg((raw ->> 'id')::bigint order by (raw ->> 'id')::bigint) from public.inbox_recent_messages(array[50, 60]::bigint[], 1))
     = '{501,601}', 'recent messages: the newest of each chat');
-set local test.inboxes = '{5}';
+select pg_temp.show_only('5');
 select pg_temp.ok(
   (select array_agg(conversation_id) from public.inbox_recent_messages(array[50, 60]::bigint[], 5)) <@ array[50]::bigint[],
   'recent messages: not of a chat on a number the person may not see');
 reset role;
-set local test.inboxes = '';
+select pg_temp.show_only('');
 
 -- ---------------------------------------------------------------------------------------------
 -- Copied before raw existed: read again by the next "Carry on copying".

@@ -64,7 +64,7 @@ import { useSourceRules } from '../../hooks/useSourceRules'
 import { useAutoLeads } from '../../hooks/useAutoLeads'
 import { useSocialLeads } from '../../hooks/useSocialLeads'
 import { makeLeadResolver, quickReplyValues, resolveChatLead } from '../../lib/chatLink'
-import { findChatForNumber } from '../../lib/chatForNumber'
+import { findChatForNumber, findOwnChatForNumber } from '../../lib/chatForNumber'
 import { useAutoChatRole } from '../../hooks/useAutoChatRole'
 import { usePeople } from '../../hooks/usePeople'
 import { useHandlerSources } from '../../hooks/useHandlerSources'
@@ -972,13 +972,15 @@ export function WhatsAppInbox({
       }
     }
     // Also a chat whose number WhatsApp hides, when it is tied to a lead or student with this number.
-    const here = findChatForNumber({
-      conversations: loadedChats,
-      phone: openRequest.phone,
-      leadId: openRequest.leadId,
-      leads: crm.leads,
-      students: crm.students,
-    })
+    const here = openRequest.ownNumberOnly
+      ? findOwnChatForNumber({ conversations: loadedChats, phone: openRequest.phone, students: crm.students })
+      : findChatForNumber({
+          conversations: loadedChats,
+          phone: openRequest.phone,
+          leadId: openRequest.leadId,
+          leads: crm.leads,
+          students: crm.students,
+        })
     if (here) {
       queueMessage(here.id)
       show(here)
@@ -1791,6 +1793,8 @@ export function WhatsAppInbox({
             onManageRules={(phrase) => setManagingRules({ phrase })}
             onLoadOlder={() => void inbox.loadOlder()}
             onLinkLead={(leadId) => setLeadLinkAndFamily(inbox.selected!.id, leadId)}
+            conversations={inbox.conversations}
+            onLinkChat={setLeadLinkAndFamily}
             onLinkStudents={async (ids) => {
               const ok = await inbox.setStudentLinks(inbox.selected!.id, ids)
               const contact = contactOf(inbox.selected!.id)

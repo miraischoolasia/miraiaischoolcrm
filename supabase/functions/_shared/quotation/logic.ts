@@ -38,6 +38,12 @@ export type QuotationSettings = {
   bankNote: string
   // On: a bank transfer the EC confirms waits for an admin's "Checked: enrol" before the child is enrolled.
   bankReview: boolean
+  // §15 (boss 2026-10-23): the school's QR picture per way of paying (a path in the public bucket
+  // quotation-public), where a parent goes after paying when the EC has no link of their own, and where
+  // "资料不对" goes when neither the EC nor the chat gives a number.
+  paymentQr: { bank_transfer: string | null }
+  afterPayUrl: string
+  contactUrl: string
 }
 
 export type PaymentRoute = 'razorpay' | 'bank_transfer'
@@ -68,6 +74,9 @@ export const DEFAULT_QUOTATION_SETTINGS: QuotationSettings = {
   bank: { bankName: '', accountName: '', accountNumber: '' },
   bankNote: '转账时请在备注写孩子的名字和报价单号，转账后把收据发给我们。',
   bankReview: false,
+  paymentQr: { bank_transfer: null },
+  afterPayUrl: '',
+  contactUrl: '',
 }
 
 // A stored settings value (app_settings 'quotations') read safely: anything missing or wrong keeps the default.
@@ -112,6 +121,11 @@ export function readQuotationSettings(raw: unknown): QuotationSettings {
     },
     bankNote: str(value.bankNote, d.bankNote, 500),
     bankReview: value.bankReview === true,
+    paymentQr: {
+      bank_transfer: readQrPath((value.paymentQr as Record<string, unknown> | undefined)?.bank_transfer),
+    },
+    afterPayUrl: safeHttpsUrl(value.afterPayUrl) ?? '',
+    contactUrl: safeHttpsUrl(value.contactUrl) ?? '',
     paymentModeName: str(value.paymentModeName, d.paymentModeName, 60) || d.paymentModeName,
     regionNames: {
       west_malaysia: str((value.regionNames as Record<string, unknown> | undefined)?.west_malaysia, d.regionNames.west_malaysia, 60) || d.regionNames.west_malaysia,
@@ -123,6 +137,45 @@ export function readQuotationSettings(raw: unknown): QuotationSettings {
 function readRoutes(raw: unknown): PaymentRoute[] {
   const routes = Array.isArray(raw) ? (['bank_transfer', 'razorpay'] as const).filter((r) => raw.includes(r)) : []
   return routes.length > 0 ? [...routes] : DEFAULT_QUOTATION_SETTINGS.paymentRoutes
+}
+
+// A link a parent may be sent to: https only, no spaces, up to 500 characters (same rule as the database).
+export function safeHttpsUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return /^https:\/\/\S+$/.test(trimmed) && trimmed.length <= 500 ? trimmed : null
+}
+
+// A QR picture's path in the public bucket (qr/<name>.<ext>).
+function readQrPath(value: unknown): string | null {
+  return typeof value === 'string' && /^qr\/[A-Za-z0-9._-]{1,100}\.(png|jpe?g|webp)$/.test(value) ? value : null
+}
+
+// Where the parent goes after paying: the EC's own link, else the school's, else none (our paid page).
+export function afterPayUrlFor(ecLink: string | null | undefined, settings: Pick<QuotationSettings, 'afterPayUrl'>): string | null {
+  return safeHttpsUrl(ecLink) ?? safeHttpsUrl(settings.afterPayUrl)
+}
+
+const isWhatsAppLink = (url: string) => /^https:\/\/(wa\.me|api\.whatsapp\.com)\//.test(url)
+
+function withText(url: string, text: string): string {
+  if (!isWhatsAppLink(url) || /[?&]text=/.test(url)) return url
+  return `${url}${url.includes('?') ? '&' : '?'}text=${encodeURIComponent(text)}`
+}
+
+// "资料不对，联系顾问": the EC's own contact link, else the school WhatsApp number the chat is on (the parent
+// already talks to it), else the school's contact link. A WhatsApp link starts the message for the parent.
+export function contactUrlFor(
+  args: { ecContact: string | null | undefined; chatNumber: string | null | undefined; reference: string },
+  settings: Pick<QuotationSettings, 'contactUrl'>,
+): string | null {
+  const text = `报价单 ${args.reference} 资料不对：`
+  const ec = safeHttpsUrl(args.ecContact)
+  if (ec) return withText(ec, text)
+  const digits = (args.chatNumber ?? '').replace(/\D/g, '')
+  if (digits.length >= 8 && digits.length <= 15) return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
+  const school = safeHttpsUrl(settings.contactUrl)
+  return school ? withText(school, text) : null
 }
 
 // Ready to take bank transfers: the route is on and the account is written.
@@ -529,6 +582,14 @@ export type PublicQuotation = {
   paymentRoute: PaymentRoute
   bank: BankDetails | null
   bankNote: string
+  // §15: the school's QR picture for this way of paying (a public address), where to go after paying, where
+  // "资料不对，联系顾问" goes, and whether the parent already said they transferred.
+  qrUrl: string | null
+  // Its path in the public bucket: the page turns it into an address with its own Supabase address.
+  qrPath: string | null
+  afterPayUrl: string | null
+  contactUrl: string | null
+  parentSaidPaid: boolean
 }
 
 // What the page may show: what the parent needs to decide and nothing else (no ids, no staff, the phone masked).

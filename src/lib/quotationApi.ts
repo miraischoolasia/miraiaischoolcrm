@@ -227,9 +227,63 @@ async function callPublic<T>(body: Record<string, unknown>): Promise<T | { ok: f
   return { ok: false, error: '网络有问题，请稍后再试。' }
 }
 
-export const viewPublicQuotation = (token: string) => callPublic<PublicReply>({ action: 'view', token })
+// The QR's address made here from its path, with the address this page talks to (the function's own idea of it can
+// be an inside address).
+function withQr(reply: PublicReply): PublicReply {
+  if (!reply.ok || !reply.quotation.qrPath) return reply
+  return { ...reply, quotation: { ...reply.quotation, qrUrl: schoolQrUrl(reply.quotation.qrPath) || reply.quotation.qrUrl } }
+}
+
+export const viewPublicQuotation = (token: string) => callPublic<PublicReply>({ action: 'view', token }).then(withQr)
 export const confirmPublicQuotation = (token: string) => callPublic<{ ok: true; url: string } | { ok: false; error: string }>({ action: 'confirm', token, agree: true })
 // The same answer as view, without marking it viewed: for the quotation PDF (the Inbox uses it too).
-export const pdfPublicQuotation = (token: string) => callPublic<PublicReply>({ action: 'pdf', token })
+export const pdfPublicQuotation = (token: string) => callPublic<PublicReply>({ action: 'pdf', token }).then(withQr)
+// §15: the parent says they transferred, or that something is wrong. Each tells the EC once.
+export type ParentReply = { ok: true; afterPayUrl?: string | null; contactUrl?: string | null; already?: boolean } | { ok: false; error: string }
+export const parentSaysPaid = (token: string) => callPublic<ParentReply>({ action: 'parent_paid', token })
+export const parentSaysWrong = (token: string) => callPublic<ParentReply>({ action: 'parent_wrong', token })
 export const publicQuotationStatus = (token: string) =>
   callPublic<{ ok: true; status: QuotationStatus; paidAt: string | null; total: number } | { ok: false; error: string }>({ action: 'status', token })
+
+// §15: each staff member's links (their own with the Quotations tick; anyone's as admin).
+export type StaffLink = { teacherId: number; afterPayUrl: string | null; contactUrl: string | null }
+
+export async function fetchStaffLinks(): Promise<StaffLink[]> {
+  if (!supabase) return []
+  const { data, error } = await supabase.from('quotation_staff_links').select('teacher_id, after_pay_url, contact_url')
+  if (error) return []
+  return (data ?? []).map((row) => ({ teacherId: row.teacher_id, afterPayUrl: row.after_pay_url, contactUrl: row.contact_url }))
+}
+
+// Null when saved, else the reason.
+export async function saveStaffLink(teacherId: number, afterPayUrl: string | null, contactUrl: string | null) {
+  if (!supabase) return 'Supabase is not configured.'
+  const { error } = await supabase.rpc('set_quotation_staff_link', { p_teacher_id: teacherId, p_after_pay_url: afterPayUrl, p_contact_url: contactUrl })
+  if (!error) return null
+  return isMissingDatabaseThing(error) ? 'This needs its database update first.' : error.message || 'Could not save.'
+}
+
+// The school's QR picture (admin): put in the public bucket; the path goes into the quotation settings.
+export async function uploadSchoolQr(file: File): Promise<{ ok: true; path: string; url: string } | { ok: false; error: string }> {
+  if (!supabase) return { ok: false, error: 'Supabase is not configured.' }
+  const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : file.type === 'image/jpeg' ? 'jpg' : null
+  if (!ext) return { ok: false, error: 'Choose a PNG, JPG or WebP picture.' }
+  if (file.size > 2 * 1024 * 1024) return { ok: false, error: 'The picture must be 2 MB or smaller.' }
+  const path = `qr/bank-${crypto.randomUUID()}.${ext}`
+  const { error } = await supabase.storage.from('quotation-public').upload(path, file, { contentType: file.type })
+  if (error) return { ok: false, error: error.message || 'Could not upload the picture.' }
+  return { ok: true, path, url: schoolQrUrl(path) }
+}
+
+export function schoolQrUrl(path: string): string {
+  return supabase ? supabase.storage.from('quotation-public').getPublicUrl(path).data.publicUrl : ''
+}
+
+// The signed-in staff member's id (for "my links" in the Inbox's Quotation tab).
+export async function fetchMyTeacherId(): Promise<number | null> {
+  if (!supabase) return null
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth.user) return null
+  const { data } = await supabase.from('teachers').select('id').eq('auth_user_id', auth.user.id).maybeSingle()
+  return data?.id ?? null
+}

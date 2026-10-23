@@ -4,6 +4,8 @@
 //   status  for the page after paying: paid yet? (the webhook decides, not this page)
 //   pdf     the same as view, for the quotation PDF (staff and parent; does not mark it viewed)
 // A bank-transfer quotation (Plan B) shows the school's account instead of a pay button.
+//   parent_paid   "我已转账": tells the EC once (it is still the EC who marks it paid, with the receipt)
+//   parent_wrong  "资料不对": tells the EC once (the page then opens the contact link)
 // No login (verify_jwt = false). Secrets: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET (Basic auth to Razorpay).
 
 import {
@@ -77,6 +79,14 @@ Deno.serve(async (req) => {
       paymentRoute: q.payment_route,
       bank: q.payment_route === 'bank_transfer' ? settings.bank : null,
       bankNote: q.payment_route === 'bank_transfer' ? settings.bankNote : '',
+      qrUrl:
+        q.payment_route === 'bank_transfer' && settings.paymentQr.bank_transfer
+          ? admin.storage.from('quotation-public').getPublicUrl(settings.paymentQr.bank_transfer).data.publicUrl
+          : null,
+      qrPath: q.payment_route === 'bank_transfer' ? settings.paymentQr.bank_transfer : null,
+      afterPayUrl: q.after_pay_url ?? null,
+      contactUrl: q.contact_url ?? null,
+      parentSaidPaid: Boolean(q.parent_said_paid_at),
     }
     return json({ ok: true, quotation: view, paymentsReady: paymentsReady() })
   }
@@ -117,6 +127,36 @@ Deno.serve(async (req) => {
       if (again?.rzp_link_url) return json({ ok: true, url: again.rzp_link_url })
       return json({ ok: false, error: e instanceof Error && e.message.startsWith('Payments') ? '付款还没开通，请联系顾问。' : '暂时无法建立付款，请稍后再试。' }, 502)
     }
+  }
+
+  if (body.action === 'parent_paid' || body.action === 'parent_wrong') {
+    const paid = body.action === 'parent_paid'
+    if (paid && q.payment_route !== 'bank_transfer') return json({ ok: false, error: '这张报价单请在网上付款。' }, 409)
+    if (status === 'paid' || status === 'cancelled') return json({ ok: true, already: true })
+    const column = paid ? 'parent_said_paid_at' : 'parent_said_wrong_at'
+    // Once per quotation: a second press says thank you and tells nobody again.
+    const { data: first } = await admin
+      .from('quotations')
+      .update({ [column]: new Date().toISOString() })
+      .eq('id', q.id)
+      .is(column, null)
+      .select('id')
+      .maybeSingle()
+    if (first) {
+      await addEvent(admin, q.id, paid ? 'parent_paid' : 'parent_wrong')
+      const who = [q.sales_person_id, q.created_by].find((id) => typeof id === 'number')
+      if (who) {
+        await admin.from('staff_notifications').insert({
+          teacher_id: who,
+          title: (paid ? `Parent says transferred: ${q.child_name}` : `Parent says the quotation is wrong: ${q.child_name}`).slice(0, 200),
+          body: paid
+            ? `${q.reference_no} RM${Number(q.total).toFixed(2)}. Check the bank, then Mark as paid with the receipt in the chat's Quotation tab.`
+            : `${q.reference_no}: the parent pressed '资料不对'. Reply in the chat and send a new quotation if needed.`,
+          lead_id: q.lead_id,
+        })
+      }
+    }
+    return json({ ok: true, afterPayUrl: q.after_pay_url ?? null, contactUrl: q.contact_url ?? null })
   }
 
   return json({ ok: false, error: 'Unknown action.' }, 400)

@@ -7,6 +7,10 @@
 
 begin;
 
+-- 20261101300000_staff_pic_sync gives every new admin / staff account its own PIC name (same as the account name).
+-- This test makes its own PIC names, so the sync is off for it (the change is rolled back with the rest).
+alter table public.teachers disable trigger teachers_sync_pic;
+
 create function pg_temp.ok(p_cond boolean, p_name text) returns void language plpgsql as $$
 begin
   if p_cond is not true then
