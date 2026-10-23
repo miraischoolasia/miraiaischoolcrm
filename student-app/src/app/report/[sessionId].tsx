@@ -37,7 +37,9 @@ export default function ReportPage() {
 
   const theme = branding.homeStyle === 'lobby' ? lobbyThemes[branding.homeTheme] : undefined
   const words = theme?.report ?? englishReportWords
-  const background = null
+  // A school whose set has no Theme Park gets its lobby picture (the smallest one).
+  const lobbyPicture = theme?.scene.backgrounds?.[0]?.file ?? theme?.scene.background
+  const background = theme && lobbyPicture ? `${theme.folder}/${lobbyPicture}` : null
   const home$ = () => (router.canGoBack() ? router.back() : router.replace('/'))
 
   if (report === undefined && !error) {

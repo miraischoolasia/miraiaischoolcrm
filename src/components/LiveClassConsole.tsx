@@ -116,6 +116,8 @@ export function LiveClassConsole({
   const [openTools, setOpenTools] = useState<Tool[]>([])
   const [pickedId, setPickedId] = useState<number | null>(null)
   const [showReport, setShowReport] = useState(false)
+  // The class just ended: the report opens first, and closing it goes on to the attendance.
+  const [reportAfterEnd, setReportAfterEnd] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [reminderSettings, setReminderSettings] = useState<LateReminderSettings>(defaultLateReminder)
@@ -390,6 +392,11 @@ export function LiveClassConsole({
     if (result.error) {
       setError(result.error)
       setEnding('failed')
+      return
+    }
+    if (sessionId && live) {
+      setReportAfterEnd(true)
+      setShowReport(true)
       return
     }
     onEndClass()
@@ -1223,7 +1230,10 @@ export function LiveClassConsole({
           title={title}
           questions={live.questions}
           answers={live.answers}
-          onClose={() => setShowReport(false)}
+          onClose={() => {
+            setShowReport(false)
+            if (reportAfterEnd) onEndClass()
+          }}
         />
       )}
     </div>
