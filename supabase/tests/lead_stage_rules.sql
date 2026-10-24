@@ -21,6 +21,9 @@ $$;
 
 select webhook_key as key from public.chat_webhook_settings limit 1 \gset
 
+-- A live database already holds trial result events, so the checks below compare with how many there were here.
+select count(*) as trial_events_before from automation.rule_events where trigger_type in ('trial_attended', 'trial_absent') \gset
+
 -- An admin who is signed in, a trial classroom with a weekly slot.
 insert into auth.users (id) values ('00000000-0000-0000-0000-0000000000d1');
 insert into public.teachers (id, auth_user_id, username, full_name, role) overriding system value
@@ -40,7 +43,8 @@ values (99881, 99861, 'Stage Rules HOA slot', 'regular', 'weekly', 1, '10:00', '
 -- The switches exist and are all on, with the old behaviour as the options.
 -- ---------------------------------------------------------------------------------------------
 select pg_temp.ok((select count(*) from public.lead_stage_rules where enabled) = 4, 'four rules, all on');
-select pg_temp.ok((select options ->> 'students' from public.lead_stage_rules where key = 'converted_on_student_phone') = 'all', 'every student counts by default');
+-- (20261101900000: only students in a regular class convert a lead by their phone number; the school can switch back to "all".)
+select pg_temp.ok((select options ->> 'students' from public.lead_stage_rules where key = 'converted_on_student_phone') = 'regular', 'only students in a regular class count by default');
 select pg_temp.ok((select (options ->> 'count_automated')::boolean from public.lead_stage_rules where key = 'contacted_on_reply'), 'an automatic message counts by default');
 
 -- ---------------------------------------------------------------------------------------------
@@ -80,13 +84,19 @@ values (99821, 'Phone One', '60123450821', 'contacted'),
        (99822, 'Phone Two', '60123450822', 'contacted'),
        (99823, 'Phone Three', '60123450823', 'contacted');
 
--- Defaults: a trial student with the number converts it (as it did before).
+-- Default: a trial student with the number does not convert the lead (it is in no regular class).
+insert into public.students (id, full_name, phone, student_type, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date)
+  overriding system value values (99700, 'Trial Kid Zero', '60123450821', 'trial', 0, '2099-12-31', '2099-12-31', '2099-12-31');
+select pg_temp.ok(pg_temp.stage(99821) = 'contacted' and (select converted_student_id from public.leads where id = 99821) is null,
+  'default: a student with no regular class does not convert the lead');
+-- "All" is the old setting: every student with the number converts it.
+select public.set_lead_stage_rule('converted_on_student_phone', true, '{"students": "all"}');
 insert into public.students (id, full_name, phone, student_type, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date)
   overriding system value values (99701, 'Trial Kid', '60123450821', 'trial', 0, '2099-12-31', '2099-12-31', '2099-12-31');
 select pg_temp.ok(pg_temp.stage(99821) = 'converted' and (select converted_student_id from public.leads where id = 99821) = 99701,
-  'default: any student with the number converts the lead');
+  'all: any student with the number converts the lead');
 
--- Only regular students count: a trial student leaves the lead alone, a regular one converts it.
+-- Only students in a regular class count: a trial student leaves the lead alone, one in a regular class converts it.
 select public.set_lead_stage_rule('converted_on_student_phone', true, '{"students": "regular"}');
 insert into public.students (id, full_name, phone, student_type, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date)
   overriding system value values (99702, 'Trial Kid Two', '60123450822', 'trial', 0, '2099-12-31', '2099-12-31', '2099-12-31');
@@ -96,7 +106,10 @@ select pg_temp.ok((select parent_id from public.people where student_id = 99702)
   '...but the child is still tied to the parent');
 insert into public.students (id, full_name, phone, student_type, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date)
   overriding system value values (99703, 'Regular Kid', '60123450822', 'regular', 0, '2099-12-31', '2099-12-31', '2099-12-31');
-select pg_temp.ok(pg_temp.stage(99822) = 'converted', 'regular only: a regular student converts the lead');
+select pg_temp.ok(pg_temp.stage(99822) = 'contacted', 'regular only: a regular student with no class does not convert the lead');
+update public.students set classroom_id = 99872 where id = 99703;
+select pg_temp.ok(pg_temp.stage(99822) = 'converted' and (select converted_student_id from public.leads where id = 99822) = 99703,
+  'regular only: when the student joins a regular class the lead is converted');
 
 -- Switched off.
 select public.set_lead_stage_rule('converted_on_student_phone', false, null);
@@ -195,8 +208,8 @@ select tb.id as b1, tb.student_id as s1 from public.trial_bookings tb where tb.c
 select tb.id as b2, tb.student_id as s2 from public.trial_bookings tb where tb.child_name = 'Booked Kid Two' \gset
 select tb.id as b3, tb.student_id as s3 from public.trial_bookings tb where tb.child_name = 'Booked New Kid' \gset
 
-select pg_temp.ok((select count(*) from automation.rule_events where trigger_type in ('trial_attended', 'trial_absent')) = 0,
-  'no attendance yet: no trial result events');
+select pg_temp.ok((select count(*) from automation.rule_events where trigger_type in ('trial_attended', 'trial_absent')) = :trial_events_before,
+  'no attendance yet: no new trial result events');
 
 insert into public.lesson_logs (id, schedule_id, teacher_id, lesson_date, revision_number) overriding system value
 values (99891, 99881, 99861, :'monday'::date, 1);

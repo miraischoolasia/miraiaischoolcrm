@@ -77,3 +77,40 @@ describe('several classes', () => {
     expect(isInClassroomOn(both, 12, '2026-10-04')).toBe(false)
   })
 })
+
+describe('one-day seats (Change class / Replacement)', () => {
+  const seat = (kind: 'change' | 'replacement') => ({
+    id: 1,
+    studentId: 9,
+    kind,
+    fromClassroomId: 8,
+    fromDate: '2026-11-02',
+    toClassroomId: 10,
+    toDate: '2026-11-03',
+    note: null,
+  })
+
+  it('a change takes the child out of the old lesson that day and into the new one', () => {
+    const moved = { ...toh, lessonSeats: [seat('change')] }
+
+    expect(isInClassroomOn(moved, 8, '2026-11-02')).toBe(false)
+    expect(isInClassroomOn(moved, 10, '2026-11-03')).toBe(true)
+    // Any other day is as before.
+    expect(isInClassroomOn(moved, 8, '2026-11-09')).toBe(true)
+    expect(isInClassroomOn(moved, 10, '2026-11-10')).toBe(false)
+  })
+
+  it('a replacement keeps the child in the old lesson and adds the new one', () => {
+    const moved = { ...toh, lessonSeats: [seat('replacement')] }
+
+    expect(isInClassroomOn(moved, 8, '2026-11-02')).toBe(true)
+    expect(isInClassroomOn(moved, 10, '2026-11-03')).toBe(true)
+  })
+
+  it('lists the child on the roster of the lesson they sit in', () => {
+    const moved = { ...toh, lessonSeats: [seat('change')] }
+
+    expect(getClassroomRosterOn([moved, chong], 10, '2026-11-03').map((entry) => entry.name)).toEqual(['Toh'])
+    expect(getClassroomRosterOn([moved, chong], 8, '2026-11-02').map((entry) => entry.name)).toEqual(['Chong'])
+  })
+})

@@ -32,3 +32,24 @@ describe('buildChildRows', () => {
     expect(buildChildRows(leads, { ageGroup: '6-8' }).map((row) => row.age)).toEqual([7])
   })
 })
+
+describe('buildChildRows by grade', () => {
+  const graded = [
+    lead(10, 'Mum', '0123', [
+      { name: 'Alba', age: 8, phone: null, gradeLevel: 2, gradeYear: 2026 },
+      { name: 'Ben', age: 13, phone: null, gradeLevel: 7, gradeYear: 2026 },
+      { name: 'Cara', age: 10, phone: null },
+    ]),
+  ]
+
+  it('keeps the children in a grade, working the stored grade up to the day', () => {
+    expect(buildChildRows(graded, { grade: 2, today: '2026-10-23' }).map((row) => row.childName)).toEqual(['Alba'])
+    expect(buildChildRows(graded, { grade: 3, today: '2027-03-01' }).map((row) => row.childName)).toEqual(['Alba'])
+    expect(buildChildRows(graded, { grade: 7, today: '2026-10-23' }).map((row) => row.childName)).toEqual(['Ben'])
+  })
+
+  it('leaves out a child with no grade stored, and ignores the grade when none is asked for', () => {
+    expect(buildChildRows(graded, { grade: 4, today: '2026-10-23' })).toEqual([])
+    expect(buildChildRows(graded, { grade: null }).map((row) => row.childName)).toEqual(['Alba', 'Ben', 'Cara'])
+  })
+})

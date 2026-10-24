@@ -4,11 +4,13 @@ import type { Json } from '../../types/database'
 import { DEFAULT_INVOICE_TEMPLATE, type CohortEntry, type CycleTier, type GlobalRates, type InvoiceTemplate, type SubjectKind, type SubjectOption } from './types'
 import { buildCohortRates, type FeeLevel, type FeeRateRow, type FeeTrack } from './quote'
 import { DEFAULT_GLOBAL_RATES, type FeeSubjectLevel } from './seed'
+import { followPriceGroups } from '../../../supabase/functions/_shared/quotation/priceGroups.ts'
 
 // Reading and saving the Fee Calculator's prices (20261030300000_fee_calculator.sql). Everything is read with the
 // fee_calculator tick and saved through the database functions, which check the edit tick themselves.
 
-export type FeeCohort = { id: number; name: string; sortOrder: number; isActive: boolean; materialsIncluded: boolean }
+// usesCohortId: the group whose prices this one uses (follows it); null = its own prices.
+export type FeeCohort = { id: number; name: string; sortOrder: number; isActive: boolean; materialsIncluded: boolean; usesCohortId?: number | null }
 export type FeeSubject = {
   id: number
   level: FeeSubjectLevel
@@ -66,13 +68,17 @@ function bySort<T extends { sortOrder: number; isActive: boolean }>(rows: T[]) {
 // Null when the tables are not there yet (before the migration) or cannot be read.
 export async function fetchFeeCalculatorData(): Promise<FeeCalculatorData | null> {
   if (!supabase) return null
-  const [cohorts, rates, subjects, settings, levels] = await Promise.all([
-    supabase.from('fee_cohorts').select('id, membership_name, sort_order, is_active, materials_included_in_tuition'),
+  const [cohortsWithFollow, rates, subjects, settings, levels] = await Promise.all([
+    supabase.from('fee_cohorts').select('id, membership_name, sort_order, is_active, materials_included_in_tuition, uses_cohort_id'),
     supabase.from('fee_rates').select('cohort_id, level, track, subject_count, cycle_tier, amount'),
     supabase.from('fee_subjects').select('id, level, code, label, kind, sort_order, is_active'),
     supabase.from('fee_settings').select('key, value'),
     supabase.from('student_field_options').select('name, sort_order, is_active').eq('field', 'membership'),
   ])
+  // Before 20261101520000 there is no uses_cohort_id: read the groups without it.
+  const cohorts = cohortsWithFollow.error
+    ? await supabase.from('fee_cohorts').select('id, membership_name, sort_order, is_active, materials_included_in_tuition')
+    : cohortsWithFollow
   if (cohorts.error || rates.error || subjects.error || settings.error) return null
   // The class subject of each (20261031100000); left out when that update is not there yet.
   const links = await supabase.from('fee_subjects').select('id, subject_id')
@@ -86,6 +92,7 @@ export async function fetchFeeCalculatorData(): Promise<FeeCalculatorData | null
         sortOrder: row.sort_order,
         isActive: row.is_active,
         materialsIncluded: row.materials_included_in_tuition,
+        usesCohortId: ((row as { uses_cohort_id?: number | null }).uses_cohort_id) ?? null,
       })),
     ),
     rates: (rates.data ?? []).map((row) => ({
@@ -118,15 +125,31 @@ export async function fetchFeeCalculatorData(): Promise<FeeCalculatorData | null
 
 // The groups a consultant picks from (hidden ones left out), in the shape the maths reads.
 export function cohortEntries(data: FeeCalculatorData): CohortEntry[] {
-  return data.cohorts
+  // A group that follows another uses that group's prices (and its "materials in tuition").
+  const { cohorts, rates } = followPriceGroups(data.cohorts, data.rates)
+  return cohorts
     .filter((cohort) => cohort.isActive)
     .map((cohort) => ({
       key: String(cohort.id),
       label: cohort.name,
-      primary: buildCohortRates(data.rates, cohort.id, 'primary'),
-      secondary: buildCohortRates(data.rates, cohort.id, 'secondary'),
+      primary: buildCohortRates(rates, cohort.id, 'primary'),
+      secondary: buildCohortRates(rates, cohort.id, 'secondary'),
       materialsIncludedInTuition: cohort.materialsIncluded,
     }))
+}
+
+// Follow another group's prices (usesCohortId null: back to its own). Null when saved, else the reason.
+export async function setFeeCohortFollow(cohortId: number, usesCohortId: number | null) {
+  if (!supabase) return 'Supabase is not configured.'
+  const { error } = await supabase.rpc('set_fee_cohort_follow', { p_cohort_id: cohortId, p_uses_cohort_id: usesCohortId })
+  return error ? reason(error, 'Could not save.') : null
+}
+
+// Copy another group's whole price table into this one (it then has its own). Null when saved, else the reason.
+export async function copyFeeCohortRates(cohortId: number, fromCohortId: number) {
+  if (!supabase) return 'Supabase is not configured.'
+  const { error } = await supabase.rpc('copy_fee_cohort_rates', { p_cohort_id: cohortId, p_from_cohort_id: fromCohortId })
+  return error ? reason(error, 'Could not copy the prices.') : null
 }
 
 export function subjectOptions(data: FeeCalculatorData, level: FeeSubjectLevel): SubjectOption[] {

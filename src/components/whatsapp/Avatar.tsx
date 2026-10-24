@@ -41,6 +41,8 @@ export function PictureOrText({ src, text }: { src: string | null | undefined; t
       src={src}
       alt=""
       loading="lazy"
+      // Pictures are often 640 px for a small circle: decoding them off the main thread keeps a scrolling list smooth.
+      decoding="async"
       referrerPolicy="no-referrer"
       onError={() => setFailed(src)}
       className="h-full w-full rounded-full object-cover"

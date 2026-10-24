@@ -15,7 +15,7 @@ export type StageRule = {
   enabled: boolean
   // contacted_on_reply: an automatic message counts as the school writing.
   countAutomated: boolean
-  // converted_on_student_phone: every student with the lead's number counts, or only regular ones (not HOA trial).
+  // converted_on_student_phone: every student with the lead's number counts, or only students in a regular class (not HOA trial, not without a class).
   students: 'all' | 'regular'
 }
 

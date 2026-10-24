@@ -59,6 +59,8 @@ export function mapStudentRow(row: StudentRow): Student {
     packageId: row.package_id,
     // Stays undefined until the migration adds the column, so a save can tell whether it exists.
     dateOfBirth: row.date_of_birth,
+    gradeLevel: row.grade_level,
+    gradeYear: row.grade_year,
   }
 }
 
@@ -264,6 +266,8 @@ export function mapTrialBookingRow(row: TrialBookingRow): TrialBooking {
     studentId: row.student_id,
     childName: row.child_name,
     childAge: row.child_age,
+    gradeLevel: row.grade_level,
+    gradeYear: row.grade_year,
     phone: row.phone,
     notes: row.notes,
   }

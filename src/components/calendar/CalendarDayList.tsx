@@ -357,6 +357,14 @@ export function CalendarDayList({
   )
 }
 
+// A trial slot, a camp class and a replacement day wear a small tag, so a teacher tells the kinds apart.
+const KIND_TAG = {
+  regular: '',
+  trial: 'bg-teal-100 text-teal-800',
+  camp: 'bg-emerald-100 text-emerald-800',
+  replacement: 'bg-orange-100 text-orange-800',
+} as const
+
 function LessonCard({
   lesson,
   isToday,
@@ -378,12 +386,17 @@ function LessonCard({
       <button
         type="button"
         onClick={onOpen}
-        aria-label={`${lesson.title}, ${lesson.teacherName}, ${plural(lesson.studentCount, 'student')}`}
+        aria-label={`${lesson.title}, ${lesson.teacherName}, ${lesson.kind === 'trial' ? `${lesson.studentCount} booked` : plural(lesson.studentCount, 'student')}`}
         className="flex w-full items-center gap-3 py-2.5 pl-4 pr-3 text-left sm:flex-col sm:items-stretch sm:gap-1 sm:pb-1"
       >
         <span className="flex min-w-[48px] flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:gap-1.5">
           {lesson.subject && <span className={cn('rounded-md px-1.5 py-0.5 text-[11px] font-bold', tone.tag)}>{lesson.subject}</span>}
           {lesson.grade && <span className="text-[11px] font-bold text-slate-500">{shortGrade(lesson.grade)}</span>}
+          {lesson.kind !== 'regular' && (
+            <span className={cn('rounded-md px-1.5 py-0.5 text-[10px] font-bold', KIND_TAG[lesson.kind])}>
+              {lesson.kind === 'replacement' ? 'Replacement' : (lesson.categoryName ?? (lesson.kind === 'trial' ? 'Trial' : 'Camp'))}
+            </span>
+          )}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-bold text-slate-900">{lesson.title}</span>
@@ -391,7 +404,7 @@ function LessonCard({
             <span className="truncate">{lesson.teacherName}</span>
             <span className="flex shrink-0 items-center gap-0.5">
               <UsersThree size={12} aria-hidden="true" />
-              {lesson.studentCount}
+              {lesson.kind === 'trial' ? `${lesson.studentCount} booked` : lesson.studentCount}
             </span>
             {submitted && (
               <span className="flex shrink-0 items-center gap-0.5 font-semibold text-emerald-700">

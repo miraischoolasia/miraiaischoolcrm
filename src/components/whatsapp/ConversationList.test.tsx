@@ -397,3 +397,14 @@ describe('ConversationList lead stage', () => {
     expect(onStage).toHaveBeenCalledWith('contacted')
   })
 })
+
+describe('ConversationList follow-up tag', () => {
+  it('tags a chat whose follow-up is overdue or for today', () => {
+    renderList([chat(1, 'Mei Ling', 60), chat(2, 'Aisha', 120), chat(3, 'Kim', 180)], 0, {
+      followUpOf: (conversation) => (conversation.id === 1 ? 'late' : conversation.id === 2 ? 'today' : null),
+    })
+    expect(screen.getByText('Overdue')).toBeInTheDocument()
+    expect(screen.getByText('Follow up today')).toBeInTheDocument()
+    expect(screen.getAllByTitle('Follow-up')).toHaveLength(2)
+  })
+})

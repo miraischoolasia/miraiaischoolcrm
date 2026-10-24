@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { keepIfSame } from '../lib/sameData'
 import { channelsByLead, fetchLeadChannels, type LeadChannel } from '../lib/leadChannels'
 
 const REFRESH_MS = 60_000
@@ -13,7 +14,8 @@ export function useLeadChannels(enabled: boolean) {
       return
     }
     try {
-      setRows(await fetchLeadChannels())
+      const next = await fetchLeadChannels()
+      setRows(keepIfSame(next))
     } catch {
       // Keep what is shown.
     }

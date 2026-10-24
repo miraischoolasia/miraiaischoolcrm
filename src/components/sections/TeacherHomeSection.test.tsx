@@ -168,3 +168,17 @@ describe('TeacherHomeSection', () => {
     expect(onOpenCalendar).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('TeacherHomeSection empty slots', () => {
+  it('lists a trial slot nobody booked, without attendance or Live class buttons', () => {
+    renderHome(
+      { today: [item({ key: 'e', title: 'HOA Trial Fri', kind: 'trial', subtitle: 'Trial class', studentCount: 0, empty: true, state: 'later' })] },
+      { onRunLive: vi.fn() },
+    )
+    expect(screen.getByText('HOA Trial Fri · Trial class')).toBeInTheDocument()
+    expect(screen.getByText('0 booked')).toBeInTheDocument()
+    expect(screen.getByText('Nobody booked yet · keep the time free')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Take attendance' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Live class' })).toBeNull()
+  })
+})

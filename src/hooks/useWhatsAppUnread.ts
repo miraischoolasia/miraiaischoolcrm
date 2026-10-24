@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { keepIfSame } from '../lib/sameData'
 import type { ChatwootClient } from '../lib/chatwootClient'
 import { isSoundOn, playAlertSound, showDesktopAlert } from '../lib/inboxAlerts'
 import { fetchBadgeChats, fetchBadgeChatsChangedSince, fillCopy } from '../lib/inboxCopyReader'
@@ -130,8 +131,8 @@ export function useWhatsAppUnread(
   // A new list of open chats: the badge, the 30-minute bell and the new-message bell.
   const publishRef = useRef<(chats: ChatwootConversation[]) => void>(() => undefined)
   publishRef.current = (everyChat: ChatwootConversation[]) => {
-    setOpenChats(everyChat)
-    setCounts(countUnreadAcross(everyChat, [], allowedInboxIds, siblingsRef.current, excludedRef.current))
+    setOpenChats(keepIfSame(everyChat))
+    setCounts(keepIfSame(countUnreadAcross(everyChat, [], allowedInboxIds, siblingsRef.current, excludedRef.current)))
     const conversations = onePerParent(
       everyChat.filter((entry) => isOnAllowedNumber(entry, allowedInboxIds, excludedRef.current)),
       siblingsRef.current,

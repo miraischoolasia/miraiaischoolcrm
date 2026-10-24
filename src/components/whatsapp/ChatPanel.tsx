@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from 'react'
-import type { VariableValues } from '../../lib/quickReplies'
+import type { QuickReply, VariableValues } from '../../lib/quickReplies'
 import { ArrowBendUpRight, ArrowCounterClockwise, ArrowDown, CaretDown, CaretLeft, CaretUp, CheckCircle, EnvelopeSimple, Info, Lightning, MagnifyingGlass, PushPin, UserCircle, X } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
 import type { Sender } from '../../lib/chatwootClient'
@@ -28,6 +28,8 @@ import { isEditCopy, withoutEditHeading } from '../../lib/editCopy'
 import { isCheckingReaction } from '../../lib/reactionPreview'
 import { useAiSuggestion } from '../../hooks/useAiSuggestion'
 import { recordAiDraftSent, type AiDraftContext } from '../../lib/aiDraft'
+import { useChatAdReferrals } from '../../lib/chatAdReferrals'
+import { AdReferralBanner } from './AdReferralCard'
 import type { ChatSwitchOption } from '../../lib/chatSwitch'
 
 type ChatPanelProps = {
@@ -63,6 +65,7 @@ type ChatPanelProps = {
   onManageQuickReplies?: () => void
   // Text written for the message box by the enrol steps.
   draftRequest?: { id: number; text: string } | null
+  quickReplyRequest?: { id: number; reply: QuickReply } | null
   // Files put in the message box from elsewhere (the Quotation tab's PDF); each new id is added once.
   fileRequest?: { id: number; files: File[] } | null
   // Opens the lead's full page; only for a chat that belongs to a lead.
@@ -98,6 +101,8 @@ type ChatPanelProps = {
   onToggleStar?: (message: ChatwootMessage) => void
   // Messages pinned at the top of the chat (newest first), and pinning or unpinning one.
   pinnedMessageIds?: number[]
+  // The lead's next follow-up, shown above the messages (FollowUpChatBar).
+  followUpBar?: React.ReactNode
   onTogglePinMessage?: (messageId: number) => void
   // Forwards one or several messages, oldest first.
   onForward?: (messages: ChatwootMessage[]) => void
@@ -167,6 +172,7 @@ export function ChatPanel({
   quickReplyValues,
   onManageQuickReplies,
   draftRequest,
+  quickReplyRequest = null,
   fileRequest = null,
   onOpenLead,
   picture = null,
@@ -189,6 +195,7 @@ export function ChatPanel({
   starredIds = [],
   onToggleStar,
   pinnedMessageIds = [],
+  followUpBar,
   onTogglePinMessage,
   onForward,
   onMakeQuickReply,
@@ -200,6 +207,7 @@ export function ChatPanel({
   onSwitchChat,
 }: ChatPanelProps) {
   const identity = getChatIdentity(conversation.meta.sender, leadName, conversation.meta.channel)
+  const adReferrals = useChatAdReferrals(conversation.id)
   // The grey reply suggestion; asked for only when the box is empty and the parent wrote last.
   const ai = useAiSuggestion({
     enabled: aiContext !== null,
@@ -686,6 +694,10 @@ export function ChatPanel({
         </div>
       </div>
 
+      {/* The ad the parent clicked to message the school (WhatsApp, Messenger or Instagram), when there is one. */}
+      <AdReferralBanner conversationId={conversation.id} ads={adReferrals} />
+      {followUpBar}
+
       {pinnedMessageIds.length > 0 && (
         <div aria-label="Pinned messages" className="border-b border-pink-100 bg-pink-50/40 px-3 py-1.5">
           {pinnedMessageIds.map((id) => {
@@ -979,6 +991,7 @@ export function ChatPanel({
         variables={quickReplyValues}
         onManageQuickReplies={onManageQuickReplies}
         draftRequest={draftRequest}
+        quickReplyRequest={quickReplyRequest}
         droppedFiles={dropped}
         sendingFrom={sendingFrom}
         sendingFromColor={sendingFromColor}

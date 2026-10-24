@@ -91,6 +91,9 @@ type StudentDetailModalProps = {
   makeupClasses?: { id: number; name: string }[]
   onArrangeMakeup?: (classroomId: number) => void
   onEditMakeup?: (planId: number) => void
+  // One-day seats in another class's lesson (Change class / Replacement), as text lines; the button opens the booking dialog.
+  lessonSeatLines?: string[]
+  onOpenLessonSeats?: () => void
   // Left out when the account may not edit students.
   onEdit?: () => void
   onRenew?: () => void
@@ -166,6 +169,8 @@ export function StudentDetailModal({
   canEditVideoAccess = false,
   onArrangeMakeup,
   onEditMakeup,
+  lessonSeatLines = NO_SEAT_LINES,
+  onOpenLessonSeats,
   onEdit,
   onRenew,
   enrollments = NO_ENROLLMENTS,
@@ -753,6 +758,33 @@ export function StudentDetailModal({
                 </div>
               </Card>
             )}
+
+            {(lessonSeatLines.length > 0 || onOpenLessonSeats) && (
+              <Card
+                title="Other lessons"
+                note="Change class (before the lesson) or Replacement (after it): the child sits in another class's lesson for one day."
+                action={
+                  onOpenLessonSeats ? (
+                    <button
+                      type="button"
+                      onClick={onOpenLessonSeats}
+                      className="shrink-0 rounded-xl bg-[#fc0c97] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
+                    >
+                      Change class / Replacement
+                    </button>
+                  ) : undefined
+                }
+              >
+                <div className="space-y-2">
+                  {lessonSeatLines.length === 0 && <div className="text-sm text-slate-500">No other lessons booked.</div>}
+                  {lessonSeatLines.map((line) => (
+                    <div key={line} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-700">
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
           </>
         )}
 
@@ -1207,8 +1239,9 @@ function ClassStartField({
 }
 
 const NO_MAKEUP_CLASSES: { id: number; name: string }[] = []
+const NO_SEAT_LINES: string[] = []
 
-// "Arrange Make-up"; with several classes, first which class it is for.
+// "Extra minutes"; with several classes, first which class it is for.
 function MakeupButton({
   classes,
   onArrange,
@@ -1239,7 +1272,7 @@ function MakeupButton({
         onClick={() => onArrange(picked)}
         className="rounded-xl bg-[#fc0c97] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#de0a84]"
       >
-        Arrange Make-up
+        Extra minutes
       </button>
     </div>
   )

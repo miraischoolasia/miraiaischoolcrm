@@ -24,6 +24,8 @@ export type QuickReply = {
   isActive: boolean
   // The person it belongs to: only they see it. Empty for the team's quick replies.
   ownerId?: string | null
+  // A follow-up template: offered on the bar above the chat for this follow-up of a round (1 = the first).
+  followupStep?: number | null
 }
 
 export const MAX_QUICK_REPLY_STEPS = 10

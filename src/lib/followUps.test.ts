@@ -3,6 +3,8 @@ import type { CalendarItem } from './calendarItems'
 import {
   describeFollowUp,
   dueFollowUps,
+  followUpWorklist,
+  nextFollowUpOf,
   followUpChoices,
   followUpDraft,
   followUpError,
@@ -165,5 +167,36 @@ describe('todaysFollowUps', () => {
       { id: 1, leadId: 11, title: 'Follow up Mei Ling', notes: null, when: 'Today 18:00', late: false },
     ])
     expect(todaysFollowUps(items, null, now)).toEqual([])
+  })
+})
+
+describe('the follow-up work list', () => {
+  const auto = (id: number, date: string, step: number, change: Partial<CalendarItem> = {}) =>
+    item(id, { date, startTime: '10:00', followupRound: 1, followupStep: step, ...change })
+  const items = [
+    auto(1, '2026-10-15', 1),
+    auto(2, '2026-10-17', 2),
+    auto(3, '2026-10-20', 3),
+    auto(4, '2026-10-30', 4),
+    auto(5, '2026-10-16', 5, { isDone: true }),
+    item(6, { date: '2026-10-17', assigneeId: 2, leadId: 12 }),
+  ]
+
+  it('splits what is open into overdue, today and the next 7 days, with the step of its round', () => {
+    const list = followUpWorklist(items, { meId: 1, seesAll: false, now })
+    expect(list.late.map((row) => row.item.id)).toEqual([1])
+    expect(list.today.map((row) => [row.item.id, row.stepLabel])).toEqual([[2, '2/5']])
+    expect(list.soon.map((row) => row.item.id)).toEqual([3])
+  })
+
+  it('shows someone only their own, an admin everybody', () => {
+    expect(followUpWorklist(items, { meId: 1, seesAll: false, now }).today.map((row) => row.item.id)).toEqual([2])
+    expect(followUpWorklist(items, { meId: 1, seesAll: true, now }).today.map((row) => row.item.id)).toEqual([2, 6])
+  })
+
+  it('gives a chat its lead next follow-up and whether it is late', () => {
+    expect(nextFollowUpOf(items, 11, now)).toMatchObject({ state: 'late', stepLabel: '1/5' })
+    expect(nextFollowUpOf(items, 12, now)).toMatchObject({ state: 'today', stepLabel: null })
+    expect(nextFollowUpOf(items, 99, now)).toBeNull()
   })
 })

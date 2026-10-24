@@ -148,3 +148,36 @@ describe('Fee Calculator', () => {
     expect(settingsApi.saveCohort).toHaveBeenCalledWith(null, { name: 'LATEST' })
   })
 })
+
+describe('a price group that uses another group’s prices (boss 2026-10-23)', () => {
+  function withLatest(): FeeCalculatorData {
+    const data = seedData()
+    return { ...data, cohorts: [...data.cohorts, { id: 9, name: 'LATEST', sortOrder: 90, isActive: true, materialsIncluded: false, usesCohortId: 1 }] }
+  }
+
+  it('the calculator prices LATEST as the group it follows', () => {
+    const entries = cohortEntries(withLatest())
+    const first = entries.find((e) => e.key === '1')
+    const latest = entries.find((e) => e.label === 'LATEST')
+    expect(latest?.primary).toEqual(first?.primary)
+    expect(latest?.materialsIncludedInTuition).toBe(first?.materialsIncludedInTuition)
+  })
+
+  it('settings: shows whose prices it uses, no price editing for it; back to its own; copy a table', async () => {
+    const user = userEvent.setup()
+    const data = withLatest()
+    const first = data.cohorts[0]
+    const second = data.cohorts[1]
+    const settingsApi = { ...api(), followCohort: vi.fn(async () => null), copyRates: vi.fn(async () => null) }
+    render(<FeeCalculatorSection canEdit isAdmin load={async () => data} api={settingsApi} />)
+    await user.click(await screen.findByRole('tab', { name: 'Price settings' }))
+    const row = screen.getByText(`uses ${first.name}'s prices`).closest('li') as HTMLElement
+    expect(within(row).queryByRole('button', { name: 'Edit prices' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText(`Prices for ${first.name}`)).toBeDisabled()
+    await user.selectOptions(screen.getByLabelText('Prices for LATEST'), 'Own prices')
+    expect(settingsApi.followCohort).toHaveBeenCalledWith(9, null)
+    await user.selectOptions(screen.getByLabelText(`Copy prices into ${second.name} from`), String(first.id))
+    await user.click(within(screen.getByLabelText(`Copy prices into ${second.name} from`).closest('li') as HTMLElement).getByRole('button', { name: 'Copy' }))
+    expect(settingsApi.copyRates).toHaveBeenCalledWith(second.id, first.id)
+  })
+})

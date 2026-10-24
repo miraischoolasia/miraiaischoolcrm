@@ -11,9 +11,16 @@ import { LeadOptionPicker } from '../LeadOptionPicker'
 import { LeadTagPicker } from '../LeadTagPicker'
 import { WhatsAppLink } from '../WhatsAppLink'
 import { withCodes } from '../../lib/studentCodeLabel'
+import { rollupStage } from '../../lib/childStages'
+import { useAgeDisplay } from '../../lib/ageDisplay'
+import { approximateAge } from '../../lib/grade'
+import { GradeSelect } from '../GradeSelect'
+import { stageLabel } from '../../lib/leadStages'
 import { HiddenNumberNote, LeadChannelLines } from '../LeadChannelLines'
 import { isHiddenNumberName, type LeadChannel } from '../../lib/leadChannels'
 import { formatDateTime } from '../../lib/forms'
+import { useLeadFirstAd } from '../../lib/chatAdReferrals'
+import { AdReferralLine } from '../whatsapp/AdReferralCard'
 import { trafficSourceLabel } from '../../lib/formInsights'
 import type {
   Lead,
@@ -71,7 +78,9 @@ export function LeadModal({
   focusFormAnswers = false,
   readOnly = false,
 }: LeadModalProps) {
+  const firstAd = useLeadFirstAd(editingLead?.id ?? null)
   const formAnswersRef = useRef<HTMLElement>(null)
+  const ageMode = useAgeDisplay()
   const hasFormAnswers = formSubmissions.length > 0
 
   useEffect(() => {
@@ -123,6 +132,8 @@ export function LeadModal({
                 ? 'Update contact details, pipeline stage, and follow-up notes.'
                 : 'Capture a new prospective student inquiry.'}
             </p>
+            {/* The ad this lead first clicked to message the school (chat_ad_referrals), when there is one. */}
+            <AdReferralLine ad={firstAd} className="mt-3 max-w-md rounded-xl bg-amber-50/60 px-2.5 py-1.5" />
           </div>
           <button
             type="button"
@@ -274,8 +285,8 @@ export function LeadModal({
             <div>
               <div className="text-sm font-semibold text-slate-700">Children</div>
               <p className="text-xs text-slate-500">
-                Add each child's age (up to {MAX_LEAD_CHILDREN}) so the right classroom can be
-                offered.
+                Add each child's {ageMode === 'grade' ? 'grade' : 'age'} (up to {MAX_LEAD_CHILDREN}) so the right
+                classroom can be offered.
               </p>
             </div>
             <button
@@ -291,6 +302,13 @@ export function LeadModal({
 
           {formState.children.length === 0 && (
             <p className="text-sm text-slate-400">No children added yet.</p>
+          )}
+
+          {formState.children.some((child) => child.stage) && (
+            <p className="text-xs text-slate-500">
+              The family is {stageLabel(rollupStage(formState.children.map((child) => ({ stage: child.stage })), formState.status))}:
+              the child who still needs following up decides.
+            </p>
           )}
 
           {formState.children.map((child, index) => (
@@ -312,18 +330,45 @@ export function LeadModal({
                 placeholder="Phone (optional)"
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#fc0c97] sm:w-40"
               />
-              <select
-                value={child.age}
-                onChange={(event) => updateChild(index, { age: event.target.value })}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#fc0c97] sm:w-32"
-              >
-                <option value="">Age</option>
-                {leadChildAgeOptions.map((age) => (
-                  <option key={age} value={age}>
-                    {age} years old
-                  </option>
-                ))}
-              </select>
+              {ageMode === 'grade' ? (
+                <GradeSelect
+                  value={child.gradeLevel ?? ''}
+                  // The age is kept too (the usual age of the grade), for the screens that still need a number.
+                  onChange={(level) =>
+                    updateChild(index, { gradeLevel: level, ...(level ? { age: String(approximateAge(Number(level))) } : {}) })
+                  }
+                  ariaLabel={`Grade of child ${index + 1}`}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#fc0c97] sm:w-32"
+                />
+              ) : (
+                <select
+                  value={child.age}
+                  onChange={(event) => updateChild(index, { age: event.target.value })}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#fc0c97] sm:w-32"
+                >
+                  <option value="">Age</option>
+                  {leadChildAgeOptions.map((age) => (
+                    <option key={age} value={age}>
+                      {age} years old
+                    </option>
+                  ))}
+                </select>
+              )}
+              {formState.children.length > 1 && (
+                <select
+                  value={child.stage ?? ''}
+                  onChange={(event) => updateChild(index, { stage: event.target.value })}
+                  aria-label={`Stage of child ${index + 1}`}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#fc0c97] sm:w-44"
+                >
+                  <option value="">Stage: same as family</option>
+                  {leadStatusOptions.map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              )}
               <button
                 type="button"
                 onClick={() => removeChild(index)}

@@ -102,6 +102,8 @@ function ReplyForm({
       : rowsOf(existing),
   )
   const [isActive, setIsActive] = useState(existing?.isActive ?? true)
+  // A follow-up template: which follow-up of a round it is for ('' = not a template).
+  const [followupStep, setFollowupStep] = useState(existing?.followupStep ? String(existing.followupStep) : '')
   // The file row that is picking from Galleries.
   const [galleryFor, setGalleryFor] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -178,7 +180,14 @@ function ReplyForm({
     }
     setIsSaving(true)
     setError(null)
-    const problem = await onSave(existing, { title, steps, isActive, ...(!existing && personal ? { personal: true } : {}) })
+    const problem = await onSave(existing, {
+      title,
+      steps,
+      isActive,
+      // Only when it is (or was) a follow-up template, so a plain reply saves as before.
+      ...(followupStep || existing?.followupStep ? { followupStep: followupStep ? Number(followupStep) : null } : {}),
+      ...(!existing && personal ? { personal: true } : {}),
+    })
     setIsSaving(false)
     if (problem) {
       setError(problem)
@@ -371,6 +380,24 @@ function ReplyForm({
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input type="checkbox" checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />
           Show it in the quick reply list
+        </label>
+
+        <label className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+          Follow-up template for
+          <select
+            value={followupStep}
+            onChange={(event) => setFollowupStep(event.target.value)}
+            aria-label="Follow-up template for"
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm"
+          >
+            <option value="">Not a follow-up template</option>
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((step) => (
+              <option key={step} value={step}>
+                Follow-up {step}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-slate-500">Offered on the chat's follow-up bar for that follow-up.</span>
         </label>
 
         {error && (
@@ -597,6 +624,11 @@ export function QuickReplyManager({
                     {!reply.isActive && (
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">Hidden</span>
                     )}
+                    {reply.followupStep ? (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+                        Follow-up {reply.followupStep}
+                      </span>
+                    ) : null}
                   </p>
                   {reply.steps.map((step, position) =>
                     step.kind === 'text' ? (

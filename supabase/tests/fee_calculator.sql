@@ -58,19 +58,37 @@ select pg_temp.ok(public.valid_account_permissions('{"fee_calculator": {"level":
 select pg_temp.ok(not public.valid_account_permissions('{"fee_calculator": {"level": "edit", "scope": "own"}}'), 'fee_calculator has no "whose" scope');
 select pg_temp.ok(public.valid_account_permissions('{"student_inbox": {"level": "view"}, "content_library": {"level": "view"}}'), 'the older ticks are still valid');
 
--- Starting data.
-select pg_temp.ok((select value = '{"enabled": false}'::jsonb from public.app_settings where key = 'fee_calculator'), 'off until the school switches it on');
-select pg_temp.ok((select count(*) = 2 from public.fee_cohorts), 'two price groups (26002, 26001)');
-select pg_temp.ok((select materials_included_in_tuition from public.fee_cohorts where membership_name = '26002'), '26002 holds materials in the tuition');
-select pg_temp.ok((select not materials_included_in_tuition from public.fee_cohorts where membership_name = '26001'), '26001 does not');
-select pg_temp.ok((select count(*) = 126 from public.fee_rates), '126 prices (63 per group)');
-select pg_temp.ok((select amount = 195 from public.fee_rates r join public.fee_cohorts c on c.id = r.cohort_id
-  where c.membership_name = '26002' and level = 'primary' and track = 'standard' and subject_count = 3 and cycle_tier = 'monthly'), '26002 3 subjects monthly = 195');
-select pg_temp.ok((select amount = 500 from public.fee_rates r join public.fee_cohorts c on c.id = r.cohort_id
-  where c.membership_name = '26001' and level = 'secondary' and track = 'standard' and subject_count = 10 and cycle_tier = '6mo_plus'), '26001 10 subjects = 500');
-select pg_temp.ok((select count(*) = 25 from public.fee_subjects), '25 subjects (8 + 14 + 3)');
-select pg_temp.ok((select (value -> 'postage' -> 'east' -> '5_plus' ->> '3')::numeric = 40 from public.fee_settings where key = 'global_rates'), 'East Malaysia 5+ subjects, 3 months = 40');
-select pg_temp.ok((select value ->> 'totalLine' = 'TOTAL RM{total}' from public.fee_settings where key = 'invoice_template'), 'the text template is there');
+-- Starting data: the migration's own numbers, checked only on a fresh database (just the two seeded groups). A school
+-- that already set its own prices (EduHero has eight groups) keeps them, so there the seed checks are skipped.
+do $$
+begin
+  if (select count(*) from public.fee_cohorts) = 2
+     and not exists (select 1 from public.fee_cohorts where membership_name not in ('26001', '26002')) then
+    perform pg_temp.ok((select value = '{"enabled": false}'::jsonb from public.app_settings where key = 'fee_calculator'), 'off until the school switches it on');
+    perform pg_temp.ok((select materials_included_in_tuition from public.fee_cohorts where membership_name = '26002'), '26002 holds materials in the tuition');
+    perform pg_temp.ok((select not materials_included_in_tuition from public.fee_cohorts where membership_name = '26001'), '26001 does not');
+    perform pg_temp.ok((select count(*) = 126 from public.fee_rates), '126 prices (63 per group)');
+    perform pg_temp.ok((select amount = 195 from public.fee_rates r join public.fee_cohorts c on c.id = r.cohort_id
+      where c.membership_name = '26002' and level = 'primary' and track = 'standard' and subject_count = 3 and cycle_tier = 'monthly'), '26002 3 subjects monthly = 195');
+    perform pg_temp.ok((select amount = 500 from public.fee_rates r join public.fee_cohorts c on c.id = r.cohort_id
+      where c.membership_name = '26001' and level = 'secondary' and track = 'standard' and subject_count = 10 and cycle_tier = '6mo_plus'), '26001 10 subjects = 500');
+    perform pg_temp.ok((select count(*) = 25 from public.fee_subjects), '25 subjects (8 + 14 + 3)');
+    perform pg_temp.ok((select (value -> 'postage' -> 'east' -> '5_plus' ->> '3')::numeric = 40 from public.fee_settings where key = 'global_rates'), 'East Malaysia 5+ subjects, 3 months = 40');
+    perform pg_temp.ok((select value ->> 'totalLine' = 'TOTAL RM{total}' from public.fee_settings where key = 'invoice_template'), 'the text template is there');
+  else
+    raise notice 'SKIP the seed checks: this database has its own price groups (% of them)', (select count(*) from public.fee_cohorts);
+  end if;
+end
+$$;
+select pg_temp.ok((select count(*) = 2 from public.fee_cohorts where membership_name in ('26001', '26002')), 'the groups 26001 and 26002 are there');
+
+-- What is there before this test, and a membership level of its own (so it never meets a real group).
+insert into public.student_field_options (field, name, sort_order) values ('membership', 'FCT Test Level', 9999);
+create temporary table fct_base as
+select (select count(*) from public.fee_cohorts) as cohorts,
+       (select count(*) from public.fee_rates) as rates,
+       (select count(*) from public.fee_rates r join public.fee_cohorts c on c.id = r.cohort_id where c.membership_name = '26002') as rates_26002;
+grant select on fct_base to authenticated;
 
 set local role authenticated;
 
@@ -78,23 +96,23 @@ set local role authenticated;
 select pg_temp.as_user(4);
 select pg_temp.ok((select count(*) = 0 from public.fee_rates), 'no tick: no prices');
 select pg_temp.ok((select count(*) = 0 from public.fee_settings), 'no tick: no school-wide numbers');
-select pg_temp.fails($$select public.save_fee_cohort(null, 'LATEST', null, null, null)$$, 'only someone', 'no tick: cannot add a group');
+select pg_temp.fails($$select public.save_fee_cohort(null, 'FCT Test Level', null, null, null)$$, 'only someone', 'no tick: cannot add a group');
 select pg_temp.fails($$insert into public.fee_subjects (level, code, label, kind) values ('primary', 'XX', 'X', 'core')$$, 'permission denied', 'no direct writes');
 
 -- A consultant reads everything, changes nothing.
 select pg_temp.as_user(2);
-select pg_temp.ok((select count(*) = 126 from public.fee_rates), 'consultant reads the prices');
+select pg_temp.ok((select count(*) = (select rates from fct_base) and count(*) > 0 from public.fee_rates), 'consultant reads the prices');
 select pg_temp.ok((select count(*) = 2 from public.fee_settings), 'consultant reads the school-wide numbers and the text');
 select pg_temp.fails($$select public.save_fee_cohort_rates((select id from public.fee_cohorts where membership_name = '26001'), false, '[]'::jsonb)$$, 'only someone', 'consultant cannot change prices');
 select pg_temp.fails($$select public.save_fee_settings('global_rates', '{}'::jsonb)$$, 'only someone', 'consultant cannot change the numbers');
 
 -- A price editor.
 select pg_temp.as_user(3);
-select pg_temp.ok((select (public.save_fee_cohort(null, 'LATEST', null, null, true)).membership_name = 'LATEST'), 'editor adds a group for a membership level');
+select pg_temp.ok((select (public.save_fee_cohort(null, 'FCT Test Level', null, null, true)).membership_name = 'FCT Test Level'), 'editor adds a group for a membership level');
 select pg_temp.fails($$select public.save_fee_cohort(null, 'NOT A LEVEL', null, null, null)$$, 'pick one of the membership levels', 'a group needs a membership level');
 select pg_temp.fails($$select public.save_fee_cohort(null, '26001', null, null, null)$$, 'already has a price group', 'one group per level');
-select pg_temp.ok((select not (public.save_fee_cohort((select id from public.fee_cohorts where membership_name = 'LATEST'), null, null, false, null)).is_active), 'editor hides a group');
-select pg_temp.ok((select count(*) = 3 from public.fee_cohorts), 'a hidden group is kept');
+select pg_temp.ok((select not (public.save_fee_cohort((select id from public.fee_cohorts where membership_name = 'FCT Test Level'), null, null, false, null)).is_active), 'editor hides a group');
+select pg_temp.ok((select count(*) = (select cohorts from fct_base) + 1 from public.fee_cohorts), 'a hidden group is kept');
 
 select public.save_fee_cohort_rates(
   (select id from public.fee_cohorts where membership_name = '26001'),
@@ -104,7 +122,7 @@ select public.save_fee_cohort_rates(
     {"level": "primary", "track": "standard", "subject_count": 1, "cycle_tier": "6mo_plus", "amount": 59}]'::jsonb
 );
 select pg_temp.ok((select count(*) = 3 from public.fee_rates r join public.fee_cohorts c on c.id = r.cohort_id where c.membership_name = '26001'), 'saving a table replaces the group''s prices');
-select pg_temp.ok((select count(*) = 63 from public.fee_rates r join public.fee_cohorts c on c.id = r.cohort_id where c.membership_name = '26002'), 'other groups untouched');
+select pg_temp.ok((select count(*) = (select rates_26002 from fct_base) from public.fee_rates r join public.fee_cohorts c on c.id = r.cohort_id where c.membership_name = '26002'), 'other groups untouched');
 select pg_temp.ok((select materials_included_in_tuition from public.fee_cohorts where membership_name = '26001'), 'and the materials tick with it');
 select pg_temp.fails($$select public.save_fee_cohort_rates((select id from public.fee_cohorts where membership_name = '26001'), null,
   '[{"level": "primary", "track": "standard", "subject_count": 1, "cycle_tier": "monthly", "amount": -1}]'::jsonb)$$, '0 or more', 'no negative prices');
@@ -135,6 +153,6 @@ select pg_temp.ok((select value = '{"enabled": true}'::jsonb from public.app_set
 -- Renaming a membership level (Student fields) renames its price group.
 select public.save_student_field_option('membership', '26002', '26002 NEW', null, null);
 select pg_temp.ok((select count(*) = 1 from public.fee_cohorts where membership_name = '26002 NEW'), 'a renamed membership level keeps its prices');
-select pg_temp.ok((select count(*) = 63 from public.fee_rates r join public.fee_cohorts c on c.id = r.cohort_id where c.membership_name = '26002 NEW'), '... all 63 of them');
+select pg_temp.ok((select count(*) = (select rates_26002 from fct_base) from public.fee_rates r join public.fee_cohorts c on c.id = r.cohort_id where c.membership_name = '26002 NEW'), '... every one of them');
 
 rollback;

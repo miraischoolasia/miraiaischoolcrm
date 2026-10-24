@@ -3,6 +3,11 @@ import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { cn } from '../../lib/cn'
 import { searchLeads } from '../../lib/leadSearch'
+import { getTodayString } from '../../domain/studentStatus'
+import { childAgeText, trialChildAgeText } from '../../lib/age'
+import { useAgeDisplay } from '../../lib/ageDisplay'
+import { approximateAge, gradeNow } from '../../lib/grade'
+import { GradeSelect } from '../GradeSelect'
 import type { Lead, LeadChild, TrialBooking, TrialBookingFormState } from '../../types/domain'
 
 type TrialBookingModalProps = {
@@ -60,6 +65,9 @@ export function TrialBookingModal({
   onTakeAttendance,
   onOpenStudent,
 }: TrialBookingModalProps) {
+  const ageMode = useAgeDisplay()
+  // A school that shows grade: the grade picked for the child being booked (the age follows it).
+  const [grade, setGrade] = useState('')
   const [query, setQuery] = useState('')
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [form, setForm] = useState<TrialBookingFormState>(emptyForm)
@@ -73,6 +81,7 @@ export function TrialBookingModal({
   }
 
   function pickChild(lead: Lead, child: LeadChild) {
+    setGrade(String(gradeNow(child.gradeLevel, child.gradeYear, getTodayString()) ?? ''))
     setForm((current) => ({
       ...current,
       leadId: lead.id,
@@ -102,6 +111,7 @@ export function TrialBookingModal({
   }
 
   function clearLead() {
+    setGrade('')
     setSelectedLead(null)
     setForm(emptyForm)
     setValidationError(null)
@@ -117,7 +127,7 @@ export function TrialBookingModal({
 
     // A new person is added to Leads too, so contact details and age are needed.
     if (isNewPerson && !form.childAge.trim()) {
-      setValidationError("Please enter the child's age.")
+      setValidationError(ageMode === 'grade' ? "Please choose the child's grade." : "Please enter the child's age.")
       return
     }
 
@@ -129,7 +139,7 @@ export function TrialBookingModal({
     setValidationError(null)
 
     // Reset for the next child once this booking is saved.
-    if (await onBook(form)) {
+    if (await onBook({ ...form, gradeLevel: ageMode === 'grade' ? grade : '' })) {
       clearLead()
     }
   }
@@ -179,9 +189,9 @@ export function TrialBookingModal({
                       <>
                         <div className="font-semibold text-slate-900">
                           {booking.childName}
-                          {booking.childAge !== null && (
+                          {trialChildAgeText(booking, getTodayString(), ageMode) && (
                             <span className="ml-2 text-sm font-normal text-slate-500">
-                              {booking.childAge} yrs
+                              {trialChildAgeText(booking, getTodayString(), ageMode)}
                             </span>
                           )}
                         </div>
@@ -266,7 +276,7 @@ export function TrialBookingModal({
                             : 'border-slate-200 text-slate-600',
                         )}
                       >
-                        {child.name} ({child.age})
+                        {child.name} ({childAgeText(child, getTodayString(), ageMode)})
                       </button>
                     ))}
                   </div>
@@ -323,15 +333,28 @@ export function TrialBookingModal({
                 />
               </label>
               <label className="space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Age</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={25}
-                  value={form.childAge}
-                  onChange={(event) => updateField('childAge', event.target.value)}
-                  className={inputClass}
-                />
+                <span className="text-sm font-semibold text-slate-700">{ageMode === 'grade' ? 'Grade' : 'Age'}</span>
+                {ageMode === 'grade' ? (
+                  <GradeSelect
+                    value={grade}
+                    // The booking still keeps an age (the usual age of the grade) for the screens that need a number.
+                    onChange={(level) => {
+                      setGrade(level)
+                      updateField('childAge', level ? String(approximateAge(Number(level))) : '')
+                    }}
+                    placeholder="Choose"
+                    className={inputClass}
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    min={1}
+                    max={25}
+                    value={form.childAge}
+                    onChange={(event) => updateField('childAge', event.target.value)}
+                    className={inputClass}
+                  />
+                )}
               </label>
               <label className="space-y-2 sm:col-span-2">
                 <span className="text-sm font-semibold text-slate-700">Phone</span>

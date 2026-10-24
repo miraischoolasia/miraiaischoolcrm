@@ -43,18 +43,26 @@ export function isFiltered(filter: CalendarFilter, kinds: CalendarKind[] = ALL_K
   return filter.mine || filter.teamId !== null || filter.personIds.length > 0 || filter.kinds.length < kinds.length
 }
 
-// The two calendar pages: the Timetable shows the classes (and make-ups); the Planner shows the rest (trials, tasks,
-// meetings, events, follow-ups) and the classes only when the person switches "Show classes" on.
+// The two calendar pages: the Timetable shows every kind of class (regular and camp classes, trial slots, make-ups);
+// the Planner shows the rest (trials, tasks, meetings, events, follow-ups) and the classes only when the person
+// switches "Show classes" on.  A trial slot is on both pages: a teacher must see the time to keep free.
 export type CalendarPage = 'timetable' | 'planner'
 
 export function pageKinds(page: CalendarPage, showClasses: boolean): CalendarKind[] {
   const keep: CalendarKind[] =
     page === 'timetable'
-      ? ['class', 'makeup']
+      ? ['class', 'trial', 'makeup']
       : showClasses
         ? ALL_KINDS
         : ['trial', 'task', 'meeting', 'event', 'follow_up']
   return ALL_KINDS.filter((kind) => keep.includes(kind))
+}
+
+// A Timetable filter saved before trial slots came to the Timetable holds exactly "classes and make-ups" (the page
+// had no other kinds, so nobody can have left trials out on purpose). It becomes "everything", so the trial slots show.
+export function withTimetableTrials(filter: CalendarFilter): CalendarFilter {
+  const only = filter.kinds.length === 2 && filter.kinds.includes('class') && filter.kinds.includes('makeup')
+  return only ? { ...filter, kinds: ALL_KINDS } : filter
 }
 
 // The saved filter as the page shows it: only the kinds the page has (all of them when none of the saved ones is here).

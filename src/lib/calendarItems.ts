@@ -35,6 +35,9 @@ export type CalendarItem = {
   // The weekly rule this item comes from, and the day it was written for. Null for a plain item.
   seriesId?: number | null
   seriesDate?: string | null
+  // An automatic follow-up (20261102500000): its round (1 = when the lead came in) and its step in the round.
+  followupRound?: number | null
+  followupStep?: number | null
 }
 
 // How a new item repeats: on which days (ISO: 1 = Monday ... 7 = Sunday), until which day ('' = never).
@@ -126,6 +129,8 @@ type Row = {
   created_by: number | null
   series_id: number | null
   series_date: string | null
+  followup_round?: number | null
+  followup_step?: number | null
 }
 
 const hhmm = (time: string | null) => (time ? time.slice(0, 5) : null)
@@ -146,6 +151,8 @@ function toItem(row: Row): CalendarItem {
     createdBy: row.created_by,
     seriesId: row.series_id ?? null,
     seriesDate: row.series_date ?? null,
+    followupRound: row.followup_round ?? null,
+    followupStep: row.followup_step ?? null,
   }
 }
 
@@ -158,20 +165,27 @@ export async function fetchCalendarItems(): Promise<CalendarItem[]> {
   }
   const client = supabase
   // In pages: the API answers at most 1000 rows at a time, and weekly rules write many rows.
-  const { data, error } = await readAllRows<Row>(
-    (from, to, withCount) =>
-      client
+  const read = (followUps: boolean) =>
+    readAllRows<Row>((from, to, withCount) => {
+      const query = client
         .from('calendar_items')
-        .select(COLUMNS, withCount ? { count: 'exact' } : undefined)
+        .select(followUps ? `${COLUMNS}, followup_round, followup_step` : COLUMNS, withCount ? { count: 'exact' } : undefined)
+      // A follow-up cancelled because the lead was Converted or Lost is no longer anything to do or show.
+      return (followUps ? query.is('cancelled_at', null) : query)
         .order('item_date')
         .order('start_time')
         .order('id')
-        .range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: { code?: string } | null; count?: number | null }>,
-  )
+        .range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: { code?: string } | null; count?: number | null }>
+    })
+  let { data, error } = await read(true)
+  // Before the automatic follow-ups (20261102500000) those columns are not there.
+  if (error?.code === '42703') {
+    ;({ data, error } = await read(false))
+  }
   if (error) {
     throw error
   }
-  return data.map(toItem)
+  return (data ?? []).map(toItem)
 }
 
 // Writes the coming weeks of every weekly rule that has run short (the database also does it every night).

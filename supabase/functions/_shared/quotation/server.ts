@@ -5,6 +5,7 @@ import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import type { CycleTier, GlobalRates, InvoiceTemplate } from '../feeCalculator/types.ts'
 import { DEFAULT_INVOICE_TEMPLATE } from '../feeCalculator/types.ts'
 import type { FeeLevel, FeeTrack } from '../feeCalculator/quote.ts'
+import { followPriceGroups } from './priceGroups.ts'
 import {
   classTimeLabel,
   paymentLinkBody,
@@ -46,21 +47,32 @@ export async function loadSettings(admin: SupabaseClient): Promise<QuotationSett
 
 // The price tables as they are now (the same reads as the Fee Calculator page).
 export async function loadPriceBook(admin: SupabaseClient): Promise<PriceBook> {
-  const [cohorts, rates, subjects, settings] = await Promise.all([
-    admin.from('fee_cohorts').select('id, membership_name, is_active, materials_included_in_tuition'),
+  const [cohortsWithFollow, rates, subjects, settings] = await Promise.all([
+    admin.from('fee_cohorts').select('id, membership_name, is_active, materials_included_in_tuition, uses_cohort_id'),
     admin.from('fee_rates').select('cohort_id, level, track, subject_count, cycle_tier, amount'),
     admin.from('fee_subjects').select('level, code, label, kind, is_active, sort_order').order('sort_order'),
     admin.from('fee_settings').select('key, value'),
   ])
+  // Before 20261101520000 there is no uses_cohort_id: read the groups without it.
+  const cohorts = cohortsWithFollow.error
+    ? await admin.from('fee_cohorts').select('id, membership_name, is_active, materials_included_in_tuition')
+    : cohortsWithFollow
   for (const result of [cohorts, rates, subjects, settings]) {
     if (result.error) throw new Error(`Prices could not be read: ${result.error.message}`)
   }
   const setting = (key: string) => settings.data?.find((row) => row.key === key)?.value ?? null
   const globalRates = setting('global_rates') as GlobalRates | null
   if (!globalRates) throw new Error('The school-wide numbers of the Fee Calculator are missing.')
-  return {
-    cohorts: (cohorts.data ?? []).map((c) => ({ id: c.id, name: c.membership_name, isActive: c.is_active, materialsIncluded: c.materials_included_in_tuition })),
-    rates: (rates.data ?? []).map((r) => ({
+  // A group that follows another uses that group's prices (20261101520000).
+  const followed = followPriceGroups(
+    ((cohorts.data ?? []) as Record<string, unknown>[]).map((c) => ({
+      id: c.id as number,
+      name: c.membership_name as string,
+      isActive: c.is_active as boolean,
+      materialsIncluded: c.materials_included_in_tuition as boolean,
+      usesCohortId: (c.uses_cohort_id as number | null | undefined) ?? null,
+    })),
+    (rates.data ?? []).map((r) => ({
       cohortId: r.cohort_id,
       level: r.level as FeeLevel,
       track: r.track as FeeTrack,
@@ -68,6 +80,10 @@ export async function loadPriceBook(admin: SupabaseClient): Promise<PriceBook> {
       cycleTier: r.cycle_tier as CycleTier,
       amount: Number(r.amount),
     })),
+  )
+  return {
+    cohorts: followed.cohorts.map(({ id, name, isActive, materialsIncluded }) => ({ id, name, isActive, materialsIncluded })),
+    rates: followed.rates,
     subjects: (subjects.data ?? []).map((s) => ({ level: s.level, code: s.code, label: s.label, kind: s.kind, isActive: s.is_active })),
     globalRates,
     invoiceTemplate: { ...DEFAULT_INVOICE_TEMPLATE, ...((setting('invoice_template') as Partial<InvoiceTemplate> | null) ?? {}) },

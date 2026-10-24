@@ -10,6 +10,8 @@ export type DayListLesson = AgendaItem & {
   subject: string | null
   fbGroupUrl: string | null
   zoomLink: string | null
+  // The school's own name for the class's category (Class Settings > Class categories): Trial Class, HOA, ....
+  categoryName?: string | null
 }
 
 // A task, meeting, event or follow-up reminder on the day list (Calendar > Add Task / Meeting / Event, Inbox > Follow up).

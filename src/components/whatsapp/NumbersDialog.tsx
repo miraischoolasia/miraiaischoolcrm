@@ -36,6 +36,8 @@ type NumbersDialogProps = {
   onSaveLabel?: (key: string, label: ChannelLabel) => Promise<string | null>
   // Puts a number the server just added into the Student Inbox (tests pass their own).
   setZone?: (inboxId: number, zone: InboxZone) => Promise<void>
+  // Opens the nightly WhatsApp label settings (admin); left out where there are none.
+  onOpenLabelSync?: () => void
 }
 
 // A step that changes the phones waits for "Yes" first.
@@ -94,6 +96,7 @@ export function NumbersDialog({
   labels,
   onSaveLabel,
   setZone = setNumberZone,
+  onOpenLabelSync,
 }: NumbersDialogProps) {
   // null: not editing; 'new': a new number; otherwise the number being changed.
   const [editing, setEditing] = useState<WhatsAppNumber | 'new' | null>(null)
@@ -245,14 +248,25 @@ export function NumbersDialog({
               here, everyone sees the one inbox.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
-          >
-            <X size={16} />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {onOpenLabelSync && (
+              <button
+                type="button"
+                onClick={onOpenLabelSync}
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Labels
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">

@@ -194,13 +194,13 @@ describe('calendar kinds filter', () => {
     mocks.rpc.mockResolvedValue({ data: null, error: null })
   })
 
-  it('on the Timetable shows the classes and make-ups, then only one of them', async () => {
+  it('on the Timetable shows the classes, the trial slots and the make-ups, then only one of them', async () => {
     await signInAsAdmin()
     const events = () => within(screen.getByRole('list', { name: 'calendar events' }))
     const kinds = () => within(screen.getByRole('group', { name: 'Kinds shown' }))
 
-    expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual(['Regular Coding', 'Makeup Session'])
-    expect(kinds().getAllByRole('button').map((button) => button.textContent)).toEqual(['Classes', 'Make-ups'])
+    expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual(['Regular Coding', 'Trial Coding', 'Makeup Session'])
+    expect(kinds().getAllByRole('button').map((button) => button.textContent)).toEqual(['Classes', 'Trials', 'Make-ups'])
 
     await userEvent.click(kinds().getByRole('button', { name: 'Make-ups' }))
     expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual(['Makeup Session'])
@@ -210,7 +210,11 @@ describe('calendar kinds filter', () => {
     expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual(['Regular Coding'])
 
     await userEvent.click(kinds().getByRole('button', { name: 'All kinds' }))
-    expect(events().getAllByRole('button')).toHaveLength(2)
+    await userEvent.click(kinds().getByRole('button', { name: 'Trials' }))
+    expect(events().getAllByRole('button').map((button) => button.textContent)).toEqual(['Trial Coding'])
+
+    await userEvent.click(kinds().getByRole('button', { name: 'All kinds' }))
+    expect(events().getAllByRole('button')).toHaveLength(3)
   })
 
   it('on the Planner shows the trials, with the classes only after Show classes is switched on', async () => {
@@ -360,7 +364,7 @@ describe('cancelling a single class day', () => {
     await userEvent.click(dialogCancel)
 
     // Nothing written (the page's own reads, such as each table's change number, do not count).
-    const reads = ['crm_table_versions', 'automation_snapshot', 'app_chat_enabled', 'app_chat_staff_threads', 'calendar_series_extend']
+    const reads = ['crm_table_versions', 'automation_snapshot', 'app_chat_enabled', 'app_chat_staff_threads', 'calendar_series_extend', 'today_team', 'today_roles', 'today_my']
     expect(mocks.rpc.mock.calls.filter(([name]) => !reads.includes(name))).toEqual([])
   })
 

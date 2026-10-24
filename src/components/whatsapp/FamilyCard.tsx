@@ -8,10 +8,18 @@ import type { Person } from '../../lib/peopleApi'
 import type { LeadOption } from '../../types/domain'
 import { PersonTags } from '../PersonTags'
 import { useOpenChat } from '../WhatsAppLink'
+import { useLeadFirstAd } from '../../lib/chatAdReferrals'
+import { AdReferralLine } from './AdReferralCard'
 import { canonicalPhone } from '../../lib/chatLink'
 
-// kind says what the record is, so a child with an HOA record and a class record shows the class one.
-export type ChildDetail = { age: number | null; label: string | null; kind?: 'hoa' | 'trial' | 'regular' | 'camp' | null }
+// kind says what the record is, so a child with an HOA record and a class record shows the class one. text is the
+// ready-made age line ("Form 1" on a school that shows grade); when left out the card shows "<age> years".
+export type ChildDetail = {
+  age: number | null
+  label: string | null
+  kind?: 'hoa' | 'trial' | 'regular' | 'camp' | null
+  text?: string | null
+}
 
 // The record that says where the child is now: a class before a camp before an HOA.
 const KIND_RANK = { regular: 0, camp: 1, trial: 2, hoa: 3 } as const
@@ -84,6 +92,8 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
   const [chosen, setChosen] = useState<Map<number, number[]>>(new Map())
   // Opens a number's chat on the school's inbox page (null where there is none, e.g. in tests).
   const openChat = useOpenChat()
+  // The ad the family's lead first clicked, when there is one.
+  const firstAd = useLeadFirstAd(family.leadId)
 
   // Tags belong to the family: the parent has the one bar the team edits (at the top of the card). A child keeps
   // the tags already on them, shown as small chips that cannot be changed here (the student page still edits them).
@@ -161,6 +171,7 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
       </p>
 
       {parent ? tagLine(parent, true) : null}
+      <AdReferralLine ad={firstAd} className="rounded-lg bg-amber-50/60 px-2 py-1" />
 
       {parent ? (
         <div>
@@ -213,6 +224,7 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
             const first = group.people[0]
             const isMe = group.people.some((child) => child.id === me.id)
             const age = details.map((detail) => detail.age).find((value) => value !== null) ?? null
+            const ageText = details.map((detail) => detail.text).find((value) => value) ?? (age !== null ? `${age} years` : null)
             const ranked = [...details].sort(
               (a, b) => (a.kind ? KIND_RANK[a.kind] : 9) - (b.kind ? KIND_RANK[b.kind] : 9),
             )
@@ -231,7 +243,7 @@ export function FamilyCard({ family, childDetail, chatOf, onOpenChat, onOpenStud
                       {withCodes(nameOf(first), codesOf(group.people))}
                     </span>
                     <span className="block truncate text-slate-500">
-                      {[age !== null ? `${age} years` : null, current.label, didHoa ? 'did the HOA first' : null]
+                      {[ageText, current.label, didHoa ? 'did the HOA first' : null]
                         .filter(Boolean)
                         .join(' · ') || 'Student'}
                     </span>

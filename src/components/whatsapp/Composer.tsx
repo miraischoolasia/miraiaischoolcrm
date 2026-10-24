@@ -67,6 +67,8 @@ type ComposerProps = {
   onManageQuickReplies?: () => void
   // Text written for the box from elsewhere (the enrol steps). Each new id adds its text once.
   draftRequest?: { id: number; text: string } | null
+  // A quick reply to put in the box, as if picked from the list (the follow-up bar's template). Each has its own id.
+  quickReplyRequest?: { id: number; reply: QuickReply } | null
   // Files dropped on the chat from outside. Each new id adds its files once, as if they were picked.
   droppedFiles?: { id: number; files: File[] } | null
   // What was left unsent in this chat, and where to report changes to it (null once nothing is left).
@@ -183,6 +185,7 @@ export function Composer({
   variables,
   onManageQuickReplies,
   draftRequest,
+  quickReplyRequest = null,
   droppedFiles,
   draft = null,
   onDraftChange,
@@ -384,6 +387,18 @@ ${draftRequest.text}` : draftRequest.text))
       setIsLoadingMedia(false)
     }
   }
+
+  const lastQuickReplyRequest = useRef<number | null>(quickReplyRequest?.id ?? null)
+  useEffect(() => {
+    if (!quickReplyRequest || quickReplyRequest.id === lastQuickReplyRequest.current) {
+      return
+    }
+    lastQuickReplyRequest.current = quickReplyRequest.id
+    setMode('reply')
+    void applyQuickReply(quickReplyRequest.reply)
+    // applyQuickReply reads the latest names; only a new request should run it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quickReplyRequest])
 
   async function submit() {
     if (voice.state === 'recording') {

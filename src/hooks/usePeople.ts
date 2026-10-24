@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { keepIfSame } from '../lib/sameData'
 import { ensureContactPeople, fetchPeople, type Person } from '../lib/peopleApi'
 import { getChatRole, getRealPhone, type ChatwootConversation } from '../lib/whatsappInbox'
 import { everyWhileVisible } from '../lib/visibleTimer'
@@ -30,7 +31,8 @@ export function usePeople({ enabled, canEdit, conversations }: Args) {
 
   const refresh = useCallback(async () => {
     try {
-      setPeople(await fetchPeople())
+      const next = await fetchPeople()
+      setPeople(keepIfSame(next))
       setIsLoaded(true)
     } catch {
       // The card simply stays as it was; the next refresh tries again.

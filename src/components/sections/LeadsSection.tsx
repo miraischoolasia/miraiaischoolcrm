@@ -16,7 +16,10 @@ import { leadParentName } from '../../lib/parentLabel'
 import { codesLabel, withCodes } from '../../lib/studentCodeLabel'
 import { formatDate, getTodayString, parseLocalDate } from '../../domain/studentStatus'
 import { leadStatusOptions } from '../../lib/constants'
-import { stageLabel, stageStyle } from '../../lib/leadStages'
+import { stageStyle } from '../../lib/leadStages'
+import { useAgeDisplay, type AgeDisplayMode } from '../../lib/ageDisplay'
+import { GRADE_OPTIONS, gradeTextOn } from '../../lib/grade'
+import { LeadStageBadge, MoreChildStages } from '../LeadStageBadge'
 import { SummaryBar } from '../SummaryBar'
 import { LeadTrendChart } from '../LeadTrendChart'
 import { LeadKanbanBoard } from '../LeadKanbanBoard'
@@ -72,15 +75,19 @@ function formatDayMonth(dateString: string) {
   )
 }
 
-function childLabel(child: LeadChild) {
+function childLabel(child: LeadChild, mode: AgeDisplayMode = 'age') {
+  const grade = mode === 'grade' ? gradeTextOn(child.gradeLevel, child.gradeYear, getTodayString()) : null
+  if (grade) {
+    return child.name ? `${child.name} (${grade})` : grade
+  }
   return child.name ? `${child.name} (${child.age})` : `${child.age} yrs`
 }
 
-function formatChildren(children: LeadChild[]) {
+function formatChildren(children: LeadChild[], mode: AgeDisplayMode = 'age') {
   if (children.length === 0) {
     return '-'
   }
-  return children.map(childLabel).join(', ')
+  return children.map((child) => childLabel(child, mode)).join(', ')
 }
 
 type LeadsSectionProps = {
@@ -155,6 +162,9 @@ export function LeadsSection({
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>(NO_CHANNEL_FILTER)
   const [stageFilter, setStageFilter] = useState<LeadStatus | 'all'>('all')
   const todayString = getTodayString()
+  const ageMode = useAgeDisplay()
+  // What was picked only counts in the mode it was picked in (an age group means nothing for grades, and the other way).
+  const childFilter = ageMode === 'grade' ? (/^\d+$/.test(childAge) ? childAge : '') : CHILD_AGE_GROUPS.some((group) => group.key === childAge) ? childAge : ''
   const [dateFrom, setDateFrom] = useState(() => getOneMonthAgo(todayString))
   const [dateTo, setDateTo] = useState(() => todayString)
   // 'all', 'none' (no PIC yet) or a PIC option id.
@@ -237,7 +247,12 @@ export function LeadsSection({
     .filter(matchesChannel)
     .filter((lead) => (!dateFrom || lead.addedDate >= dateFrom) && (!dateTo || lead.addedDate <= dateTo))
     .filter((lead) => (stageFilter === 'all' ? true : lead.status === stageFilter))
-  const childRows = view === 'children' ? buildChildRows(leadsForChildren, { search: searchTerm, ageGroup: childAge }) : []
+  const childRows = view === 'children' ? buildChildRows(leadsForChildren, {
+        search: searchTerm,
+        ageGroup: ageMode === 'grade' ? '' : childFilter,
+        grade: ageMode === 'grade' && childFilter !== '' ? Number(childFilter) : null,
+        today: todayString,
+      }) : []
   const childPageCount = Math.max(1, Math.ceil(childRows.length / LEADS_PAGE_SIZE))
   const childCurrentPage = Math.min(childPage, childPageCount)
   const pagedChildRows = childRows.slice((childCurrentPage - 1) * LEADS_PAGE_SIZE, childCurrentPage * LEADS_PAGE_SIZE)
@@ -594,20 +609,26 @@ export function LeadsSection({
 
               {view === 'children' && (
                 <select
-                  value={childAge}
+                  value={childFilter}
                   onChange={(event) => {
                     setChildAge(event.target.value)
                     setChildPage(1)
                   }}
-                  aria-label="Child age"
+                  aria-label={ageMode === 'grade' ? 'Child grade' : 'Child age'}
                   className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#fc0c97]"
                 >
-                  <option value="">All ages</option>
-                  {CHILD_AGE_GROUPS.map((group) => (
-                    <option key={group.key} value={group.key}>
-                      {group.label}
-                    </option>
-                  ))}
+                  <option value="">{ageMode === 'grade' ? 'All grades' : 'All ages'}</option>
+                  {ageMode === 'grade'
+                    ? GRADE_OPTIONS.map((option) => (
+                        <option key={option.level} value={String(option.level)}>
+                          {option.label}
+                        </option>
+                      ))
+                    : CHILD_AGE_GROUPS.map((group) => (
+                        <option key={group.key} value={group.key}>
+                          {group.label}
+                        </option>
+                      ))}
                 </select>
               )}
 
@@ -752,7 +773,9 @@ export function LeadsSection({
                           <div className="font-semibold text-slate-900">{row.childName || 'No name given'}</div>
                           {row.childPhone && <div className="text-xs text-slate-500">{row.childPhone}</div>}
                         </td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-700">{row.age} yrs</td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
+                          {(ageMode === 'grade' ? gradeTextOn(row.gradeLevel, row.gradeYear, todayString) : null) ?? `${row.age} yrs`}
+                        </td>
                         <td className="px-6 py-4 text-sm text-slate-600">
                           {row.parentName && <div className="font-medium text-slate-900">{withCodes(row.parentName, codeOf?.(lead) ?? [])}</div>}
                           <span className="inline-flex items-center gap-1">
@@ -761,14 +784,7 @@ export function LeadsSection({
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          <span
-                            className={cn(
-                              'rounded-full px-2.5 py-0.5 text-xs font-semibold',
-                              stageStyle(lead.status).badge,
-                            )}
-                          >
-                            {stageLabel(lead.status)}
-                          </span>
+                          <LeadStageBadge status={lead.status} kids={lead.children} />
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-600">{sourceLabel(lead)}</td>
                         <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-600">{picLabel(lead)}</td>
@@ -866,13 +882,8 @@ export function LeadsSection({
                         <span>· Added {formatDate(lead.addedDate)}</span>
                       </div>
                     </div>
-                    <span
-                      className={cn(
-                        'inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold',
-                        stageStyle(lead.status).badge,
-                      )}
-                    >
-                      {stageLabel(lead.status)}
+                    <span className="shrink-0">
+                      <LeadStageBadge status={lead.status} kids={lead.children} className="py-1" />
                     </span>
                   </div>
 
@@ -898,7 +909,7 @@ export function LeadsSection({
                     <div className="flex justify-between gap-3">
                       <dt className="text-xs font-medium text-slate-500">Children</dt>
                       <dd className="text-right text-slate-700">
-                        {formatChildren(lead.children)}
+                        {formatChildren(lead.children, ageMode)}
                         <LeadTags tags={tagsOf(lead)} align="end" />
                       </dd>
                     </div>
@@ -922,6 +933,7 @@ export function LeadsSection({
                       </option>
                     ))}
                   </select>
+                  <MoreChildStages status={lead.status} kids={lead.children} />
 
                   <div className="grid grid-cols-2 gap-2">
                     <button
@@ -1057,7 +1069,7 @@ export function LeadsSection({
                         ) : (
                           <ul>
                             {lead.children.map((child, index) => (
-                              <li key={index}>{childLabel(child)}</li>
+                              <li key={index}>{childLabel(child, ageMode)}</li>
                             ))}
                           </ul>
                         )}
@@ -1070,23 +1082,26 @@ export function LeadsSection({
                         {picLabel(lead)}
                       </td>
                       <td className="px-6 py-5">
-                        <select
-                          value={lead.status}
-                          onChange={(event) =>
-                            onChangeStatus(lead.id, event.target.value as LeadStatus)
-                          }
-                          disabled={!canEdit || lead.status === 'converted'}
-                          className={cn(
-                            'rounded-full border-0 px-2.5 py-0.5 text-xs font-semibold outline-none disabled:cursor-not-allowed',
-                            stageStyle(lead.status).badge,
-                          )}
-                        >
-                          {leadStatusOptions.map((option) => (
-                            <option key={option.key} value={option.key}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <select
+                            value={lead.status}
+                            onChange={(event) =>
+                              onChangeStatus(lead.id, event.target.value as LeadStatus)
+                            }
+                            disabled={!canEdit || lead.status === 'converted'}
+                            className={cn(
+                              'rounded-full border-0 px-2.5 py-0.5 text-xs font-semibold outline-none disabled:cursor-not-allowed',
+                              stageStyle(lead.status).badge,
+                            )}
+                          >
+                            {leadStatusOptions.map((option) => (
+                              <option key={option.key} value={option.key}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                          <MoreChildStages status={lead.status} kids={lead.children} />
+                        </div>
                       </td>
                       {canDelete && (
                         <td className="px-6 py-5 text-right">

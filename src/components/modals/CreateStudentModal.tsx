@@ -7,6 +7,8 @@ import { ModalShell } from '../ModalShell'
 import { PackagePicker } from '../PackagePicker'
 import { useProgramLevels } from '../../lib/programLevels'
 import { useAgeGroups } from '../../lib/ageGroups'
+import { useAgeDisplay } from '../../lib/ageDisplay'
+import { GradeSelect } from '../GradeSelect'
 import type { Classroom, CreateStudentFormState, Package, Teacher } from '../../types/domain'
 
 type CreateStudentModalProps = {
@@ -42,6 +44,7 @@ export function CreateStudentModal({
   showStudentCode = false,
   extraFields,
 }: CreateStudentModalProps) {
+  const ageMode = useAgeDisplay()
   // A school that charges by the month (no package for every child): the class's first day and months paid.
   const byMonth = !brand.usesPackages && formState.studentType === 'regular' && !formState.packageId
   const monthCount = Number(formState.months ?? '')
@@ -342,6 +345,20 @@ export function CreateStudentModal({
                 ? `Teacher will be set to ${derivedTeacherName}, based on this classroom.`
                 : 'Teacher is set automatically once a classroom is selected.'}
             </p>
+          </label>
+          )}
+
+          {!isPreviewStudent && ageMode === 'grade' && (
+          <label className="space-y-2 sm:col-span-2">
+            <span className="text-sm font-semibold text-slate-700">Grade</span>
+            <GradeSelect
+              value={formState.gradeLevel ?? ''}
+              onChange={(level) => onFieldChange('gradeLevel', level)}
+              ariaLabel="Grade"
+              placeholder="Not set"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+            />
+            <p className="text-xs text-slate-500">The grade goes up by itself every 1 January.</p>
           </label>
           )}
 

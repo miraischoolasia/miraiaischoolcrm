@@ -506,6 +506,7 @@ export const PLACEHOLDERS = [
   { token: '{hours_left}', hint: 'Lesson hours the child has left' },
   { token: '{parent_phone}', hint: "The parent's phone, like 0123456789" },
   { token: '{child_lower}', hint: "The child's name in small letters with no spaces, like ethanlim" },
+  { token: '{child_grade_or_age}', hint: "The child's grade (Year 3) on a school that shows grades, otherwise the age" },
 ] as const
 
 const SAMPLE_VALUES: Record<string, string> = {
@@ -517,6 +518,7 @@ const SAMPLE_VALUES: Record<string, string> = {
   '{hours_left}': '2',
   '{parent_phone}': '0123456789',
   '{child_lower}': 'ethan',
+  '{child_grade_or_age}': 'Year 3',
 }
 
 // The text with the placeholders replaced by an example child, so the writer sees what a parent

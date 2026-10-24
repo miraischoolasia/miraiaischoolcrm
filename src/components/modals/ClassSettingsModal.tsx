@@ -1,3 +1,4 @@
+import { FollowUpScheduleSetting } from '../FollowUpScheduleSetting'
 import { useState, type ReactNode } from 'react'
 import { Eye, EyeSlash, Plus, X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
@@ -8,7 +9,10 @@ import { AiReportSettings } from '../AiReportSettings'
 import { StudentAppSettings } from '../StudentAppSettings'
 import { BrandSettings } from '../BrandSettings'
 import { LiveQuestionSettingsForm } from '../LiveQuestionSettingsForm'
+import { ClassFxSettings } from '../ClassFxSettings'
 import { ZoomAttendanceRule } from '../ZoomAttendanceRule'
+import { AgeDisplaySetting } from '../AgeDisplaySetting'
+import { RoleNamesSetting } from '../RoleNamesSetting'
 import { LateReminderSetting } from '../LateReminderSetting'
 import { CalendarLayoutSetting } from '../CalendarLayoutSetting'
 import { FeeCalculatorSwitch } from '../feeCalculator/FeeCalculatorSwitch'
@@ -35,7 +39,7 @@ export type AttendanceStatusDraft = Pick<AttendanceStatusOption, 'label' | 'atte
 
 type StatusChanges = Partial<AttendanceStatusDraft & Pick<AttendanceStatusOption, 'isActive'>>
 
-type Tab = 'criteria' | 'attendance' | 'rewards' | 'subjects' | 'flows' | 'ai' | 'live' | 'app' | 'brand' | 'zoom' | 'recordings'
+type Tab = 'criteria' | 'attendance' | 'rewards' | 'subjects' | 'flows' | 'ai' | 'live' | 'fx' | 'app' | 'brand' | 'zoom' | 'recordings'
 
 type ClassSettingsModalProps = {
   criteria: ReviewCriterion[]
@@ -153,6 +157,7 @@ export function ClassSettingsModal({
               ['flows', 'Enrolment flows'],
               ['ai', 'AI analysis'],
               ['live', 'Live questions'],
+              ['fx', 'Class effects'],
               ['app', 'Student app'],
               ['brand', 'Brand'],
               ['zoom', 'Zoom'],
@@ -271,17 +276,26 @@ export function ClassSettingsModal({
               noun="level"
             />
             <ClassCategoriesSettings />
+            <AgeDisplaySetting />
+            <RoleNamesSetting />
             {studentFields}
             <CalendarLayoutSetting onSaved={onCalendarLayoutSaved} />
             <FeeCalculatorSwitch />
           </>
         )}
 
-        {tab === 'flows' && <div className="space-y-6">{enrolFlows}</div>}
+        {tab === 'flows' && (
+          <div className="space-y-6">
+            {enrolFlows}
+            <FollowUpScheduleSetting />
+          </div>
+        )}
 
         {tab === 'ai' && <AiReportSettings />}
 
         {tab === 'live' && <LiveQuestionSettingsForm />}
+
+        {tab === 'fx' && <ClassFxSettings />}
 
         {tab === 'app' && <StudentAppSettings />}
         {tab === 'brand' && <BrandSettings />}

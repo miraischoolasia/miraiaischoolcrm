@@ -18,7 +18,24 @@ export type ClassScreenState = {
   star?: { seq: number; id: number; name: string } | null
   // Teams made in the console, with the points each team got.
   teams?: { key: string; label: string; color: string; text: string; members: ScreenPerson[]; score: number }[] | null
+  // A class effect the teacher just played (sound, sticker, light animation); seq is new each time.
+  fx?: ClassFxPlay | null
+  // Background music playing now, so a child who comes in late hears it too.
+  bgm?: { url: string; volume: number; startedAt: number } | null
   sentAt: number
+}
+
+// One effect played on the children's class pages. at: when it was played
+// (a child joining later does not get it again).
+export type ClassFxPlay = {
+  seq: number
+  at: number
+  kind: 'sound' | 'sticker' | 'animation'
+  name: string
+  url: string | null
+  emoji: string | null
+  key: string | null
+  volume: number
 }
 
 // A child as the class screen shows them: their face (from the id) and first name.

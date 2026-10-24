@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowSquareOut, ChartBar, ChatCircleText, CircleDashed, ClockCountdown, DoorOpen, DotsThree, Microphone, Monitor, NotePencil, Play, Robot, ShieldWarning, Shuffle, SignOut, SquaresFour, Star, Timer, UserMinus, UsersFour, VideoCamera, X } from '@phosphor-icons/react'
+import { ArrowSquareOut, ChartBar, ChatCircleText, CircleDashed, ClockCountdown, DoorOpen, DotsThree, Microphone, Monitor, NotePencil, Play, Robot, ShieldWarning, Shuffle, SignOut, Sparkle, SquaresFour, Star, Timer, UserMinus, UsersFour, VideoCamera, X } from '@phosphor-icons/react'
 import { cn } from '../lib/cn'
 import { LessonZoomCard } from './LessonZoomCard'
 import { LessonReportModal } from './LessonReportModal'
@@ -9,6 +9,8 @@ import { GivePointsBar } from './GivePointsBar'
 import { StudentGrid, gridChildren } from './console/StudentGrid'
 import { RandomPickTool, TimerTool } from './console/ConsoleTools'
 import { TeamsTool } from './console/TeamsTool'
+import { FxTool, type FxBgm } from './console/FxTool'
+import { fxPlay } from '../lib/classFx'
 import { AssistantPanel, type AssistantRunner } from './console/AssistantPanel'
 import { toBankDraft, type AiQuestion } from '../lib/classAssistant'
 import { fetchQuestions, fitsClassroom, saveNewQuestion } from '../lib/questions'
@@ -40,7 +42,7 @@ import { fetchLiveQuestionSettings } from '../lib/liveQuestions'
 import type { StudentBackground } from '../lib/studentBackground'
 import type { AgeGroup } from '../types/domain'
 
-type Tool = 'assistant' | 'timer' | 'pick' | 'teams' | 'points' | 'notes'
+type Tool = 'assistant' | 'timer' | 'pick' | 'teams' | 'points' | 'notes' | 'fx'
 
 // The tool dock under the children, in the order teachers use them most; each has a key on the keyboard.
 const tools: { key: Tool; label: string; icon: typeof Timer; shortcut: string; wide?: boolean }[] = [
@@ -49,6 +51,7 @@ const tools: { key: Tool; label: string; icon: typeof Timer; shortcut: string; w
   { key: 'timer', label: 'Timer', icon: Timer, shortcut: 'T', wide: true },
   { key: 'teams', label: 'Teams', icon: UsersFour, shortcut: 'M' },
   { key: 'notes', label: 'Notes', icon: NotePencil, shortcut: 'O' },
+  { key: 'fx', label: 'Effects', icon: Sparkle, shortcut: 'F' },
   { key: 'assistant', label: 'Assistant', icon: Robot, shortcut: 'A' },
 ]
 const toolByKey = new Map(tools.map((tool) => [tool.shortcut.toLowerCase(), tool.key]))
@@ -116,6 +119,9 @@ export function LiveClassConsole({
   const [openTools, setOpenTools] = useState<Tool[]>([])
   const [pickedId, setPickedId] = useState<number | null>(null)
   const [showReport, setShowReport] = useState(false)
+  // Class effects: the last one played (sound, sticker, animation) and the music playing now.
+  const [fx, setFx] = useState<ClassScreenState['fx']>(null)
+  const [bgm, setBgm] = useState<(NonNullable<FxBgm> & { startedAt: number }) | null>(null)
   // The class just ended: the report opens first, and closing it goes on to the attendance.
   const [reportAfterEnd, setReportAfterEnd] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -431,8 +437,10 @@ export function LiveClassConsole({
               }
             })
           : null,
+      fx,
+      bgm: bgm?.item.url ? { url: bgm.item.url, volume: bgm.volume, startedAt: bgm.startedAt } : null,
     }
-  }, [cheer, roll, star, teams, teamsOnScreen, current, leaderboardTop, live?.answers, live?.questions, names, pickedId, timerState, title])
+  }, [fx, bgm, cheer, roll, star, teams, teamsOnScreen, current, leaderboardTop, live?.answers, live?.questions, names, pickedId, timerState, title])
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return
     const channel = new BroadcastChannel(classScreenChannel(scheduleId, lessonDate))
@@ -779,6 +787,15 @@ export function LiveClassConsole({
         </div>
       )}
       {openTools.includes('timer') && <TimerTool onChange={setTimerState} command={timerCommand} />}
+      {openTools.includes('fx') && (
+        <FxTool
+          onPlay={(item) => setFx(fxPlay(item, Date.now(), Date.now()))}
+          bgm={bgm}
+          onBgm={(next) =>
+            setBgm((playing) => (next ? { ...next, startedAt: playing?.item.id === next.item.id ? playing.startedAt : Date.now() } : null))
+          }
+        />
+      )}
       {openTools.includes('pick') && (
         <RandomPickTool
           candidates={inZoom.length > 0 ? inZoom : everyone}
@@ -953,6 +970,7 @@ export function LiveClassConsole({
                 { key: 'timer', label: 'Timer', icon: Timer },
                 { key: 'teams', label: 'Teams', icon: UsersFour },
                 { key: 'notes', label: `Notes${notes.size > 0 ? ` (${notes.size})` : ''}`, icon: NotePencil },
+                { key: 'fx', label: 'Effects', icon: Sparkle },
                 { key: 'assistant', label: 'Assistant (type)', icon: Robot },
               ] as const
             ).map(({ key, label, icon: Icon }) => (

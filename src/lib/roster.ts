@@ -4,6 +4,14 @@ import type { Student } from '../types/domain'
 // day (null = since the class began) up to, not including, the day it ended
 // (null = still in the class).
 export function isInClassroomOn(student: Student, classroomId: number, date: string) {
+  // A one-day seat: sitting in this lesson, or taken out of it by Change class (migration 20261102200000).
+  const seats = student.lessonSeats
+  if (seats?.some((seat) => seat.toClassroomId === classroomId && seat.toDate === date)) {
+    return true
+  }
+  if (seats?.some((seat) => seat.kind === 'change' && seat.fromClassroomId === classroomId && seat.fromDate === date)) {
+    return false
+  }
   const periods = student.classPeriods?.filter((period) => period.classroomId === classroomId)
 
   // No history loaded (before the history migration): fall back to the

@@ -1,4 +1,6 @@
 import type { Student } from '../types/domain'
+import type { AgeDisplayMode } from './ageDisplay'
+import { gradeTextOn } from './grade'
 
 // Whole years between a birth date and a day, both yyyy-mm-dd. Null when the date is not a date, or is
 // after the day.
@@ -38,6 +40,51 @@ export function getStudentAge(
     return { years: student.age, source: 'booking' }
   }
   return null
+}
+
+// What a list shows beside a student: the age, or for a school that shows grade the grade (nothing when no grade is
+// stored yet; an age is never turned into a grade).
+export function studentAgeText(
+  student: Pick<Student, 'dateOfBirth' | 'age' | 'gradeLevel' | 'gradeYear'>,
+  todayString: string,
+  mode: AgeDisplayMode,
+): string | null {
+  if (mode === 'grade') {
+    return gradeTextOn(student.gradeLevel, student.gradeYear, todayString)
+  }
+  return formatStudentAge(getStudentAge(student, todayString))
+}
+
+// A lead's child as a number or a grade: "9", or for a school that shows grade "Year 4" (the stored age is the
+// fallback for a child with no grade yet, so nobody is left blank).
+export function childAgeText(
+  child: { age: number; gradeLevel?: number | null; gradeYear?: number | null },
+  todayString: string,
+  mode: AgeDisplayMode,
+): string {
+  if (mode === 'grade') {
+    const grade = gradeTextOn(child.gradeLevel, child.gradeYear, todayString)
+    if (grade) {
+      return grade
+    }
+  }
+  return String(child.age)
+}
+
+// A booked trial child: "7 yrs", or for a school that shows grade "Year 2" (a booking made before the grade was kept
+// still shows its age). Null when there is nothing to show.
+export function trialChildAgeText(
+  booking: { childAge: number | null; gradeLevel?: number | null; gradeYear?: number | null },
+  todayString: string,
+  mode: AgeDisplayMode,
+): string | null {
+  if (mode === 'grade') {
+    const grade = gradeTextOn(booking.gradeLevel, booking.gradeYear, todayString)
+    if (grade) {
+      return grade
+    }
+  }
+  return booking.childAge === null ? null : `${booking.childAge} ${booking.childAge === 1 ? 'yr' : 'yrs'}`
 }
 
 // "10 yrs", or "10 yrs (at booking)" for the age that does not move.

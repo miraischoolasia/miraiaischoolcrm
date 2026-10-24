@@ -32,7 +32,7 @@ export type LeadFormValues = {
   picId: number | null
   tagIds: number[]
   status: LeadStatus
-  children: { name: string; age: number; phone: string | null }[]
+  children: { name: string; age: number; phone: string | null; stage?: string; gradeLevel?: number; gradeYear?: number }[]
   notes: string
   // The source keyword rule the first message matched (a new lead only), so automations can ask about it.
   sourceRuleId?: number | null
@@ -43,6 +43,8 @@ export type WhatsAppCrm = {
   // Quotations (20261031100000): the school switched them on, and this login may make / approve them.
   // Undefined where the Inbox is shown without them (tests, demos).
   quotations?: { enabled: boolean; canUse: boolean; canApprove: boolean }
+  // The Fee Calculator in the side panel (Fees tab): the school switched it on and this person has the tick.
+  feeCalculator?: { enabled: boolean }
   leads: Lead[]
   students: Student[]
   classrooms: Classroom[]
@@ -107,7 +109,8 @@ export type WhatsAppCrm = {
     items: CalendarItem[]
     // Who the signed-in person is, so they are reminded unless another is picked.
     meId: number | null
-    save: (draft: CalendarItemDraft) => Promise<string | null>
+    // existing: the follow-up being changed (another day); without it a new one is made.
+    save: (draft: CalendarItemDraft, existing?: CalendarItem) => Promise<string | null>
     done: (id: number) => Promise<string | null>
     remove: (id: number) => Promise<string | null>
   }
@@ -143,4 +146,6 @@ export type WhatsAppCrm = {
   onOpenStudent: (studentId: number) => void
   // Only offered for a student in a regular class.
   onOpenMakeup: (studentId: number) => void
+  // Change class / Replacement: the student sits in another class's lesson for one day (opens the booking dialog).
+  onOpenLessonSeats?: (studentId: number) => void
 }

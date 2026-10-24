@@ -212,6 +212,17 @@ export function describeActivity(activity: AdminActivity, names: ActivityNames):
       note(d.start_time ? `New time: ${text(d.start_time).slice(0, 5)}` : '')
       return { title: `Moved a trial from ${date(d.from_date)} to ${date(d.to_date)}`, changes, notes }
     }
+    case 'lesson_seat_booked':
+    case 'lesson_seat_cancelled': {
+      const kind = d.kind === 'replacement' ? 'a replacement' : 'a class change'
+      note(d.from_date ? `Own lesson: ${date(d.from_date)}` : '')
+      note(d.to_date ? `Sits in: ${date(d.to_date)}` : '')
+      return {
+        title: `${activity.actionType === 'lesson_seat_cancelled' ? 'Undid' : 'Booked'} ${kind} for ${label}`,
+        changes,
+        notes,
+      }
+    }
     case 'makeup_planned':
     case 'makeup_updated':
     case 'makeup_deleted': {

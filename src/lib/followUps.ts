@@ -58,9 +58,27 @@ export function openFollowUps(items: CalendarItem[], leadId: number | null): Cal
   if (leadId === null) {
     return []
   }
-  return items
-    .filter((item) => item.kind === 'task' && item.leadId === leadId && !item.isDone)
-    .sort((a, b) => a.date.localeCompare(b.date) || (a.startTime ?? '').localeCompare(b.startTime ?? '') || a.id - b.id)
+  return openByLead(items).get(leadId) ?? []
+}
+
+// Worked out once per list of items (the list is replaced, never changed, when it is read again): the Inbox asks for
+// every chat's next follow-up on each redraw, and filtering the whole list per chat was slow on a phone.
+const openByLeadCache = new WeakMap<CalendarItem[], Map<number, CalendarItem[]>>()
+function openByLead(items: CalendarItem[]) {
+  let byLead = openByLeadCache.get(items)
+  if (!byLead) {
+    byLead = new Map()
+    for (const item of items) {
+      if (item.kind === 'task' && item.leadId !== null && !item.isDone) {
+        byLead.set(item.leadId, [...(byLead.get(item.leadId) ?? []), item])
+      }
+    }
+    for (const list of byLead.values()) {
+      list.sort((a, b) => a.date.localeCompare(b.date) || (a.startTime ?? '').localeCompare(b.startTime ?? '') || a.id - b.id)
+    }
+    openByLeadCache.set(items, byLead)
+  }
+  return byLead
 }
 
 // The moment a follow-up is due. One with no time is due from the start of its day.
@@ -188,4 +206,90 @@ export function todaysFollowUps(items: CalendarItem[], meId: number | null, now:
       when: describeFollowUp(item, now),
       late: followUpState(item, now) === 'late',
     }))
+}
+
+// The follow-up work list (Today page): what is late, what is for today and what comes in the next 7 days, open
+// and tied to a lead. An admin (or anyone who sees the whole calendar) sees everybody's; the others their own.
+export type WorklistRow = {
+  item: CalendarItem
+  // "2/5" for an automatic follow-up (its step of its round), null for one set by hand.
+  stepLabel: string | null
+  when: string
+}
+
+export type FollowUpWorklist = { late: WorklistRow[]; today: WorklistRow[]; soon: WorklistRow[] }
+
+// How many follow-ups each automatic round of each lead has, for "2/5".
+const roundSizesCache = new WeakMap<CalendarItem[], Map<string, number>>()
+function roundSizes(items: CalendarItem[]) {
+  const known = roundSizesCache.get(items)
+  if (known) {
+    return known
+  }
+  const sizes = new Map<string, number>()
+  for (const item of items) {
+    if (item.followupStep && item.leadId !== null) {
+      const key = `${item.leadId}:${item.followupRound}`
+      sizes.set(key, Math.max(sizes.get(key) ?? 0, item.followupStep))
+    }
+  }
+  roundSizesCache.set(items, sizes)
+  return sizes
+}
+
+export function followUpStepLabel(item: CalendarItem, items: CalendarItem[]) {
+  if (!item.followupStep || item.leadId === null) {
+    return null
+  }
+  const size = roundSizes(items).get(`${item.leadId}:${item.followupRound}`) ?? item.followupStep
+  return `${item.followupStep}/${size}`
+}
+
+export function followUpWorklist(
+  items: CalendarItem[],
+  { meId, seesAll, now }: { meId: number | null; seesAll: boolean; now: Date },
+): FollowUpWorklist {
+  const today = dateKeyOf(now)
+  const lastDay = dateKeyOf(addDaysTo(now, 7))
+  const sizes = roundSizes(items)
+  const list: FollowUpWorklist = { late: [], today: [], soon: [] }
+  const open = items
+    .filter(
+      (item) =>
+        item.kind === 'task' &&
+        item.leadId !== null &&
+        !item.isDone &&
+        item.date <= lastDay &&
+        (seesAll || (meId !== null && item.assigneeId === meId)),
+    )
+    .sort((a, b) => dueMomentOf(a).getTime() - dueMomentOf(b).getTime() || a.id - b.id)
+  for (const item of open) {
+    const row: WorklistRow = {
+      item,
+      stepLabel: item.followupStep ? `${item.followupStep}/${sizes.get(`${item.leadId}:${item.followupRound}`) ?? item.followupStep}` : null,
+      when: describeFollowUp(item, now),
+    }
+    if (item.date < today) {
+      list.late.push(row)
+    } else if (item.date === today) {
+      list.today.push(row)
+    } else {
+      list.soon.push(row)
+    }
+  }
+  return list
+}
+
+// For a chat: its lead's next open follow-up, and whether it is late or for today (the list's small tag).
+export function nextFollowUpOf(items: CalendarItem[], leadId: number | null, now: Date) {
+  const next = openFollowUps(items, leadId)[0]
+  if (!next) {
+    return null
+  }
+  const day = dateKeyOf(now)
+  return {
+    item: next,
+    stepLabel: followUpStepLabel(next, items),
+    state: next.date < day ? ('late' as const) : next.date === day ? ('today' as const) : ('later' as const),
+  }
 }

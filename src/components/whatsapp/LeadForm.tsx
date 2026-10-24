@@ -12,6 +12,9 @@ import { leadPhoneFor, parentPhoneOf, studentPhoneOf } from '../../lib/studentCo
 import type { ChatRole, ChatwootConversation } from '../../lib/whatsappInbox'
 import { findChildPhoneMatches } from '../../lib/childPhone'
 import { ChildPhoneMatches } from './ChildPhoneMatches'
+import { GradeSelect } from '../GradeSelect'
+import { useAgeDisplay } from '../../lib/ageDisplay'
+import { approximateAge, gradeNow } from '../../lib/grade'
 import type { Lead, LeadOption, LeadStatus } from '../../types/domain'
 import type { LeadFormValues, WhatsAppCrm } from './crm'
 import { LeadChannelLines } from '../LeadChannelLines'
@@ -52,7 +55,15 @@ type LeadFormProps = {
   onOpenChat?: (conversationId: number) => void
 }
 
-type ChildRow = { name: string; age: string; phone: string | null }
+// `stage` is the child's own stage; this form does not edit it, it only keeps it when the lead is saved.
+// A saved child's grade as the form holds it: the grade it has reached today.
+function gradeOfChild(child: { gradeLevel?: number | null; gradeYear?: number | null }) {
+  const level = gradeNow(child.gradeLevel, child.gradeYear, new Date().toISOString().slice(0, 10))
+  return level === null ? {} : { gradeLevel: String(level) }
+}
+
+// `gradeLevel` is the grade now (a number as text, '' = none), for a school that shows grade (useAgeDisplay).
+type ChildRow = { name: string; age: string; phone: string | null; stage?: string; gradeLevel?: string }
 
 type FormState = {
   fullName: string
@@ -84,7 +95,7 @@ function fromLead(lead: Lead): FormState {
     state: lead.state ?? '',
     nameZh: lead.nameZh ?? '',
     secondParentPhone: lead.secondParentPhone ?? '',
-    children: lead.children.map((child) => ({ name: child.name ?? '', age: String(child.age), phone: child.phone ?? null })),
+    children: lead.children.map((child) => ({ name: child.name ?? '', age: String(child.age), phone: child.phone ?? null, ...(child.stage ? { stage: child.stage } : {}), ...gradeOfChild(child) })),
     sourceId: lead.sourceId !== null ? String(lead.sourceId) : '',
     tagIds: lead.tagIds,
     picId: lead.picId !== null ? String(lead.picId) : '',
@@ -115,6 +126,8 @@ export function LeadForm({
   // A child's own chat with the family's lead: the family part is shown, not typed over (Lucas, 2026-10-20: his name and
   // number were typed into the parent's boxes and his row removed, and every change saved itself).
   const familyView = forChildChat && lead !== null
+  // A school that shows grade instead of age (Class Settings): the children are picked by grade.
+  const ageMode = useAgeDisplay()
   const [editParent, setEditParent] = useState(false)
   const isStudent = role === 'student' && !familyView
   const sources = crm.leadOptions.filter((option) => option.kind === 'source' && option.isActive)
@@ -272,7 +285,7 @@ export function LeadForm({
     // A student writing themself keeps their own number on the child, whoever the lead's number is.
     // In a child's own chat the children are only shown, so the family's list is sent back as it is.
     const children = familyView && lead
-      ? lead.children.map((child) => ({ name: child.name ?? '', age: String(child.age), phone: child.phone ?? null }))
+      ? lead.children.map((child) => ({ name: child.name ?? '', age: String(child.age), phone: child.phone ?? null, ...(child.stage ? { stage: child.stage } : {}), ...gradeOfChild(child) }))
       : isStudent
         ? filled.map((child, position) => (position === 0 ? { ...child, phone: sent.studentPhone.trim() || null } : child))
         : filled
@@ -304,7 +317,15 @@ export function LeadForm({
       picId: sent.picId ? Number(sent.picId) : null,
       tagIds: sent.tagIds,
       status: sent.status,
-      children: children.map((child) => ({ name: child.name, age: Number(child.age), phone: child.phone?.trim() || null })),
+      // Numbers are found again by any spelling (canonicalPhone), so a child's is kept as it was typed, like the parent's.
+      children: children.map((child) => ({
+        name: child.name,
+        age: Number(child.age),
+        phone: child.phone?.trim() || null,
+        ...(child.stage ? { stage: child.stage } : {}),
+        // The grade with the year it is true, like the Leads page (the age is a guess from it).
+        ...(child.gradeLevel ? { gradeLevel: Number(child.gradeLevel), gradeYear: Number(new Date().toISOString().slice(0, 10).slice(0, 4)) } : {}),
+      })),
       notes: sent.notes,
       ...(lead ? {} : { sourceRuleId: guess.ruleId ?? null }),
     }
@@ -532,20 +553,31 @@ export function LeadForm({
                 aria-label={`Child ${index + 1} name`}
                 className={fieldClass}
               />
-              <select
-                value={child.age}
-                disabled={!canEdit}
-                onChange={(event) => setChild(index, { age: event.target.value })}
-                aria-label={`Child ${index + 1} age`}
-                className={fieldClass}
-              >
-                <option value="">Age</option>
-                {leadChildAgeOptions.map((age) => (
-                  <option key={age} value={age}>
-                    {age}
-                  </option>
-                ))}
-              </select>
+              {ageMode === 'grade' ? (
+                <GradeSelect
+                  value={child.gradeLevel ?? ''}
+                  onChange={(level) =>
+                    setChild(index, { gradeLevel: level, ...(level ? { age: String(approximateAge(Number(level))) } : {}) })
+                  }
+                  ariaLabel={`Child ${index + 1} grade`}
+                  className={fieldClass}
+                />
+              ) : (
+                <select
+                  value={child.age}
+                  disabled={!canEdit}
+                  onChange={(event) => setChild(index, { age: event.target.value })}
+                  aria-label={`Child ${index + 1} age`}
+                  className={fieldClass}
+                >
+                  <option value="">Age</option>
+                  {leadChildAgeOptions.map((age) => (
+                    <option key={age} value={age}>
+                      {age}
+                    </option>
+                  ))}
+                </select>
+              )}
               {canEdit && (
                 <button
                   type="button"

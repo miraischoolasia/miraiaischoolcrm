@@ -25,7 +25,9 @@ export type AppSection =
   | 'activity'
   | 'team-replies'
   | 'fee-calculator'
+  | 'products'
   | 'teacher-quality'
+  | 'data-center'
 // A tab on the Students page: a kind of student, or (for a school with programmes of its own) one programme,
 // 'programme:<id>', or the students in none, 'programme:none'. A school whose tabs follow its class categories
 // (My Classroom) has 'category:<name>', and 'category-none' for the students in no class.
@@ -136,6 +138,12 @@ export type Student = {
   packageId?: number | null
   // The child's birth date (yyyy-mm-dd); the age is worked out from it. Undefined before the migration.
   dateOfBirth?: string | null
+  // The school grade (1-6 Year, 7-11 Form, 12 left) and the year it was true, for a school that shows grade
+  // instead of age (src/lib/grade.ts). Undefined before the migration.
+  gradeLevel?: number | null
+  gradeYear?: number | null
+  // The one-day seats in other classes' lessons. Undefined before the lesson seats migration.
+  lessonSeats?: LessonSeat[]
   // Every stay in a class, for the roster of a given day. Undefined before
   // the class history migration.
   classPeriods?: ClassroomPeriod[]
@@ -147,6 +155,19 @@ export type ClassroomPeriod = {
   classroomId: number
   startDate: string | null
   endDate: string | null
+}
+
+// One child in another class's lesson for one day (Change class before the lesson, Replacement after it).
+// A change takes the child out of the old lesson that day; either kind puts them into the lesson they sit in.
+export type LessonSeat = {
+  id: number
+  studentId: number
+  kind: 'change' | 'replacement'
+  fromClassroomId: number
+  fromDate: string
+  toClassroomId: number
+  toDate: string
+  note: string | null
 }
 
 export type PackageKind = 'trial' | 'regular' | 'camp'
@@ -243,6 +264,9 @@ export type PermissionModule =
   | 'landing_pages'
   | 'class_settings'
   | 'staff_hours'
+  | 'data_center'
+  | 'ad_spend'
+  | 'products'
 
 export type PermissionAction = 'view' | 'edit' | 'delete'
 
@@ -266,6 +290,11 @@ export type LeadChild = {
   name: string
   age: number
   phone: string | null
+  // This child's own stage (the key of one of the school's stages). Missing = the child follows the family.
+  stage?: string | null
+  // The child's school grade and the year it was true (src/lib/grade.ts), for a school that shows grade.
+  gradeLevel?: number | null
+  gradeYear?: number | null
 }
 
 export type LeadFollowUp = {
@@ -356,6 +385,9 @@ export type TrialBooking = {
   studentId: number | null
   childName: string
   childAge: number | null
+  // The grade the child had when booked (a school that shows grade); the stored kind, see lib/grade.ts.
+  gradeLevel?: number | null
+  gradeYear?: number | null
   phone: string | null
   notes: string | null
 }
@@ -364,6 +396,8 @@ export type TrialBookingFormState = {
   leadId: number | null
   childName: string
   childAge: string
+  // The child's grade now (1-12) as text, when the school shows grade; '' otherwise.
+  gradeLevel?: string
   phone: string
   notes: string
 }
@@ -459,6 +493,8 @@ export type CreateStudentFormState = {
   studentType: StudentType
   // yyyy-mm-dd or empty.
   dateOfBirth: string
+  // The grade picked now (a number as text), '' = none; only for a school that shows grade.
+  gradeLevel?: string
   // The school's own number for the child (when the school uses student codes).
   studentCode?: string
   // A school that charges by the month: months paid for the class, from startDate.
@@ -469,6 +505,10 @@ export type LeadChildFormState = {
   name: string
   age: string
   phone: string
+  // '' or missing = follows the family.
+  stage?: string
+  // The grade picked now (a number as text), '' = none.
+  gradeLevel?: string
 }
 
 export type LeadFormState = {
@@ -506,6 +546,8 @@ export type StudentDetailsFormState = {
   studentType: StudentType
   // yyyy-mm-dd or empty.
   dateOfBirth: string
+  // The grade picked now (a number as text), '' = none; only for a school that shows grade.
+  gradeLevel?: string
   // The school's own number for the child (when the school uses student codes).
   studentCode?: string
 }
@@ -586,7 +628,7 @@ export type StudentRow = Pick<
   | 'is_active'
   | 'student_type'
   | 'package_id'
-> & { date_of_birth?: string | null }
+> & { date_of_birth?: string | null; grade_level?: number | null; grade_year?: number | null }
 
 export type ClassroomRow = Pick<
   Database['public']['Tables']['classrooms']['Row'],
@@ -682,7 +724,7 @@ export type TrialBookingRow = Pick<
   | 'child_age'
   | 'phone'
   | 'notes'
->
+> & { grade_level?: number | null; grade_year?: number | null }
 
 export type ScheduleExceptionRow = Pick<
   Database['public']['Tables']['schedule_exceptions']['Row'],

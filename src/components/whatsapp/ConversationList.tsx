@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
+import { observeElementRect, useVirtualizer } from '@tanstack/react-virtual'
 import { PictureOrText } from './Avatar'
 import { Bell, BellSlash, CaretDown, ChatCircleDots, CheckCircle, EnvelopeSimple, FunnelSimple, ImageSquare, Lightning, X, MagnifyingGlass, Phone, Plus, SpeakerHigh, SpeakerSlash, PushPin } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
@@ -110,7 +111,10 @@ type ConversationListProps = {
   // What the parent's students are to the school ("Regular · 3 Months", "HOA"), per chat.
   studentLabelsOf?: (conversation: ChatwootConversation) => string[]
   // The lead stage of a chat's lead (the school's own name and colour); null for students and chats with no lead.
-  stageOf?: (conversation: ChatwootConversation) => { label: string; badge: string } | null
+  // more: the other children's own stages ("Mia: Trial Scheduled"), shown as "+N".
+  stageOf?: (conversation: ChatwootConversation) => { label: string; badge: string; more?: string[] } | null
+  // The lead's next follow-up when it is overdue or for today (the small tag).
+  followUpOf?: (conversation: ChatwootConversation) => 'late' | 'today' | null
   // The lead's tags, shown as chips under the chat.
   tagsOf?: (conversation: ChatwootConversation) => Pick<LeadOption, 'id' | 'label' | 'color' | 'isActive'>[]
   // Who is in charge of the parent: the lead's person in charge, else whoever handles the chat.
@@ -219,6 +223,263 @@ function AlertSettings() {
   )
 }
 
+type RowProps = Pick<
+  ConversationListProps,
+  | 'search'
+  | 'snippets'
+  | 'matchOf'
+  | 'leadNameOf'
+  | 'studentLabelsOf'
+  | 'stageOf'
+  | 'followUpOf'
+  | 'tagsOf'
+  | 'picOf'
+  | 'pictureOf'
+  | 'showWaiting'
+  | 'reactionPreviews'
+  | 'draftOf'
+  | 'isOlderDuplicate'
+  | 'isEmptyDuplicate'
+  | 'isStudentSelf'
+  | 'nowSeconds'
+  | 'numberOf'
+  | 'channelOf'
+  | 'onSelect'
+> & { conversation: ChatwootConversation; isPerson: boolean; startsGroup: boolean; selected: boolean }
+
+// One chat of the list. Memo: while the list scrolls, the rows already drawn are not worked out again.
+const ConversationRow = memo(function ConversationRow({
+  conversation,
+  isPerson,
+  startsGroup,
+  selected,
+  search,
+  snippets,
+  matchOf,
+  leadNameOf,
+  studentLabelsOf,
+  stageOf,
+  followUpOf,
+  tagsOf,
+  picOf,
+  pictureOf,
+  showWaiting = false,
+  reactionPreviews,
+  draftOf,
+  isOlderDuplicate,
+  isEmptyDuplicate,
+  isStudentSelf,
+  nowSeconds,
+  numberOf,
+  channelOf,
+  onSelect,
+}: RowProps) {
+  const identity = getChatIdentity(conversation.meta.sender, leadNameOf?.(conversation), conversation.meta.channel)
+  // Why a person came up when the row does not show it: the WhatsApp name, a child's name...
+  const matched = isPerson ? (matchOf?.(conversation) ?? null) : null
+  const matchedName = matched && !identity.title.toLowerCase().includes(matched.toLowerCase()) ? matched : null
+  const channel = channelOf?.(conversation) ?? null
+  const pic = picOf?.(conversation) ?? null
+  const lastMessage = conversation.last_non_activity_message
+  const preview = getPreview(conversation)
+  // A reaction reads like WhatsApp writes it ("You reacted 😂 to: ...") instead of just the emoji.
+  const reaction = reactionPreviews?.get(waIdOf(lastMessage?.source_id) ?? '')
+  const byUs = lastMessage?.message_type === 1
+  const reactionLine = reaction
+    ? formatReactionLine(reaction.emoji, reaction.target, byUs)
+    : isCheckingReaction(lastMessage, nowSeconds)
+      ? formatReactionLine((lastMessage?.content ?? '').trim(), null, byUs)
+      : null
+  const waiting = getWaitingSeconds(conversation, nowSeconds)
+  const overdue = showWaiting && waiting !== null && waiting >= OVERDUE_SECONDS
+  // Past a day it is most likely an old chat, so it gets the label but not the red row.
+  const redRow = overdue && waiting < STALE_SECONDS
+  return (
+    <>
+      {startsGroup && (
+        <h3 className="sticky top-0 z-10 border-b border-slate-100 bg-slate-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          {isPerson ? 'Chats' : 'Found in messages'}
+        </h3>
+      )}
+      <button
+        type="button"
+        onClick={() => onSelect(conversation.id)}
+        className={cn(
+          // No transition: hundreds of rows animating their colour slowed scrolling on a phone.
+          'grid w-full grid-cols-[36px_minmax(0,1fr)] gap-3 border-b border-l-4 border-b-slate-100 px-3 py-3 text-left',
+          redRow ? 'border-l-red-500' : 'border-l-transparent',
+          selected ? 'bg-pink-50' : redRow ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-slate-50',
+        )}
+      >
+        {/* Down a little, so the name tag on its corner stays inside the row (not over the line above). */}
+        <span className="relative mt-2 h-9 w-9">
+          <span
+            aria-hidden="true"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700"
+          >
+            <PictureOrText src={pictureOf?.(conversation)} text={identity.initials} />
+          </span>
+          {channel && <ChannelBadge info={channel} className="absolute -bottom-1 -right-1" />}
+          {/* Who handles the chat, by full name, on the picture's top-left corner (a long name ends in "…"). */}
+          {pic && (
+            <span
+              title={`Handled by ${pic.name}`}
+              className="absolute -left-2 -top-2 z-10 max-w-[56px] truncate rounded-full border border-white bg-[#fc0c97] px-1.5 py-px text-[9px] font-semibold leading-tight text-white shadow-sm"
+            >
+              {pic.name}
+            </span>
+          )}
+        </span>
+        <span className="min-w-0">
+          <span className="flex items-baseline justify-between gap-2">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-sm font-semibold text-slate-900" title={identity.title}><Highlighted text={identity.title} query={isPerson ? search : undefined} /></span>
+              {!channel && socialKindOf(conversation.meta.channel, conversation.meta.sender) === 'messenger' && (
+                <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+                  Messenger
+                </span>
+              )}
+              {!channel && socialKindOf(conversation.meta.channel, conversation.meta.sender) === 'instagram' && (
+                <span className="shrink-0 rounded bg-fuchsia-50 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-700">
+                  Instagram
+                </span>
+              )}
+              {numberOf?.(conversation) && (
+                <span
+                  title={numberOf(conversation)!.title}
+                  className="inline-flex shrink-0 items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600"
+                >
+                  {numberOf(conversation)!.color && (
+                    <span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ backgroundColor: numberOf(conversation)!.color! }} />
+                  )}
+                  {numberOf(conversation)!.label}
+                </span>
+              )}
+              {conversation.custom_attributes?.crm_pinned && (
+                <PushPin size={12} weight="fill" className="shrink-0 text-slate-400" aria-label="Pinned" />
+              )}
+            </span>
+            <span className="shrink-0 text-xs text-slate-400">{formatListTime(conversation.last_activity_at)}</span>
+          </span>
+          {isPerson && matchedName && (
+            <span className="block truncate text-xs text-slate-500">
+              <Highlighted text={matchedName} query={search} />
+            </span>
+          )}
+          <span className="flex items-center justify-between gap-2">
+            <span className="truncate text-sm text-slate-500">
+              {draftOf?.(conversation) ? (
+                <>
+                  <span className="font-medium text-[#fc0c97]">Draft: </span>
+                  {draftOf(conversation)}
+                </>
+              ) : snippets.get(conversation.id) ? (
+                <>
+                  <span className="font-medium text-[#be185d]">Found: </span>
+                  <Highlighted text={snippets.get(conversation.id) ?? ''} query={search} />
+                </>
+              ) : reactionLine ? (
+                reactionLine
+              ) : lastMessage?.private && preview ? (
+                <>
+                  Note: <Highlighted text={preview} query={search} />
+                </>
+              ) : lastMessage?.message_type === 1 && preview ? (
+                <>
+                  You: <Highlighted text={preview} query={search} />
+                </>
+              ) : (
+                <Highlighted text={preview} query={search} />
+              )}
+            </span>
+            {conversation.unread_count > 0 && conversation.status !== 'resolved' && conversation.custom_attributes?.crm_marked_unread && conversation.unread_count <= 1 ? (
+              <span role="img" aria-label="Marked as unread" className="size-2.5 shrink-0 rounded-full bg-[#fc0c97]" />
+            ) : conversation.unread_count > 0 && conversation.status !== 'resolved' && (
+              <span className="min-w-5 shrink-0 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white">
+                {conversation.unread_count > 99 ? '99+' : conversation.unread_count}
+              </span>
+            )}
+          </span>
+          <span className="mt-1 flex min-h-[22px] flex-wrap gap-1">
+            {overdue && waiting !== null && (
+              <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                Waiting {formatWaiting(waiting)}
+              </span>
+            )}
+            {isOlderDuplicate?.(conversation) && (
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                Older chat of this parent
+              </span>
+            )}
+            {isStudentSelf?.(conversation) && (
+              <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+                Student themself
+              </span>
+            )}
+            {isEmptyDuplicate?.(conversation) && (
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                Empty. This parent's chat is another one
+              </span>
+            )}
+            {(() => {
+              const due = followUpOf?.(conversation)
+              return due ? (
+                <span
+                  className={cn(
+                    'rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                    due === 'late' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800',
+                  )}
+                  title="Follow-up"
+                >
+                  {due === 'late' ? 'Overdue' : 'Follow up today'}
+                </span>
+              ) : null
+            })()}
+            {(() => {
+              const shown = stageOf?.(conversation)
+              return shown ? (
+                <>
+                  <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', shown.badge)} title="Lead stage">
+                    {shown.label}
+                  </span>
+                  {shown.more && shown.more.length > 0 && (
+                    <span
+                      className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600"
+                      title={shown.more.join(', ')}
+                      aria-label={`${shown.more.length} more: ${shown.more.join(', ')}`}
+                    >
+                      +{shown.more.length}
+                    </span>
+                  )}
+                </>
+              ) : null
+            })()}
+            {studentLabelsOf?.(conversation).map((label) => (
+              <span
+                key={label}
+                className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
+              >
+                {label}
+              </span>
+            ))}
+            {tagsOf?.(conversation).map((tag) => (
+              <span key={tag.id} className="max-w-full">
+                <LeadTagChip tag={tag} compact />
+              </span>
+            ))}
+          </span>
+        </span>
+      </button>
+    </>
+  )
+})
+
+// Only the chats in view (and a few around them) are drawn: a school has close to 2,000 open chats, and drawing them
+// all on every change made the list stutter on a phone. A row is about this tall until it is measured.
+const ROW_ESTIMATE = 96
+// Tests run without layout (the list is 0 px tall there): every row is drawn, as before.
+const NO_LAYOUT_HEIGHT = import.meta.env.MODE === 'test' ? 1_000_000 : 0
+
 export function ConversationList({
   conversations,
   counts,
@@ -235,6 +496,7 @@ export function ConversationList({
   leadNameOf,
   studentLabelsOf,
   stageOf,
+  followUpOf,
   tagsOf,
   picOf,
   pictureOf,
@@ -280,6 +542,16 @@ export function ConversationList({
   automationCount = 0,
   onOpenAutomations,
 }: ConversationListProps) {
+  const scroller = useRef<HTMLDivElement>(null)
+  const rows = useVirtualizer({
+    count: conversations.length,
+    getScrollElement: () => scroller.current,
+    estimateSize: () => ROW_ESTIMATE,
+    overscan: 8,
+    getItemKey: (index) => conversations[index].id,
+    observeElementRect: (instance, callback) =>
+      observeElementRect(instance, (rect) => callback(rect.height > 0 ? rect : { width: rect.width, height: NO_LAYOUT_HEIGHT })),
+  })
   // The filters sit behind one button; they open by themselves while one of them is on.
   const activeFilters = [
     tagId !== null,
@@ -630,7 +902,7 @@ export function ConversationList({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
         {isLoading && <p className="p-4 text-sm text-slate-500">Loading chats...</p>}
         {loadError && <p className="p-4 text-sm text-red-600">{loadError}</p>}
         {!isLoading && !loadError && conversations.length === 0 && (
@@ -640,185 +912,53 @@ export function ConversationList({
               : emptyText(tab, canLoadMore)}
           </p>
         )}
-        {conversations.map((conversation, index) => {
+        <div className="relative w-full" style={{ height: rows.getTotalSize() }}>
+        {rows.getVirtualItems().map((row) => {
+          const index = row.index
+          const conversation = conversations[index]
           // While searching, a heading starts each group: the people found, then the chats where the words were said.
           const isPerson = peopleIds?.has(conversation.id) ?? false
           const startsGroup =
             peopleIds !== null && (index === 0 || (peopleIds.has(conversations[index - 1].id) ?? false) !== isPerson)
-          const identity = getChatIdentity(conversation.meta.sender, leadNameOf?.(conversation), conversation.meta.channel)
-          // Why a person came up when the row does not show it: the WhatsApp name, a child's name...
-          const matched = isPerson ? (matchOf?.(conversation) ?? null) : null
-          const matchedName = matched && !identity.title.toLowerCase().includes(matched.toLowerCase()) ? matched : null
-          const channel = channelOf?.(conversation) ?? null
-          const pic = picOf?.(conversation) ?? null
-          const lastMessage = conversation.last_non_activity_message
-          const preview = getPreview(conversation)
-          // A reaction reads like WhatsApp writes it ("You reacted 😂 to: ...") instead of just the emoji.
-          const reaction = reactionPreviews?.get(waIdOf(lastMessage?.source_id) ?? '')
-          const byUs = lastMessage?.message_type === 1
-          const reactionLine = reaction
-            ? formatReactionLine(reaction.emoji, reaction.target, byUs)
-            : isCheckingReaction(lastMessage, nowSeconds)
-              ? formatReactionLine((lastMessage?.content ?? '').trim(), null, byUs)
-              : null
           const selected = conversation.id === selectedId
-          const waiting = getWaitingSeconds(conversation, nowSeconds)
-          const overdue = showWaiting && waiting !== null && waiting >= OVERDUE_SECONDS
-          // Past a day it is most likely an old chat, so it gets the label but not the red row.
-          const redRow = overdue && waiting < STALE_SECONDS
           return (
-            <Fragment key={conversation.id}>
-            {startsGroup && (
-              <h3 className="sticky top-0 z-10 border-b border-slate-100 bg-slate-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                {isPerson ? 'Chats' : 'Found in messages'}
-              </h3>
-            )}
-            <button
-              type="button"
-              onClick={() => onSelect(conversation.id)}
-              className={cn(
-                'grid w-full grid-cols-[36px_minmax(0,1fr)] gap-3 border-b border-l-4 border-b-slate-100 px-3 py-3 text-left transition',
-                redRow ? 'border-l-red-500' : 'border-l-transparent',
-                selected ? 'bg-pink-50' : redRow ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-slate-50',
-              )}
+            <div
+              key={row.key}
+              data-index={index}
+              ref={rows.measureElement}
+              className="absolute left-0 top-0 w-full"
+              style={{ transform: `translateY(${row.start}px)` }}
             >
-              {/* Down a little, so the name tag on its corner stays inside the row (not over the line above). */}
-              <span className="relative mt-2 h-9 w-9">
-                <span
-                  aria-hidden="true"
-                  className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700"
-                >
-                  <PictureOrText src={pictureOf?.(conversation)} text={identity.initials} />
-                </span>
-                {channel && <ChannelBadge info={channel} className="absolute -bottom-1 -right-1" />}
-                {/* Who handles the chat, by full name, on the picture's top-left corner (a long name ends in "…"). */}
-                {pic && (
-                  <span
-                    title={`Handled by ${pic.name}`}
-                    className="absolute -left-2 -top-2 z-10 max-w-[56px] truncate rounded-full border border-white bg-[#fc0c97] px-1.5 py-px text-[9px] font-semibold leading-tight text-white shadow-sm"
-                  >
-                    {pic.name}
-                  </span>
-                )}
-              </span>
-              <span className="min-w-0">
-                <span className="flex items-baseline justify-between gap-2">
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate text-sm font-semibold text-slate-900" title={identity.title}><Highlighted text={identity.title} query={isPerson ? search : undefined} /></span>
-                    {!channel && socialKindOf(conversation.meta.channel, conversation.meta.sender) === 'messenger' && (
-                      <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
-                        Messenger
-                      </span>
-                    )}
-                    {!channel && socialKindOf(conversation.meta.channel, conversation.meta.sender) === 'instagram' && (
-                      <span className="shrink-0 rounded bg-fuchsia-50 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-700">
-                        Instagram
-                      </span>
-                    )}
-                    {numberOf?.(conversation) && (
-                      <span
-                        title={numberOf(conversation)!.title}
-                        className="inline-flex shrink-0 items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600"
-                      >
-                        {numberOf(conversation)!.color && (
-                          <span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ backgroundColor: numberOf(conversation)!.color! }} />
-                        )}
-                        {numberOf(conversation)!.label}
-                      </span>
-                    )}
-                    {conversation.custom_attributes?.crm_pinned && (
-                      <PushPin size={12} weight="fill" className="shrink-0 text-slate-400" aria-label="Pinned" />
-                    )}
-                  </span>
-                  <span className="shrink-0 text-xs text-slate-400">{formatListTime(conversation.last_activity_at)}</span>
-                </span>
-                {isPerson && matchedName && (
-                  <span className="block truncate text-xs text-slate-500">
-                    <Highlighted text={matchedName} query={search} />
-                  </span>
-                )}
-                <span className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm text-slate-500">
-                    {draftOf?.(conversation) ? (
-                      <>
-                        <span className="font-medium text-[#fc0c97]">Draft: </span>
-                        {draftOf(conversation)}
-                      </>
-                    ) : snippets.get(conversation.id) ? (
-                      <>
-                        <span className="font-medium text-[#be185d]">Found: </span>
-                        <Highlighted text={snippets.get(conversation.id) ?? ''} query={search} />
-                      </>
-                    ) : reactionLine ? (
-                      reactionLine
-                    ) : lastMessage?.private && preview ? (
-                      <>
-                        Note: <Highlighted text={preview} query={search} />
-                      </>
-                    ) : lastMessage?.message_type === 1 && preview ? (
-                      <>
-                        You: <Highlighted text={preview} query={search} />
-                      </>
-                    ) : (
-                      <Highlighted text={preview} query={search} />
-                    )}
-                  </span>
-                  {conversation.unread_count > 0 && conversation.status !== 'resolved' && conversation.custom_attributes?.crm_marked_unread && conversation.unread_count <= 1 ? (
-                    <span role="img" aria-label="Marked as unread" className="size-2.5 shrink-0 rounded-full bg-[#fc0c97]" />
-                  ) : conversation.unread_count > 0 && conversation.status !== 'resolved' && (
-                    <span className="min-w-5 shrink-0 rounded-full bg-[#fc0c97] px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white">
-                      {conversation.unread_count > 99 ? '99+' : conversation.unread_count}
-                    </span>
-                  )}
-                </span>
-                <span className="mt-1 flex min-h-[22px] flex-wrap gap-1">
-                  {overdue && waiting !== null && (
-                    <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white">
-                      Waiting {formatWaiting(waiting)}
-                    </span>
-                  )}
-                  {isOlderDuplicate?.(conversation) && (
-                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                      Older chat of this parent
-                    </span>
-                  )}
-                  {isStudentSelf?.(conversation) && (
-                    <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">
-                      Student themself
-                    </span>
-                  )}
-                  {isEmptyDuplicate?.(conversation) && (
-                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                      Empty. This parent's chat is another one
-                    </span>
-                  )}
-                  {(() => {
-                    const shown = stageOf?.(conversation)
-                    return shown ? (
-                      <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', shown.badge)} title="Lead stage">
-                        {shown.label}
-                      </span>
-                    ) : null
-                  })()}
-                  {studentLabelsOf?.(conversation).map((label) => (
-                    <span
-                      key={label}
-                      className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
-                    >
-                      {label}
-                    </span>
-                  ))}
-                  {tagsOf?.(conversation).map((tag) => (
-                    <span key={tag.id} className="max-w-full">
-                      <LeadTagChip tag={tag} compact />
-                    </span>
-                  ))}
-                </span>
-              </span>
-            </button>
-            </Fragment>
+              <ConversationRow
+                conversation={conversation}
+                isPerson={isPerson}
+                startsGroup={startsGroup}
+                selected={selected}
+                search={search}
+                snippets={snippets}
+                matchOf={matchOf}
+                leadNameOf={leadNameOf}
+                studentLabelsOf={studentLabelsOf}
+                stageOf={stageOf}
+                followUpOf={followUpOf}
+                tagsOf={tagsOf}
+                picOf={picOf}
+                pictureOf={pictureOf}
+                showWaiting={showWaiting}
+                reactionPreviews={reactionPreviews}
+                draftOf={draftOf}
+                isOlderDuplicate={isOlderDuplicate}
+                isEmptyDuplicate={isEmptyDuplicate}
+                isStudentSelf={isStudentSelf}
+                nowSeconds={nowSeconds}
+                numberOf={numberOf}
+                channelOf={channelOf}
+                onSelect={onSelect}
+              />
+            </div>
           )
         })}
+        </div>
         {canLoadMore && <LoadMoreButton onLoadMore={onLoadMore} isLoadingMore={isLoadingMore} />}
       </div>
 

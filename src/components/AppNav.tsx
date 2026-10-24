@@ -244,7 +244,8 @@ export function MobileNav({
           </div>
         </>
       )}
-      <nav aria-label="Menu" className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-2 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur lg:hidden">
+      {/* Solid white, no blur: an iPhone re-blurs what scrolls under a blurred bar on every frame. */}
+      <nav aria-label="Menu" className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white px-2 py-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] lg:hidden">
         <div className="mx-auto flex max-w-xl gap-1">
           {top.map((entry) =>
             button(entry.id, entry.label, entry.icon, entry.section === activeSection, entry.badge?.count ?? 0, () => choose(entry)),

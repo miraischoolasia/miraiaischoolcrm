@@ -677,6 +677,11 @@ export function countUnread(conversations: ChatwootConversation[]) {
   return conversations.filter((c) => c.status !== 'resolved' && c.unread_count > 0).length
 }
 
+// Made once: building an Intl.DateTimeFormat is slow (on an iPhone, once per chat row was a fifth of a list redraw).
+const listDayFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' })
+const messageTimeFormat = new Intl.DateTimeFormat('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true })
+const dayLabelFormat = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+
 export function formatListTime(seconds: number, now = new Date()) {
   const date = new Date(seconds * 1000)
   const minutes = Math.floor((now.getTime() - date.getTime()) / 60000)
@@ -695,13 +700,11 @@ export function formatListTime(seconds: number, now = new Date()) {
   if (date.toDateString() === yesterday.toDateString()) {
     return 'Yesterday'
   }
-  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(date)
+  return listDayFormat.format(date)
 }
 
 export function formatMessageTime(seconds: number) {
-  return new Intl.DateTimeFormat('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).format(
-    new Date(seconds * 1000),
-  )
+  return messageTimeFormat.format(new Date(seconds * 1000))
 }
 
 export function formatDayLabel(seconds: number, now = new Date()) {
@@ -714,7 +717,7 @@ export function formatDayLabel(seconds: number, now = new Date()) {
   if (date.toDateString() === yesterday.toDateString()) {
     return 'Yesterday'
   }
-  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }).format(date)
+  return dayLabelFormat.format(date)
 }
 
 export function getInitials(name: string) {

@@ -1,6 +1,8 @@
 import { X } from '@phosphor-icons/react'
 import { ModalShell } from '../ModalShell'
 import { getTodayString } from '../../domain/studentStatus'
+import { useAgeDisplay } from '../../lib/ageDisplay'
+import { GradeSelect } from '../GradeSelect'
 import { STUDENT_KIND_LABELS } from '../../lib/studentLink'
 import type { Classroom, StudentDetailsFormState, Teacher } from '../../types/domain'
 
@@ -33,6 +35,7 @@ export function EditStudentModal({
   showStudentCode = false,
   extraFields,
 }: EditStudentModalProps) {
+  const ageMode = useAgeDisplay()
   const selectedClassroom = formState.classroomId
     ? classrooms.find((classroom) => classroom.id === Number(formState.classroomId))
     : undefined
@@ -157,6 +160,20 @@ export function EditStudentModal({
           )}
 
           {extraFields}
+
+          {!isPreviewStudent && ageMode === 'grade' && (
+          <label className="space-y-2 sm:col-span-2">
+            <span className="text-sm font-semibold text-slate-700">Grade</span>
+            <GradeSelect
+              value={formState.gradeLevel ?? ''}
+              onChange={(level) => onFieldChange('gradeLevel', level)}
+              ariaLabel="Grade"
+              placeholder="Not set"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-[#fc0c97] focus:ring-4 focus:ring-[#ffe4f2]"
+            />
+            <p className="text-xs text-slate-500">The grade goes up by itself every 1 January.</p>
+          </label>
+          )}
 
           {!isPreviewStudent && (
           <label className="space-y-2 sm:col-span-2">

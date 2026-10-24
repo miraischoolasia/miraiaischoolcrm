@@ -95,7 +95,7 @@ export function StageRulesCard({ rules, missing, canEdit, loadError, onSave }: S
                         className={fieldClass}
                       >
                         <option value="all">All students (an HOA trial student too)</option>
-                        <option value="regular">Only regular students (an HOA trial student does not count)</option>
+                        <option value="regular">Only students in a regular class (an HOA trial student or one with no class does not count)</option>
                       </select>
                     </label>
                   )}

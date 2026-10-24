@@ -169,6 +169,8 @@ export type Database = {
           phone: string | null
           age: number | null
           date_of_birth: string | null
+          grade_level?: number | null
+          grade_year?: number | null
           student_code: string | null
           name_zh: string | null
           student_kind: string | null
@@ -201,6 +203,8 @@ export type Database = {
           phone?: string | null
           age?: number | null
           date_of_birth?: string | null
+          grade_level?: number | null
+          grade_year?: number | null
           student_code?: string | null
           name_zh?: string | null
           student_kind?: string | null
@@ -233,6 +237,8 @@ export type Database = {
           phone?: string | null
           age?: number | null
           date_of_birth?: string | null
+          grade_level?: number | null
+          grade_year?: number | null
           student_code?: string | null
           name_zh?: string | null
           student_kind?: string | null
@@ -327,6 +333,45 @@ export type Database = {
           includes_fees?: boolean
           is_active?: boolean
           sort_order?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
+      lesson_seats: {
+        Row: {
+          id: number
+          student_id: number
+          kind: string
+          from_classroom_id: number
+          from_date: string
+          to_classroom_id: number
+          to_date: string
+          note: string | null
+          created_by: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          student_id: number
+          kind: string
+          from_classroom_id: number
+          from_date: string
+          to_classroom_id: number
+          to_date: string
+          note?: string | null
+          created_by?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          student_id?: number
+          kind?: string
+          from_classroom_id?: number
+          from_date?: string
+          to_classroom_id?: number
+          to_date?: string
+          note?: string | null
+          created_by?: number | null
           created_at?: string
         }
         Relationships: []
@@ -626,6 +671,8 @@ export type Database = {
           sort_order: number
           is_active: boolean
           owner_id: string | null
+          // A follow-up template (20261102500000).
+          followup_step?: number | null
           created_at: string
           updated_at: string
         }
@@ -638,6 +685,7 @@ export type Database = {
           sort_order?: number
           is_active?: boolean
           owner_id?: string | null
+          followup_step?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -650,6 +698,7 @@ export type Database = {
           sort_order?: number
           is_active?: boolean
           owner_id?: string | null
+          followup_step?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -1472,6 +1521,8 @@ export type Database = {
           notes: string | null
           created_by: number | null
           created_at: string
+          grade_level?: number | null
+          grade_year?: number | null
         }
         Insert: {
           id?: number
@@ -2529,6 +2580,8 @@ export type Database = {
           created_at: string
           updated_at: string
           programme_id?: number | null
+          // Primary / secondary for fee estimates in the Data Center (20261101400000).
+          fee_level?: 'primary' | 'secondary' | null
         }
         Insert: {
           name: string
@@ -2829,6 +2882,8 @@ export type Database = {
           membership_name: string
           sort_order: number
           is_active: boolean
+          // The group whose prices this one uses (20261101520000); null = its own.
+          uses_cohort_id?: number | null
           materials_included_in_tuition: boolean
           created_at: string
           updated_at: string
@@ -2935,6 +2990,134 @@ export type Database = {
       // §15 (20261031900000_quotation_links_qr.sql): each staff member's after-payment and contact links.
       quotation_staff_links: {
         Row: { teacher_id: number; after_pay_url: string | null; contact_url: string | null; updated_at: string; updated_by: number | null }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      lead_conversions: {
+        Row: {
+          id: number
+          lead_id: number
+          student_id: number
+          converted_at: string
+          historical: boolean
+          how: 'quotation' | 'upgrade' | 'new_student' | 'link' | 'backfill'
+          sales_person_id: number | null
+          created_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      products: {
+        Row: {
+          id: number
+          name: string
+          category: string
+          level_label: string | null
+          price: number
+          image_path: string | null
+          track_stock: boolean
+          low_stock_at: number
+          is_active: boolean
+          sort_order: number
+          created_at: string
+          updated_at: string
+          updated_by: number | null
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      product_stock_moves: {
+        Row: {
+          id: number
+          product_id: number
+          qty: number
+          kind: 'purchase' | 'sale' | 'adjust' | 'return'
+          quotation_id: string | null
+          note: string | null
+          created_by: number | null
+          created_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      // a view (20261101500000): each product's stock = the sum of its moves
+      product_stock: {
+        Row: { product_id: number; stock: number }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      meta_ad_accounts: {
+        Row: { account_id: string; name: string | null; currency: string | null; timezone: string | null; status: number | null; last_pulled_at: string | null; updated_at: string }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      ad_spend_daily: {
+        Row: {
+          ad_id: string
+          day: string
+          account_id: string
+          ad_name: string | null
+          adset_id: string | null
+          adset_name: string | null
+          campaign_id: string | null
+          campaign_name: string | null
+          spend: number
+          impressions: number
+          clicks: number
+          link_clicks: number
+          conversations: number
+          meta_leads: number
+          pulled_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      meta_ads: {
+        Row: {
+          ad_id: string
+          account_id: string
+          name: string | null
+          status: string | null
+          adset_name: string | null
+          campaign_id: string | null
+          campaign_name: string | null
+          title: string | null
+          body: string | null
+          thumbnail_url: string | null
+          updated_at: string
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      meta_sync_runs: {
+        Row: {
+          id: number
+          started_at: string
+          finished_at: string | null
+          trigger: 'schedule' | 'admin'
+          dry_run: boolean
+          since: string | null
+          until: string | null
+          rows_read: number
+          rows_written: number
+          ok: boolean | null
+          error: string | null
+          warnings: string[]
+        }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      data_center_targets: {
+        Row: { teacher_id: number; month: string; people: number; subjects: number; updated_at: string; updated_by: number | null }
         Insert: never
         Update: never
         Relationships: []
@@ -4113,6 +4296,12 @@ export type Database = {
         }
         Returns: { student_id: number; minutes: number; counts_as_present: boolean }[]
       }
+      set_age_display: {
+        Args: {
+          p_mode: string
+        }
+        Returns: undefined
+      }
       set_zoom_attendance: {
         Args: {
           p_present_percent: number
@@ -4318,6 +4507,14 @@ export type Database = {
         Args: { p_cohort_id: number; p_materials_included: boolean | null; p_rates: Json }
         Returns: undefined
       }
+      set_fee_cohort_follow: {
+        Args: { p_cohort_id: number; p_uses_cohort_id: number | null }
+        Returns: undefined
+      }
+      copy_fee_cohort_rates: {
+        Args: { p_cohort_id: number; p_from_cohort_id: number }
+        Returns: number
+      }
       save_fee_subject: {
         Args: {
           p_id: number | null
@@ -4341,6 +4538,179 @@ export type Database = {
       set_quotation_staff_link: {
         Args: { p_teacher_id: number; p_after_pay_url: string | null; p_contact_url: string | null }
         Returns: undefined
+      }
+      data_center_settings: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      set_data_center: {
+        Args: { p_value: Json }
+        Returns: Json
+      }
+      set_source_bucket: {
+        Args: { p_option_id: number; p_bucket: string | null }
+        Returns: undefined
+      }
+      set_program_level_fee_level: {
+        Args: { p_name: string; p_fee_level: 'primary' | 'secondary' | null }
+        Returns: undefined
+      }
+      lead_report_bucket: {
+        Args: { p_source_id: number | null }
+        Returns: string
+      }
+      data_center_followups: {
+        Args: { p_month: string }
+        Returns: { assignee_id: number | null; scheduled: number; done: number; on_time: number; overdue: number }[]
+      }
+      data_center_lc_report: {
+        Args: { p_month: string }
+        Returns: {
+          lc_id: number | null
+          lc_name: string
+          students: number
+          students_at_start: number
+          students_still_in: number
+          stays_at_start: number
+          stays_added: number
+          stays_stopped: number
+          at_risk: number
+          cards_due: number
+          cards_sent: number
+        }[]
+      }
+      data_center_lc_students: {
+        Args: { p_month: string; p_lc_id: number | null }
+        Returns: {
+          student_id: number
+          student_name: string
+          student_code: string | null
+          stopped_all: boolean
+          reasons: string[]
+          card_sent: boolean
+        }[]
+      }
+      products_settings: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      set_products_settings: {
+        Args: { p_value: Json }
+        Returns: Json
+      }
+      save_product: {
+        Args: {
+          p_id: number | null
+          p_name: string
+          p_category: string
+          p_level_label: string | null
+          p_price: number
+          p_image_path: string | null
+          p_track_stock: boolean
+          p_low_stock_at: number
+          p_is_active: boolean
+          p_sort_order: number | null
+        }
+        Returns: number
+      }
+      add_stock_move: {
+        Args: { p_product_id: number; p_kind: 'purchase' | 'adjust' | 'return'; p_qty: number; p_note: string | null }
+        Returns: number
+      }
+      meta_ads_status: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      data_center_ads: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          ad_id: string | null
+          ad_name: string | null
+          title: string | null
+          campaign_id: string | null
+          campaign_name: string | null
+          thumbnail_url: string | null
+          status: string | null
+          spend: number
+          impressions: number
+          clicks: number
+          conversations: number
+          meta_leads: number
+          leads: number
+          trials: number
+          conversions: number
+          revenue_actual: number
+          revenue_estimated: number
+        }[]
+      }
+      data_center_ec_ads: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          ec_id: number | null
+          ec_name: string
+          ad_leads: number
+          conversions: number
+          revenue_actual: number
+          revenue_estimated: number
+          spend_share: number
+        }[]
+      }
+      data_center_ad_months: {
+        Args: { p_month: string }
+        Returns: Json
+      }
+      set_data_center_target: {
+        Args: { p_teacher_id: number; p_month: string; p_people: number | null; p_subjects: number | null }
+        Returns: undefined
+      }
+      data_center_overview: {
+        Args: { p_month: string }
+        Returns: Json
+      }
+      data_center_ec_report: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          ec_id: number | null
+          ec_name: string
+          leads: number
+          leads_by_bucket: Json
+          conversions: number
+          same_period: number
+          cross_period: number
+          subjects: number
+          weighted_subjects: number
+          revenue_actual: number
+          paid_quotations: number
+          revenue_estimated: number
+          unknown_amounts: number
+          avg_days: number | null
+          median_days: number | null
+          target_people: number
+          target_subjects: number
+        }[]
+      }
+      data_center_conversions: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          conversion_id: number
+          lead_id: number
+          lead_name: string
+          lead_created_on: string
+          source_bucket: string
+          student_id: number
+          student_name: string
+          converted_on: string
+          how: 'quotation' | 'upgrade' | 'new_student' | 'link' | 'backfill'
+          sales_person_id: number | null
+          sales_person_name: string | null
+          subjects: number
+          months: number
+          amount: number | null
+          amount_kind: 'actual' | 'estimated' | 'unknown'
+          revenue_on: string
+          quotation_id: string | null
+          estimate_note: 'no_classes' | 'no_membership' | 'no_price_group' | 'no_level' | 'no_rate' | null
+        }[]
       }
       set_quotation_settings: {
         Args: { p_value: Json }
@@ -4547,6 +4917,52 @@ export type Database = {
         Args: {
           p_teacher_id: number
           p_permissions: Json
+        }
+        Returns: undefined
+      }
+      today_roles: {
+        Args: { p_teacher_id?: number | null }
+        Returns: Json
+      }
+      today_ec: {
+        Args: { p_teacher_id?: number | null }
+        Returns: Json
+      }
+      today_lc: {
+        Args: { p_teacher_id?: number | null }
+        Returns: Json
+      }
+      today_teacher: {
+        Args: { p_teacher_id?: number | null }
+        Returns: Json
+      }
+      today_team: {
+        Args: Record<string, never>
+        Returns: Json
+      }
+      set_role_names: {
+        Args: { p_ec: string; p_lc: string }
+        Returns: undefined
+      }
+      set_trial_booking_grade: {
+        Args: { p_booking_id: number; p_level: number | null; p_year: number | null }
+        Returns: undefined
+      }
+      book_lesson_seat: {
+        Args: {
+          p_student_id: number
+          p_kind: string
+          p_from_classroom_id: number
+          p_from_date: string
+          p_to_classroom_id: number
+          p_to_date: string
+          p_note?: string | null
+        }
+        Returns: number
+      }
+      cancel_lesson_seat: {
+        Args: {
+          p_seat_id: number
         }
         Returns: undefined
       }

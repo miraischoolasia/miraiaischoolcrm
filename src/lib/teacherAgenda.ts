@@ -34,6 +34,9 @@ export type AgendaItem = {
   editableUntil: number | null
   state: AgendaState
   minutes: number
+  // A class nobody is in (an empty trial slot): listed so the teacher keeps the time free, but there is no
+  // attendance to take and it counts for no teaching hours.
+  empty?: boolean
 }
 
 export type AgendaSources = {
@@ -49,6 +52,11 @@ export type AgendaSources = {
   // Given: the class days this teacher takes attendance for (their own, the
   // classes they assist, the days they cover) instead of only their own classes.
   takes?: (schedule: Schedule, date: string) => boolean
+  // List a class nobody is in as well (marked `empty`); by default it is left out (the admin's attendance lists).
+  includeEmpty?: boolean
+  // How many children booked a trial slot on a day (a booking of a lead has no student yet, so it is not on the
+  // attendance roster but still counts as booked).
+  getBookedCount?: (scheduleId: number, date: string) => number
 }
 
 export type TeacherAgenda = {
@@ -90,7 +98,7 @@ export function getAgendaItems(
   fromDate: string,
   toDate: string,
 ): AgendaItem[] {
-  const { teacherId, exceptions, classroomMap, lessonLogs, makeupEntries, getRosterIds, takes } = sources
+  const { teacherId, exceptions, classroomMap, lessonLogs, makeupEntries, getRosterIds, takes, includeEmpty, getBookedCount } = sources
   const latestLogs = getLatestLessonLogMap(lessonLogs)
   const mine = sources.schedules.filter(
     (schedule) =>
@@ -155,15 +163,25 @@ export function getAgendaItems(
         }
       }
 
-      // A class nobody is in cannot take attendance (an empty trial slot).
-      const studentCount = getRosterIds(schedule.id, date).length
-      if (studentCount === 0) {
+      // A class nobody is in cannot take attendance (an empty trial slot); it is only listed when asked for.
+      const rosterCount = getRosterIds(schedule.id, date).length
+      const studentCount = kind === 'trial' && getBookedCount ? Math.max(rosterCount, getBookedCount(schedule.id, date)) : rosterCount
+      // Nobody to take attendance for (a trial booked by a lead only has no student record yet).
+      const empty = rosterCount === 0
+      if (empty && !includeEmpty) {
         continue
       }
 
       const log = latestLogs.get(`${schedule.id}:${date}`) ?? null
-      const state: AgendaState =
-        date > todayString ? 'later' : log ? 'submitted' : date === todayString ? 'open' : 'missing'
+      const state: AgendaState = empty
+        ? 'later'
+        : date > todayString
+          ? 'later'
+          : log
+            ? 'submitted'
+            : date === todayString
+              ? 'open'
+              : 'missing'
 
       items.push({
         key: `${schedule.id}:${date}`,
@@ -190,6 +208,7 @@ export function getAgendaItems(
         editableUntil: log ? new Date(log.submittedAt).getTime() + 24 * 60 * 60 * 1000 : null,
         state,
         minutes: minutesBetween(schedule.startTime, endTime),
+        ...(empty ? { empty: true } : {}),
       })
     }
   }
@@ -206,7 +225,8 @@ export function buildTeacherAgenda(
   const from = addDays(todayString, -lookbackDays) < week.start ? addDays(todayString, -lookbackDays) : week.start
   const to = addDays(todayString, aheadDays) > week.end ? addDays(todayString, aheadDays) : week.end
   const items = getAgendaItems(sources, todayString, from, to)
-  const inWeek = items.filter((item) => item.date >= week.start && item.date <= week.end)
+  // An empty slot is no teaching: it stays out of the week's classes and hours.
+  const inWeek = items.filter((item) => item.date >= week.start && item.date <= week.end && !item.empty)
 
   return {
     today: items.filter((item) => item.date === todayString),

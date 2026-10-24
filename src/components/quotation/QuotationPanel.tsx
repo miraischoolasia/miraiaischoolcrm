@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowClockwise, Bank, Copy, DownloadSimple, Paperclip, PaperPlaneTilt, Prohibit, SealCheck } from '@phosphor-icons/react'
 import { downloadFile, quotationPdf } from '../../lib/quotationPdf'
 import { cn } from '../../lib/cn'
@@ -14,6 +14,7 @@ import {
   fetchQuotationSettings,
   fetchStaffOptions,
   guessAgeGroup,
+  guessGradeGroup,
   fetchMyTeacherId,
   fetchStaffLinks,
   saveStaffLink,
@@ -43,6 +44,10 @@ import type { Region } from '../../lib/feeCalculator/types'
 import type { FeeLevel } from '../../lib/feeCalculator/quote'
 import { MONTH_NAMES } from '../feeCalculator/labels'
 import { MyQuotationLinks } from './QuotationLinks'
+import { followPriceGroups } from '../../../supabase/functions/_shared/quotation/priceGroups.ts'
+import type { FeeCalculatorSelection } from '../feeCalculator/FeeCalculatorForm'
+import { useAgeDisplay } from '../../lib/ageDisplay'
+import { GRADE_OPTIONS, gradeNow } from '../../lib/grade'
 
 // The Inbox's Quotation tab (the chat's right panel): the EC makes a quotation, the price comes from the Fee
 // Calculator's maths (the quotation function works it out again and keeps it), and the parent's link goes into the
@@ -88,7 +93,9 @@ const databaseApi: QuotationApi = {
   myLinks: { loadMe: fetchMyTeacherId, loadLinks: fetchStaffLinks, save: saveStaffLink },
 }
 
-const inputClass = 'min-h-9 w-full rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800'
+// min-w-0 / max-w-full: a select with a long option (a class with its time and size) must not push the panel wider
+// than a phone.
+const inputClass = 'min-h-9 w-full min-w-0 max-w-full rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800'
 const smallButton = 'inline-flex min-h-8 items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40'
 
 const STATUS_STYLE: Record<QuotationRow['status'], { label: string; tone: string }> = {
@@ -111,9 +118,11 @@ function Label({ text, htmlFor }: { text: string; htmlFor?: string }) {
 }
 
 function bookOf(fees: FeeCalculatorData): PriceBook {
+  // A group that follows another uses that group's prices (as the quotation function does).
+  const followed = followPriceGroups(fees.cohorts, fees.rates)
   return {
-    cohorts: fees.cohorts.map((c) => ({ id: c.id, name: c.name, isActive: c.isActive, materialsIncluded: c.materialsIncluded })),
-    rates: fees.rates,
+    cohorts: followed.cohorts.map((c) => ({ id: c.id, name: c.name, isActive: c.isActive, materialsIncluded: c.materialsIncluded })),
+    rates: followed.rates,
     subjects: fees.subjects.map((s) => ({ level: s.level, code: s.code, label: s.label, kind: s.kind, isActive: s.isActive })),
     globalRates: fees.globalRates,
     invoiceTemplate: fees.invoiceTemplate,
@@ -129,6 +138,7 @@ export function QuotationPanel({
   onAttachFile,
   api = databaseApi,
   today = new Date(),
+  prefill,
 }: {
   lead: Lead | null
   chat: QuotationChat
@@ -139,6 +149,8 @@ export function QuotationPanel({
   onAttachFile?: (file: File) => void
   api?: QuotationApi
   today?: Date
+  // The Fee Calculator's "Use for a quotation": fills the form with its choices each time id changes (values only).
+  prefill?: { id: number; selection: FeeCalculatorSelection }
 }) {
   const ageGroups = useAgeGroups()
   const [fees, setFees] = useState<FeeCalculatorData | null>(null)
@@ -154,6 +166,24 @@ export function QuotationPanel({
   const [childName, setChildName] = useState(firstChild?.name ?? '')
   const [childAge, setChildAge] = useState<number | null>(firstChild?.age ?? null)
   const [ageGroup, setAgeGroup] = useState(() => guessAgeGroup(ageGroups, firstChild?.age ?? null))
+  // A school that shows school grade instead of age (EduHero): the child's grade picks the class grade and the level.
+  const ageMode = useAgeDisplay()
+  const todayText = today.toISOString().slice(0, 10)
+  const [childGrade, setChildGrade] = useState<number | null>(() => gradeNow(firstChild?.gradeLevel, firstChild?.gradeYear, todayText))
+  const applyGrade = (grade: number | null) => {
+    setChildGrade(grade)
+    const guess = guessGradeGroup(ageGroups, grade)
+    if (guess) setAgeGroup(guess)
+    if (grade !== null && grade <= 11) setLevel(grade <= 6 ? 'primary' : 'secondary')
+  }
+  // The school's mode is read once the page has it: then the first child's grade picks the class grade.
+  const gradeApplied = useRef(false)
+  useEffect(() => {
+    if (ageMode !== 'grade' || gradeApplied.current) return
+    gradeApplied.current = true
+    if (childGrade !== null) applyGrade(childGrade)
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [ageMode])
   const [cohortId, setCohortId] = useState<number | null>(null)
   const [level, setLevel] = useState<FeeLevel>('primary')
   const [region, setRegion] = useState<Region>('west_malaysia')
@@ -174,6 +204,29 @@ export function QuotationPanel({
   const [paymentRoute, setPaymentRoute] = useState<PaymentRoute>('bank_transfer')
   const [markingId, setMarkingId] = useState<string | null>(null)
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
+
+  // Fill the form from the Fee Calculator: the group, level, region, start month, the enrol method with the same
+  // number of months (and price column when two have it), the subjects and the registration month. Once the panel
+  // has loaded (its first load sets the defaults), once for each selection handed over (its id).
+  const prefilled = useRef<number | null>(null)
+  useEffect(() => {
+    if (!prefill || !loaded || prefilled.current === prefill.id) return
+    prefilled.current = prefill.id
+    const s = prefill.selection
+    const months = (s.endYear - s.startYear) * 12 + (s.endMonth - s.startMonth) + 1
+    const same = settings.enrolMethods.filter((m) => m.months === months)
+    const method = same.find((m) => m.rateTier === s.rateTier) ?? same[0]
+    setCohortId(Number(s.cohortKey) || null)
+    setLevel(s.level)
+    setRegion(s.region)
+    setStartYear(s.startYear)
+    setStartMonth(s.startMonth)
+    if (method) setEnrolMethod(method.name)
+    setSubjects(s.subjects)
+    setBioChePhy(s.level === 'secondary' ? s.bioChePhy : [])
+    setChargeRegistration(s.chargeRegistration)
+    if (s.anniversaryMonth) setRegistrationMonth(s.anniversaryMonth)
+  }, [prefill, loaded, settings.enrolMethods])
 
   const reloadList = useCallback(async () => {
     setQuotations(await api.loadQuotations(chat.conversationId, lead?.id ?? null))
@@ -457,7 +510,7 @@ export function QuotationPanel({
 
       <section aria-label="New quotation" className="space-y-3">
         <h3 className="text-sm font-semibold text-slate-900">New quotation</h3>
-        <div className="grid grid-cols-[1fr_4rem] gap-2">
+        <div className={cn('grid gap-2', ageMode === 'grade' ? 'grid-cols-[minmax(0,1fr)_7rem]' : 'grid-cols-[minmax(0,1fr)_4rem]')}>
           <div>
             <Label text="Child" htmlFor="quote-child" />
             <input
@@ -470,7 +523,8 @@ export function QuotationPanel({
                 const child = lead?.children.find((c) => c.name === e.target.value)
                 if (child) {
                   setChildAge(child.age)
-                  setAgeGroup(guessAgeGroup(ageGroups, child.age) || ageGroup)
+                  if (ageMode === 'grade') applyGrade(gradeNow(child.gradeLevel, child.gradeYear, todayText))
+                  else setAgeGroup(guessAgeGroup(ageGroups, child.age) || ageGroup)
                 }
               }}
             />
@@ -478,6 +532,24 @@ export function QuotationPanel({
               {lead?.children.map((c) => <option key={c.name} value={c.name} />)}
             </datalist>
           </div>
+          {ageMode === 'grade' ? (
+            <div>
+              <Label text="School grade" htmlFor="quote-school-grade" />
+              <select
+                id="quote-school-grade"
+                className={inputClass}
+                value={childGrade ?? ''}
+                onChange={(e) => applyGrade(e.target.value === '' ? null : Number(e.target.value))}
+              >
+                <option value="">—</option>
+                {GRADE_OPTIONS.map((g) => (
+                  <option key={g.level} value={g.level}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
           <div>
             <Label text="Age" htmlFor="quote-age" />
             <input
@@ -496,6 +568,7 @@ export function QuotationPanel({
               }}
             />
           </div>
+          )}
         </div>
         <div>
           <Label text="Grade (lists its classes)" htmlFor="quote-grade" />
@@ -602,10 +675,10 @@ export function QuotationPanel({
             const options = on ? classesFor(s.code) : []
             return (
               <div key={`${s.level}-${s.code}`} className={cn('rounded-xl border px-2 py-1.5', on ? 'border-[#fc0c97]/40 bg-[#fff1f8]/40' : 'border-slate-200')}>
-                <label className="flex items-center gap-2 text-sm text-slate-700">
+                <label className="flex min-w-0 items-center gap-2 text-sm text-slate-700">
                   <input type="checkbox" checked={on} onChange={() => (isBio ? toggle(bioChePhy, s.code, setBioChePhy) : toggle(subjects, s.code, setSubjects))} />
                   <span className="w-10 shrink-0 text-xs font-bold">{s.code}</span>
-                  <span className="truncate">{s.label}</span>
+                  <span className="min-w-0 truncate">{s.label}</span>
                 </label>
                 {on && (
                   <select

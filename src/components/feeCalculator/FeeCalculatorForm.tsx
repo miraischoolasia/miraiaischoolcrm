@@ -46,6 +46,23 @@ export function Choice({ active, onClick, children }: { active: boolean; onClick
 
 const selectClass = 'min-h-9 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800'
 
+// What the form is set to, for "Use for a quotation" (the Inbox side panel fills a quotation with it).
+export type FeeCalculatorSelection = {
+  cohortKey: string
+  level: FeeLevel
+  region: Region
+  rateTier: CycleTier
+  startYear: number
+  startMonth: number
+  endYear: number
+  endMonth: number
+  // The ticked subjects of the chosen level, and BIO/CHE/PHY (secondary only).
+  subjects: string[]
+  bioChePhy: string[]
+  chargeRegistration: boolean
+  anniversaryMonth: number | null
+}
+
 export function FeeCalculatorForm({
   cohorts,
   globalRates,
@@ -54,6 +71,9 @@ export function FeeCalculatorForm({
   bioChePhySubjects,
   invoiceTemplate,
   today = new Date(),
+  initialLevel,
+  onUse,
+  useLabel = 'Use for a quotation',
 }: {
   cohorts: CohortEntry[]
   globalRates: GlobalRates
@@ -62,10 +82,14 @@ export function FeeCalculatorForm({
   bioChePhySubjects: SubjectOption[]
   invoiceTemplate: InvoiceTemplate
   today?: Date
+  // Optional (the Inbox side panel): the level to open on, and a button under the result handing the choices on.
+  initialLevel?: FeeLevel
+  onUse?: (selection: FeeCalculatorSelection) => void
+  useLabel?: string
 }) {
   const opening = openingMonth(today)
   const [cohortKey, setCohortKey] = useState(cohorts[0]?.key ?? '')
-  const [level, setLevel] = useState<FeeLevel>('primary')
+  const [level, setLevel] = useState<FeeLevel>(initialLevel ?? 'primary')
   const [region, setRegion] = useState<Region>('west_malaysia')
   const [rateTier, setRateTier] = useState<CycleTier>('monthly')
   const [startYear, setStartYear] = useState(opening.year)
@@ -294,6 +318,30 @@ export function FeeCalculatorForm({
                 {quote.invoiceText}
               </pre>
             </div>
+            {onUse && cohort && (
+              <button
+                type="button"
+                onClick={() =>
+                  onUse({
+                    cohortKey: cohort.key,
+                    level,
+                    region,
+                    rateTier,
+                    startYear,
+                    startMonth,
+                    endYear,
+                    endMonth,
+                    subjects: selectedSubjects,
+                    bioChePhy: level === 'secondary' ? bioChePhySelected : [],
+                    chargeRegistration,
+                    anniversaryMonth: chargeRegistration ? anniversaryMonth : null,
+                  })
+                }
+                className="inline-flex min-h-9 w-full items-center justify-center rounded-xl border border-[#fc0c97] px-3 py-1.5 text-sm font-semibold text-[#be185d] hover:bg-[#fff1f8]"
+              >
+                {useLabel}
+              </button>
+            )}
           </>
         )}
       </section>

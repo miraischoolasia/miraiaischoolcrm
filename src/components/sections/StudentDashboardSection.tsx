@@ -1,7 +1,8 @@
 import { brand } from '../../lib/brand'
 import { useMemo, useState } from 'react'
 import { cn } from '../../lib/cn'
-import { formatStudentAge, getStudentAge } from '../../lib/age'
+import { studentAgeText } from '../../lib/age'
+import { useAgeDisplay } from '../../lib/ageDisplay'
 import { formatDate, getWorstFee, type StudentIssue } from '../../domain/studentStatus'
 import { studentFilterOptions } from '../../lib/constants'
 import { sortClassCategories, useClassCategories } from '../../lib/classCategories'
@@ -797,7 +798,8 @@ function StudentIdentity({
   code?: string | null
 }) {
   const { student, parent } = row
-  const age = formatStudentAge(getStudentAge(student, todayString))
+  const ageMode = useAgeDisplay()
+  const age = studentAgeText(student, todayString, ageMode)
   return (
     <div className="flex items-center gap-3">
       <span

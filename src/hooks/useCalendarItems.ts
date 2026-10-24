@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { keepIfSame } from '../lib/sameData'
 import {
   deleteCalendarItem,
   deleteCalendarSeriesItem,
@@ -31,7 +32,8 @@ export function useCalendarItems(enabled: boolean, teacherId: number | null) {
       return
     }
     try {
-      setItems(await fetchCalendarItems())
+      const next = await fetchCalendarItems()
+      setItems(keepIfSame(next))
     } catch {
       // Keep what is shown.
     }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { keepIfSame } from '../lib/sameData'
 import type { ChatwootClient, Sender } from '../lib/chatwootClient'
 import { describeSent } from '../lib/specialMessages'
 import type { ChatwootMessage } from '../lib/whatsappInbox'
@@ -45,7 +46,7 @@ export function useMessageEvents(
       const events = jids.length > 0 ? await actions.events(jids) : NO_EVENTS
       // Labels are a bonus: not having them must not hide the reactions.
       const labels = jids.length > 0 ? await actions.labelsOf(jids).catch(() => []) : []
-      setFetched({ conversationId, events, labels })
+      setFetched(keepIfSame<typeof fetched>({ conversationId, events, labels }))
     } catch {
       // The messages themselves are fine without this; try again at the next tick.
     }

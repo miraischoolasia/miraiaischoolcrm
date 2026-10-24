@@ -140,6 +140,27 @@ export function guessAgeGroup(groups: string[], age: number | null): string {
   return ''
 }
 
+// The class grade for a school grade (1-6 = Year 1-6, 7-11 = Form 1-5), for a school that shows grade instead of
+// age: a name with that grade in it ("Form 2", "F2", "Year 4", "P4", "Std 4", "中二") or a range that holds it
+// ("Year 1-3", "Form 1–2", "F1-F3").
+export function guessGradeGroup(groups: string[], grade: number | null): string {
+  if (grade === null || grade < 1 || grade > 11) return ''
+  const secondary = grade >= 7
+  const n = secondary ? grade - 6 : grade
+  const prefix = secondary ? '(?:form|f|tingkatan|t|s|sec(?:ondary)?)' : '(?:year|yr|y|p|std|standard|primary|darjah|d)'
+  const chinese = secondary ? ['初一', '初二', '初三', '高一', '高二'][n - 1] ?? '' : ''
+  const zhNumber = ['一', '二', '三', '四', '五', '六'][n - 1]
+  const zh = secondary ? `中${zhNumber}` : `${zhNumber}年级`
+  for (const name of groups) {
+    const lower = name.toLowerCase()
+    const range = lower.match(new RegExp(`${prefix}\\s*\\.?\\s*(\\d+)\\s*[-–~]\\s*(?:${prefix})?\\s*\\.?\\s*(\\d+)`))
+    if (range && n >= Number(range[1]) && n <= Number(range[2])) return name
+    if (new RegExp(`(^|[^a-z])${prefix}\\s*\\.?\\s*${n}(\\D|$)`).test(lower)) return name
+    if (name.includes(zh) || (chinese && name.includes(chinese))) return name
+  }
+  return ''
+}
+
 export type StaffOption = { id: number; name: string }
 
 export async function fetchStaffOptions(): Promise<StaffOption[]> {

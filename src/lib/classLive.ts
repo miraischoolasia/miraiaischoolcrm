@@ -11,7 +11,7 @@ import { supabase } from './supabase'
 
 // What the children's page gets: no question (they have their own card) and
 // no leaderboard; first names and face ids only, as on the class screen.
-export type ClassLiveState = Pick<ClassScreenState, 'title' | 'timer' | 'picked' | 'cheer' | 'roll' | 'star' | 'teams'> & {
+export type ClassLiveState = Pick<ClassScreenState, 'title' | 'timer' | 'picked' | 'cheer' | 'roll' | 'star' | 'teams' | 'fx' | 'bgm'> & {
   sentAt: number
 }
 
@@ -26,6 +26,8 @@ export function classLiveState(state: Omit<ClassScreenState, 'sentAt'>): Omit<Cl
     roll: state.roll ?? null,
     star: state.star ?? null,
     teams: state.teams ?? null,
+    fx: state.fx ?? null,
+    bgm: state.bgm ?? null,
   }
 }
 

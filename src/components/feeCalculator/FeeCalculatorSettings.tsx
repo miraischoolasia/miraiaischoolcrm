@@ -33,6 +33,9 @@ export type FeeSettingsApi = {
   // Quotations: which of the school's subjects a Fee Calculator subject is (to list its classes). Optional.
   loadClassSubjects?: () => Promise<{ id: number; name: string }[]>
   setClassSubject?: (feeSubjectId: number, subjectId: number | null) => Promise<string | null>
+  // A group that uses another group's prices (follows it), or gets a copy of them to change on its own. Optional.
+  followCohort?: (cohortId: number, usesCohortId: number | null) => Promise<string | null>
+  copyRates?: (cohortId: number, fromCohortId: number) => Promise<string | null>
 }
 
 const inputClass = 'min-h-9 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800'
@@ -112,6 +115,82 @@ export function FeeCalculatorSettings({
 // ---------------------------------------------------------------------------------------------------------------
 // Price groups
 
+// Where a group's prices come from (boss 2026-10-23: EduHero's LATEST etc. take another group's prices):
+// its own table, another group's (follows it, changes with it), or a copy of another group's to change on its own.
+function PriceSource({
+  cohort,
+  groups,
+  api,
+  busy,
+  act,
+  onOpen,
+}: {
+  cohort: FeeCohort
+  groups: FeeCohort[]
+  api: FeeSettingsApi
+  busy: boolean
+  act: (action: () => Promise<string | null>) => Promise<unknown>
+  onOpen: (id: number | null) => void
+}) {
+  const [copyFrom, setCopyFrom] = useState('')
+  const followed = groups.some((g) => g.usesCohortId === cohort.id)
+  const sources = groups.filter((g) => g.id !== cohort.id && g.usesCohortId == null)
+  if (sources.length === 0) return null
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      <label className="sr-only" htmlFor={`price-source-${cohort.id}`}>
+        Prices for {cohort.name}
+      </label>
+      <select
+        id={`price-source-${cohort.id}`}
+        className={inputClass}
+        disabled={busy || followed}
+        title={followed ? 'Other groups use this group\'s prices' : undefined}
+        value={cohort.usesCohortId ?? ''}
+        onChange={(e) => {
+          onOpen(null)
+          void act(() => (api.followCohort as NonNullable<FeeSettingsApi['followCohort']>)(cohort.id, e.target.value ? Number(e.target.value) : null))
+        }}
+      >
+        <option value="">Own prices</option>
+        {sources.map((g) => (
+          <option key={g.id} value={g.id}>
+            Same as {g.name}
+          </option>
+        ))}
+      </select>
+      {api.copyRates && (
+        <>
+          <label className="sr-only" htmlFor={`price-copy-${cohort.id}`}>
+            Copy prices into {cohort.name} from
+          </label>
+          <select id={`price-copy-${cohort.id}`} className={inputClass} disabled={busy || followed} value={copyFrom} onChange={(e) => setCopyFrom(e.target.value)}>
+            <option value="">Copy prices from…</option>
+            {groups
+              .filter((g) => g.id !== cohort.id)
+              .map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+          </select>
+          <button
+            type="button"
+            className={smallButton}
+            disabled={busy || !copyFrom}
+            onClick={() => {
+              onOpen(null)
+              void act(() => (api.copyRates as NonNullable<FeeSettingsApi['copyRates']>)(cohort.id, Number(copyFrom))).then(() => setCopyFrom(''))
+            }}
+          >
+            Copy
+          </button>
+        </>
+      )}
+    </span>
+  )
+}
+
 function CohortList({
   data,
   isAdmin,
@@ -128,6 +207,8 @@ function CohortList({
   onOpen: (id: number | null) => void
 }) {
   const saver = useSaver()
+  const followedName = (cohort: FeeCohort) =>
+    cohort.usesCohortId != null ? (data.cohorts.find((other) => other.id === cohort.usesCohortId)?.name ?? null) : null
   const taken = new Set(data.cohorts.map((cohort) => cohort.name))
   const free = data.membershipLevels.filter((level) => level.isActive && !taken.has(level.name))
   const [pick, setPick] = useState('')
@@ -196,11 +277,19 @@ function CohortList({
                 <span className={cn('flex-1 text-sm font-semibold', cohort.isActive ? 'text-slate-900' : 'text-slate-400')}>
                   {cohort.name}
                   {cohort.materialsIncluded && <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">materials in tuition</span>}
+                  {followedName(cohort) && (
+                    <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">uses {followedName(cohort)}'s prices</span>
+                  )}
                   {!cohort.isActive && <span className="ml-2 text-xs font-medium">hidden</span>}
                 </span>
-                <button type="button" className={cn(smallButton, openId === cohort.id && 'border-[#fc0c97] text-[#be185d]')} onClick={() => onOpen(openId === cohort.id ? null : cohort.id)}>
-                  {openId === cohort.id ? 'Close prices' : 'Edit prices'}
-                </button>
+                {api.followCohort && (
+                  <PriceSource cohort={cohort} groups={data.cohorts} api={api} busy={saver.busy} act={act} onOpen={onOpen} />
+                )}
+                {!followedName(cohort) && (
+                  <button type="button" className={cn(smallButton, openId === cohort.id && 'border-[#fc0c97] text-[#be185d]')} onClick={() => onOpen(openId === cohort.id ? null : cohort.id)}>
+                    {openId === cohort.id ? 'Close prices' : 'Edit prices'}
+                  </button>
+                )}
                 {cohort.isActive && (
                   <>
                     <button type="button" aria-label={`Move ${cohort.name} up`} className={smallButton} disabled={saver.busy || shown[0]?.id === cohort.id} onClick={() => void move(cohort, -1)}>

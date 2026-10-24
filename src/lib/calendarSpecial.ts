@@ -117,8 +117,11 @@ export type SpecialSources = {
   subjectName: (subjectId: number) => string | null
   links: ReplacementLinks
   makeupPlans: MakeupPlan[]
-  // Also each weekly class (and camp class), as a faded card. Empty trial slots stay out.
+  // Also each weekly class (and camp class), as a faded card, and each trial slot nobody booked ("0 booked": the
+  // teacher keeps that time free). A slot with a booking is drawn by bookedTrialEvents instead.
   weekly?: boolean
+  // The trial slot days that have a booking ("<scheduleId>:<yyyy-mm-dd>").
+  bookedTrialDays?: Set<string>
 }
 
 const classroomOf = (schedule: Schedule | undefined, classroomMap: Map<number, Classroom>) =>
@@ -138,9 +141,19 @@ export function monthSpecialEvents(events: EventInput[], sources: SpecialSources
     const isCancelled = props.isCancelledOccurrence === true
     const isMakeupOnly = props.isMakeupOnly === true
     const isReplacement = props.classKind === 'replacement'
-    const isWeekly =
-      !isCancelled && !isMakeupOnly && !isReplacement && props.scheduleId !== undefined && props.classKind !== 'trial'
+    const isWeekly = !isCancelled && !isMakeupOnly && !isReplacement && props.scheduleId !== undefined
     if (!isCancelled && !isMakeupOnly && !isReplacement && !(sources.weekly && isWeekly)) return []
+    const isTrialSlot = props.classKind === 'trial'
+    // A trial slot with a booking is its own card (bookedTrialEvents).
+    if (
+      isWeekly &&
+      isTrialSlot &&
+      sources.bookedTrialDays?.has(
+        dayKey(Number(props.scheduleId), String(props.occurrenceDate ?? String(event.start ?? '').slice(0, 10))),
+      )
+    ) {
+      return []
+    }
 
     const schedule = byId.get(Number(props.scheduleId))
     const date = String(props.occurrenceDate ?? String(event.start ?? '').slice(0, 10))
@@ -177,7 +190,10 @@ export function monthSpecialEvents(events: EventInput[], sources: SpecialSources
     const special: SpecialCard = {
       kind,
       time: start && end ? timeRange(start, end) : '',
-      line: classLine(classroom, subject(classroom), String(event.title ?? '')),
+      line:
+        isWeekly && isTrialSlot
+          ? `${classroom?.name ?? String(event.title ?? '')} · 0 booked`
+          : classLine(classroom, subject(classroom), String(event.title ?? '')),
       teacher,
       madeUp,
     }

@@ -57,6 +57,8 @@ import { useChannelAlerts } from './hooks/useChannelAlerts'
 import { ChannelAlertBar } from './components/ChannelAlertBar'
 import { CHANNEL_ACCESS_HASH } from './lib/channelAlerts'
 import { formatDate, getTodayString, parseLocalDate } from './domain/studentStatus'
+import { useAgeDisplay } from './lib/ageDisplay'
+import { gradeNow, storedGrade } from './lib/grade'
 import type { Database } from './types/database'
 import type {
   AdminActivity,
@@ -88,6 +90,7 @@ import type {
   ScheduleException,
   ScheduleFormState,
   ScheduleParticipant,
+  LessonSeat,
   Student,
   StudentDetailsFormState,
   Teacher,
@@ -174,6 +177,7 @@ import {
   loadCalendarFilter,
   pageFilter,
   pageKinds,
+  withTimetableTrials,
   saveCalendarFilter,
   scheduleKind,
   scheduleShown,
@@ -247,6 +251,8 @@ import { AiKnowledgeSection } from './components/sections/AiKnowledgeSection'
 import { ContentStudioSection } from './components/contentStudio/ContentStudioSection'
 import { FeeCalculatorSection } from './components/feeCalculator/FeeCalculatorSection'
 import { useFeeCalculatorEnabled } from './hooks/useFeeCalculatorEnabled'
+import { ProductsSection } from './components/sections/ProductsSection'
+import { useProductsEnabled } from './lib/products'
 import { useQuotationsEnabled } from './hooks/useQuotationsEnabled'
 import { ContentLibrarySection } from './components/contentStudio/ContentLibrarySection'
 import { GalleriesSection } from './components/galleries/GalleriesSection'
@@ -259,8 +265,11 @@ import { WhatsAppOpenProvider, type WhatsAppTarget } from './components/WhatsApp
 import type { LeadFormValues, WhatsAppCrm } from './components/whatsapp/crm'
 import { todaysFollowUps } from './lib/followUps'
 import { FollowUpReminders } from './components/whatsapp/FollowUpReminders'
+import { FollowUpWorklist } from './components/FollowUpWorklist'
+import { FollowUpCompletion } from './components/FollowUpCompletion'
 import { StaffNotificationBell } from './components/StaffNotificationBell'
 import { TeacherQualitySection } from './components/sections/TeacherQualitySection'
+import { DataCenterSection } from './components/sections/DataCenterSection'
 import { describeHoaSlot, upcomingHoaSlots, type HoaSlot } from './lib/hoaSlots'
 import { classesOfStudent } from './lib/studentClasses'
 import { findLeadsByPhone, sameNumberMessage } from './lib/chatLink'
@@ -348,6 +357,12 @@ import { LiveClassConsole } from './components/LiveClassConsole'
 import { studentBackgrounds } from './lib/studentBackground'
 import { startChat } from './lib/startChat'
 import { MakeupPlanModal, type MakeupPlanInput } from './components/modals/MakeupPlanModal'
+import { LessonSeatModal, type LessonSeatInput } from './components/modals/LessonSeatModal'
+import { TodayByRole } from './components/today/TodayByRole'
+import { trialChildAgeText } from './lib/age'
+import { lessonSeatNotes, seatTargets, studentLessons, type Lesson } from './lib/lessonSeats'
+import { classroomCategoryName, useClassCategories } from './lib/classCategories'
+import { addDays as addDaysToKey } from './lib/activity'
 import {
   MoveClassModal,
   type MoveClassDraft,
@@ -378,7 +393,7 @@ import {
 } from './lib/makeup'
 
 // The menu's order (AppNav groups them).
-const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'landing-pages', 'content-studio', 'content-library', 'galleries', 'calendar', 'planner', 'classrooms', 'videos', 'questions', 'students', 'student-inbox', 'student-chat', 'fee-calculator', 'app-logins', 'programmes', 'teachers', 'teacher-quality', 'team-replies', 'class-settings', 'activity', 'ai-knowledge', 'packages']
+const NAV_ORDER = ['home', 'leads', 'whatsapp', 'automations', 'forms', 'landing-pages', 'content-studio', 'content-library', 'galleries', 'calendar', 'planner', 'classrooms', 'videos', 'questions', 'students', 'student-inbox', 'student-chat', 'fee-calculator', 'products', 'app-logins', 'programmes', 'teachers', 'teacher-quality', 'data-center', 'team-replies', 'class-settings', 'activity', 'ai-knowledge', 'packages']
 
 // Marketing > Landing Page, downloaded only when opened (its editor even later, when a page is opened).
 const LandingPagesSection = lazy(() =>
@@ -473,6 +488,8 @@ async function loadAttendanceStatuses() {
 function App() {
   const isMobile = useIsMobile()
   const todayString = getTodayString()
+  // Whether the school shows a child's age or school grade (Class Settings > Age or grade).
+  const ageMode = useAgeDisplay()
   const { confirm, dialog: confirmDialog } = useConfirm()
   const { showToast, toastHost } = useToast()
 
@@ -521,6 +538,11 @@ function App() {
   // Attendance rows of the student whose detail is open (admin only), so
   // "Arrange Make-up" can suggest their missed classes without a wait.
   const [prefetchedAttendance, setPrefetchedAttendance] = useState<{
+    studentId: number
+    rows: Awaited<ReturnType<typeof fetchStudentAttendanceRows>>
+  } | null>(null)
+  // Change class / Replacement dialog: the student, and what attendance was recorded for them (to label past lessons).
+  const [lessonSeatEditor, setLessonSeatEditor] = useState<{
     studentId: number
     rows: Awaited<ReturnType<typeof fetchStudentAttendanceRows>>
   } | null>(null)
@@ -932,6 +954,8 @@ function App() {
   const hasStudentInbox = showsStudentInbox(can('student_inbox'), whatsAppNumbers.studentInboxIds)
   // The Fee Calculator (20261030300000): the school's switch (Class Settings), apart from brand.usesFees.
   const feeCalculatorOn = useFeeCalculatorEnabled(authUserId !== null)
+  // Read only for staff who could see the page because of it: an admin always sees it, no tick never does.
+  const productsOn = useProductsEnabled(authUserId !== null && !isAdmin && can('products'))
   // Quotations (20261031100000): the Inbox's Quotation tab, when the school switched them on.
   const quotationsOn = useQuotationsEnabled(authUserId !== null)
   const allowedSections = useMemo(() => {
@@ -971,15 +995,19 @@ function App() {
     if (appChat.on) sections.push('student-chat')
     // The Fee Calculator: its own tick, once the school switched it on.
     if (feeCalculatorOn && can('fee_calculator')) sections.push('fee-calculator')
+    // The books a school sells: once the school switched them on (an admin always sees it, to switch it on).
+    if ((productsOn || isAdmin) && can('products')) sections.push('products')
     // My Team: accounts and teams are the admin's; Working hours can be seen with its own tick.
     if (isAdmin || can('staff_hours')) sections.push('teachers')
     // How each person answers the chats: its own tick, since it is about the team's work.
     if (can('team_replies')) sections.push('team-replies')
     // The teacher scorecard, retention and the class alert settings: their own tick.
     if (can('quality')) sections.push('teacher-quality')
+    // Leads, conversions and money for every EC (open ranking): its own tick.
+    if (can('data_center')) sections.push('data-center')
     if (can('activity')) sections.push('activity')
     return sections
-  }, [can, isAdmin, isTeacherAccount, appChat.on, hasStudentInbox, feeCalculatorOn])
+  }, [can, isAdmin, isTeacherAccount, appChat.on, hasStudentInbox, feeCalculatorOn, productsOn])
   const visibleSection = allowedSections.includes(activeSection) ? activeSection : null
   // The Timetable ('calendar') and the Planner share one calendar: the Timetable shows the classes, the Planner the rest.
   const isCalendarPage = visibleSection === 'calendar' || visibleSection === 'planner'
@@ -1129,22 +1157,37 @@ function App() {
     setWhatsAppRequest((current) => ({ ...target, id: (current?.id ?? 0) + 1 }))
     setActiveSection('whatsapp')
   }, [])
-  // What both Inboxes (Marketing and Student) know about the school's WhatsApp numbers.
-  const whatsAppNumbersView: WhatsAppNumbersView = {
-    numbers: whatsAppNumbers.numbers,
-    assignments: whatsAppNumbers.assignments,
-    allowedInboxIds: whatsAppNumbers.allowedInboxIds,
-    studentInboxIds: whatsAppNumbers.studentInboxIds,
-    isAdmin,
-    // Admins see every number anyway, so only the other accounts can be given one.
-    staff: teachers
-      .filter((teacher) => teacher.isActive && teacher.role !== 'admin')
-      .map((teacher) => ({ id: teacher.id, name: teacher.fullName })),
-    onSave: whatsAppNumbers.save,
-    onRemove: whatsAppNumbers.remove,
-    onReload: whatsAppNumbers.reload,
-    problems: channelAlerts.problemOf,
-  }
+  // What both Inboxes (Marketing and Student) know about the school's WhatsApp numbers. Kept while nothing in it
+  // changes: a new object each App redraw made the Inbox redraw every chat.
+  const whatsAppNumbersView: WhatsAppNumbersView = useMemo(
+    () => ({
+      numbers: whatsAppNumbers.numbers,
+      assignments: whatsAppNumbers.assignments,
+      allowedInboxIds: whatsAppNumbers.allowedInboxIds,
+      studentInboxIds: whatsAppNumbers.studentInboxIds,
+      isAdmin,
+      // Admins see every number anyway, so only the other accounts can be given one.
+      staff: teachers
+        .filter((teacher) => teacher.isActive && teacher.role !== 'admin')
+        .map((teacher) => ({ id: teacher.id, name: teacher.fullName })),
+      onSave: whatsAppNumbers.save,
+      onRemove: whatsAppNumbers.remove,
+      onReload: whatsAppNumbers.reload,
+      problems: channelAlerts.problemOf,
+    }),
+    [
+      whatsAppNumbers.numbers,
+      whatsAppNumbers.assignments,
+      whatsAppNumbers.allowedInboxIds,
+      whatsAppNumbers.studentInboxIds,
+      isAdmin,
+      teachers,
+      whatsAppNumbers.save,
+      whatsAppNumbers.remove,
+      whatsAppNumbers.reload,
+      channelAlerts.problemOf,
+    ],
+  )
   // Only when the school's own WhatsApp page is there to open; otherwise the button opens wa.me.
   const canOpenWhatsAppChat = allowedSections.includes('whatsapp') && Boolean(whatsAppApiUrl && whatsAppUser)
   // Follow-ups whose time has come ring for the person they are for (cards in the corner of the screen).
@@ -1254,6 +1297,9 @@ function App() {
               makeupEntries,
               getRosterIds: getScheduleRosterStudentIds,
               takes: (schedule, date) => canTakeAttendance(attendanceTakerContext, schedule, date),
+              // A trial slot nobody booked is still listed: the teacher keeps that time free.
+              includeEmpty: true,
+              getBookedCount: (scheduleId: number, date: string) => trialBookingMap.get(getTrialSlotKey(scheduleId, date))?.length ?? 0,
             },
             todayString,
           )
@@ -2250,7 +2296,7 @@ function App() {
   useEffect(() => {
     if (!currentSession) return
     const fallback = defaultCalendarFilter(currentSession.role === 'teacher')
-    setTimetableFilterRaw(loadCalendarFilter(String(currentSession.teacherId), fallback))
+    setTimetableFilterRaw(withTimetableTrials(loadCalendarFilter(String(currentSession.teacherId), fallback)))
     setPlannerFilterRaw(loadCalendarFilter(`${currentSession.teacherId}.planner`, fallback))
     void fetchCalendarTeams().then(setCalendarTeams)
   }, [currentSession])
@@ -2305,6 +2351,7 @@ function App() {
         links: replacementLinks,
         makeupPlans,
         weekly: monthWeekly,
+        bookedTrialDays: new Set(trialBookings.map((booking) => `${booking.scheduleId}:${booking.bookingDate}`)),
       }),
       ...bookedTrialEvents(
         trialBookings.filter((booking) => !orphanTrialBookings.some((orphan) => orphan.id === booking.id)),
@@ -2340,6 +2387,12 @@ function App() {
     const timer = window.setInterval(() => setDayListNow(new Date()), 60_000)
     return () => window.clearInterval(timer)
   }, [isCalendarPage, showDayList])
+  // The school's own names for the class kinds (Trial Class, HOA, ...), for the tags on the calendar cards.
+  const { categories: classCategoryList } = useClassCategories()
+  const categoryNameOf = (classroomId: number | null) => {
+    const classroom = classroomId !== null ? classroomMap.get(classroomId) : undefined
+    return classroom ? classroomCategoryName(classroom, classCategoryList) : null
+  }
   const dayListLessons = useMemo(() => {
     if (!isCalendarPage || !showDayList) return []
     const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]))
@@ -2366,6 +2419,8 @@ function App() {
       lessonLogs,
       makeupEntries,
       takes: calendarPeople ? takesFor : undefined,
+      includeEmpty: true,
+      getBookedCount: (scheduleId: number, date: string) => trialBookingMap.get(getTrialSlotKey(scheduleId, date))?.length ?? 0,
     }
     const weeks = monthWeeks(shownDayListMonth)
     const week = getWeekRange(shownDayListDate)
@@ -2387,6 +2442,7 @@ function App() {
         subject: classroom?.subjectId ? subjectName.get(classroom.subjectId) ?? null : null,
         fbGroupUrl: schedule?.fbGroupUrl ?? null,
         zoomLink: lessonFixedZoomLink(schedule, classroom),
+        categoryName: classroom ? classroomCategoryName(classroom, classCategoryList) : null,
       }
     })
     // getScheduleRosterStudentIds reads students, the maps and the bookings (see teacherAgenda above).
@@ -2413,6 +2469,7 @@ function App() {
     trialBookingMap,
     makeupMap,
     scheduleParticipantMap,
+    classCategoryList,
   ])
 
   // One class day as the day list's window shows it (the month calendar opens a replacement or extra class in it).
@@ -2447,6 +2504,7 @@ function App() {
       subject: classroom?.subjectId ? subjects.find((subject) => subject.id === classroom.subjectId)?.name ?? null : null,
       fbGroupUrl: schedule.fbGroupUrl ?? null,
       zoomLink: lessonFixedZoomLink(schedule, ownClass),
+      categoryName: classroom ? classroomCategoryName(classroom, classCategoryList) : null,
     }
   }
   // The tasks, meetings, events and follow-ups on the days the day list shows.
@@ -2588,9 +2646,11 @@ function App() {
         { key: 'student-inbox', label: 'Student Inbox', icon: ChatCircleDots, group: 'students' },
         { key: 'student-chat', label: 'Student Chat', icon: ChatsCircle, group: 'students' },
         { key: 'fee-calculator', label: 'Fee Calculator', icon: Calculator, group: 'students' },
+        { key: 'products', label: 'Products', icon: PackageIcon, group: 'students' },
         { key: 'teachers', label: 'My Team', icon: IdentificationBadge, group: 'admin' },
         { key: 'team-replies', label: 'Team Replies', icon: ChatCenteredText, group: 'admin' },
         { key: 'teacher-quality', label: 'Teacher Quality', icon: ChartLineUp, group: 'admin' },
+        { key: 'data-center', label: 'Data Center', icon: ChartLineUp, group: 'admin' },
         { key: 'activity', label: 'Activity Log', icon: ClockCounterClockwise, group: 'admin' },
       ] satisfies { key: AppSection; label: string; icon: Icon; group?: NavGroupKey }[]
     )
@@ -2787,6 +2847,7 @@ function App() {
       notes: student.notes ?? '',
       studentType: student.studentType,
       dateOfBirth: student.dateOfBirth ?? '',
+      gradeLevel: String(gradeNow(student.gradeLevel, student.gradeYear, todayString) ?? ''),
       studentCode: studentCodes.get(student.id) ?? '',
     })
     setStudentExtrasForm(extrasToForm(studentFields.extras.get(student.id)))
@@ -2841,6 +2902,30 @@ function App() {
       throw new Error(
         error.code === '42703' || error.code === 'PGRST204'
           ? "The date of birth can't be saved until the database update for it is applied."
+          : error.message,
+      )
+    }
+  }
+
+  // A school that shows grade: writes the picked grade (true today) when it is not the grade the student already has.
+  async function saveGrade(studentId: number, picked: string | undefined, current: Student | undefined) {
+    if (picked === undefined) {
+      return
+    }
+    const shown = current ? gradeNow(current.gradeLevel, current.gradeYear, todayString) : null
+    const next = picked === '' ? null : Number(picked)
+    if (next === shown) {
+      return
+    }
+    const stored = storedGrade(next, todayString)
+    const { error } = await supabase!
+      .from('students')
+      .update({ grade_level: stored?.gradeLevel ?? null, grade_year: stored?.gradeYear ?? null })
+      .eq('id', studentId)
+    if (error) {
+      throw new Error(
+        error.code === '42703' || error.code === 'PGRST204'
+          ? "The grade can't be saved until the database update for it is applied."
           : error.message,
       )
     }
@@ -3188,6 +3273,8 @@ function App() {
         name: child.name,
         age: String(child.age),
         phone: child.phone ?? '',
+        stage: child.stage ?? '',
+        gradeLevel: String(gradeNow(child.gradeLevel, child.gradeYear, todayString) ?? ''),
       })),
       notes: lead.notes ?? '',
       addedDate: lead.addedDate,
@@ -3848,7 +3935,7 @@ function App() {
       setTrialBookingError(null)
 
       // The RPC also creates or updates the lead and writes the activity log.
-      const { error } = await supabase.rpc('book_trial_slot', {
+      const { data: bookingId, error } = await supabase.rpc('book_trial_slot', {
         p_schedule_id: trialBookingSlot.scheduleId,
         p_booking_date: trialBookingSlot.dateKey,
         p_child_name: form.childName.trim(),
@@ -3860,6 +3947,15 @@ function App() {
 
       if (error) {
         throw error
+      }
+
+      // A school that shows grade keeps the child's grade on the booking too (the booking itself only takes an age).
+      if (form.gradeLevel && typeof bookingId === 'number') {
+        await supabase.rpc('set_trial_booking_grade', {
+          p_booking_id: bookingId,
+          p_level: Number(form.gradeLevel),
+          p_year: Number(todayString.slice(0, 4)),
+        })
       }
 
       // Booking creates a lightweight trial-type student behind the scenes
@@ -4026,6 +4122,103 @@ function App() {
     setScheduleSaveError(null)
   }
 
+  // Today by role: the staff an admin can look at, and the follow-up work list for one person (EC version).
+  const todayPeople = useMemo(
+    () =>
+      isAdmin
+        ? teachers
+            .filter((teacher) => teacher.isActive && teacher.role !== 'admin')
+            .map((teacher) => ({ id: teacher.id, name: teacher.fullName }))
+        : [],
+    [isAdmin, teachers],
+  )
+
+  function renderTodayFollowUps(personId: number | null) {
+    if (!can('leads')) {
+      return null
+    }
+    return (
+      <FollowUpWorklist
+        items={calendarItems.items}
+        meId={personId ?? currentSession?.teacherId ?? null}
+        seesAll={false}
+        nameOf={(teacherId) => teachers.find((teacher) => teacher.id === teacherId)?.fullName ?? null}
+        leadNameOf={(leadId) => {
+          const lead = leads.find((entry) => entry.id === leadId)
+          return lead ? lead.fullName || lead.children[0]?.name || lead.phone || null : null
+        }}
+        onDone={async (ids) => {
+          for (const id of ids) {
+            const problem = await calendarItems.setDone(id, true)
+            if (problem) return problem
+          }
+          return null
+        }}
+        onCloseLead={
+          can('leads', 'edit')
+            ? async (leadId) => {
+                await handleChangeLeadStatus(leadId, 'lost')
+                await calendarItems.reload()
+                return null
+              }
+            : undefined
+        }
+        onOpenChat={openFollowUpChat}
+      />
+    )
+  }
+
+  async function openLessonSeats(student: Student) {
+    let rows: Awaited<ReturnType<typeof fetchStudentAttendanceRows>> = []
+    try {
+      rows =
+        prefetchedAttendance?.studentId === student.id
+          ? prefetchedAttendance.rows
+          : await fetchStudentAttendanceRows(student.id)
+    } catch {
+      // The labels on past lessons are a convenience.
+    }
+    setLessonSeatEditor({ studentId: student.id, rows })
+  }
+
+  async function bookLessonSeat(studentId: number, input: LessonSeatInput): Promise<string | null> {
+    if (!supabase) {
+      return 'Not connected.'
+    }
+    const { error } = await supabase.rpc('book_lesson_seat', {
+      p_student_id: studentId,
+      p_kind: input.kind,
+      p_from_classroom_id: input.fromClassroomId,
+      p_from_date: input.fromDate,
+      p_to_classroom_id: input.toClassroomId,
+      p_to_date: input.toDate,
+      p_note: input.note,
+    })
+    if (error) {
+      return error.message
+    }
+    await refreshStudentsAndLogs()
+    return null
+  }
+
+  async function undoLessonSeat(seatId: number): Promise<string | null> {
+    if (!supabase) {
+      return 'Not connected.'
+    }
+    const { error } = await supabase.rpc('cancel_lesson_seat', { p_seat_id: seatId })
+    if (error) {
+      return error.message
+    }
+    await refreshStudentsAndLogs()
+    return null
+  }
+
+  function lessonSeatLine(seat: LessonSeat) {
+    const place = (classroomId: number, date: string) =>
+      `${formatDate(date)} ${classroomMap.get(classroomId)?.name ?? 'a class'}`
+    return `${seat.kind === 'change' ? 'Change class' : 'Replacement'}: ${place(seat.fromClassroomId, seat.fromDate)} → ${place(seat.toClassroomId, seat.toDate)}`
+  }
+
   async function refreshStudentsAndLogs() {
     const [nextStudents, nextLessonLogs, nextLessonReviews] = await Promise.all([
       fetchStudentsFromSupabase(),
@@ -4186,6 +4379,9 @@ function App() {
 
       if (!isPreviewStudent) {
         await saveBirthDate(editingStudent.id, studentDetailsFormState.dateOfBirth, editingStudent.dateOfBirth)
+        if (ageMode === 'grade') {
+          await saveGrade(editingStudent.id, studentDetailsFormState.gradeLevel, editingStudent)
+        }
       }
       await saveStudentCodeFor(editingStudent.id, studentDetailsFormState.studentCode)
       await studentFields.saveFor(editingStudent.id, studentExtrasForm)
@@ -4320,6 +4516,9 @@ function App() {
       const createdStudentId = (created as { student_id: number }[] | null)?.[0]?.student_id
       if (!isPreviewStudent && createdStudentId && createStudentFormState.dateOfBirth) {
         await saveBirthDate(createdStudentId, createStudentFormState.dateOfBirth, null)
+      }
+      if (!isPreviewStudent && createdStudentId && ageMode === 'grade' && createStudentFormState.gradeLevel) {
+        await saveGrade(createdStudentId, createStudentFormState.gradeLevel, undefined)
       }
       if (createdStudentId && createStudentFormState.studentCode?.trim()) {
         try {
@@ -4541,6 +4740,10 @@ function App() {
         name: child.name.trim(),
         age: Number(child.age),
         phone: child.phone.trim() || null,
+        ...(child.stage ? { stage: child.stage } : {}),
+        ...(ageMode === 'grade' && child.gradeLevel
+          ? { gradeLevel: Number(child.gradeLevel), gradeYear: Number(todayString.slice(0, 4)) }
+          : {}),
       }))
     const activityLabel =
       fullName || children[0]?.name || leadFormState.phone.trim() || 'Unnamed Lead'
@@ -5191,11 +5394,14 @@ function App() {
     return null
   }
 
-  // Each class with the enrolment flow its sign-ups follow: its own, else its level's.
-  const levelFlows = new Map(programLevels.map((level) => [level.name, level.flowId ?? null]))
-  const flowClassrooms = classrooms.map((classroom) =>
-    classroom.programmeId ? classroom : { ...classroom, programmeId: levelFlows.get(classroom.programLevel) ?? null },
-  )
+  // Each class with the enrolment flow its sign-ups follow: its own, else its level's. Kept while the classes are the
+  // same, so the Inbox (which takes it) does not redraw every chat on each App redraw.
+  const flowClassrooms = useMemo(() => {
+    const levelFlows = new Map(programLevels.map((level) => [level.name, level.flowId ?? null]))
+    return classrooms.map((classroom) =>
+      classroom.programmeId ? classroom : { ...classroom, programmeId: levelFlows.get(classroom.programLevel) ?? null },
+    )
+  }, [classrooms, programLevels])
   const flowClassroomMap = new Map(flowClassrooms.map((classroom) => [classroom.id, classroom]))
 
   const whatsAppCrm: WhatsAppCrm = {
@@ -5254,7 +5460,7 @@ function App() {
     followUps: {
       items: calendarItems.items,
       meId: currentSession?.teacherId ?? null,
-      save: (draft) => calendarItems.save(null, draft),
+      save: (draft, existing) => calendarItems.save(existing ?? null, draft),
       done: (id) => calendarItems.setDone(id, true),
       remove: (id) => calendarItems.remove(id),
     },
@@ -5264,6 +5470,7 @@ function App() {
     canStartFlows: can('automations', 'edit'),
     canUseGalleries: can('galleries'),
     quotations: { enabled: quotationsOn, canUse: can('quotations', 'edit'), canApprove: can('quotations', 'delete') },
+    feeCalculator: { enabled: feeCalculatorOn && can('fee_calculator') },
     canBookMakeup: canEditCalendar,
     onCreateLead: createLeadFromChat,
     onUpdateLead: updateLeadFromChat,
@@ -5305,6 +5512,12 @@ function App() {
       const student = students.find((entry) => entry.id === studentId)
       if (student) {
         void openStudentMakeup(student)
+      }
+    },
+    onOpenLessonSeats: (studentId) => {
+      const student = students.find((entry) => entry.id === studentId)
+      if (student) {
+        void openLessonSeats(student)
       }
     },
   }
@@ -6833,6 +7046,8 @@ function App() {
       dayListOn && allMakeupNotes.length > 0
         ? [`${allMakeupNotes.length} make-up${allMakeupNotes.length === 1 ? '' : 's'}`]
         : allMakeupNotes
+    // One-day seats (Change class / Replacement) in or out of this lesson.
+    const seatNotes = lessonSeatNotes(students, eventClassroomId, eventOccurrenceDate, dayListOn)
 
     // A make-up slot on the 29th-31st, when the class doesn't normally meet.
     if (eventInfo.event.extendedProps.isMakeupOnly) {
@@ -6886,7 +7101,7 @@ function App() {
               makeupCompleted ? 'text-slate-400' : 'text-white/80',
             )}
           >
-            {makeupNotes.join(' · ')}
+            {[...makeupNotes, ...seatNotes].join(' · ')}
           </div>
         </div>
       )
@@ -6911,7 +7126,7 @@ function App() {
       return (
         <div
           // The colour legend is gone; hovering a card says what kind it is.
-          title={`Trial class · ${completed ? 'completed' : isBooked ? 'booked' : 'available'}`}
+          title={`${categoryNameOf(eventInfo.event.extendedProps.classroomId as number | null) ?? 'Trial class'} · ${completed ? 'completed' : isBooked ? `${slotBookings.length} booked` : 'nobody booked yet'}`}
           className={cn(
             'rounded-lg border px-2 py-1.5 shadow-sm',
             isBooked && !completed && 'border-teal-200 bg-teal-500 text-white',
@@ -6930,9 +7145,7 @@ function App() {
             >
               {completed
                 ? 'Completed'
-                : isBooked
-                  ? `${slotBookings.length} booked`
-                  : 'Available'}
+                : `${slotBookings.length} booked`}
             </span>
             <span
               className={cn(
@@ -6958,6 +7171,9 @@ function App() {
             )}
           >
             {eventInfo.event.extendedProps.teacherName as string}
+            {categoryNameOf(eventInfo.event.extendedProps.classroomId as number | null)
+              ? ` · ${categoryNameOf(eventInfo.event.extendedProps.classroomId as number | null)}`
+              : ''}
           </div>
           {/* A school with many classes (the day list) names no children on a card: "2 booked" says enough. */}
           {isBooked && !dayListOn && (
@@ -6968,11 +7184,10 @@ function App() {
               )}
             >
               {slotBookings
-                .map((booking) =>
-                  booking.childAge !== null
-                    ? `${booking.childName} (${booking.childAge})`
-                    : booking.childName,
-                )
+                .map((booking) => {
+                  const ageText = trialChildAgeText(booking, todayString, ageMode)
+                  return ageText ? `${booking.childName} (${ageText.replace(/ yrs?$/, '')})` : booking.childName
+                })
                 .join(', ')}
             </div>
           )}
@@ -7033,11 +7248,9 @@ function App() {
           >
             {completed
               ? 'Completed'
-              : classKind === 'regular'
-                ? 'Regular'
-                : classKind === 'camp'
-                  ? 'Camp'
-                  : 'Replacement'}
+              : classKind === 'regular' || classKind === 'camp'
+                ? (categoryNameOf(cardClassroomId) ?? (classKind === 'camp' ? 'Camp' : 'Regular'))
+                : 'Replacement'}
           </span>
           <span
             className={cn(
@@ -7078,6 +7291,14 @@ function App() {
             title={makeupNotes.join('\n')}
           >
             Make-up: {makeupNotes.join(' · ')}
+          </div>
+        )}
+        {seatNotes.length > 0 && (
+          <div
+            className="mt-1 truncate rounded bg-amber-500 px-1 py-0.5 text-[10px] font-semibold text-white"
+            title={seatNotes.join('\n')}
+          >
+            {seatNotes.join(' · ')}
           </div>
         )}
       </div>
@@ -7342,10 +7563,14 @@ function App() {
                       ? 'App Logins'
                     : activeSection === 'teacher-quality'
                       ? 'Teacher Quality'
+                    : activeSection === 'data-center'
+                      ? 'Data Center'
                     : activeSection === 'student-chat'
                       ? 'Student Chat'
                     : activeSection === 'fee-calculator'
                       ? 'Fee Calculator'
+                    : activeSection === 'products'
+                      ? 'Products'
                     : activeSection === 'student-inbox'
                       ? 'Student Inbox'
                     : activeSection === 'teachers'
@@ -7410,7 +7635,13 @@ function App() {
               </section>
             )}
 
-            {visibleSection === 'home' && teacherAgenda && (
+            {visibleSection === 'home' && (teacherAgenda || showAdminHome) && (
+              <TodayByRole
+                isAdmin={isAdmin}
+                isTeacherAccount={isTeacherAccount}
+                people={todayPeople}
+                teacherNode={
+                  teacherAgenda ? (
               <TeacherHomeSection
                 teacherName={effectiveTeacher?.fullName ?? 'teacher'}
                 todayString={todayString}
@@ -7431,9 +7662,10 @@ function App() {
                   }
                 }}
               />
-            )}
-
-            {showAdminHome && (
+                  ) : null
+                }
+                adminNode={
+                  showAdminHome ? (
               <AdminHomeSection
                 adminName={effectiveTeacher?.fullName ?? 'there'}
                 todayString={todayString}
@@ -7466,11 +7698,57 @@ function App() {
                 }}
                 onOpenLeads={() => setActiveSection('leads')}
                 onOpenLeadTasks={openFollowUpModal}
-                followUps={todaysFollowUps(calendarItems.items, currentSession?.teacherId ?? null, new Date())}
+                // The work list replaces the short "due today" list for whoever works the leads.
+                followUps={
+                  can('leads') ? [] : todaysFollowUps(calendarItems.items, currentSession?.teacherId ?? null, new Date())
+                }
                 onOpenFollowUp={openFollowUpChat}
+                followUpWorklist={
+                  can('leads') ? (
+                    <div className="space-y-3">
+                    <FollowUpWorklist
+                      items={calendarItems.items}
+                      meId={currentSession?.teacherId ?? null}
+                      seesAll={isAdmin}
+                      nameOf={(teacherId) => teachers.find((teacher) => teacher.id === teacherId)?.fullName ?? null}
+                      leadNameOf={(leadId) => {
+                        const lead = leads.find((entry) => entry.id === leadId)
+                        return lead ? lead.fullName || lead.children[0]?.name || lead.phone || null : null
+                      }}
+                      onDone={async (ids) => {
+                        for (const id of ids) {
+                          const problem = await calendarItems.setDone(id, true)
+                          if (problem) return problem
+                        }
+                        return null
+                      }}
+                      onCloseLead={
+                        can('leads', 'edit')
+                          ? async (leadId) => {
+                              await handleChangeLeadStatus(leadId, 'lost')
+                              await calendarItems.reload()
+                              return null
+                            }
+                          : undefined
+                      }
+                      onOpenChat={openFollowUpChat}
+                    />
+                    {isAdmin && (
+                      <FollowUpCompletion nameOf={(teacherId) => teachers.find((teacher) => teacher.id === teacherId)?.fullName ?? null} />
+                    )}
+                    </div>
+                  ) : undefined
+                }
                 onOpenForms={() => setActiveSection('forms')}
                 onOpenWhatsApp={() => setActiveSection('whatsapp')}
                 onOpenAutomations={() => setActiveSection('automations')}
+              />
+                  ) : null
+                }
+                renderFollowUps={renderTodayFollowUps}
+                onOpenLead={openFollowUpModal}
+                onOpenLeads={() => setActiveSection('leads')}
+                onOpenStudent={openStudentDetail}
               />
             )}
 
@@ -8004,6 +8282,7 @@ function App() {
               <GalleriesSection canEdit={can('galleries', 'edit')} canDelete={can('galleries', 'delete')} />
             )}
             {visibleSection === 'fee-calculator' && <FeeCalculatorSection canEdit={can('fee_calculator', 'edit')} isAdmin={isAdmin} />}
+            {visibleSection === 'products' && <ProductsSection canEdit={can('products', 'edit')} isAdmin={isAdmin} />}
 
             {visibleSection === 'ai-knowledge' && (
               <AiKnowledgeSection
@@ -8067,6 +8346,10 @@ function App() {
 
             {visibleSection === 'teacher-quality' && (
               <TeacherQualitySection teachers={teamReplyStaff.map((person) => ({ id: person.id, fullName: person.name }))} canEdit={can('quality', 'edit')} />
+            )}
+
+            {visibleSection === 'data-center' && (
+              <DataCenterSection staff={teamReplyStaff.map((person) => ({ id: person.id, fullName: person.name }))} isAdmin={isAdmin} canSeeAds={can('ad_spend')} />
             )}
 
             {visibleSection === 'activity' && (
@@ -8475,6 +8758,10 @@ function App() {
               : undefined
           }
           onEditMakeup={canEditCalendar ? openMakeupPlan : undefined}
+          lessonSeatLines={(selectedStudentDetail.lessonSeats ?? []).map(lessonSeatLine)}
+          onOpenLessonSeats={
+            selectedStudentDetail.studentType === 'regular' ? () => void openLessonSeats(selectedStudentDetail) : undefined
+          }
           enrollments={detailEnrollments}
           onChangePackage={
             can('students', 'edit')
@@ -8847,6 +9134,46 @@ function App() {
           }
         />
       )}
+
+      {lessonSeatEditor && (() => {
+        const seatStudent = students.find((entry) => entry.id === lessonSeatEditor.studentId)
+        if (!seatStudent) {
+          return null
+        }
+        const logById = new Map(lessonLogs.map((log) => [log.id, log]))
+        const scheduleClass = new Map(schedules.map((schedule) => [schedule.id, schedule.classroomId]))
+        const statusOf = (lesson: Lesson) => {
+          const row = lessonSeatEditor.rows.find((entry) => {
+            const log = logById.get(entry.lessonLogId)
+            return log !== undefined && log.lessonDate === lesson.date && scheduleClass.get(log.scheduleId) === lesson.classroomId
+          })
+          return row ? getStatusOption(attendanceStatusOptions, row.status).label : null
+        }
+        const seats = seatStudent.lessonSeats ?? []
+        const replaced = new Set(seats.filter((seat) => seat.kind === 'replacement').map((seat) => `${seat.fromClassroomId}|${seat.fromDate}`))
+        const upcoming = studentLessons(seatStudent, todayString, 42, schedules, scheduleExceptions, classrooms)
+        const past = studentLessons(seatStudent, addDaysToKey(todayString, -56), 56, schedules, scheduleExceptions, classrooms)
+          .filter((lesson) => lesson.date < todayString && !replaced.has(`${lesson.classroomId}|${lesson.date}`))
+          .reverse()
+          .map((lesson) => ({ lesson, statusLabel: statusOf(lesson) }))
+        const targets = seatTargets(seatStudent, students, todayString, 21, schedules, scheduleExceptions, classrooms)
+        return (
+          <LessonSeatModal
+            key={seatStudent.id}
+            studentName={seatStudent.name}
+            upcoming={upcoming}
+            past={past}
+            targets={targets}
+            seats={seats}
+            classNameOf={(classroomId) => classroomMap.get(classroomId)?.name ?? 'a class'}
+            teacherNameOf={(teacherId) => teacherMap.get(teacherId)?.fullName ?? 'Teacher'}
+            canEdit={can('students', 'edit')}
+            onBook={(input) => bookLessonSeat(seatStudent.id, input)}
+            onUndo={undoLessonSeat}
+            onClose={() => setLessonSeatEditor(null)}
+          />
+        )
+      })()}
 
       {makeupEditor && (() => {
         const makeupClassroom = classroomMap.get(makeupEditor.classroomId)

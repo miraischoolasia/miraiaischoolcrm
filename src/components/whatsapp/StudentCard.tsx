@@ -84,7 +84,16 @@ export function StudentCard({ student, crm, onUnlink, forStudent = false }: Stud
             onClick={() => crm.onOpenMakeup(student.id)}
             className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50"
           >
-            Arrange Replacement
+            Extra minutes
+          </button>
+        )}
+        {crm.onOpenLessonSeats && student.studentType === 'regular' && (
+          <button
+            type="button"
+            onClick={() => crm.onOpenLessonSeats?.(student.id)}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Change class / Replacement
           </button>
         )}
         <button

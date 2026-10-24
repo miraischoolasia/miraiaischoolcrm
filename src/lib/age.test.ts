@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatStudentAge, getAgeOn, getStudentAge } from './age'
+import { formatStudentAge, getAgeOn, getStudentAge, trialChildAgeText } from './age'
 
 describe('getAgeOn', () => {
   it('counts whole years and moves on at the birthday', () => {
@@ -27,5 +27,20 @@ describe('getStudentAge', () => {
     expect(formatStudentAge({ years: 1, source: 'birth' })).toBe('1 yr')
     expect(formatStudentAge({ years: 7, source: 'booking' })).toBe('7 yrs (at booking)')
     expect(formatStudentAge(null)).toBeNull()
+  })
+})
+
+describe('trialChildAgeText', () => {
+  it('shows the age in age mode and the grade in grade mode', () => {
+    const booking = { childAge: 7, gradeLevel: 2, gradeYear: 2026 }
+    expect(trialChildAgeText(booking, '2026-10-23', 'age')).toBe('7 yrs')
+    expect(trialChildAgeText(booking, '2026-10-23', 'grade')).toBe('Year 2')
+    expect(trialChildAgeText(booking, '2027-02-01', 'grade')).toBe('Year 3')
+  })
+
+  it('falls back to the age when no grade is stored, and is null with neither', () => {
+    expect(trialChildAgeText({ childAge: 7 }, '2026-10-23', 'grade')).toBe('7 yrs')
+    expect(trialChildAgeText({ childAge: 1 }, '2026-10-23', 'age')).toBe('1 yr')
+    expect(trialChildAgeText({ childAge: null }, '2026-10-23', 'grade')).toBeNull()
   })
 })

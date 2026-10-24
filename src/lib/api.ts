@@ -24,6 +24,7 @@ import {
   mapTrialBookingRow,
 } from './mappers'
 import type {
+  TrialBookingRow,
   ClassroomRow,
   FormField,
   FormSettings,
@@ -35,6 +36,7 @@ import type {
   LeadOptionRow,
   LeadRow,
   LessonLogSummary,
+  LessonSeat,
   ScheduleExceptionRow,
   StudentRow,
   TeacherRow,
@@ -55,6 +57,7 @@ export async function fetchStudentsFromSupabase() {
   const columns =
     'id, teacher_id, classroom_id, full_name, phone, age, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date, notes, is_active, student_type'
   const birth = 'date_of_birth'
+  const grade = 'grade_level, grade_year'
   type Row = Omit<StudentRow, 'package_id'> & {
     package_id?: number | null
     student_classroom_periods?: ClassroomPeriodRow[]
@@ -85,7 +88,11 @@ export async function fetchStudentsFromSupabase() {
     return result
   }
 
-  let { data, error } = await load(`${columns}, ${birth}`)
+  let { data, error } = await load(`${columns}, ${birth}, ${grade}`)
+  // Before the grade migration the grade columns do not exist yet.
+  if (error?.code === '42703') {
+    ;({ data, error } = await load(`${columns}, ${birth}`))
+  }
   // Before the birth date migration date_of_birth does not exist yet.
   if (error?.code === '42703') {
     ;({ data, error } = await load(columns))
@@ -95,8 +102,30 @@ export async function fetchStudentsFromSupabase() {
     throw error
   }
 
+  // The one-day seats in other classes' lessons (Change class / Replacement); before the lesson seats migration there
+  // is no table and nobody has any.
+  const seatsByStudent = new Map<number, LessonSeat[]>()
+  try {
+    const { data: seatRows, error: seatError } = await supabase
+      .from('lesson_seats')
+      .select('id, student_id, kind, from_classroom_id, from_date, to_classroom_id, to_date, note')
+    if (!seatError) {
+      for (const seat of (seatRows ?? []) as LessonSeatRow[]) {
+        const list = seatsByStudent.get(seat.student_id) ?? []
+        list.push(mapLessonSeatRow(seat))
+        seatsByStudent.set(seat.student_id, list)
+      }
+    }
+  } catch {
+    // No seats: every lesson is as the class history says.
+  }
+
   return (data ?? []).map(({ student_classroom_periods: periods, ...row }) => {
     const student = mapStudentRow({ ...row, package_id: row.package_id ?? null })
+    const seats = seatsByStudent.get(student.id)
+    if (seats) {
+      student.lessonSeats = seats
+    }
     if (periods) {
       student.classPeriods = periods.map((period) => ({
         classroomId: period.classroom_id,
@@ -106,6 +135,30 @@ export async function fetchStudentsFromSupabase() {
     }
     return student
   })
+}
+
+export type LessonSeatRow = {
+  id: number
+  student_id: number
+  kind: 'change' | 'replacement'
+  from_classroom_id: number
+  from_date: string
+  to_classroom_id: number
+  to_date: string
+  note: string | null
+}
+
+export function mapLessonSeatRow(row: LessonSeatRow): LessonSeat {
+  return {
+    id: row.id,
+    studentId: row.student_id,
+    kind: row.kind,
+    fromClassroomId: row.from_classroom_id,
+    fromDate: row.from_date,
+    toClassroomId: row.to_classroom_id,
+    toDate: row.to_date,
+    note: row.note,
+  }
 }
 
 type ClassroomPeriodRow = {
@@ -469,14 +522,21 @@ export async function fetchTrialBookingsFromSupabase() {
     return []
   }
 
-  const { data, error } = await readAllRows((from, to, withCount) =>
-    supabase!
-      .from('trial_bookings')
-      .select('id, schedule_id, booking_date, lead_id, student_id, child_name, child_age, phone, notes', withCount ? { count: 'exact' } : undefined)
-      .order('booking_date')
-      .order('id')
-      .range(from, to),
-  )
+  const baseColumns = 'id, schedule_id, booking_date, lead_id, student_id, child_name, child_age, phone, notes'
+  const load = (columns: string) =>
+    readAllRows((from, to, withCount) =>
+      supabase!
+        .from('trial_bookings')
+        .select(columns, withCount ? { count: 'exact' } : undefined)
+        .order('booking_date')
+        .order('id')
+        .range(from, to),
+    )
+  let { data, error } = await load(`${baseColumns}, grade_level, grade_year`)
+  // Before the grade migration the columns do not exist yet.
+  if (error?.code === '42703') {
+    ;({ data, error } = await load(baseColumns))
+  }
 
   if (error) {
     // Same reasoning as skipped days: bookings are an overlay on the calendar,
@@ -489,7 +549,7 @@ export async function fetchTrialBookingsFromSupabase() {
     throw error
   }
 
-  return data.map(mapTrialBookingRow)
+  return ((data ?? []) as unknown as TrialBookingRow[]).map(mapTrialBookingRow)
 }
 
 export async function fetchMakeupPlansFromSupabase() {

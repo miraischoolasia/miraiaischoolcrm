@@ -12,6 +12,7 @@ import {
   readCalendarFilter,
   scheduleKind,
   scheduleShown,
+  withTimetableTrials,
 } from './calendarFilter'
 import type { Classroom, Schedule } from '../types/domain'
 
@@ -102,18 +103,18 @@ describe('calendar filter', () => {
 })
 
 describe('the Timetable and the Planner', () => {
-  it('gives the Timetable the classes and make-ups, and the Planner the rest', () => {
-    expect(pageKinds('timetable', false)).toEqual(['class', 'makeup'])
-    expect(pageKinds('timetable', true)).toEqual(['class', 'makeup'])
+  it('gives the Timetable every kind of class (trial slots too), and the Planner the rest', () => {
+    expect(pageKinds('timetable', false)).toEqual(['class', 'trial', 'makeup'])
+    expect(pageKinds('timetable', true)).toEqual(['class', 'trial', 'makeup'])
     expect(pageKinds('planner', false)).toEqual(['trial', 'task', 'meeting', 'event', 'follow_up'])
     expect(pageKinds('planner', true)).toEqual(ALL_KINDS)
   })
 
   it('cuts a saved filter down to the kinds the page has, and starts again when none is left', () => {
     const timetable = pageKinds('timetable', false)
-    expect(pageFilter(defaultCalendarFilter(), timetable).kinds).toEqual(['class', 'makeup'])
+    expect(pageFilter(defaultCalendarFilter(), timetable).kinds).toEqual(['class', 'trial', 'makeup'])
     expect(pageFilter({ ...defaultCalendarFilter(), kinds: ['class', 'task'] }, timetable).kinds).toEqual(['class'])
-    expect(pageFilter({ ...defaultCalendarFilter(), kinds: ['task'] }, timetable).kinds).toEqual(['class', 'makeup'])
+    expect(pageFilter({ ...defaultCalendarFilter(), kinds: ['task'] }, timetable).kinds).toEqual(['class', 'trial', 'makeup'])
     expect(pageFilter({ ...defaultCalendarFilter(), mine: true }, timetable).mine).toBe(true)
   })
 
@@ -146,5 +147,14 @@ describe('the Timetable and the Planner', () => {
     const withClasses = { ...defaultCalendarFilter(), kinds: ['task' as const, 'class' as const, 'makeup' as const] }
     expect(kindsWithClasses(withClasses, pageKinds('planner', true), false)).toEqual(['task'])
     expect(kindsWithClasses({ ...defaultCalendarFilter(), kinds: ['class' as const] }, pageKinds('planner', true), false)).toEqual(ALL_KINDS)
+  })
+})
+
+describe('withTimetableTrials', () => {
+  it('turns an old "classes and make-ups" Timetable filter into everything, and leaves the others alone', () => {
+    expect(withTimetableTrials({ ...defaultCalendarFilter(), kinds: ['class', 'makeup'] }).kinds).toEqual(ALL_KINDS)
+    expect(withTimetableTrials({ ...defaultCalendarFilter(), kinds: ['class'] }).kinds).toEqual(['class'])
+    expect(withTimetableTrials({ ...defaultCalendarFilter(), kinds: ['class', 'trial'] }).kinds).toEqual(['class', 'trial'])
+    expect(withTimetableTrials({ ...defaultCalendarFilter(), mine: true, kinds: ['class', 'makeup'] }).mine).toBe(true)
   })
 })

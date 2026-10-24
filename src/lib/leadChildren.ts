@@ -1,4 +1,5 @@
 import type { Lead } from '../types/domain'
+import { gradeNow } from './grade'
 
 // One child of a lead, as a row of its own in the Children view of the Leads page.
 export type ChildRow = {
@@ -7,6 +8,9 @@ export type ChildRow = {
   // Empty when the parent gave only an age.
   childName: string
   age: number
+  // The school grade the child had and the year it was true, for a school that shows grade.
+  gradeLevel?: number | null
+  gradeYear?: number | null
   childPhone: string | null
   parentName: string | null
   parentPhone: string | null
@@ -25,7 +29,9 @@ const digitsOf = (value: string | null | undefined) => (value ?? '').replace(/\D
 // number, and every child of a parent found by the parent's name or number.
 export function buildChildRows(
   leads: Lead[],
-  options: { search?: string; ageGroup?: string } = {},
+  // grade: the school grade (1-12) to keep, for a school that shows grade; it then replaces the age group, and
+  // a child with no grade stored is left out. today: the day the grade is worked out for.
+  options: { search?: string; ageGroup?: string; grade?: number | null; today?: string } = {},
 ): ChildRow[] {
   const query = (options.search ?? '').trim().toLowerCase()
   const queryDigits = digitsOf(query)
@@ -41,7 +47,11 @@ export function buildChildRows(
       if (query && !parentMatches && !text(child.name) && !phone(child.phone)) {
         return
       }
-      if (group && (child.age < group.min || child.age > group.max)) {
+      if (options.grade != null) {
+        if (gradeNow(child.gradeLevel, child.gradeYear, options.today ?? new Date().toISOString().slice(0, 10)) !== options.grade) {
+          return
+        }
+      } else if (group && (child.age < group.min || child.age > group.max)) {
         return
       }
       rows.push({
@@ -49,6 +59,8 @@ export function buildChildRows(
         leadId: lead.id,
         childName: child.name,
         age: child.age,
+        gradeLevel: child.gradeLevel,
+        gradeYear: child.gradeYear,
         childPhone: child.phone,
         parentName: lead.fullName,
         parentPhone: lead.phone,

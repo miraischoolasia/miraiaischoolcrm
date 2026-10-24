@@ -103,6 +103,27 @@ describe('buildTeacherAgenda', () => {
     expect(empty.today).toEqual([])
   })
 
+  it('lists an empty trial slot when asked, with no attendance to take and no teaching hours', () => {
+    const trial = weekly(5, 7, 5, '10:00', '11:30')
+    const agenda = buildTeacherAgenda(sources({ schedules: [trial, friday], getRosterIds: (id) => (id === 5 ? [] : [1, 2]), includeEmpty: true }), today)
+    const slot = agenda.today.find((item) => item.kind === 'trial')
+    expect(slot).toMatchObject({ studentCount: 0, empty: true, state: 'later' })
+    // Not "attendance missing" on a day that has passed, and not counted as teaching.
+    const past = buildTeacherAgenda(sources({ schedules: [trial], getRosterIds: () => [], includeEmpty: true }), '2026-10-12')
+    expect(past.todo).toEqual([])
+    expect(agenda.week.classes).toBe(1)
+    expect(agenda.week.hours).toBe(1.5)
+  })
+
+  it('counts a trial booked by a lead (no student record yet) as booked, with no attendance to take', () => {
+    const trial = weekly(5, 7, 5, '10:00', '11:30')
+    const agenda = buildTeacherAgenda(
+      sources({ schedules: [trial], getRosterIds: () => [], includeEmpty: true, getBookedCount: () => 2 }),
+      today,
+    )
+    expect(agenda.today.map((item) => [item.kind, item.studentCount, item.empty, item.state])).toEqual([['trial', 2, true, 'later']])
+  })
+
   it('does not run regular classes on the 29th-31st, but does for a make-up there', () => {
     const lateDay = '2026-10-30'
     const empty = buildTeacherAgenda(sources({ schedules: [friday] }), lateDay)

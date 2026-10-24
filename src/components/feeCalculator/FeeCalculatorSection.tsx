@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { cn } from '../../lib/cn'
 import {
+  copyFeeCohortRates,
+  setFeeCohortFollow,
   addMembershipLevel,
   cohortEntries,
   fetchClassSubjects,
@@ -27,6 +29,8 @@ const databaseApi: FeeSettingsApi = {
   addLevel: addMembershipLevel,
   loadClassSubjects: fetchClassSubjects,
   setClassSubject: setFeeSubjectClassSubject,
+  followCohort: setFeeCohortFollow,
+  copyRates: copyFeeCohortRates,
 }
 
 // The Fee Calculator page (Students menu), shown when the school switched it on and the person has the

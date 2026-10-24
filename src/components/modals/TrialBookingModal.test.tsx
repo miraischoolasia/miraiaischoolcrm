@@ -92,6 +92,7 @@ describe('TrialBookingModal', () => {
       leadId: null,
       childName: 'Zoe',
       childAge: '8',
+      gradeLevel: '',
       phone: '+60 11-999 8888',
       notes: '',
     })

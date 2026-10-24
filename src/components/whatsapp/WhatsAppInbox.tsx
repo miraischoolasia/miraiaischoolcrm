@@ -2,7 +2,7 @@ import type { WhatsAppTarget } from '../WhatsAppLink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { InstagramLogo, MessengerLogo, WhatsappLogo } from '@phosphor-icons/react'
 import { cn } from '../../lib/cn'
-import { familyChildNames, familyOf } from '../../lib/family'
+import { familyChildNames, familyOf, personOfContact } from '../../lib/family'
 import { chatNameLabel } from '../../lib/parentLabel'
 import { CHANNEL_LABEL, channelsByLead, contactSiblings, leadOfContacts, placeOf, type LeadChannel } from '../../lib/leadChannels'
 import { chatSwitchOptions, type ChatSwitchOption } from '../../lib/chatSwitch'
@@ -87,12 +87,18 @@ import { makeStudentResolver } from '../../lib/studentLink'
 import { studentGroupOptions, studentGroups, studentLabels, useStudentLabelContext } from '../../lib/studentLabel'
 import { picOfStaff, staffOfPic as staffOfPicName } from '../../lib/picStaff'
 import { getLeadStages, STAGE_COLORS, stageLabel } from '../../lib/leadStages'
+import { otherChildStages } from '../../lib/childStages'
+import { nextFollowUpOf } from '../../lib/followUps'
+import { draftOfItem } from '../../lib/calendarItems'
+import { FollowUpChatBar } from './FollowUpChatBar'
+import type { QuickReply } from '../../lib/quickReplies'
 import type { WhatsAppCrm } from './crm'
 import { DetailsPanel } from './DetailsPanel'
 import { AutomationQueueDialog } from './AutomationQueueDialog'
 import { NewChatDialog } from './NewChatDialog'
 import { FollowUpButton, FollowUpChip } from './FollowUpButton'
 import { NumbersDialog, type AssignableStaff } from './NumbersDialog'
+import { WaLabelSyncDialog } from './WaLabelSyncDialog'
 import { problemLabel, type ChannelAlert } from '../../lib/channelAlerts'
 import type { InboxZone, WhatsAppNumber, WhatsAppNumberDraft } from '../../lib/whatsappNumbers'
 import { listedInboxIds, zoneFilter } from '../../lib/inboxZones'
@@ -237,6 +243,7 @@ export function WhatsAppInbox({
   const channelLabels = useChannelLabels(active)
   const [managingChannels, setManagingChannels] = useState(false)
   const [managingNumbers, setManagingNumbers] = useState(false)
+  const [managingLabelSync, setManagingLabelSync] = useState(false)
   const [inboxList, setInboxList] = useState<{ id: number; name: string; phone?: string | null }[]>([])
   const [search, setSearch] = useState('')
   // Text the enrol steps write for the message box; each new id is added once.
@@ -313,7 +320,7 @@ export function WhatsAppInbox({
   // or, once the team said who is on it, "Albee's parent" / "Albee (student)".
   const chatLabelOf = useCallback(
     (conversation: ChatwootConversation) => {
-      const person = people.find((entry) => entry.contactId === conversation.meta.sender.id)
+      const person = personOfContact(conversation.meta.sender.id, people)
       // A lead that is not a student yet is named by the children written on it.
       const lead = resolveLead(getLinkedLeadId(conversation), getRealPhone(conversation.meta.sender.phone_number))
       return chatNameLabel({
@@ -336,7 +343,7 @@ export function WhatsAppInbox({
         return []
       }
       const contactId = conversation.meta.sender.id
-      const person = people.find((entry) => entry.contactId === contactId)
+      const person = personOfContact(contactId, people)
       const ids = new Set<number>()
       if (person?.kind === 'student' && person.studentId !== null) {
         ids.add(person.studentId)
@@ -662,10 +669,30 @@ export function WhatsAppInbox({
         return null
       }
       const found = schoolStages.find((entry) => entry.key === key)
-      return { label: found?.label ?? stageLabel(key), badge: STAGE_COLORS[found?.color ?? 'slate'].badge }
+      // Children whose own stage is not the family's (③'s per-child stages): shown as "+N" beside it.
+      const others = otherChildStages(leadOfChat(conversation)?.children ?? [], key)
+      return {
+        label: found?.label ?? stageLabel(key),
+        badge: STAGE_COLORS[found?.color ?? 'slate'].badge,
+        more: others.map((entry) => `${entry.name}: ${entry.label}`),
+      }
     },
-    [stageKeyOfChat, schoolStages],
+    [stageKeyOfChat, schoolStages, leadOfChat],
   )
+  // Follow-ups (automatic or set by hand): the list's small "Overdue" / "Follow up today" tag, and the bar above
+  // the open chat with its lead's next one.
+  const followUpItems = crm.followUps?.items
+  const followUpOf = useCallback(
+    (conversation: ChatwootConversation) => {
+      if (!followUpItems) return null
+      const lead = leadOfChat(conversation)
+      const next = lead ? nextFollowUpOf(followUpItems, lead.id, new Date()) : null
+      return next && next.state !== 'later' ? next.state : null
+    },
+    [followUpItems, leadOfChat],
+  )
+  const selectedLead = inbox.selected ? leadOfChat(inbox.selected) : null
+  const selectedFollowUp = followUpItems && selectedLead ? nextFollowUpOf(followUpItems, selectedLead.id, new Date()) : null
   // The stages to filter by: the ones on, and one that is off but some chat's lead still has; never Converted.
   const stageChoices = useMemo(() => {
     const used = new Set(crm.leads.map((lead) => lead.status))
@@ -719,6 +746,8 @@ export function WhatsAppInbox({
   )
 
   const quickReplies = useQuickReplies(true)
+  // A follow-up template picked on the bar above the chat, for the message box.
+  const [quickReplyRequest, setQuickReplyRequest] = useState<{ id: number; reply: QuickReply } | null>(null)
   const sourceRules = useSourceRules(true)
   // Messages the automations want to send; each goes out only when a person approves it.
   // The Student Inbox runs no automations.
@@ -1624,6 +1653,7 @@ export function WhatsAppInbox({
         reactionPreviews={reactionPreviews}
         studentLabelsOf={studentLabelsOf}
         stageOf={stageOfChat}
+        followUpOf={followUpOf}
         isOlderDuplicate={isOlderDuplicate}
         isEmptyDuplicate={isEmptyDuplicate}
         isStudentSelf={(conversation) => getChatRole(conversation) === 'student'}
@@ -1677,6 +1707,21 @@ export function WhatsAppInbox({
       {inbox.selected ? (
         <>
           <ChatPanel
+            followUpBar={selectedFollowUp && crm.followUps ? (
+              <FollowUpChatBar
+                key={selectedFollowUp.item.id}
+                item={selectedFollowUp.item}
+                stepLabel={selectedFollowUp.stepLabel}
+                state={selectedFollowUp.state}
+                handlerName={handlerOf(inbox.selected)?.name ?? null}
+                onDone={() => crm.followUps!.done(selectedFollowUp.item.id)}
+                onChangeDate={(date) => crm.followUps!.save({ ...draftOfItem(selectedFollowUp.item), date }, selectedFollowUp.item)}
+                templates={quickReplies.replies.filter(
+                  (reply) => reply.isActive && reply.followupStep != null && reply.followupStep === (selectedFollowUp.item.followupStep ?? 1),
+                )}
+                onUseTemplate={(reply) => setQuickReplyRequest((current) => ({ id: (current?.id ?? 0) + 1, reply }))}
+              />
+            ) : undefined}
             picture={pictureOf(inbox.selected)}
             className={cn(!hasChat && 'hidden lg:flex', detailsOpen && 'hidden xl:flex')}
             conversation={inbox.selected}
@@ -1708,6 +1753,7 @@ export function WhatsAppInbox({
             quickReplyValues={quickReplyFill}
             onManageQuickReplies={() => setManagingReplies(true)}
             draftRequest={draftRequest}
+            quickReplyRequest={quickReplyRequest}
             fileRequest={fileRequest}
             messageEvents={messageEvents.events}
             onSendSpecial={messageEvents.sendSpecial}
@@ -1912,8 +1958,13 @@ export function WhatsAppInbox({
           onReload={numbersView.onReload}
           labels={channelLabels.labels}
           onSaveLabel={channelLabels.save}
+          onOpenLabelSync={() => {
+            setManagingNumbers(false)
+            setManagingLabelSync(true)
+          }}
         />
       )}
+      {managingLabelSync && <WaLabelSyncDialog tags={crm.leadOptions} onClose={() => setManagingLabelSync(false)} />}
       {automationOpen && (
         <AutomationQueueDialog
           items={automation.items}

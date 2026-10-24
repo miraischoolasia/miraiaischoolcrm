@@ -436,9 +436,11 @@ verify_jwt = false
 [functions.recording-bunny]
 verify_jwt = false
 
+
+# The Data Center's Facebook ad numbers: the WhatsApp server's daily job calls it with its own key (x-sync-key,
+# checked against the secret META_ADS_SYNC_KEY), an admin with their login (checked inside).
+[functions.meta-ads-sync]
+verify_jwt = false
+
 [functions.class-videos]
 verify_jwt = true
-
-# A parent opens a quotation's page without a login (the long random token in the link is what authorises it).
-[functions.quote-public]
-verify_jwt = false

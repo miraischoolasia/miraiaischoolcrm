@@ -212,13 +212,13 @@ describe('trial slots on the calendar', () => {
     mocks.extraBookings = []
   })
 
-  it('shows a slot with nobody booked as Available and one with children as booked', async () => {
+  it('shows a slot with nobody booked as 0 booked and one with children as booked', async () => {
     await signIn()
 
-    expect(within(slot('14:00')).getByText('Available')).toBeInTheDocument()
+    expect(within(slot('14:00')).getByText('0 booked')).toBeInTheDocument()
     expect(within(slot('10:00')).getByText('1 booked')).toBeInTheDocument()
     expect(within(slot('10:00')).getByText('Aiden (9)')).toBeInTheDocument()
-    expect(within(slot('10:00')).queryByText('Available')).not.toBeInTheDocument()
+    expect(within(slot('10:00')).queryByText('0 booked')).not.toBeInTheDocument()
   })
 
   it('opens the bookings of the clicked slot and day', async () => {

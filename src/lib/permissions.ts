@@ -59,6 +59,8 @@ export const permissionModules: {
   { key: 'student_inbox', label: 'Student Inbox', canEdit: true, deleteHint: 'Delete messages', scopes: [], group: 'Students' },
   // Use the Fee Calculator (view); change its prices, subjects and text (edit). Shown once the school switches it on.
   { key: 'fee_calculator', label: 'Fee Calculator', canEdit: true, scopes: [], group: 'Students' },
+  // The books a school sells: the list and stock (view); add / change products and stock (edit). Shown once switched on.
+  { key: 'products', label: 'Products', canEdit: true, scopes: [], group: 'Students' },
   // Send a student's monthly progress card to the family: only their own students (Learning Consultant) or everyone's.
   { key: 'progress_cards', label: 'Progress Cards', canEdit: false, scopes: ['all', 'own'], group: 'Students' },
   // The teacher scorecard and retention (view), the alert settings (edit); a view tick also gets the class alerts.
@@ -67,6 +69,10 @@ export const permissionModules: {
   { key: 'team_replies', label: 'Team Replies', canEdit: false, scopes: ['all', 'own'], group: 'Admin' },
   { key: 'staff_hours', label: 'Working Hours', canEdit: false, scopes: [], group: 'Admin' },
   { key: 'activity', label: 'Activity Log', canEdit: false, scopes: [], group: 'Admin' },
+  // The Data Center: leads, conversions and money for every EC (open ranking, boss 2026-10-23). Settings are admin only.
+  { key: 'data_center', label: 'Data Center', canEdit: false, scopes: [], group: 'Admin' },
+  // The Meta ad money in the Data Center (spend, cost per lead, return on ad spend).
+  { key: 'ad_spend', label: 'Ad Spend', canEdit: false, scopes: [], group: 'Admin' },
 ]
 
 export const scopeLabels: Record<PermissionScope, string> = {

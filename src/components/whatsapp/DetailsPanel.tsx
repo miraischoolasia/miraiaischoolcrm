@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
-import { CaretLeft, GraduationCap, Receipt, Star, UserCircle } from '@phosphor-icons/react'
+import { Calculator, CaretLeft, GraduationCap, Receipt, Star, UserCircle } from '@phosphor-icons/react'
+import { InboxFeeCalculator } from './InboxFeeCalculator'
+import type { FeeCalculatorSelection } from '../feeCalculator/FeeCalculatorForm'
 import { QuotationPanel } from '../quotation/QuotationPanel'
 import { cn } from '../../lib/cn'
 import { canonicalPhone, getFirstMessage, guessSourceAndTags, parentNumberUpdate, resolveChatLead } from '../../lib/chatLink'
@@ -38,6 +40,9 @@ import { ChatRolePicker } from './ChatRolePicker'
 import { NumberCheckPrompt } from './NumberCheckPrompt'
 import { fetchStudentNumbers, numberIsStrange, saveSecondParentPhone } from '../../lib/studentNumberCheck'
 import type { Lead, Student } from '../../types/domain'
+import { childAgeText, studentAgeText } from '../../lib/age'
+import { useAgeDisplay } from '../../lib/ageDisplay'
+import { getTodayString } from '../../domain/studentStatus'
 import { PanelSection } from './PanelSection'
 import type { WaLabel } from '../../lib/waActions'
 
@@ -92,12 +97,14 @@ type DetailsPanelProps = {
 // The side panel: who the parent is, and what the school already knows about
 // them (a lead, a student), or a way to add them.
 // Which sign-up the steps below are for: one of the school's programmes.
-type PanelTab = 'contact' | 'enrol' | 'quote' | 'chat'
+type PanelTab = 'contact' | 'enrol' | 'fees' | 'quote' | 'chat'
 
 const TAB_ICONS: Record<PanelTab, { label: string; Icon: typeof UserCircle }> = {
   contact: { label: 'Contact', Icon: UserCircle },
   enrol: { label: 'Sign-up', Icon: GraduationCap },
   // Quotations (docs: quotation-payment-plan-detail.md 13.4): the Fee team's QuotationPanel, when the school uses them.
+  // The Fee Team's calculator, when the school switched it on (white label: only where it is on).
+  fees: { label: 'Fees', Icon: Calculator },
   quote: { label: 'Quotation', Icon: Receipt },
   chat: { label: 'Chat notes', Icon: Star },
 }
@@ -277,6 +284,8 @@ export function DetailsPanel({
   const [leadFormFor, setLeadFormFor] = useState<number | null>(null)
   // The part of the panel on show, chosen on the icons at its right edge.
   const [tab, setTab] = useState<PanelTab>('contact')
+  // Fees worked out on the Fees tab, put into the Quotation form ("Use for a quotation").
+  const [quotePrefill, setQuotePrefill] = useState<{ id: number; selection: FeeCalculatorSelection } | null>(null)
   // What the parent can sign up for: the school's programmes that are on. A crm without programmes (the
   // tests) offers Mirai's two, the HOA class and the Holiday Camp (when there is a camp package).
   const offers: Offer[] = useMemo(() => {
@@ -342,14 +351,23 @@ export function DetailsPanel({
   const family = useMemo(() => familyOf(sender.id, people), [sender.id, people])
   const familyLead = family?.leadId != null ? (crm.leads.find((entry) => entry.id === family.leadId) ?? null) : null
   const labelContext = useStudentLabelContext(crm.classrooms, crm.packages)
+  const ageMode = useAgeDisplay()
   function childDetail(person: Person) {
     const enrolled = person.studentId !== null ? crm.students.find((entry) => entry.id === person.studentId) : undefined
     const wanted = (person.name ?? '').toLowerCase().replace(/[\s\p{P}]/gu, '')
     const written = familyLead?.children.find(
       (child) => (child.name ?? '').toLowerCase().replace(/[\s\p{P}]/gu, '') === wanted && wanted !== '',
     )
+    const today = getTodayString()
+    // A school that shows grade: "Year 3" / "Form 1" from the student or the lead's child (the age when no grade).
+    const gradeText =
+      ageMode === 'grade'
+        ? ((enrolled ? studentAgeText(enrolled, today, ageMode) : null) ??
+          (written && typeof written.age === 'number' ? childAgeText(written, today, ageMode) : null))
+        : null
     return {
       age: enrolled?.age ?? written?.age ?? null,
+      text: gradeText,
       label: enrolled ? studentLabel(enrolled, labelContext) : null,
       kind: enrolled ? getStudentKind(enrolled, crm.packages) : null,
     }
@@ -419,6 +437,7 @@ export function DetailsPanel({
   const tabs: PanelTab[] = [
     'contact',
     ...(canEnrol ? (['enrol'] as const) : []),
+    ...(crm.feeCalculator?.enabled ? (['fees'] as const) : []),
     ...(canQuote ? (['quote'] as const) : []),
     ...(hasChatNotes ? (['chat'] as const) : []),
   ]
@@ -682,6 +701,20 @@ export function DetailsPanel({
               {!hasChatNotes && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">No starred messages or phone labels on this chat.</p>}
             </div>
           )}
+          {shownTab === 'fees' && (
+            <InboxFeeCalculator
+              lead={lead}
+              students={students}
+              onUseForQuotation={
+                canQuote
+                  ? (selection) => {
+                      setQuotePrefill((current) => ({ id: (current?.id ?? 0) + 1, selection }))
+                      setTab('quote')
+                    }
+                  : undefined
+              }
+            />
+          )}
           {shownTab === 'quote' && onWriteMessage && (
             <QuotationPanel
               lead={lead}
@@ -695,6 +728,7 @@ export function DetailsPanel({
               canApprove={crm.quotations?.canApprove ?? false}
               onWriteMessage={onWriteMessage}
               onAttachFile={onAttachFile}
+              prefill={quotePrefill ?? undefined}
             />
           )}
           {shownTab === 'enrol' && (

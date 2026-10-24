@@ -43,6 +43,11 @@ export function LessonWindow({ lesson, today, now, alongside, rosterNames, onTak
         <div className="flex flex-wrap items-center gap-2 pr-10">
           {lesson.subject && <span className={cn('rounded-md px-1.5 py-0.5 text-[11px] font-bold', tone.tag)}>{lesson.subject}</span>}
           {lesson.grade && <span className="text-xs font-semibold text-slate-500">{lesson.grade}</span>}
+          {lesson.kind !== 'regular' && (lesson.categoryName || lesson.kind === 'replacement') && (
+            <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-bold text-slate-600">
+              {lesson.kind === 'replacement' ? 'Replacement' : lesson.categoryName}
+            </span>
+          )}
           {timing && (
             <span className={cn('text-xs font-bold', timing.phase === 'running' ? 'text-emerald-700' : 'text-[#be185d]')}>
               {timing.text}
@@ -60,7 +65,13 @@ export function LessonWindow({ lesson, today, now, alongside, rosterNames, onTak
           <dt className="text-slate-500">Teacher</dt>
           <dd className="font-semibold text-slate-800">{lesson.teacherName}</dd>
           <dt className="text-slate-500">Students</dt>
-          <dd className="font-semibold text-slate-800">{lesson.studentCount.toLocaleString()} on the list</dd>
+          <dd className="font-semibold text-slate-800">
+            {lesson.kind === 'trial'
+              ? lesson.studentCount === 0
+                ? '0 booked: keep the time free'
+                : `${lesson.studentCount.toLocaleString()} booked`
+              : `${lesson.studentCount.toLocaleString()} on the list`}
+          </dd>
           {submitted && (
             <>
               <dt className="text-slate-500">Attendance</dt>

@@ -255,3 +255,23 @@ describe('orphanBookingEvents', () => {
     expect(orphanBookingEvents([booking(1, 'Amy', '2026-10-22')], [], new Map(), () => '')).toEqual([])
   })
 })
+
+describe('monthSpecialEvents trial slots', () => {
+  const trialClass = classroom(5, 'Trial Coding', { category: 'trial' })
+  const slot = weekly(50, 5, { dayOfWeek: 1, startTime: '10:00', endTime: '11:00', startRecur: '2026-10-01' })
+  const slotEvents = (): ReturnType<typeof buildScheduleEvents> => [
+    { id: 'schedule-50', title: 'Trial Coding', start: '2026-10-12T10:00', end: '2026-10-12T11:00', extendedProps: { scheduleId: 50, classKind: 'trial', teacherName: 'Ms Lee', startTime: '10:00', endTime: '11:00', occurrenceDate: '2026-10-12' } },
+    { id: 'schedule-50b', title: 'Trial Coding', start: '2026-10-19T10:00', end: '2026-10-19T11:00', extendedProps: { scheduleId: 50, classKind: 'trial', teacherName: 'Ms Lee', startTime: '10:00', endTime: '11:00', occurrenceDate: '2026-10-19' } },
+  ]
+  const base = { schedules: [slot], classroomMap: new Map([[5, trialClass]]), subjectName: () => null, links: linkReplacements([], [slot], new Map([[5, trialClass]])), makeupPlans: [] }
+
+  it('shows a slot nobody booked as a faded "0 booked" card, and leaves a booked day to its own card', () => {
+    const cards = monthSpecialEvents(slotEvents(), { ...base, weekly: true, bookedTrialDays: new Set(['50:2026-10-12']) })
+    expect(cards.map((card) => card.id)).toEqual(['schedule-50b'])
+    expect(cards[0].extendedProps?.special).toMatchObject({ kind: 'weekly', line: 'Trial Coding · 0 booked', teacher: 'Ms Lee' })
+  })
+
+  it('keeps empty slots out of a month that does not show the weekly classes', () => {
+    expect(monthSpecialEvents(slotEvents(), { ...base, weekly: false })).toEqual([])
+  })
+})

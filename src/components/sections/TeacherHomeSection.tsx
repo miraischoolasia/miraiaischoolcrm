@@ -102,6 +102,11 @@ function studentsText(count: number) {
   return `${count} ${count === 1 ? 'student' : 'students'}`
 }
 
+// A trial slot counts the children booked; a class counts its students.
+function countText(item: Pick<AgendaItem, 'kind' | 'studentCount'>) {
+  return item.kind === 'trial' ? `${item.studentCount} booked` : studentsText(item.studentCount)
+}
+
 const primaryButton =
   'rounded-xl bg-[#fc0c97] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#de0a84]'
 const secondaryButton =
@@ -254,7 +259,7 @@ export function TeacherHomeSection({
                 <div className="min-w-0 text-sm">
                   <span className="font-semibold text-slate-900">{item.title}</span>{' '}
                   <span className="text-slate-500">
-                    · {formatClockTime(item.startTime)}-{formatClockTime(item.endTime)} · {studentsText(item.studentCount)}
+                    · {formatClockTime(item.startTime)}-{formatClockTime(item.endTime)} · {countText(item)}
                   </span>{' '}
                   {item.makeupMinutes > 0 && <Chip tone="pink">Make-up +{item.makeupMinutes} min</Chip>}
                 </div>
@@ -342,18 +347,28 @@ function TodayRow({
           {item.subtitle && item.kind !== 'regular' ? ` · ${item.subtitle}` : ''}
         </div>
         <div className="text-xs text-slate-500">
-          {studentsText(item.studentCount)}
+          {countText(item)}
           {item.kind === 'regular' && item.subtitle ? ` · ${item.subtitle}` : ''}
           {item.makeupMinutes > 0 ? ` · Make-up +${item.makeupMinutes} min` : ''}
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-        {onRunLive && (
-          <button type="button" onClick={() => onRunLive(item)} className={secondaryButton}>
-            Live class
-          </button>
+        {item.empty ? (
+          <Chip tone="info">
+            {item.kind === 'trial'
+              ? item.studentCount === 0
+                ? 'Nobody booked yet · keep the time free'
+                : 'Booked · attendance opens once the child is a student'
+              : 'Nobody in this class'}
+          </Chip>
+        ) : (
+          onRunLive && (
+            <button type="button" onClick={() => onRunLive(item)} className={secondaryButton}>
+              Live class
+            </button>
+          )
         )}
-        {submitted ? (
+        {item.empty ? null : submitted ? (
           <>
             <Chip tone="ok">✓ Submitted</Chip>
             <span className="text-xs text-slate-500">

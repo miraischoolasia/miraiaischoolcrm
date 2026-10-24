@@ -157,3 +157,14 @@ describe('CalendarDayList', () => {
     expect(within(card).queryByRole('button', { name: 'Attendance' })).not.toBeInTheDocument()
   })
 })
+
+describe('CalendarDayList trial slots', () => {
+  it('tags a trial slot with the school category name and says how many booked', () => {
+    renderList({
+      lessons: [lesson(9, { title: 'HOA Mon', kind: 'trial', categoryName: 'HOA Class', studentCount: 0, state: 'later', subject: null, grade: '' })],
+    })
+    expect(screen.getByText('HOA Class')).toBeInTheDocument()
+    expect(screen.getByText('0 booked')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Attendance' })).toBeNull()
+  })
+})

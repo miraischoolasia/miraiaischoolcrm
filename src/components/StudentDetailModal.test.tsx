@@ -258,7 +258,7 @@ describe('StudentDetailModal', () => {
       await openTab('Lessons')
 
       expect(screen.getByText('Missed Oct 1, 2026 · 90 min · This student')).toBeInTheDocument()
-      await userEvent.click(screen.getByRole('button', { name: 'Arrange Make-up' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Extra minutes' }))
       expect(onArrange).toHaveBeenCalledWith(5)
     })
 
@@ -274,7 +274,7 @@ describe('StudentDetailModal', () => {
       await openTab('Lessons')
 
       await userEvent.selectOptions(screen.getByLabelText('Make-up for class'), '6')
-      await userEvent.click(screen.getByRole('button', { name: 'Arrange Make-up' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Extra minutes' }))
       expect(onArrange).toHaveBeenCalledWith(6)
     })
   })

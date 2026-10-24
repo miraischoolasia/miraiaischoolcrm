@@ -15,24 +15,73 @@ export type Family = {
   leadId: number | null
 }
 
+// Lookups over one people list, built once per list (the list is replaced, never changed, when people are read
+// again). The Inbox asks for families of every chat on each redraw; scanning 12,000 people for each was the
+// biggest part of a redraw on a phone.
+type PeopleIndex = {
+  byContact: Map<number, Person>
+  byId: Map<number, Person>
+  parentsByLead: Map<number, Person[]>
+  childrenByParent: Map<number, Person[]>
+  families: Map<number, Family | null>
+  childNames: Map<number, string[]>
+}
+const indexes = new WeakMap<Person[], PeopleIndex>()
+
+function indexOf(people: Person[]): PeopleIndex {
+  let index = indexes.get(people)
+  if (index) {
+    return index
+  }
+  index = { byContact: new Map(), byId: new Map(), parentsByLead: new Map(), childrenByParent: new Map(), families: new Map(), childNames: new Map() }
+  for (const person of people) {
+    // The first row of a contact wins, as people.find did.
+    if (person.contactId !== null && !index.byContact.has(person.contactId)) {
+      index.byContact.set(person.contactId, person)
+    }
+    index.byId.set(person.id, person)
+    if (person.kind === 'parent' && person.leadId !== null) {
+      index.parentsByLead.set(person.leadId, [...(index.parentsByLead.get(person.leadId) ?? []), person])
+    }
+    if (person.kind === 'student' && person.parentId !== null) {
+      index.childrenByParent.set(person.parentId, [...(index.childrenByParent.get(person.parentId) ?? []), person])
+    }
+  }
+  indexes.set(people, index)
+  return index
+}
+
+// The person of a WhatsApp contact (the first row when there are several), without scanning the list.
+export function personOfContact(contactId: number, people: Person[]): Person | undefined {
+  return indexOf(people).byContact.get(contactId)
+}
+
 // Null for a contact nobody has placed yet: there is no family to show.
 export function familyOf(contactId: number, people: Person[]): Family | null {
-  const me = people.find((person) => person.contactId === contactId)
+  const index = indexOf(people)
+  if (index.families.has(contactId)) {
+    return index.families.get(contactId) ?? null
+  }
+  const family = buildFamily(contactId, index)
+  index.families.set(contactId, family)
+  return family
+}
+
+function buildFamily(contactId: number, index: PeopleIndex): Family | null {
+  const me = index.byContact.get(contactId)
   if (!me || me.kind === 'contact') {
     return null
   }
 
-  const parent = me.kind === 'parent' ? me : (people.find((person) => person.id === me.parentId) ?? null)
+  const parent = me.kind === 'parent' ? me : me.parentId !== null ? (index.byId.get(me.parentId) ?? null) : null
   const leadId = parent?.leadId ?? me.leadId ?? null
   // Rows of the same lead are the same parent, written in under another contact.
   const siblings =
-    parent && parent.leadId !== null
-      ? people.filter((person) => person.kind === 'parent' && person.leadId === parent.leadId && person.id !== parent.id)
-      : []
-  const parentIds = new Set([...(parent ? [parent.id] : []), ...siblings.map((person) => person.id)])
+    parent && parent.leadId !== null ? (index.parentsByLead.get(parent.leadId) ?? []).filter((person) => person.id !== parent.id) : []
+  const parentIds = [...(parent ? [parent.id] : []), ...siblings.map((person) => person.id)]
 
-  const children = people
-    .filter((person) => person.kind === 'student' && person.parentId !== null && parentIds.has(person.parentId))
+  const children = [...new Set(parentIds)]
+    .flatMap((id) => index.childrenByParent.get(id) ?? [])
     .sort((a, b) => a.id - b.id)
   // A student whose parent is not saved still shows themself.
   if (me.kind === 'student' && !children.some((child) => child.id === me.id)) {
@@ -51,7 +100,16 @@ export function familyOf(contactId: number, people: Person[]): Family | null {
 // The names of the children of the parent this chat is (oldest first, nobody twice). Empty for a chat that is
 // not a parent's, or a parent with no child saved.
 export function familyChildNames(contactId: number, people: Person[]): string[] {
-  const family = familyOf(contactId, people)
+  const known = indexOf(people).childNames.get(contactId)
+  if (known) {
+    return known
+  }
+  const names = childNamesOf(familyOf(contactId, people))
+  indexOf(people).childNames.set(contactId, names)
+  return names
+}
+
+function childNamesOf(family: Family | null): string[] {
   if (!family || family.me.kind !== 'parent') {
     return []
   }

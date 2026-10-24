@@ -48,6 +48,8 @@ export type AdminHomeSectionProps = {
   // The signed-in person's Follow-up reminders from the Inbox that are due today or late; Open goes to that chat.
   followUps?: FollowUpRow[]
   onOpenFollowUp?: (leadId: number) => void
+  // The follow-up work list (overdue / today / next 7 days, FollowUpWorklist); shown above Leads when given.
+  followUpWorklist?: React.ReactNode
   onOpenForms: () => void
   onOpenWhatsApp: () => void
   onOpenAutomations: () => void
@@ -144,6 +146,7 @@ export function AdminHomeSection({
   onOpenLeadTasks,
   followUps = [],
   onOpenFollowUp,
+  followUpWorklist,
   onOpenForms,
   onOpenWhatsApp,
   onOpenAutomations,
@@ -348,6 +351,12 @@ export function AdminHomeSection({
                 See all {followUp.total}
               </button>
             )}
+          </Block>
+        )}
+
+        {followUpWorklist && (
+          <Block id="admin-followups-title" title="Follow-ups" summary="Overdue, today and the next 7 days">
+            <div className="p-4">{followUpWorklist}</div>
           </Block>
         )}
 

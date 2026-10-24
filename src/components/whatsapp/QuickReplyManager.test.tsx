@@ -377,3 +377,27 @@ describe('QuickReplyManager', () => {
     expect([step.file.name, step.file.type]).toEqual(['greeting.ogg', 'audio/ogg'])
   })
 })
+
+describe('QuickReplyManager follow-up templates', () => {
+  it('makes a quick reply the template of a follow-up, and shows it on the list', async () => {
+    const onSave = vi.fn().mockResolvedValue(null)
+    render(
+      <QuickReplyManager
+        replies={[{ ...existing, followupStep: 3 }]}
+        isLoading={false}
+        loadError={null}
+        onClose={vi.fn()}
+        onSave={onSave}
+        onRemove={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('Follow-up 3')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Edit Trial details' }))
+    const step = await screen.findByRole('combobox', { name: 'Follow-up template for' })
+    expect(step).toHaveValue('3')
+    await userEvent.selectOptions(step, '2')
+    await userEvent.click(screen.getByRole('button', { name: 'Save quick reply' }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ id: existing.id }), expect.objectContaining({ followupStep: 2 })))
+  })
+})

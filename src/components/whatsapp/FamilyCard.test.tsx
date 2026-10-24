@@ -52,6 +52,13 @@ describe('FamilyCard', () => {
     expect(screen.getByText('Ethan Lim')).toBeInTheDocument()
   })
 
+  it('shows the grade in place of the age on a school that shows grade', () => {
+    setup(482, { childDetail: (child: Person) => (child.id === 2 ? { age: 11, label: 'HOA', text: 'Form 1' } : { age: null, label: null }) })
+
+    expect(screen.getByText('Form 1 · HOA')).toBeInTheDocument()
+    expect(screen.queryByText(/11 years/)).not.toBeInTheDocument()
+  })
+
   it('opens the student, and the chat of a child who writes themself', async () => {
     const props = setup(482)
 

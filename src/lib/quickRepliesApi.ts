@@ -34,11 +34,18 @@ async function currentUserId() {
 }
 
 export async function fetchQuickReplies(): Promise<QuickReply[]> {
-  const { data, error } = await requireSupabase()
-    .from('quick_replies')
-    .select('id, title, steps, is_active, owner_id')
-    .order('sort_order', { ascending: true })
-    .order('title', { ascending: true })
+  type Row = { id: number; title: string; steps: unknown; is_active: boolean; owner_id: string | null; followup_step?: number | null }
+  const read = (columns: string) =>
+    requireSupabase()
+      .from('quick_replies')
+      .select(columns)
+      .order('sort_order', { ascending: true })
+      .order('title', { ascending: true }) as unknown as PromiseLike<{ data: Row[] | null; error: { code?: string } | null }>
+  let { data, error } = await read('id, title, steps, is_active, owner_id, followup_step')
+  // Before the follow-up templates (20261102500000) there is no followup_step.
+  if (error?.code === '42703') {
+    ;({ data, error } = await read('id, title, steps, is_active, owner_id'))
+  }
 
   if (error) {
     throw error
@@ -49,6 +56,7 @@ export async function fetchQuickReplies(): Promise<QuickReply[]> {
     steps: parseSteps(row.steps),
     isActive: row.is_active,
     ownerId: row.owner_id ?? null,
+    followupStep: row.followup_step ?? null,
   }))
 }
 
@@ -64,6 +72,8 @@ export type QuickReplyDraft = {
   isActive: boolean
   // A new reply that only its writer sees. Left out for the team's replies; an existing reply keeps its owner.
   personal?: boolean
+  // A follow-up template for this follow-up of a round (null: not a template). Left out: unchanged.
+  followupStep?: number | null
 }
 
 async function removeFiles(paths: string[]) {
@@ -101,7 +111,12 @@ export async function saveQuickReply(existing: QuickReply | null, draft: QuickRe
       }
     }
 
-    const row = { title: draft.title.trim(), steps, is_active: draft.isActive }
+    const row = {
+      title: draft.title.trim(),
+      steps,
+      is_active: draft.isActive,
+      ...(draft.followupStep !== undefined ? { followup_step: draft.followupStep } : {}),
+    }
     if (existing) {
       const { error } = await client.from('quick_replies').update(row).eq('id', existing.id)
       if (error) {

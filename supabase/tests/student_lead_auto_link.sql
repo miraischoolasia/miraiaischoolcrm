@@ -22,6 +22,10 @@ values (99701, 'Mrs One', '60123450101', 'new', '{}'),
 select pg_temp.ok((select count(*) from public.people where kind = 'parent' and lead_id in (99701, 99702, 99703, 99704)) = 4,
   'each lead has a parent record');
 
+-- This file is about the link itself, so every student with the number counts here (20261101900000 made the school's
+-- default "only a student in a regular class"; supabase/tests/converted_needs_regular_class.sql tests that).
+update public.lead_stage_rules set options = '{"students": "all"}' where key = 'converted_on_student_phone';
+
 -- A student with the lead's number (written another way): the lead is converted and the family is tied.
 insert into public.students (id, full_name, phone, remaining_hours, lesson_expiry_date, account_fee_expiry_date, mirai_club_expiry_date)
   overriding system value values
